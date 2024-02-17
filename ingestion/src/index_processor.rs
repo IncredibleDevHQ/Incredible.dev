@@ -30,6 +30,7 @@ fn get_config_path() -> Option<String> {
     let config_path = exe_dir.join("index-config.yaml");
 
     // Convert the path to a String if possible
+    log::debug!("Config path: {:?}", config_path);
     config_path.to_str().map(|s| s.to_owned())
 }
 
@@ -47,14 +48,12 @@ pub fn generate_quikwit_index_name(namespace: &str) -> String {
 
 pub async fn process_entries(all_entries: Vec<FileFields>, repo_name: &str, quickwit_url: &str) {
     // config path is $pwd/index-config.yaml
-    let config_path = get_config_path().unwrap();
-    let path = Path::new(&config_path);
-    
+    // let config_path = get_config_path().unwrap();
+    // let path = Path::new(&config_path);
+
+    let config = include_str!("../index-config.yaml");
     let new_index_id = generate_quikwit_index_name(repo_name);
-
-    let index_config = generate_index_schema::replace_index_id_in_yaml(path, &new_index_id).unwrap();
-
-    // let yaml_path = config_path.clone();
+    let index_config = generate_index_schema::replace_index_id_in_yaml(config.to_string(), &new_index_id).unwrap();
 
     debug!("Sending first yaml to server...");
     let response = send_yaml_to_server(&index_config, &quickwit_url, &new_index_id).await;

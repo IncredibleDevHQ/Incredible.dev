@@ -1,8 +1,8 @@
 extern crate tokenizers;
+use std::env;
 use std::error::Error;
 use std::ops::Range;
 use std::sync::Arc;
-use std::env;
 extern crate tracing;
 
 use tracing::{debug, error, trace, warn};
@@ -19,7 +19,7 @@ use ort::{
     session::SessionBuilder, Environment, ExecutionProvider, GraphOptimizationLevel, LoggingLevel,
 };
 
-use qdrant_client::prelude::{QdrantClient};
+use qdrant_client::prelude::QdrantClient;
 use qdrant_client::qdrant::{PointId, PointStruct};
 use std::collections::HashMap;
 use std::fmt;
@@ -84,14 +84,19 @@ fn get_bin_path() -> Option<String> {
     let exe_path = env::current_exe().ok()?;
 
     // Get the directory containing the executable
-    let exe_dir = exe_path.parent()?;
+    let exe_dir = exe_path.parent()?.parent()?.parent()?;
 
+    log::debug!("Bin path: {:?}", exe_dir);
     // Convert the path to a String if possible
     exe_dir.to_str().map(|s| s.to_owned())
 }
 
 impl SemanticIndex {
-    pub fn new(counter: &usize , collection_name_chunks: &String, collection_name_symbols: &String) -> Self {
+    pub fn new(
+        counter: &usize,
+        collection_name_chunks: &String,
+        collection_name_symbols: &String,
+    ) -> Self {
         let threads: i16 = 1;
         let env = Environment::builder()
             .with_name("Encode")
@@ -112,8 +117,8 @@ impl SemanticIndex {
             tokenizer: tokenizers::Tokenizer::from_file(
               tokenizers_path,
             )
-            .unwrap()
-            .into(),
+                .unwrap()
+                .into(),
 
             overlap: chunking::OverlapStrategy::default(),
 
@@ -314,7 +319,7 @@ impl SemanticIndex {
                     id: Some(PointId::from(id.to_string())),
                     vectors: Some(embedder(&key.symbol).unwrap().into()),
                     payload: symbol_qdrant_meta.convert_to__qdrant_fields(),
-                }
+                };
             })
             .collect();
 
@@ -407,7 +412,7 @@ impl SemanticIndex {
             // Handle the case where qdrant_client is None if necessary
             return Err(Box::new(CommitError::NoQdrantClient));
         }
-        
+
         Ok(())
     }
 

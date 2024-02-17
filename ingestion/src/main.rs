@@ -1,17 +1,16 @@
-
 // Import necessary modules from Rust's standard library
-use clap::{Arg, App};
+use clap::{App, Arg};
 
 use serde::Serialize;
 use std::collections::HashMap;
+use std::env;
 use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
-use tokio;
-use std::env;
 use std::time::{Duration, Instant};
+use tokio;
 
-use log::{debug, info, warn, error};
+use log::{debug, error, info, warn};
 // Import the index_filter module
 mod index_filter;
 use index_filter::index_filter;
@@ -29,10 +28,8 @@ extern crate git2;
 
 mod ast;
 
-
-
 use crate::ast::symbol::{SymbolKey, SymbolLocations, SymbolValue};
-use crate::ast::{CodeFileAST, debug};
+use crate::ast::{debug, CodeFileAST};
 use crate::semantic_index::{SemanticError, SemanticIndex};
 // Importing necessary types from the git2 crate
 use git2::{ObjectType, Repository as GitRepository};
@@ -258,10 +255,16 @@ impl Repository {
     }
 
     async fn make_client(&self) -> Result<QdrantClient> {
-        let client = QdrantClient::from_url(self.config.qdrant_url.as_str())
-            // using an env variable for the API KEY for example
-            .with_api_key(self.config.qdrant_api_key.as_str())
-            .build()?;
+        // Assuming YourErrorType is the type of error returned by QdrantClient build process
+        let client = if self.config.qdrant_url.contains("localhost") {
+            QdrantClient::from_url("http://localhost:6334").build()?
+        } else {
+            QdrantClient::from_url(&self.config.qdrant_url)
+                // using an env variable for the API KEY, for example
+                .with_api_key(self.config.qdrant_api_key.as_str())
+                .build()?
+        };
+    
         Ok(client)
     }
 
@@ -273,18 +276,20 @@ impl Repository {
         indexes: Vec<String>,
     ) -> Result<QdrantClient> {
         let qdrant = self.make_client().await?;
-    
+
         info!("Creating collection {}", collection_name);
-    
+
         // Number of retries
         let max_retries = 7;
-    
+
         for attempt in 1..=max_retries {
             match qdrant.has_collection(collection_name).await {
                 Ok(false) => {
                     info!("Collection {} does not exist, creating it", collection_name);
                     match qdrant
-                        .create_collection(&Repository::collection_config(collection_name.to_string()))
+                        .create_collection(&Repository::collection_config(
+                            collection_name.to_string(),
+                        ))
                         .await
                     {
                         Ok(CollectionOperationResponse { result, time }) => {
@@ -338,7 +343,12 @@ impl Repository {
     }
 
     // Note: Changed from &mut self to no self argument, and modified the return type.
-    pub async fn new(disk_path: PathBuf, repo_name: String, config: Config , branch: String) -> Result<Self> {
+    pub async fn new(
+        disk_path: PathBuf,
+        repo_name: String,
+        config: Config,
+        branch: String,
+    ) -> Result<Self> {
         // let indexes_chunk = vec![
         //     "repo_name".to_string(),
         //     "content_hash".to_string(),
@@ -350,11 +360,11 @@ impl Repository {
         // let indexes_symbols = vec!["repo_name".to_string(), "symbol".to_string()];
         let git_repo = GitRepository::open(&disk_path)?;
         let qdrant_client_chunks = None;
-            //Some(self.init_qdrant_client(&qdrant_url, COLLECTION_NAME, indexes_chunk).await?);
+        //Some(self.init_qdrant_client(&qdrant_url, COLLECTION_NAME, indexes_chunk).await?);
         let qdrant_client_symbols = None;
         //Some(
-            //self.init_qdrant_client(&qdrant_url, COLLECTION_NAME_SYMBOLS, indexes_symbols)
-               // .await?,
+        //self.init_qdrant_client(&qdrant_url, COLLECTION_NAME_SYMBOLS, indexes_symbols)
+        // .await?,
         // );
 
         Ok(Self {
@@ -372,8 +382,14 @@ impl Repository {
         })
     }
 
-    pub async fn traverse(&mut self, repo_name: &str, disk_path: PathBuf , collection_name_chunks: String , collection_name_symbols: String , version: String) -> Result<()> {
-
+    pub async fn traverse(
+        &mut self,
+        repo_name: &str,
+        disk_path: PathBuf,
+        collection_name_chunks: String,
+        collection_name_symbols: String,
+        version: String,
+    ) -> Result<()> {
         //starting the logging time for processing the repo
         let start_processing = Instant::now();
 
@@ -382,7 +398,7 @@ impl Repository {
         // Create a Vec to store all the RepoEntry::File entries
         let mut all_entries: Vec<FileFields> = Vec::new();
         // Find the reference to the specified branch
-        let branch_ref_str = format!("refs/heads/{}" , &self.branch); // Construct the branch reference
+        let branch_ref_str = format!("refs/heads/{}", &self.branch); // Construct the branch reference
         let head_ref = self.git_repo.find_reference(&branch_ref_str)?;
         let head_commit = self.git_repo.find_commit(head_ref.target().unwrap())?;
         let tree = head_commit.tree()?;
@@ -556,7 +572,8 @@ impl Repository {
                         let file_fields = FileFields {
                             repo_name: repo_name.to_string(),
                             // use the disk path of the repo.
-                            repo_disk_path: disk_path.to_str().unwrap().to_owned() + repo_name.to_string().as_str(),
+                            repo_disk_path: disk_path.to_str().unwrap().to_owned()
+                                + repo_name.to_string().as_str(),
                             repo_ref: String::new(),
                             lang: language.clone(),
                             relative_path: path.clone(),
@@ -595,7 +612,8 @@ impl Repository {
 
         //starting the logging time for qdrant indexing
         let start_qdrant = Instant::now();
-        let mut index = SemanticIndex::new(&counter , &collection_name_chunks , &collection_name_symbols);
+        let mut index =
+            SemanticIndex::new(&counter, &collection_name_chunks, &collection_name_symbols);
         // send self.symbolMetaPayload to commit_symbol_metadata function to commit the metadata.
         debug!("Before commiting symbol meta payload");
         let result = index
@@ -606,12 +624,17 @@ impl Repository {
         if let Err(e) = result {
             error!("Error: {:?}", e);
         } else {
-            info!("Successfully committed symbol metadata: {:?}", result.unwrap());
+            info!(
+                "Successfully committed symbol metadata: {:?}",
+                result.unwrap()
+            );
         }
         //stopping the logging time for qdrant indexing
         let duration_qdrant = start_qdrant.elapsed();
-        info!("Time elapsed in commiting symbol metadata is: {:?}", duration_qdrant);
-
+        info!(
+            "Time elapsed in commiting symbol metadata is: {:?}",
+            duration_qdrant
+        );
 
         //starting the logging time for quickwit indexing
         let start_quickwit = Instant::now();
@@ -620,15 +643,22 @@ impl Repository {
         match version {
             v if v != String::from("v3") => {
                 // index to quickwit
-                index_processor::process_entries(all_entries, repo_name, &self.config.quickwit_url).await;
+                index_processor::process_entries(all_entries, repo_name, &self.config.quickwit_url)
+                    .await;
             }
             _ => {
-                info!("Skipping quickwit indexing for version {} -> v4 migration", version);
+                info!(
+                    "Skipping quickwit indexing for version {} -> v4 migration",
+                    version
+                );
             }
         }
         //stopping the logging time for quickwit indexing
         let duration_quickwit = start_quickwit.elapsed();
-        info!("Time elapsed in commiting to quickwit is: {:?}", duration_quickwit);
+        info!(
+            "Time elapsed in commiting to quickwit is: {:?}",
+            duration_quickwit
+        );
         Ok(())
     }
 }
@@ -648,7 +678,13 @@ impl Indexer {
         version: &str,
     ) -> Result<()> {
         // Create a new Repository instance using the `new` method.
-        let mut repo = Repository::new(disk_path.clone(), repo_name.clone(), config , branch.to_string()).await?;
+        let mut repo = Repository::new(
+            disk_path.clone(),
+            repo_name.clone(),
+            config,
+            branch.to_string(),
+        )
+        .await?;
 
         let indexes_chunk = vec![
             "repo_name".to_string(),
@@ -657,20 +693,45 @@ impl Indexer {
         ];
         let indexes_symbols = vec!["repo_name".to_string(), "symbol".to_string()];
 
-        let  collection_name_chunks = format!("{}-documents", Self::generate_qdrant_index_name(&repo_name));
-        let collection_name_symbols = format!("{}-documents-symbols", Self::generate_qdrant_index_name(&repo_name));
+        let collection_name_chunks =
+            format!("{}-documents", Self::generate_qdrant_index_name(&repo_name));
+        let collection_name_symbols = format!(
+            "{}-documents-symbols",
+            Self::generate_qdrant_index_name(&repo_name)
+        );
 
         info!("Sending data to qdrant for collection");
 
-        repo.qdrant_client_code_chunk = Some(repo.init_qdrant_client(&repo.config.qdrant_url, &collection_name_chunks, indexes_chunk).await?);
+        repo.qdrant_client_code_chunk = Some(
+            repo.init_qdrant_client(
+                &repo.config.qdrant_url,
+                &collection_name_chunks,
+                indexes_chunk,
+            )
+            .await?,
+        );
 
-        info !("Sending data to qdrant for collection symbols");
+        info!("Sending data to qdrant for collection symbols");
 
-        repo.qdrant_client_symbol = Some(repo.init_qdrant_client(&repo.config.qdrant_url, &collection_name_symbols, indexes_symbols).await?);
+        repo.qdrant_client_symbol = Some(
+            repo.init_qdrant_client(
+                &repo.config.qdrant_url,
+                &collection_name_symbols,
+                indexes_symbols,
+            )
+            .await?,
+        );
 
         info!("done creating clients");
         // Call the traverse method to list the files in the repository.
-        repo.traverse(&repo_name.clone(), disk_path.clone() , collection_name_chunks.clone() , collection_name_symbols.clone() , version.to_string()).await?;
+        repo.traverse(
+            &repo_name.clone(),
+            disk_path.clone(),
+            collection_name_chunks.clone(),
+            collection_name_symbols.clone(),
+            version.to_string(),
+        )
+        .await?;
 
         Ok(())
     }
@@ -684,7 +745,6 @@ impl Indexer {
         let index_name = format!("{}-{}-{}", version, repo_name, new_index_id);
         return index_name;
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -699,7 +759,15 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new(repo_name: String, repo_path: String, qdrant_url: String, quickwit_url: String, qdrant_api_key: String , branch: String , version : String) -> Self {
+    pub fn new(
+        repo_name: String,
+        repo_path: String,
+        qdrant_url: String,
+        quickwit_url: String,
+        qdrant_api_key: String,
+        branch: String,
+        version: String,
+    ) -> Self {
         Config {
             repo_name,
             repo_path,
@@ -720,42 +788,56 @@ async fn main() -> Result<()> {
         .version("1.0")
         .author("Karthic Rao")
         .about("Handles custom repo configuration")
-        .arg(Arg::new("repo_name")
-            .help("The name of the repository")
-            .required(true)
-            .index(1))
-        .arg(Arg::new("repo_path")
-            .help("The path to the repository")
-            .required(true)
-            .index(2))
-        .arg(Arg::new("qdrant_url")
-            .long("qdrant-url")
-            .help("The URL of the Qdrant service")
-            .takes_value(true)
-            .env("QDRANT_URL") // Automatically use the value from the environment variable QDRANT_URL if provided
-            .default_value("http://localhost:6333"))
-        .arg(Arg::new("quickwit_url")
-            .long("quickwit-url")
-            .help("The URL of the Quickwit service")
-            .takes_value(true)
-            .env("QUICKWIT_URL") // Automatically use the value from the environment variable QUICKWIT_URL if provided
-            .default_value("http://localhost:8080"))
-        .arg(Arg::new("qdrant_api_key")
-            .long("qdrant-api-key")
-            .help("The API key for Qdrant")
-            .takes_value(true)
-            .env("QDRANT_API_KEY") // Automatically use the value from the environment variable QDRANT_API if provided
-            .default_value("default_api_key"))
-        .arg(Arg::new("branch")
-            .long("branch")
-            .help("The branch to index")
-            .takes_value(true)
-            .default_value("main"))
-        .arg(Arg::new("version")
-            .long("version")
-            .help("Take the current ingestion version")
-            .takes_value(true)
-            .default_value("v2"))
+        .arg(
+            Arg::new("repo_name")
+                .help("The name of the repository")
+                .required(true)
+                .index(1),
+        )
+        .arg(
+            Arg::new("repo_path")
+                .help("The path to the repository")
+                .required(true)
+                .index(2),
+        )
+        .arg(
+            Arg::new("qdrant_url")
+                .long("qdrant-url")
+                .help("The URL of the Qdrant service")
+                .takes_value(true)
+                .env("QDRANT_URL") // Automatically use the value from the environment variable QDRANT_URL if provided
+                .default_value("http://localhost:6334"),
+        )
+        .arg(
+            Arg::new("quickwit_url")
+                .long("quickwit-url")
+                .help("The URL of the Quickwit service")
+                .takes_value(true)
+                .env("QUICKWIT_URL") // Automatically use the value from the environment variable QUICKWIT_URL if provided
+                .default_value("http://localhost:7280"),
+        )
+        .arg(
+            Arg::new("qdrant_api_key")
+                .long("qdrant-api-key")
+                .help("The API key for Qdrant")
+                .takes_value(true)
+                .env("QDRANT_API_KEY") // Automatically use the value from the environment variable QDRANT_API if provided
+                .default_value("default_api_key"),
+        )
+        .arg(
+            Arg::new("branch")
+                .long("branch")
+                .help("The branch to index")
+                .takes_value(true)
+                .default_value("main"),
+        )
+        .arg(
+            Arg::new("version")
+                .long("version")
+                .help("Take the current ingestion version")
+                .takes_value(true)
+                .default_value("v2"),
+        )
         .get_matches();
 
     let repo_name = matches.value_of("repo_name").unwrap();
@@ -784,10 +866,26 @@ async fn main() -> Result<()> {
     let metadata = RepoMetadata;
     let writer = IndexWriter;
 
-    let config = Config::new(repo_name.to_string(), disk_path_str.to_string(), qdrant_url.to_string(), quickwit_url.to_string(), qdrant_api_key.to_string() , branch.to_string() , version.to_string());
+    let config = Config::new(
+        repo_name.to_string(),
+        disk_path_str.to_string(),
+        qdrant_url.to_string(),
+        quickwit_url.to_string(),
+        qdrant_api_key.to_string(),
+        branch.to_string(),
+        version.to_string(),
+    );
 
     // Use the indexer to index the repository, passing the disk path.
     indexer
-        .index_repository(disk_path, &metadata, &writer, repo_name.to_string(), config , branch , version)
+        .index_repository(
+            disk_path,
+            &metadata,
+            &writer,
+            repo_name.to_string(),
+            config,
+            branch,
+            version,
+        )
         .await
 }
