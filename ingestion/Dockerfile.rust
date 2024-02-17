@@ -1,0 +1,20 @@
+# Use an official Rust image as a parent image
+FROM rust:1.73.0-bullseye
+
+# Set the working directory in the container to /usr/src/myapp
+WORKDIR /usr/src/myapp
+
+# Copy the local Cargo.toml, Cargo.lock, and repo directory to the container
+COPY Cargo.toml Cargo.lock ./
+COPY repo ./repo
+COPY model ./model 
+COPY index-config.yaml ./index-config.yaml
+# Copy the content of your local src directory to the working directory
+COPY src ./src
+
+# Build the application
+# RUN cargo build --release
+
+# Specify the command to run on container start using cargo run
+CMD ["/bin/sh", "-c", "cargo run --release -- $REPO_SUBFOLDER $REPO_NAME"]
+
