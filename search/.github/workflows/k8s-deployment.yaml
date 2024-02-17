@@ -1,0 +1,135 @@
+name: Build Application Images, store in ECR and push to K8s
+on:
+  push:
+    branches:
+      - dev
+      - master
+env:
+  AWS_REGION: "ap-south-1"
+  ECR_REPOSITORY: "semantic-search-rust"
+  RELEASE_NAME: "semantic-search-rust"
+  EKS_CLUSTER_NAME: "collectiv-main"
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  build:
+    name: create application images from source code and store them in the ECR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update runner's docker Version, as worker module requires it
+        run: |
+          docker --version
+          sudo apt update
+          sudo apt install apt-transport-https ca-certificates curl software-properties-common -y
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt update
+          apt-cache policy docker-ce
+          sudo apt install docker-ce -y
+          docker --version
+
+      - name: Checkout code from GitHub to runner
+        uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_AP_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_AP_SECRET_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check if ECR repository exists
+        id: check-repo
+        run: |
+          EXISTS=$(aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} || echo "not-exist")
+          if [[ $EXISTS == "not-exist" ]]; then
+            echo "::set-output name=exists::false"
+          else
+            echo "::set-output name=exists::true"
+          fi
+
+      - name: Create ECR repository if it does not exist
+        if: steps.check-repo.outputs.exists == 'false'
+        run: |
+          aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push the vote docker image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }} # this remains the full commit hash
+          DOPPLER_AUTH_TOKEN: ${{ secrets.DOPPLER_AUTH_TOKEN }}
+        run: |
+          # Determine the DOPPLER_CONFIG value based on the branch name
+          if [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
+            DOPPLER_CONFIG="production"
+          elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+            DOPPLER_CONFIG="staging"
+          elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+            DOPPLER_CONFIG="development"
+          else
+            echo "Error: Invalid branch name for determining DOPPLER_CONFIG"
+            exit 1
+          fi
+
+          SHORT_COMMIT_HASH=$(echo $IMAGE_TAG | cut -c1-7) # extract the first 7 characters
+          docker build . -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$SHORT_COMMIT_HASH \
+                      --build-arg DOPPLER_CONFIG=$DOPPLER_CONFIG \
+                      --build-arg DOPPLER_AUTH_TOKEN=$DOPPLER_AUTH_TOKEN
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$SHORT_COMMIT_HASH
+          echo "::set-output name=image::$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$SHORT_COMMIT_HASH"
+
+  deploy:
+    name: Deploy to EKS using Helm
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout code from GitHub to runner
+        uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_AP_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_AP_SECRET_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+
+      - name: Set up kubeconfig
+        run: |
+          aws eks --region ${{ env.AWS_REGION }} update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }}
+
+      - name: Add onechart repo to Helm and update
+        run: |
+          helm repo add onechart https://chart.onechart.dev
+          helm repo update
+
+      - name: Deploy using onechart
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          ECR_REGISTRY="$ACCOUNT_ID.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
+          SHORT_COMMIT_HASH=$(echo ${{ github.sha }} | cut -c1-7)
+          ENVIRONMENT=$(if [ "${{ github.ref }}" == "refs/heads/master" ]; then echo "prod"; elif [ "${{ github.ref }}" == "refs/heads/staging" ]; then echo "staging"; else echo "dev"; fi)
+          NAMESPACE=$(if [ "${{ github.ref }}" == "refs/heads/master" ]; then echo "production"; elif [ "${{ github.ref }}" == "refs/heads/staging" ]; then echo "staging"; else echo "development"; fi)
+
+          # Deploy to EKS using Helm and onechart
+          helm upgrade ${{ env.RELEASE_NAME }} onechart/onechart \
+            --install \
+            --set image.repository=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }} \
+            --set image.tag=$SHORT_COMMIT_HASH \
+            --values ./deployment/$ENVIRONMENT.yml \
+            --namespace $NAMESPACE

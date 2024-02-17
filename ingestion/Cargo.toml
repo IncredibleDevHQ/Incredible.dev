@@ -1,0 +1,51 @@
+[package]
+name = "ingestion"
+version = "0.0.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+git2 = "0.13.24"
+regex = "1.5.4"
+once_cell = "1.8.0"
+smallvec = "1.7.0"
+blake3 = "1.4.0" 
+anyhow = "1.0.44" 
+hyperpolyglot = { git = "https://github.com/bloopai/hyperpolyglot.git", rev = "1bc3c2648c5c9a0a6ace85d2585f408b479f3190" }
+tree-sitter = "0.20.10"
+tree-sitter-c = "0.20.3"
+tree-sitter-c-sharp = "0.20.0"
+tree-sitter-cpp = "0.20.0"
+tree-sitter-go ={ git = "https://github.com/tree-sitter/tree-sitter-go.git", rev = "05900faa3cdb5d2d8c8bd5e77ee698487e0a8611" }
+tree-sitter-java = "0.20.0" 
+tree-sitter-javascript = "0.20.0"
+tree-sitter-php = { git = "https://github.com/tree-sitter/tree-sitter-php.git", rev = "d43130fd1525301e9826f420c5393a4d169819fc" }
+tree-sitter-python = "0.20.2"
+tree-sitter-r = "0.19.5"
+tree-sitter-ruby = "0.20.0"
+tree-sitter-rust = "0.20.3"
+tree-sitter-typescript = "0.20.2"
+expect-test = "1.4.1"
+petgraph = { version = "0.6.3", default-features = false, features = ["serde-1"] }
+serde = "1.0.166"
+serde_json = "1.0.100"
+tracing = "0.1.37"
+tokenizers = "0.13.3"
+clap = { version = "3", features = ["env"] }
+bincode = "1.3.3"
+ndarray = "0.15"
+ort = { git = "https://github.com/bloopai/ort",  branch="env-builder-telemetry" }
+qdrant-client = { version = "=1.6.0", default-features = false }
+rayon = "1.7.0"
+thiserror-impl="1.0.44"
+thiserror="1.0.44"
+futures="0.3.28"
+uuid = { version = "1.4.0", features = ["v4", "fast-rng", "serde"] }
+serde_yaml = "0.8"
+reqwest = "0.11"
+itertools = "0.10.1"
+env_logger = "0.10.0"
+log = "0.4.14"
+md5 = "0.7.0"
