@@ -1,3 +1,6 @@
+# Use case specific ignores
+repo/
+
 # Editor and IDE artifacts
 .idea/
 .vscode/
