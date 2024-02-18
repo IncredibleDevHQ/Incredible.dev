@@ -15,9 +15,9 @@ impl Agent {
         }))
         .await?;
 
-        let results = self
-            .semantic_search(query.into(), CODE_SEARCH_LIMIT, 0, 0.0, true)
-            .await?;
+        // let results = self
+        //     .semantic_search(query.into(), CODE_SEARCH_LIMIT, 0, 0.0, true)
+        //     .await?;
 
         println!("semantic search\n");
 
@@ -25,7 +25,7 @@ impl Agent {
 
         let code_snippet = results_symbol.unwrap();
 
-        println!("Size of semantic search: {}", results.len());
+        // println!("Size of semantic search: {}", results.len());
 
         let mut code_chunks = code_snippet
             .into_iter()
