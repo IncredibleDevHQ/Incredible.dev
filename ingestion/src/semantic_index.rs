@@ -109,14 +109,12 @@ impl SemanticIndex {
         let environment = Arc::new(env);
 
         let current_path = get_bin_path().unwrap();
-        let tokenizers_path = "model/tokenizer.json";
-        let model_path = "model/model.onnx";
+        let tokenizers_path = "./model/tokenizer.json";
+        let model_path = "./model/model.onnx";
 
         Self {
             // initialize the tokenizer with ./model/tokenizer.json and turn off padding and truncation
-            tokenizer: tokenizers::Tokenizer::from_file(
-              tokenizers_path,
-            )
+            tokenizer: tokenizers::Tokenizer::from_file(tokenizers_path)
                 .unwrap()
                 .into(),
 
@@ -128,9 +126,7 @@ impl SemanticIndex {
                 .unwrap()
                 .with_intra_threads(threads)
                 .unwrap()
-                .with_model_from_file(
-                    model_path,
-                )
+                .with_model_from_file(model_path)
                 .unwrap()
                 .into(),
             qdrantPayload: Vec::new(),
