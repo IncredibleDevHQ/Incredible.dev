@@ -1,0 +1,16 @@
+[package]
+name = "code-navigator"
+version = "0.0.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.80"
+pathdiff = "0.2.1"
+serde_json = "1.0.0"
+tree-sitter = "0.20.10"
+tree-sitter-python = "0.20.4"
+tree-sitter-stack-graphs = { git = "https://github.com/github/stack-graphs.git"}
+walkdir = "2.4.0"
+stack-graphs = { git = "https://github.com/github/stack-graphs.git", features = ["serde", "visualization", "storage"] }
