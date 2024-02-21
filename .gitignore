@@ -50,4 +50,7 @@ cov/
 .*.swp
 .*.swo
 
+# SQLite DB files
+*.sqlite
+
 # End of .gitignore

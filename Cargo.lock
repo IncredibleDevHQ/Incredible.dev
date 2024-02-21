@@ -702,10 +702,10 @@ dependencies = [
  "anyhow",
  "pathdiff",
  "serde_json",
- "stack-graphs",
+ "stack-graphs 0.12.0 (git+https://github.com/github/stack-graphs.git)",
  "tree-sitter",
  "tree-sitter-python",
- "tree-sitter-stack-graphs",
+ "tree-sitter-stack-graphs 0.7.1 (git+https://github.com/github/stack-graphs.git)",
  "walkdir",
 ]
 
@@ -1952,6 +1952,7 @@ dependencies = [
  "bincode 1.3.3",
  "blake3",
  "clap 3.2.25",
+ "dirs 5.0.1",
  "env_logger 0.10.2",
  "expect-test",
  "futures",
@@ -1972,6 +1973,7 @@ dependencies = [
  "serde_json",
  "serde_yaml 0.8.26",
  "smallvec",
+ "stack-graphs 0.12.0 (git+https://github.com/SubhamPramanik/stack-graphs.git)",
  "thiserror",
  "thiserror-impl",
  "tokenizers",
@@ -1989,6 +1991,8 @@ dependencies = [
  "tree-sitter-r",
  "tree-sitter-ruby",
  "tree-sitter-rust",
+ "tree-sitter-stack-graphs 0.7.1 (git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1)",
+ "tree-sitter-stack-graphs-python",
  "tree-sitter-typescript",
  "uuid",
 ]
@@ -2258,12 +2262,35 @@ dependencies = [
 [[package]]
 name = "lsp-positions"
 version = "0.3.2"
+source = "git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1#bc9d189b4aa635ca0bea28d846e499eea17dd142"
+dependencies = [
+ "bincode 2.0.0-rc.3",
+ "memchr",
+ "serde",
+ "tree-sitter",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "lsp-positions"
+version = "0.3.2"
 source = "git+https://github.com/github/stack-graphs.git#cb0f675f4fa2863e62728eee806ca0cfe240ec48"
 dependencies = [
  "bincode 2.0.0-rc.3",
  "memchr",
  "serde",
  "tree-sitter",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "lsp-positions"
+version = "0.3.2"
+source = "git+https://github.com/SubhamPramanik/stack-graphs.git#cb0f675f4fa2863e62728eee806ca0cfe240ec48"
+dependencies = [
+ "bincode 2.0.0-rc.3",
+ "memchr",
+ "serde",
  "unicode-segmentation",
 ]
 
@@ -3734,6 +3761,28 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "stack-graphs"
 version = "0.12.0"
+source = "git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1#bc9d189b4aa635ca0bea28d846e499eea17dd142"
+dependencies = [
+ "bincode 2.0.0-rc.3",
+ "bitvec",
+ "controlled-option",
+ "either",
+ "enumset",
+ "fxhash",
+ "itertools 0.10.5",
+ "libc",
+ "lsp-positions 0.3.2 (git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1)",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
+name = "stack-graphs"
+version = "0.12.0"
 source = "git+https://github.com/github/stack-graphs.git#cb0f675f4fa2863e62728eee806ca0cfe240ec48"
 dependencies = [
  "bincode 2.0.0-rc.3",
@@ -3744,7 +3793,29 @@ dependencies = [
  "fxhash",
  "itertools 0.10.5",
  "libc",
- "lsp-positions",
+ "lsp-positions 0.3.2 (git+https://github.com/github/stack-graphs.git)",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
+name = "stack-graphs"
+version = "0.12.0"
+source = "git+https://github.com/SubhamPramanik/stack-graphs.git#cb0f675f4fa2863e62728eee806ca0cfe240ec48"
+dependencies = [
+ "bincode 2.0.0-rc.3",
+ "bitvec",
+ "controlled-option",
+ "either",
+ "enumset",
+ "fxhash",
+ "itertools 0.10.5",
+ "libc",
+ "lsp-positions 0.3.2 (git+https://github.com/SubhamPramanik/stack-graphs.git)",
  "rusqlite",
  "serde",
  "serde_json",
@@ -4550,6 +4621,39 @@ dependencies = [
 [[package]]
 name = "tree-sitter-stack-graphs"
 version = "0.7.1"
+source = "git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1#bc9d189b4aa635ca0bea28d846e499eea17dd142"
+dependencies = [
+ "anyhow",
+ "base64 0.21.7",
+ "clap 4.5.1",
+ "colored",
+ "controlled-option",
+ "dialoguer",
+ "dirs 5.0.1",
+ "env_logger 0.9.3",
+ "indoc",
+ "itertools 0.10.5",
+ "log",
+ "lsp-positions 0.3.2 (git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1)",
+ "once_cell",
+ "pathdiff",
+ "regex",
+ "rust-ini",
+ "serde_json",
+ "sha1",
+ "stack-graphs 0.12.0 (git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1)",
+ "thiserror",
+ "time",
+ "tree-sitter",
+ "tree-sitter-config",
+ "tree-sitter-graph",
+ "tree-sitter-loader",
+ "walkdir",
+]
+
+[[package]]
+name = "tree-sitter-stack-graphs"
+version = "0.7.1"
 source = "git+https://github.com/github/stack-graphs.git#cb0f675f4fa2863e62728eee806ca0cfe240ec48"
 dependencies = [
  "anyhow",
@@ -4563,14 +4667,14 @@ dependencies = [
  "indoc",
  "itertools 0.10.5",
  "log",
- "lsp-positions",
+ "lsp-positions 0.3.2 (git+https://github.com/github/stack-graphs.git)",
  "once_cell",
  "pathdiff",
  "regex",
  "rust-ini",
  "serde_json",
  "sha1",
- "stack-graphs",
+ "stack-graphs 0.12.0 (git+https://github.com/github/stack-graphs.git)",
  "thiserror",
  "time",
  "tree-sitter",
@@ -4578,6 +4682,17 @@ dependencies = [
  "tree-sitter-graph",
  "tree-sitter-loader",
  "walkdir",
+]
+
+[[package]]
+name = "tree-sitter-stack-graphs-python"
+version = "0.1.0"
+source = "git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1#bc9d189b4aa635ca0bea28d846e499eea17dd142"
+dependencies = [
+ "anyhow",
+ "clap 4.5.1",
+ "tree-sitter-python",
+ "tree-sitter-stack-graphs 0.7.1 (git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1)",
 ]
 
 [[package]]

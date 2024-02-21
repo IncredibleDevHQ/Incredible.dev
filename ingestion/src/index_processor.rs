@@ -208,10 +208,7 @@ async fn send_content_to_server(content: &str, url: &str) -> Result<()> {
     // Read the JSON file content
     let json_content = content.to_string();
 
-    debug!(
-        "Making POST request to quickwit...\n to {} with {}",
-        url, json_content
-    );
+    debug!("Making POST request to quickwit...\n to {}", url);
 
     // Make the POST request
     let client = reqwest::Client::new();
