@@ -20,9 +20,7 @@ pub(crate) const EMBEDDING_DIM: usize = 384;
 use ndarray::Axis;
 use ort::tensor::OrtOwnedTensor;
 use ort::value::Value;
-use ort::{
-    Environment, ExecutionProvider, GraphOptimizationLevel, LoggingLevel, SessionBuilder,
-};
+use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, LoggingLevel, SessionBuilder};
 use qdrant_client::{
     prelude::{QdrantClient, QdrantClientConfig},
     qdrant::{
@@ -65,7 +63,13 @@ pub enum SemanticError {
 
 impl Semantic {
     pub async fn initialize(config: Configuration) -> Result<Self, SemanticError> {
-        let qdrant = QdrantClient::new(Some(QdrantClientConfig::from_url(&config.semantic_url)))?;
+        // let qdrant = QdrantClient::new(Some(QdrantClientConfig::from_url(&config.semantic_url)))?;
+        let qdrant_api_key = "yfxX63AauMGbXoGVSveAjq373wEOTASLLmHfTvMiOZKJtyYFKq9wHg";
+        let qdrant_url = "https://81e9d930-b73c-4870-914b-2c8b6c5a3b9a.ap-southeast-1-0.aws.cloud.qdrant.io:6334";
+        let qdrant = QdrantClient::from_url(qdrant_url)
+            // using an env variable for the API KEY, for example
+            .with_api_key(qdrant_api_key)
+            .build()?;
 
         let environment = Arc::new(
             Environment::builder()
