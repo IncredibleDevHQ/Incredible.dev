@@ -39,8 +39,8 @@ async fn main() {
         symbol_collection_name: env::var("SYMBOL_COLLECTION_NAME")
             .expect("SYMBOL_COLLECTION_NAME must be set"),
         semantic_db_url: env::var("SEMANTIC_DB_URL").expect("SEMANTIC_DB_URL must be set"),
-        tokenizer_path: env::var("TOKENIZER_PATH").unwrap_or("model/tokenizer.json".to_string()),
-        model_path: env::var("MODEL_PATH").unwrap_or("model/model.onnx".to_string()),
+        tokenizer_path: env::var("TOKENIZER_PATH").unwrap_or("./model/tokenizer.json".to_string()),
+        model_path: env::var("MODEL_PATH").unwrap_or("./model/model.onnx".to_string()),
         qdrant_api_key: env::var("QDRANT_CLOUD_API_KEY").expect("QDRANT_CLOUD_API_KEY must be set"),
     };
 
