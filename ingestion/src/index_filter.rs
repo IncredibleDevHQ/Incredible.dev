@@ -1,9 +1,9 @@
+use log::error;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::path::Path;
-use log::error;
 
 pub fn index_filter<P: AsRef<Path>>(p: &P) -> bool {
     let path = p.as_ref();

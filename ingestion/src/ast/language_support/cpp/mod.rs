@@ -43,8 +43,6 @@ pub static CPP: TSLanguageConfig = TSLanguageConfig {
 mod tests {
     use crate::ast::language_support::test_utils::*;
 
-   
-
     // tests the following constructs:
     //
     // - templates on classes

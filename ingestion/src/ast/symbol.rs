@@ -37,11 +37,11 @@ pub struct SymbolKey {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolValue {
-     // symbol type based on the language (Struct, function, etc.)
-     pub symbol_type: String,
-     // language id
-     pub language_id: String,
-     // whether the symbol is defined in the root scope of the file or not.
+    // symbol type based on the language (Struct, function, etc.)
+    pub symbol_type: String,
+    // language id
+    pub language_id: String,
+    // whether the symbol is defined in the root scope of the file or not.
     pub is_global: bool,
     // relative path of the file in which the symbol is defined
     pub relative_path: String,
@@ -75,13 +75,24 @@ impl SymbolLocations {
         }
     }
 
-    pub fn list_metadata(&self, src:&[u8], repo_name: &str, language_id: &str, relative_path: &str) -> Vec<SymbolMetaData> {
+    pub fn list_metadata(
+        &self,
+        src: &[u8],
+        repo_name: &str,
+        language_id: &str,
+        relative_path: &str,
+    ) -> Vec<SymbolMetaData> {
         match self {
-            Self::TreeSitter(graph) => graph.symbols_metadata(src, repo_name.to_string(), language_id.to_string(), relative_path.to_string()),
+            Self::TreeSitter(graph) => graph.symbols_metadata(
+                src,
+                repo_name.to_string(),
+                language_id.to_string(),
+                relative_path.to_string(),
+            ),
             Self::Empty => Vec::new(),
         }
     }
-    
+
     pub fn scope_graph(&self) -> Option<&ScopeGraph> {
         match self {
             Self::TreeSitter(graph) => Some(graph),

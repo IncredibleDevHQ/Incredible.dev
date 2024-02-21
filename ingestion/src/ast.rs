@@ -13,7 +13,7 @@ use language_support::Language;
 use language_support::TSLanguage;
 use language_support::TSLanguageConfig;
 
-use crate::ast::ast_graph::{ScopeGraph};
+use crate::ast::ast_graph::ScopeGraph;
 pub struct CodeFileAST<'a> {
     /// The original source that was used to generate this file.
     src: &'a [u8],
@@ -58,7 +58,7 @@ impl<'a> CodeFileAST<'a> {
         let tree = parser
             .parse(src, None)
             .ok_or(CodeFileASTError::ParseTimeout)?;
-        
+
         Ok(Self {
             src,
             tree,

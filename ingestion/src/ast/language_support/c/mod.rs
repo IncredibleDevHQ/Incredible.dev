@@ -1,7 +1,6 @@
-extern  crate  tree_sitter;
-use crate::ast::TSLanguageConfig;
+extern crate tree_sitter;
 use crate::ast::language_support::MemoizedQuery;
-
+use crate::ast::TSLanguageConfig;
 
 pub static C: TSLanguageConfig = TSLanguageConfig {
     language_ids: &["C"],
