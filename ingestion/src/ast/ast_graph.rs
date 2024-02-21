@@ -374,7 +374,13 @@ impl ScopeGraph {
             })
     }
 
-    pub fn symbols_metadata(&self, src: &[u8], repo_name: String, language_id: String, relative_path: String) -> Vec<SymbolMetaData> {
+    pub fn symbols_metadata(
+        &self,
+        src: &[u8],
+        repo_name: String,
+        language_id: String,
+        relative_path: String,
+    ) -> Vec<SymbolMetaData> {
         let namespaces = ALL_LANGUAGES[self.lang_id].namespaces;
         self.graph
             .node_indices()
@@ -389,7 +395,7 @@ impl ScopeGraph {
                         // return false if the def is not a top-level def.
 
                         let is_global = self.is_top_level(idx);
-                        
+
                         if def.symbol_id.is_none() {
                             return None;
                         }
