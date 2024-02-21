@@ -1,4 +1,5 @@
 use bincode::de;
+use regex_syntax::ast::print;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -61,5 +62,6 @@ pub async fn symbol_search(query: &str) -> Result<Vec<SymbolCodeChunk>, Box<dyn 
         })
         .collect::<Vec<_>>();
 
+    // println!("results: {:?}", results);
     Ok(results)
 }
