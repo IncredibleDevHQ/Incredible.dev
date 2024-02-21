@@ -13,7 +13,7 @@ pub struct SymbolSearchResult {
     end_line: u32,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SymbolCodeChunk {
     pub relative_path: String,
     pub snippets: String,
@@ -62,6 +62,6 @@ pub async fn symbol_search(query: &str) -> Result<Vec<SymbolCodeChunk>, Box<dyn 
         })
         .collect::<Vec<_>>();
 
-    // println!("results: {:?}", results);
+    println!("shankar: {:?}", results);
     Ok(results)
 }
