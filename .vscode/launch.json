@@ -1,0 +1,159 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'agents'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=agents",
+                    "--package=agents"
+                ],
+                "filter": {
+                    "name": "agents",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'agents'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=agents",
+                    "--package=agents"
+                ],
+                "filter": {
+                    "name": "agents",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'search'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=search",
+                    "--package=search"
+                ],
+                "filter": {
+                    "name": "search",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'search'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=search",
+                    "--package=search"
+                ],
+                "filter": {
+                    "name": "search",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'ingestion'",
+            "cargo": {
+                "args": [
+                    "build",
+                ],
+                "filter": {
+                    "name": "ingestion",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "aider",
+                "../repo/aider",
+                "--qdrant-api-key=yfxX63AauMGbXoGVSveAjq373wEOTASLLmHfTvMiOZKJtyYFKq9wHg",
+                "--qdrant-url=https://81e9d930-b73c-4870-914b-2c8b6c5a3b9a.ap-southeast-1-0.aws.cloud.qdrant.io:6334"
+            ],
+            "cwd": "${workspaceFolder}/ingestion"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'ingestion'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=ingestion",
+                    "--package=ingestion"
+                ],
+                "filter": {
+                    "name": "ingestion",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'code-navigator'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=code-navigator",
+                    "--package=code-navigator"
+                ],
+                "filter": {
+                    "name": "code-navigator",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'code-navigator'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=code-navigator",
+                    "--package=code-navigator"
+                ],
+                "filter": {
+                    "name": "code-navigator",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

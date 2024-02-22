@@ -3,7 +3,6 @@ repo/
 
 # Editor and IDE artifacts
 .idea/
-.vscode/
 *.swp
 *.swo
 .DS_Store
