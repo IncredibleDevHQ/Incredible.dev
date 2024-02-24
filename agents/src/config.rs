@@ -6,6 +6,7 @@ pub struct Config {
     pub openai_key: String,
     pub openai_url: String,
     pub openai_model: String,
+    pub quickwit_url: String,
 }
 
 impl Config {
@@ -24,6 +25,8 @@ impl Config {
             std::env::var("OPENAI_URL").map_err(|_| "OPENAI_URL environment variable not set")?;
         let openai_model = std::env::var("OPENAI_MODEL")
             .map_err(|_| "OPENAI_MODEL environment variable not set")?;
+        let quickwit_url = std::env::var("QUICKWIT_URL")
+            .map_err(|_| "QUICKWIT_URL environment variable not set")?;
 
         Ok(Config {
             repo_name,
@@ -33,6 +36,7 @@ impl Config {
             openai_key,
             openai_url,
             openai_model,
+            quickwit_url,
         })
     }
 }
