@@ -1,4 +1,5 @@
 pub struct Config {
+    pub repo_name: String,
     pub semantic_url: String,
     pub tokenizer_path: String,
     pub model_path: String,
@@ -9,6 +10,8 @@ pub struct Config {
 
 impl Config {
     pub fn new() -> Result<Self, String> {
+        let repo_name =
+            std::env::var("REPO_NAME").map_err(|_| "REPO_NAME environment variable not set")?;
         let semantic_url = std::env::var("SEMANTIC_URL")
             .map_err(|_| "SEMANTIC_URL environment variable not set")?;
         let tokenizer_path = std::env::var("TOKENIZER_PATH")
@@ -23,6 +26,7 @@ impl Config {
             .map_err(|_| "OPENAI_MODEL environment variable not set")?;
 
         Ok(Config {
+            repo_name,
             semantic_url,
             tokenizer_path,
             model_path,
@@ -32,15 +36,3 @@ impl Config {
         })
     }
 }
-
-// create new configuration.
-// let configuration = Configuration {
-//     repo_name: "bloop-ai".to_string(),
-//     semantic_collection_name: "documents".to_string(),
-//     semantic_url: "http://localhost:6334".to_string(),
-//     tokenizer_path: "./model/tokenizer.json".to_string(),
-//     model_path: "./model/model.onnx".to_string(),
-//     openai_key: "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".to_string(),
-//     openai_url: "https://api.openai.com".to_string(),
-//     openai_model: "gpt-4".to_string(),
-// };
