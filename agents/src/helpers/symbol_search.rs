@@ -1,3 +1,4 @@
+use crate::config::Config;
 use bincode::de;
 use regex_syntax::ast::print;
 use reqwest;
@@ -23,8 +24,9 @@ pub struct SymbolCodeChunk {
 }
 
 pub async fn symbol_search(query: &str) -> Result<Vec<SymbolCodeChunk>, Box<dyn Error>> {
+    let configuration = Config::new().unwrap();
     let base_url = "http://localhost:3000";
-    let namespace = "bloop-ai";
+    let namespace = configuration.repo_name;
     let client = reqwest::Client::new();
     let url = format!("{}/symbols", base_url);
 

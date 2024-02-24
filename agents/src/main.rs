@@ -37,7 +37,9 @@ async fn main() -> Result<()> {
         .into_semantic()
         .context("got a 'Grep' query")?
         .into_owned();
+
     println!("{:?}", query);
+
     let query_target = query
         .target
         .as_ref()

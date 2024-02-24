@@ -18,6 +18,8 @@ use tracing::{debug, info, instrument};
 use crate::agent::graph::scope_graph::{get_line_number, SymbolLocations};
 use crate::search::semantic;
 
+use crate::config::Config;
+
 // Types of repo
 #[derive(Serialize, Deserialize, Hash, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
@@ -91,6 +93,7 @@ pub enum AgentError {
 }
 
 pub struct Agent {
+    pub config: Config,
     pub db: DbConnect,
     pub exchanges: Vec<Exchange>,
     pub exchange_tx: Sender<Exchange>,
@@ -437,20 +440,17 @@ impl Agent {
 
             println!("inside process path: {:?}", path);
             // Fetch the content of the file for the current path.
-            let source_document = self
-                .get_file_content(path)
-                .await?;
+            let source_document = self.get_file_content(path).await?;
 
             // log the error and continue to the next path if the file content is not found.
             if source_document.is_none() {
                 println!("file content not found for path: {:?}", path);
                 continue;
             }
-                
-        
+
             // unwrap the source document
             let source_document = source_document.unwrap();
-            
+
             // Deserialize the symbol locations embedded in the source document.
             let symbol_locations: SymbolLocations =
                 bincode::deserialize::<SymbolLocations>(&source_document.symbol_locations).unwrap();
@@ -540,11 +540,17 @@ impl Agent {
                         .map(|l| *l as usize)
                         .unwrap_or(range.end.byte);
 
-                    println!("Inside else adjusted start and end bytes: {:?}, {:?}", new_start, new_end);
+                    println!(
+                        "Inside else adjusted start and end bytes: {:?}, {:?}",
+                        new_start, new_end
+                    );
                     // Convert byte positions back to line numbers to identify the extracted range's start and end lines.
                     let starting_line = get_line_number(new_start, &line_end_indices);
                     let ending_line = get_line_number(new_end, &line_end_indices);
-                    println!("Inside else adjusted start and end lines: {:?}, {:?}", starting_line, ending_line);
+                    println!(
+                        "Inside else adjusted start and end lines: {:?}, {:?}",
+                        starting_line, ending_line
+                    );
                     // subtract starting and ending line
                     let mut total_lines = ending_line - starting_line;
 
@@ -600,8 +606,10 @@ impl Agent {
 
     pub async fn get_file_content(&self, path: &str) -> Result<Option<ContentDocument>> {
         // println!("fetching file content {}\n", path);
+        let configuration = Config::new().unwrap();
+
         self.db
-            .get_file_from_quickwit("bloop-ai", "relative_path", path)
+            .get_file_from_quickwit(&configuration.repo_name, "relative_path", path)
             .await
     }
     // pub async fn get_file_content(&self, path: &str) -> Result<Option<ContentDocument>> {
@@ -619,8 +627,9 @@ impl Agent {
         query: &str,
     ) -> impl Iterator<Item = FileDocument> + 'a {
         println!("executing fuzzy search {}\n", query);
+        let configuration = Config::new().unwrap();
         self.db
-            .fuzzy_path_match("bloop", "relative_path", query, 50)
+            .fuzzy_path_match(&configuration.repo_name, "relative_path", query, 50)
             .await
     }
 }
