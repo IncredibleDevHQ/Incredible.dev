@@ -93,7 +93,6 @@ pub enum AgentError {
 }
 
 pub struct Agent {
-    pub config: Config,
     pub db: DbConnect,
     pub exchanges: Vec<Exchange>,
     pub exchange_tx: Sender<Exchange>,

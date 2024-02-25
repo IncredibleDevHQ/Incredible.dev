@@ -7,7 +7,6 @@ use crate::helpers::build_fuzzy_regex_filter::build_fuzzy_regex_filter;
 use crate::helpers::case_permutations::case_permutations;
 use crate::helpers::trigrams::trigrams;
 use crate::search;
-use crate::Configuration;
 use bincode::config;
 use compact_str::CompactString;
 use futures::future;
@@ -55,10 +54,12 @@ struct ResultItem {
 }
 
 impl DbConnect {
-    pub async fn new(config: Configuration) -> Result<Self, anyhow::Error> {
+    pub async fn new() -> Result<Self, anyhow::Error> {
         let http_client = reqwest::Client::new();
 
-        let semantic = search::semantic::Semantic::initialize(config).await;
+        let configuration = Config::new().unwrap();
+
+        let semantic = search::semantic::Semantic::initialize().await;
         match semantic {
             Ok(semantic) => Ok(Self {
                 semantic,

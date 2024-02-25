@@ -66,7 +66,7 @@ async fn main() -> Result<()> {
         .model(&configuration.openai_model.clone());
 
     // create new db client.
-    let db_client = db_client::DbConnect::new(configuration)
+    let db_client = db_client::DbConnect::new()
         .await
         .context("Initiazing database failed.")?;
 
