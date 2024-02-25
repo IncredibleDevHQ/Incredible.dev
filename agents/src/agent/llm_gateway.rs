@@ -319,11 +319,11 @@ impl Client {
         // const SCALE_FACTOR: f32 = 1.5;
         println!("llm call");
         match functions {
-            Some(func_call) => {},
+            Some(func_call) => {}
             None => {}
         }
-       // println!("Messages: \n {:?}", messages);
-        
+        // println!("Messages: \n {:?}", messages);
+
         let mut builder = self.http.post("https://api.openai.com/v1/chat/completions");
         // set content type application/json
         builder = builder.header("Content-Type", "application/json");
