@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     scope_graph::{EdgeKind, ScopeGraph},
-    symbol::{SymbolId, TextRange},
+    symbol_ops::{SymbolId, TextRange},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
