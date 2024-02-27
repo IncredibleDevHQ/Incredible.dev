@@ -18,12 +18,14 @@ pub struct SymbolSearchRequest {
     pub repo_name: String,
 }
 
-
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SpanSearchRequest {
     pub repo: String,
     pub branch: Option<String>,
     pub path: String,
-    pub range: Option<String>,
+    // text range of the code chunk from the file to extract
+    pub start: Option<usize>,
+    pub end: Option<usize>,
+    // optional uid to track the request
     pub id: Option<String>,
 }

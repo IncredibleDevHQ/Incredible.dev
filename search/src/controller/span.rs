@@ -1,7 +1,6 @@
 use crate::models::SpanSearchRequest;
 use crate::search::code_search::get_file_content;
 
-
 /// Asynchronously handles a search request for a specific span within a file in a repository.
 ///
 /// # Parameters
@@ -18,6 +17,7 @@ pub async fn span_search(params: SpanSearchRequest) -> Result<impl warp::Reply, 
     // Attempt to retrieve the file content asynchronously based on the provided path and repository name.
     let source_document = get_file_content(&path, &repo_name).await;
 
+
     match source_document {
         Ok(content) => {
             // Determine the response based on the content availability.
@@ -29,6 +29,7 @@ pub async fn span_search(params: SpanSearchRequest) -> Result<impl warp::Reply, 
                     warp::http::StatusCode::NOT_FOUND,
                 ))
             } else {
+                // if span request 
                 // If content is found, construct an OK response with the content.
                 let response = format!("Content: {:?}", content.unwrap());
                 Ok(warp::reply::with_status(
@@ -36,7 +37,7 @@ pub async fn span_search(params: SpanSearchRequest) -> Result<impl warp::Reply, 
                     warp::http::StatusCode::OK,
                 ))
             }
-        },
+        }
         Err(e) => {
             // If an error occurs during content retrieval, construct an INTERNAL SERVER ERROR response.
             let response = format!("Error: {}", e);
