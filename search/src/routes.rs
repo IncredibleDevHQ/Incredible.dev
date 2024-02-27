@@ -35,7 +35,8 @@ fn symbol_search() -> impl Filter<Extract = impl warp::Reply, Error = warp::Reje
 /// # Responses
 /// - Returns a `warp::Reply` on success, encapsulating the search results.
 /// - Returns a `warp::Rejection` in case of errors or if the search criteria are not met.
-///
+/// curl "<http://example.com/span?repo=example-repo&branch=main&path=src/example.js&range=1:5&id=12345>"
+
 
 fn span_code_chunk_retrieve() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("span")
