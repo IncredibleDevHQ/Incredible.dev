@@ -2,8 +2,9 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use warp::{self, Filter};
 
-use crate::controller;
+use crate::controller::symbol;
 use crate::db::DbConnect;
+use crate::graph::symbol_ops;
 use crate::models::SymbolSearchRequest;
 
 pub fn search_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -15,7 +16,7 @@ fn symbol_search() -> impl Filter<Extract = impl warp::Reply, Error = warp::Reje
     warp::path("symbols")
         .and(warp::post())
         .and(json_body())
-        .and_then(controller::symbol_search)
+        .and_then(symbol::symbol_search)
 }
 
 /// Provides DbConnect instance wrapped in Arc<Mutex> to the next filter.

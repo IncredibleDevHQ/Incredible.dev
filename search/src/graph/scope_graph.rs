@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     nodes::{LocalDef, LocalImport, LocalScope, Reference, ScopeStack},
-    symbol::TextRange,
+    symbol_ops::TextRange,
 };
 
 /// Collection of symbol locations for *single* file
@@ -436,7 +436,7 @@ impl ScopeGraph {
 }
 
 mod tests {
-    use crate::graph::symbol::{Point, SymbolId};
+    use crate::graph::symbol_ops::{Point, SymbolId};
 
     use super::*;
     use expect_test::expect;

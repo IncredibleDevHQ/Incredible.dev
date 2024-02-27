@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::db::DbConnect;
 use crate::graph::scope_graph::{get_line_number, SymbolLocations};
-use crate::graph::symbol;
+use crate::graph::symbol_ops;
 use crate::models::CodeChunk;
 use crate::parser::literal::Literal;
 use crate::search::payload::{CodeExtractMeta, PathExtractMeta, SymbolPayload};
@@ -227,7 +227,7 @@ async fn process_paths(
                 let node_idx = node_idx.unwrap();
 
                 // Get the byte range of the found node.
-                let range: symbol::TextRange =
+                let range: symbol_ops::TextRange =
                     sg.graph[sg.value_of_definition(node_idx).unwrap_or(node_idx)].range();
 
                 // Adjust the starting byte to the beginning of the line.
