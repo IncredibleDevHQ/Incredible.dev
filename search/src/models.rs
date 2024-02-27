@@ -17,3 +17,13 @@ pub struct SymbolSearchRequest {
     pub query: String,
     pub repo_name: String,
 }
+
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct SpanSearchRequest {
+    repo: String,
+    branch: Option<String>,
+    path: String,
+    range: Option<String>,
+    id: Option<String>,
+}
