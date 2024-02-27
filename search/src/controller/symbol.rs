@@ -18,13 +18,6 @@ use serde::{Deserialize, Serialize};
 use anyhow::Result;
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ApiResponse {
-    result: CollectionStatus,
-    status: String,
-    time: f64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 struct CollectionStatus {
     status: String,
     optimizer_status: String,
@@ -57,7 +50,7 @@ pub async fn symbol_search(
         qdrant_api_key: env::var("QDRANT_CLOUD_API_KEY").expect("QDRANT_CLOUD_API_KEY must be set"),
     };
 
-    // pritn configuration
+    // print configuration
     println!("Configuration: {:?}", configuration);
 
     let db: Result<DbConnect, Error> = db::init_db(configuration)

@@ -21,9 +21,9 @@ pub struct SymbolSearchRequest {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SpanSearchRequest {
-    repo: String,
-    branch: Option<String>,
-    path: String,
-    range: Option<String>,
-    id: Option<String>,
+    pub repo: String,
+    pub branch: Option<String>,
+    pub path: String,
+    pub range: Option<String>,
+    pub id: Option<String>,
 }
