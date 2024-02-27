@@ -8,6 +8,7 @@ use crate::parser::literal::Literal;
 use crate::search::payload::{CodeExtractMeta, PathExtractMeta, SymbolPayload};
 use crate::search::ranking::rank_symbol_payloads;
 use anyhow::{anyhow, Error, Result};
+use serde::Serialize;
 
 use super::quikwit::get_file_from_quickwit;
 use md5::compute;
@@ -22,7 +23,7 @@ pub struct ExtractedContent {
     pub end_line: usize,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Serialize)]
 pub struct ContentDocument {
     pub repo_name: String,
     pub repo_ref: String,

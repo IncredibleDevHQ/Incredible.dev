@@ -1,5 +1,6 @@
 use crate::models::SpanSearchRequest;
 use crate::search::code_search::get_file_content;
+use crate::utilities::util::{fetch_line_indices, pluck_code_by_lines};
 
 /// Asynchronously handles a search request for a specific span within a file in a repository.
 ///
@@ -31,11 +32,44 @@ pub async fn span_search(params: SpanSearchRequest) -> Result<impl warp::Reply, 
             } else {
                 // if span request 
                 // If content is found, construct an OK response with the content.
-                let response = format!("Content: {:?}", content.unwrap());
-                Ok(warp::reply::with_status(
-                    warp::reply::json(&response),
-                    warp::http::StatusCode::OK,
-                ))
+
+                let code_file = content.as_ref().unwrap().content.clone();
+                // if both start and end line are missing, send the entire content
+                if params.start.is_none() && params.end.is_none() {
+                    Ok(warp::reply::with_status(
+                        warp::reply::json(&code_file),
+                        warp::http::StatusCode::OK,
+                    ))
+                } else {
+                    // Convert the compacted u8 array of line end indices back to their original u32 format.
+                    let line_end_indices = fetch_line_indices(content.unwrap().clone());
+
+                    // pluck the code chunk from the source code file content.
+                    let code_chunk = pluck_code_by_lines(
+                        &code_file,
+                        &line_end_indices,
+                        params.start,
+                        params.end,
+                    );
+
+                    match code_chunk {
+                        Ok(chunk) => {
+                            // If the code chunk is successfully retrieved, construct an OK response with the chunk.
+                            Ok(warp::reply::with_status(
+                                warp::reply::json(&chunk),
+                                warp::http::StatusCode::OK,
+                            ))
+                        }
+                        Err(e) => {
+                            // If an error occurs during code chunk retrieval, construct a BAD REQUEST response.
+                            let response = format!("Error: {}", e);
+                            Ok(warp::reply::with_status(
+                                warp::reply::json(&response),
+                                warp::http::StatusCode::BAD_REQUEST,
+                            ))
+                        }
+                    }
+                }
             }
         }
         Err(e) => {
