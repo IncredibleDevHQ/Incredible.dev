@@ -10,6 +10,7 @@ mod models;
 mod parser;
 mod routes;
 mod search;
+mod utilities;
 
 #[derive(Debug, Clone)]
 pub struct Configuration {
