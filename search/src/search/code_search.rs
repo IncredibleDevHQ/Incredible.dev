@@ -7,7 +7,6 @@ use crate::models::CodeChunk;
 use crate::parser::literal::Literal;
 use crate::search::payload::{CodeExtractMeta, PathExtractMeta, SymbolPayload};
 use crate::search::ranking::rank_symbol_payloads;
-use crate::utilities::util::{fetch_line_indices};
 
 use anyhow::{anyhow, Error, Result};
 use serde::Serialize;
@@ -35,6 +34,27 @@ pub struct ContentDocument {
     pub content: String,
     pub symbol_locations: Vec<u8>,
     pub symbols: String,
+}
+
+impl ContentDocument {
+    pub fn fetch_line_indices(&self) -> Vec<usize> {
+        let line_end_indices: Vec<usize> = self
+        .line_end_indices
+        .chunks(4)
+        .filter_map(|chunk| {
+            // Convert each 4-byte chunk to a u32.
+            if chunk.len() == 4 {
+                let value =
+                    u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as usize;
+                Some(value)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+       line_end_indices
+    }
 }
 
 const CODE_SEARCH_LIMIT: u64 = 10;
@@ -159,7 +179,7 @@ async fn process_paths(
             bincode::deserialize::<SymbolLocations>(&source_document.symbol_locations).unwrap();
 
         // Convert the compacted u8 array of line end indices back to their original u32 format.
-        let line_end_indices: Vec<usize> = fetch_line_indices(source_document);
+        let line_end_indices: Vec<usize> = source_document.fetch_line_indices(); 
         // Retrieve the scope graph associated with symbol locations.
         let sg = symbol_locations
             .scope_graph()

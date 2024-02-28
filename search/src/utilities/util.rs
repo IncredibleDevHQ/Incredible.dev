@@ -1,29 +1,4 @@
 use std::io::{self, ErrorKind};
-use crate::search::code_search::ContentDocument;
-
-
-// Quickwit only supports one byte usize values,
-// so we need to aggreate 4 bytes at once and perform a conversion to u32 to get the original line end indices.
-pub fn fetch_line_indices(source_document: ContentDocument ) -> Vec<usize> {
-         // Convert the compacted u8 array of line end indices back to their original u32 format.
-         let line_end_indices: Vec<usize> = source_document
-         .line_end_indices
-         .chunks(4)
-         .filter_map(|chunk| {
-             // Convert each 4-byte chunk to a u32.
-             if chunk.len() == 4 {
-                 let value =
-                     u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as usize;
-                 Some(value)
-             } else {
-                 None
-             }
-         })
-         .collect();
-
-        line_end_indices
-}
-
 
 /// Extracts a specific range of lines from the provided text using line indices.
 ///

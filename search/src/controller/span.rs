@@ -1,6 +1,6 @@
 use crate::models::SpanSearchRequest;
 use crate::search::code_search::get_file_content;
-use crate::utilities::util::{fetch_line_indices, pluck_code_by_lines};
+use crate::utilities::util::pluck_code_by_lines;
 
 /// Asynchronously handles a search request for a specific span within a file in a repository.
 ///
@@ -33,7 +33,9 @@ pub async fn span_search(params: SpanSearchRequest) -> Result<impl warp::Reply, 
                 // if span request 
                 // If content is found, construct an OK response with the content.
 
-                let code_file = content.as_ref().unwrap().content.clone();
+                let content_doc = content.unwrap();
+                let code_file =content_doc.content.clone();
+               
                 // if both start and end line are missing, send the entire content
                 if params.start.is_none() && params.end.is_none() {
                     Ok(warp::reply::with_status(
@@ -42,7 +44,7 @@ pub async fn span_search(params: SpanSearchRequest) -> Result<impl warp::Reply, 
                     ))
                 } else {
                     // Convert the compacted u8 array of line end indices back to their original u32 format.
-                    let line_end_indices = fetch_line_indices(content.unwrap().clone());
+                    let line_end_indices = content_doc.fetch_line_indices(); 
 
                     // pluck the code chunk from the source code file content.
                     let code_chunk = pluck_code_by_lines(
