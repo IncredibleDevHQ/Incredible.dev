@@ -10,7 +10,7 @@ use crate::models::{SymbolSearchRequest, SpanSearchRequest, ParentScopeRequest};
 use serde::Deserialize;
 
 pub fn search_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    symbol_search().or(span_code_chunk_retrieve())
+    symbol_search().or(span_code_chunk_retrieve()).or(parent_scope_retrieve())
 }
 
 /// POST /symbols

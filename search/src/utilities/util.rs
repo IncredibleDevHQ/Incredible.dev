@@ -62,3 +62,50 @@ pub fn pluck_code_by_lines<'a>(
     // Return the specified substring, which is a range of lines.
     Ok(&text[char_start..=char_end])
 }
+
+/// Adjusts the byte positions to align with the start and end of lines in a document.
+///
+/// This function adjusts the provided byte positions to ensure that the text extracted
+/// from these positions does not start or end in the middle of a line. It aligns the
+/// start position to the beginning of the first full line within the range and the end
+/// position to the end of the last full line within the range.
+///
+/// # Parameters
+/// - `initial_start_byte`: The initial start byte position that might be in the middle of a line.
+/// - `initial_end_byte`: The initial end byte position that might be in the middle of a line.
+/// - `line_end_indices`: A reference to a vector containing the byte indices of the end of each line.
+///
+/// # Returns
+/// A tuple containing the adjusted start and end byte positions.
+pub fn adjust_byte_positions(
+    initial_start_byte: usize,
+    initial_end_byte: usize,
+    line_end_indices: &Vec<usize>,
+) -> (usize, usize) {
+    // Determine the line number for the initial end position.
+    let ending_line = get_line_number(initial_end_byte, &line_end_indices);
+    // Determine the line number for the initial start position.
+    let starting_line = get_line_number(initial_start_byte, &line_end_indices);
+
+    // Use the end of the previous line to adjust the start position, ensuring it starts at the beginning of a line.
+    let mut previous_line = starting_line;
+    if previous_line > 0 {
+        previous_line -= 1; // Move to the end of the previous line to find the start of the next line.
+    }
+
+    // Adjust the start byte to the first character of the starting line by using the end of the previous line.
+    let adjusted_start = line_end_indices
+        .get(previous_line) // Get the byte index for the end of the previous line.
+        .map(|l| *l as usize) // Dereference and cast to usize.
+        .unwrap_or(initial_start_byte) // If the line index is not found, default to `initial_start_byte`.
+        + 1; // Move to the first character of the next line.
+
+    // Adjust the end byte to the last character of the ending line.
+    let adjusted_end = line_end_indices
+        .get(ending_line) // Get the byte index for the end of the ending line.
+        .map(|l: &usize| *l as usize) // Dereference and cast to usize.
+        .unwrap_or(initial_end_byte); // If the line index is not found, default to `initial_end_byte`.
+
+    // Return the adjusted start and end byte positions.
+    (adjusted_start, adjusted_end)
+}
