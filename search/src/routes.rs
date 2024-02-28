@@ -2,10 +2,11 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use warp::{self, Filter};
 
-use crate::controller::{symbol, span};
+use crate::controller::{symbol, span, parentscope};
 use crate::db::DbConnect;
 use crate::graph::symbol_ops;
-use crate::models::{SymbolSearchRequest, SpanSearchRequest};
+use crate::models::{SymbolSearchRequest, SpanSearchRequest, ParentScopeRequest};
+
 use serde::Deserialize;
 
 pub fn search_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -43,6 +44,29 @@ fn span_code_chunk_retrieve() -> impl Filter<Extract = impl warp::Reply, Error =
         .and(warp::get())
         .and(warp::query::<SpanSearchRequest>())
         .and_then(span::span_search)
+}
+
+/// GET /parentscope
+/// Retrieves the code defining the parent scope based on the provided file path, line range, and optional id.
+///
+/// This endpoint listens for GET requests at the "/parentscope" path and expects query parameters
+/// encapsulated in the `ParentScopeRequest` struct.
+///
+/// # Request Parameters
+/// - `repo`: The name of the repository containing the file.
+/// - `file`: The file path within the repository.
+/// - `start_line`: The starting line number of the code range.
+/// - `end_line`: The ending line number of the code range.
+/// - `id`: An optional identifier for the request.
+///
+/// # Responses
+/// - Returns a `warp::Reply` on success, containing the parent scope code.
+/// - Returns a `warp::Rejection` in case of errors or if the request parameters are invalid.
+fn parent_scope_retrieve() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path("parentscope")
+        .and(warp::get())
+        .and(warp::query::<ParentScopeRequest>())
+        .and_then(parentscope::parent_scope_search) // Assuming you have a corresponding handler in the controller
 }
 
 /// Provides DbConnect instance wrapped in Arc<Mutex> to the next filter.
