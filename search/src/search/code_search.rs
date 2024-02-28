@@ -10,12 +10,12 @@ use crate::search::ranking::rank_symbol_payloads;
 use crate::utilities::util::get_line_number;
 
 use anyhow::{anyhow, Error, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::quikwit::get_file_from_quickwit;
 use md5::compute;
 
-#[derive(Default, Debug, Clone)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct ExtractedContent {
     pub path: String,
     pub content: String,
