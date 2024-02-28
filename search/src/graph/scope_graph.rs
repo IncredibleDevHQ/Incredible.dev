@@ -106,20 +106,6 @@ pub struct ScopeGraph {
     pub lang_id: usize,
 }
 
-// get line number from byte.
-pub fn get_line_number(byte: usize, line_end_indices: &[usize]) -> usize {
-    // if byte is zero, return 0
-    if byte == 0 {
-        return 0;
-    }
-    let line = line_end_indices
-        .iter()
-        .position(|&line_end_byte| (line_end_byte as usize) >= byte)
-        .unwrap_or(0);
-
-    return line;
-}
-
 impl ScopeGraph {
     pub fn new(range: TextRange, lang_id: usize) -> Self {
         let mut graph = Graph::new();
