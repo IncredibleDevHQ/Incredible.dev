@@ -1,26 +1,24 @@
 use std::io::{self, ErrorKind};
 
-/// Extracts a specific range of lines from the provided text using line indices.
+/// Returns the byte range for a specific line range in a document. 
 ///
 /// # Arguments
-/// * `text` - The entire text from which a portion is to be extracted.
 /// * `indices` - An array of byte indices marking the end of each line in the text.
 /// * `start_line` - An optional 1-based index specifying the starting line to extract.
 /// * `end_line` - An optional 1-based index specifying the ending line to extract.
 ///
 /// # Returns
-/// * A slice of the original text representing the specified line range.
+/// * A tuple containing the start and end byte indices for the specified line range. 
 /// * An IO error if the line numbers are out of bounds or invalid.
 ///
 /// # Errors
 /// * Returns an error if the start or end line is out of the valid range.
 /// * Returns an error if the start line is greater than the end line.
-pub fn pluck_code_by_lines<'a>(
-    text: &'a str,
+pub fn return_byte_range_from_line_numbers<'a>(
     indices: &Vec<usize>,
     start_line: Option<usize>,
     end_line: Option<usize>,
-) -> Result<&'a str, io::Error> {
+) -> Result<(usize, usize), io::Error> {
     // Determine the starting character index based on the start line.
     let char_start = match start_line {
         // If the start line is the first line, start from the beginning.
@@ -59,6 +57,33 @@ pub fn pluck_code_by_lines<'a>(
         return Err(io::Error::new(ErrorKind::InvalidInput, "Start line cannot be greater than end line"));
     }
 
+    // Return the specified substring, which is a range of lines.
+    Ok((char_start, char_end))
+}
+
+/// Extracts a specific range of lines from the provided text using line indices.
+///
+/// # Arguments
+/// * `text` - The entire text from which a portion is to be extracted.
+/// * `indices` - An array of byte indices marking the end of each line in the text.
+/// * `start_line` - An optional 1-based index specifying the starting line to extract.
+/// * `end_line` - An optional 1-based index specifying the ending line to extract.
+///
+/// # Returns
+/// * A slice of the original text representing the specified line range.
+/// * An IO error if the line numbers are out of bounds or invalid.
+///
+/// # Errors
+/// * Returns an error if the start or end line is out of the valid range.
+/// * Returns an error if the start line is greater than the end line.
+pub fn pluck_code_by_lines<'a>(
+    text: &'a str,
+    indices: &Vec<usize>,
+    start_line: Option<usize>,
+    end_line: Option<usize>,
+) -> Result<&'a str, io::Error> {
+    // call return_byte_range_from_line_numbers to get the byte range for the specified line range.
+    let (char_start, char_end) = return_byte_range_from_line_numbers(indices, start_line, end_line)?;
     // Return the specified substring, which is a range of lines.
     Ok(&text[char_start..=char_end])
 }
