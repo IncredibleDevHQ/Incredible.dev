@@ -217,7 +217,7 @@ async fn process_paths(
                 max_lines_limit: Some(20),
             };
             
-            let extract_content = expand_scope(sg, path, start_byte, end_byte, &source_document, 
+            let extract_content = sg.expand_scope(path, start_byte, end_byte, &source_document, 
                  &line_end_indices, &extraction_config);
 
             // Store the extracted content in the results vector.
@@ -226,114 +226,6 @@ async fn process_paths(
     }
 
     Ok(results)
-}
-
-fn expand_scope(
-    sg: &crate::graph::scope_graph::ScopeGraph,
-    path: &String,
-    start_byte: usize,
-    end_byte: usize,
-    source_document: &ContentDocument,
-    line_end_indices: &Vec<usize>,
-    config: &ExtractionConfig, 
-) -> ExtractedContent {
-    // Locate the node in the scope graph that spans the range defined by start and end bytes.
-    let node_idx = sg.node_by_range(start_byte, end_byte);
-
-    let mut new_start = start_byte.clone();
-    let mut new_end = end_byte.clone();
-    // If we can't find such a node, skip to the next metadata.
-    if node_idx.is_none() {
-        // find start and end bytes for 100 bytes above start and 200 bytes below end
-        // check if the start byte greater than 100
-        // check if the end byte less than the length of the file
-        // if yes, then set the new start and end bytes
-        // print the new start and end bytes
-        println!("start_byte: {:?}, end_byte: {:?}", start_byte, end_byte);
-        if start_byte > config.code_byte_expansion_range {
-            new_start = start_byte - config.code_byte_expansion_range;
-        } else {
-            new_start = 0;
-        }
-
-        if end_byte + config.code_byte_expansion_range < source_document.content.len() {
-            new_end = end_byte + config.code_byte_expansion_range;
-        } else {
-            new_end = source_document.content.len();
-        }
-        (new_start, new_end) = adjust_byte_positions(new_start, new_end, line_end_indices);
-
-        // print the new start and end
-        println!("---new_start: {:?}, new_end: {:?}", new_start, new_end);
-        let content = source_document.content[new_start..new_end].to_string();
-    
-    } else {
-        let node_idx = node_idx.unwrap();
-
-        // Get the byte range of the found node.
-        let range: symbol_ops::TextRange =
-            sg.graph[sg.value_of_definition(node_idx).unwrap_or(node_idx)].range();
-
-        // Adjust the starting byte to the beginning of the line.
-        new_start = range.start.byte - range.start.column;
-
-        // Determine the end byte based on the line end index or the range's end.
-        new_end = line_end_indices
-            .get(range.end.line)
-            .map(|l| *l as usize)
-            .unwrap_or(range.end.byte);
-
-        println!(
-            "Inside else adjusted start and end bytes: {:?}, {:?}",
-            new_start, new_end
-        );
-        // Convert byte positions back to line numbers to identify the extracted range's start and end lines.
-        let starting_line = get_line_number(new_start, line_end_indices);
-        let ending_line = get_line_number(new_end, line_end_indices);
-        println!(
-            "Inside else adjusted start and end lines: {:?}, {:?}",
-            starting_line, ending_line
-        );
-        // subtract starting and ending line
-        let total_lines = ending_line - starting_line;
-
-        if total_lines < config.min_lines_to_return {
-            // Logic remains the same, using `config.code_byte_expansion_range` for adjustments.
-            if new_end + config.code_byte_expansion_range > source_document.content.len() {
-                new_end = source_document.content.len();
-            } else {
-                new_end += config.code_byte_expansion_range;
-            }
-            // Adjustment logic remains the same.
-        } else if let Some(limit) = config.max_lines_limit {
-            // Use `max_lines_limit` if provided, to limit the number of lines.
-            if total_lines > limit {
-                new_end = line_end_indices
-                    .get(starting_line + limit)
-                    .map(|l| *l as usize)
-                    .unwrap_or(new_end);
-            }
-        }
-        // print new start and end
-    }
-
-    // find starting line and ending line
-    let ending_line = get_line_number(new_end, line_end_indices);
-    let starting_line = get_line_number(new_start, line_end_indices);
-
-    // Extract the desired content slice from the source document.
-    let content = source_document.content[new_start..new_end].to_string();
-
-    // Construct the extracted content object.
-    let extract_content = ExtractedContent {
-        path: path.clone(),
-        content,
-        start_byte: new_start,
-        end_byte: new_end,
-        start_line: starting_line,
-        end_line: ending_line,
-    };
-    extract_content
 }
 
 pub fn adjust_byte_positions(
