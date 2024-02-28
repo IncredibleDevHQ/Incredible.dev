@@ -26,10 +26,10 @@ pub struct ExtractedContent {
 }
 
 #[derive(Default, Debug, Clone, Serialize)]
-struct ExtractionConfig {
-    code_byte_expansion_range: usize,  // Number of bytes to expand from the start and end.
-    min_lines_to_return: usize,        // Minimum number of lines the extraction should return.
-    max_lines_limit: Option<usize>,    // Optional maximum number of lines to extract.
+pub struct ExtractionConfig {
+    pub code_byte_expansion_range: usize,  // Number of bytes to expand from the start and end.
+    pub min_lines_to_return: usize,        // Minimum number of lines the extraction should return.
+    pub max_lines_limit: Option<usize>,    // Optional maximum number of lines to extract.
 }
 
 

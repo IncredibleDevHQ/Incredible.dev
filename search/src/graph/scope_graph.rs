@@ -117,6 +117,7 @@ impl ScopeGraph {
         }
     }
 
+
     pub fn get_node(&self, node_idx: NodeIndex) -> Option<&NodeKind> {
         self.graph.node_weight(node_idx)
     }
