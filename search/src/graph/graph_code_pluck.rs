@@ -17,7 +17,7 @@ impl ScopeGraph {
     ///
     /// # Returns
     /// - `ExtractedContent`: The extracted content including its metadata like start and end positions.
-    fn expand_scope(
+    pub fn expand_scope(
         &self,
         path: &String,
         start_byte: usize,
