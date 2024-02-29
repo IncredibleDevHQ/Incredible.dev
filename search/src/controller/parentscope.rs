@@ -59,10 +59,21 @@ pub async fn parent_scope_search(
 
                 let (start_byte, end_byte) = byte_range.unwrap();
 
+                // return bad request if scope graph cannot be found.
                 // get scope graph from the symbol locations
                 let sg = scope_binary
-                    .scope_graph()
-                    .ok_or_else(|| anyhow!("path not supported for /token-value"))?;
+                    .scope_graph();
+
+                // return HTTP bad request response from the api if scope graph cant be foud 
+                if sg.is_none() {
+                    let response = format!("Error: Scope graph not found for the file: {}", path);
+                    return Ok(warp::reply::with_status(
+                        warp::reply::json(&response),
+                        warp::http::StatusCode::BAD_REQUEST,
+                    ));
+                }
+                // extract scope graph from the Option after the validation that it exists
+                let sg = sg.unwrap();
 
                 let extraction_config = ExtractionConfig {
                     code_byte_expansion_range: 300,
