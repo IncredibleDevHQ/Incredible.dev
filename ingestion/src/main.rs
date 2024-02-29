@@ -1,45 +1,41 @@
-// Import necessary modules from Rust's standard library
 use clap::{App, Arg};
 
 use serde::Serialize;
 use std::collections::HashMap;
-use std::env;
 use std::error::Error;
-use std::fmt;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+use std::{fmt, fs};
 use tokio;
 
-use log::{debug, error, info, warn};
-// Import the index_filter module
-mod index_filter;
-use index_filter::index_filter;
-mod hash;
-use hash::compute_hashes;
-mod util;
-use md5::compute;
-use std::collections::HashSet;
-// External crate for working with Git repositories
+use log::{debug, error, info};
 
+mod ast;
 mod generate_index_schema;
+mod hash;
+mod index_filter;
 mod index_processor;
+mod semantic_index;
+mod stack_graph;
+mod util;
 
 extern crate git2;
 
-mod ast;
-
 use crate::ast::symbol::{SymbolKey, SymbolLocations, SymbolValue};
-use crate::ast::{debug, CodeFileAST};
+use crate::ast::CodeFileAST;
 use crate::semantic_index::{SemanticError, SemanticIndex};
-// Importing necessary types from the git2 crate
+use hash::compute_hashes;
+use index_filter::index_filter;
+
 use git2::{ObjectType, Repository as GitRepository};
+use md5::compute;
 use qdrant_client::prelude::QdrantClient;
 use qdrant_client::qdrant::CollectionOperationResponse;
 use qdrant_client::qdrant::{
     vectors_config, CreateCollection, Distance, FieldType, VectorParams, VectorsConfig,
 };
+use std::collections::HashSet;
 
-mod semantic_index;
 // Enum to represent the file type
 #[derive(Clone)]
 enum FileType {
@@ -264,7 +260,7 @@ impl Repository {
                 .with_api_key(self.config.qdrant_api_key.as_str())
                 .build()?
         };
-    
+
         Ok(client)
     }
 
@@ -402,13 +398,13 @@ impl Repository {
         let head_ref = self.git_repo.find_reference(&branch_ref_str)?;
         let head_commit = self.git_repo.find_commit(head_ref.target().unwrap())?;
         let tree = head_commit.tree()?;
-        // let rt = tokio::runtime::Builder::new_current_thread()
-        //     .enable_all()
-        //     .build()
-        //     .unwrap();
+        // Suppoerted files for stack graph construction
+        let mut supported_files: HashSet<PathBuf> = HashSet::new();
 
         // Walk through the tree, visiting each entry in a pre-order traversal
         let counter = 0;
+
+        // Before starting the Git tree walk
         info!("Starting to walk through the tree");
         // Walk through the given Git tree, using pre-order traversal.
         tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
@@ -470,17 +466,39 @@ impl Repository {
 
                         // Compute the semantic and tantivy hashes for the file. NOTE: "main" is hardcoded.
                         let (semantic_hash, tantivy_hash) =
-                            compute_hashes(relative_path, &buffer, &self.branch);
+                            compute_hashes(relative_path.clone(), &buffer, &self.branch);
 
                         // Detect the programming language of the file.
                         let language = util::detect_language(&path_buf, blob.content())
                             .map(|s| s.to_string())
                             .unwrap_or("Unknown".to_string());
 
+                        print!("{}: {}", path, language);
+
                         // If the language is unsupported, skip the file.
                         if language == "Unknown" {
                             print!("Unsupported language: {}", language);
                             return git2::TreeWalkResult::Ok;
+                        }
+
+                        // Add supported files to the `supported_files` HashSet to build stack-graph representation of the files later.
+                        if ["Java", "Python", "Typescript", "Javascript"]
+                            .contains(&language.as_str())
+                        {
+                            match fs::canonicalize(std::path::Path::new(&disk_path.join(&path_buf)))
+                            {
+                                Ok(absolute_path) => {
+                                    supported_files.insert(absolute_path);
+                                }
+                                Err(e) => {
+                                    // Handle the error, e.g., by logging or ignoring
+                                    eprintln!(
+                                        "Error canonicalizing path {}: {}",
+                                        path_buf.display(),
+                                        e
+                                    );
+                                }
+                            }
                         }
 
                         // Build a syntax-aware representation of the file.
@@ -606,6 +624,10 @@ impl Repository {
             // Continue walking through the tree.
             git2::TreeWalkResult::Ok
         })?;
+
+        // Creating the stack graph for the supported files
+        let _ = stack_graph::graph::index_files(supported_files.into_iter().collect(), "Python");
+
         //stopping the logging time for qdrant indexing
         let duration_processsing = start_processing.elapsed();
         info!("Time elapsed in processing is: {:?}", duration_processsing);

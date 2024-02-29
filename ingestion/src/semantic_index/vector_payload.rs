@@ -1,18 +1,17 @@
-use std::collections::HashMap;
 use qdrant_client::prelude::Value;
+use std::collections::HashMap;
 
 pub type Embedding = Vec<f32>;
 
 // Payload format to write and deserialize data in and from qdrant.
 #[derive(Default, Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct SymbolPayload {
-
     pub repo_name: String,
     pub symbol: String,
 
     pub symbol_types: Vec<String>,
     pub lang_ids: Vec<String>,
-    pub is_globals: Vec<bool>, 
+    pub is_globals: Vec<bool>,
     pub start_bytes: Vec<i64>,
     pub end_bytes: Vec<i64>,
     pub relative_paths: Vec<String>,
@@ -31,7 +30,6 @@ impl SymbolPayload {
         HashMap::from([
             ("repo_name".into(), self.repo_name.into()),
             ("symbol".into(), self.symbol.into()),
-
             ("lang".into(), self.lang_ids.into()),
             ("symbol_type".into(), self.symbol_types.into()),
             ("start_byte".into(), self.start_bytes.into()),

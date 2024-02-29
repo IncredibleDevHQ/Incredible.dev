@@ -4,7 +4,10 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::Path;
 
-pub fn replace_index_id_in_yaml(mut yaml_content: String, new_index_id: &str) -> io::Result<String> {
+pub fn replace_index_id_in_yaml(
+    mut yaml_content: String,
+    new_index_id: &str,
+) -> io::Result<String> {
     // Read the YAML file into a String
     // let mut yaml_content = String::new();
     // let mut file = fs::File::open(yaml_path)?;

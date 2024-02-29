@@ -3,7 +3,6 @@ repo/
 
 # Editor and IDE artifacts
 .idea/
-.vscode/
 *.swp
 *.swo
 .DS_Store
@@ -49,5 +48,8 @@ cov/
 **/*~
 .*.swp
 .*.swo
+
+# SQLite DB files
+*.sqlite
 
 # End of .gitignore

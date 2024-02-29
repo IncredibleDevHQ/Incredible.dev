@@ -1,8 +1,7 @@
-extern crate tree_sitter;
 extern crate once_cell;
+extern crate tree_sitter;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
-
 
 mod c;
 mod c_sharp;
@@ -17,10 +16,8 @@ mod ruby;
 mod rust;
 mod typescript;
 
-
 #[cfg(test)]
 mod test_utils;
-
 
 pub enum Language<Config: 'static> {
     /// A supported language, with some `Config`.
@@ -78,7 +75,6 @@ impl MemoizedQuery {
     }
 }
 
-
 pub type TSLanguage = Language<TSLanguageConfig>;
 
 impl TSLanguage {
@@ -115,7 +111,6 @@ pub static ALL_LANGUAGES: &[&TSLanguageConfig] = &[
     &r::R,
     &php::PHP,
 ];
-
 
 /// An opaque identifier for every symbol in a language
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]

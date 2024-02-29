@@ -35,7 +35,6 @@ mod tests {
 
         let (semantic_hash, tantivy_hash) = compute_hashes(relative_path, buffer, branch_list);
 
-
         // You should replace these with the expected values for the given input.
         let expected_semantic_hash =
             "af96123d76fe50cbec2197da801b4dc1042e285c748d6123ae72fb1063c87012";

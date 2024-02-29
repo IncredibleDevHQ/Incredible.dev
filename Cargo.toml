@@ -3,4 +3,5 @@ members = [
     "agents",
     "search",
     "ingestion",
+    "code-navigator",
 ]

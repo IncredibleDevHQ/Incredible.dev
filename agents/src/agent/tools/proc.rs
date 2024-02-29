@@ -176,19 +176,19 @@ impl Agent {
             .into_iter()
             .flat_map(|(relevant_chunks, path)| {
                 let alias = self.get_path_alias(&path);
-                
+
                 relevant_chunks.into_iter().map(move |c| {
-                    if(path.clone() == "server/bleep/src/indexes.rs") {
-                        println!("Inside proc: {}, {} ", c.range.start,c.range.end);
+                    if path.clone() == "server/bleep/src/indexes.rs" {
+                        println!("Inside proc: {}, {} ", c.range.start, c.range.end);
                     }
                     CodeChunk {
-                    path: path.clone(),
-                    alias,
-                    snippet: c.code,
-                    start_line: c.range.start,
-                    end_line: c.range.end,
-                }
-            })
+                        path: path.clone(),
+                        alias,
+                        snippet: c.code,
+                        start_line: c.range.start,
+                        end_line: c.range.end,
+                    }
+                })
             })
             .collect::<Vec<_>>();
 

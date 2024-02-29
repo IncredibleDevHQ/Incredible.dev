@@ -53,7 +53,8 @@ pub async fn process_entries(all_entries: Vec<FileFields>, repo_name: &str, quic
 
     let config = include_str!("../index-config.yaml");
     let new_index_id = generate_quikwit_index_name(repo_name);
-    let index_config = generate_index_schema::replace_index_id_in_yaml(config.to_string(), &new_index_id).unwrap();
+    let index_config =
+        generate_index_schema::replace_index_id_in_yaml(config.to_string(), &new_index_id).unwrap();
 
     debug!("Sending first yaml to server...");
     let response = send_yaml_to_server(&index_config, &quickwit_url, &new_index_id).await;
@@ -75,7 +76,10 @@ pub async fn process_entries(all_entries: Vec<FileFields>, repo_name: &str, quic
 
     all_entries_stream
         .for_each_concurrent(Some(1), |chunk| async {
-            let url = format!("{}/api/v1/{}/ingest?commit=force", quickwit_url, new_index_id);
+            let url = format!(
+                "{}/api/v1/{}/ingest?commit=force",
+                quickwit_url, new_index_id
+            );
 
             let json_data_vec: Result<Vec<String>, _> = chunk
                 .into_iter()
@@ -105,7 +109,11 @@ pub async fn process_entries(all_entries: Vec<FileFields>, repo_name: &str, quic
         .await;
 }
 
-async fn send_yaml_to_server(config_yaml: &str, quickwit_url: &str, new_index_id: &str) -> anyhow::Result<()> {
+async fn send_yaml_to_server(
+    config_yaml: &str,
+    quickwit_url: &str,
+    new_index_id: &str,
+) -> anyhow::Result<()> {
     debug!("Reading YAML content...");
 
     let create_index_url = quickwit_url.to_owned() + "/api/v1/indexes";
@@ -119,9 +127,12 @@ async fn send_yaml_to_server(config_yaml: &str, quickwit_url: &str, new_index_id
     match describe_response.status() {
         StatusCode::NOT_FOUND => {
             // Index does not exist, proceed to create
-            // add info log 
-            info!("Index not found, creating new index at URL: {}", &create_index_url);
-          
+            // add info log
+            info!(
+                "Index not found, creating new index at URL: {}",
+                &create_index_url
+            );
+
             let create_response = client
                 .post(&create_index_url)
                 .header("Content-Type", "application/yaml")
@@ -148,7 +159,9 @@ async fn send_yaml_to_server(config_yaml: &str, quickwit_url: &str, new_index_id
         _ => {
             // Handle other unexpected statuses
             error!("Unexpected status code received from describe URL");
-            return Err(anyhow::anyhow!("Unexpected status code received from describe URL"));
+            return Err(anyhow::anyhow!(
+                "Unexpected status code received from describe URL"
+            ));
         }
     }
 
@@ -156,11 +169,13 @@ async fn send_yaml_to_server(config_yaml: &str, quickwit_url: &str, new_index_id
     sleep(Duration::from_secs(10)).await;
 
     let response_text = describe_response.text().await?;
-    info!("Response for describing/configuring quickwit: {}", response_text);
+    info!(
+        "Response for describing/configuring quickwit: {}",
+        response_text
+    );
 
     Ok(())
 }
-
 
 async fn send_json_to_server(json_path: &str, url: &str) -> Result<(), Box<dyn Error>> {
     debug!("Reading JSON file...");
@@ -193,7 +208,7 @@ async fn send_content_to_server(content: &str, url: &str) -> Result<()> {
     // Read the JSON file content
     let json_content = content.to_string();
 
-    debug!("Making POST request to quickwit...\n to {} with {}", url, json_content);
+    debug!("Making POST request to quickwit...\n to {}", url);
 
     // Make the POST request
     let client = reqwest::Client::new();
@@ -204,16 +219,16 @@ async fn send_content_to_server(content: &str, url: &str) -> Result<()> {
         .send()
         .await?;
 
-        match response.status() {
-            StatusCode::OK | StatusCode::CREATED | StatusCode::ACCEPTED => {
-                info!("Status from quickwit: {}", response.status());
-                debug!("Response from quickwit: {}", response.text().await?);
-                Ok(())
-            },
-            _ => {
-                let error_message = format!("Error response from quickwit: {}", response.status());
-                error!("{}", &error_message);
-                Err(anyhow::anyhow!(error_message))
-            }
+    match response.status() {
+        StatusCode::OK | StatusCode::CREATED | StatusCode::ACCEPTED => {
+            info!("Status from quickwit: {}", response.status());
+            debug!("Response from quickwit: {}", response.text().await?);
+            Ok(())
         }
+        _ => {
+            let error_message = format!("Error response from quickwit: {}", response.status());
+            error!("{}", &error_message);
+            Err(anyhow::anyhow!(error_message))
+        }
+    }
 }

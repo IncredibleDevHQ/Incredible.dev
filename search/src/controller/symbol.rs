@@ -11,11 +11,11 @@ use crate::db::DbConnect;
 use crate::models::SymbolSearchRequest;
 use crate::search::code_search::code_search;
 use crate::{search::semantic::Semantic, Configuration};
+use anyhow::Result;
 use md5::compute;
-use std::env;
 use reqwest;
 use serde::{Deserialize, Serialize};
-use anyhow::Result;
+use std::env;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CollectionStatus {
@@ -39,11 +39,11 @@ pub async fn symbol_search(
     .await;
     println!("Rest: {:?}", is_collection_available);
     let configuration = Configuration {
-        symbol_collection_name : if is_collection_available {
+        symbol_collection_name: if is_collection_available {
             namespace
         } else {
             env::var("SYMBOL_COLLECTION_NAME").expect("SYMBOL_COLLECTION_NAME must be set")
-        }, 
+        },
         semantic_db_url: env::var("SEMANTIC_DB_URL").expect("SEMANTIC_DB_URL must be set"),
         tokenizer_path: env::var("TOKENIZER_PATH").unwrap_or("model/tokenizer.json".to_string()),
         model_path: env::var("MODEL_PATH").unwrap_or("model/model.onnx".to_string()),
@@ -69,8 +69,11 @@ pub async fn symbol_search(
     }
 }
 
-async fn get_collection_status(mut base_url: String, collection_name: &String , apikey : &str) -> bool {
-
+async fn get_collection_status(
+    mut base_url: String,
+    collection_name: &String,
+    apikey: &str,
+) -> bool {
     // Check if the base URL contains the port 6334 and replace it with 6333
     if base_url.contains(":6334") {
         base_url = base_url.replace(":6334", ":6333");
@@ -100,6 +103,9 @@ pub fn generate_qdrant_index_name(namespace: &str) -> String {
     let md5_index_id = compute(namespace);
     // create a hex string
     let new_index_id = format!("{:x}", md5_index_id);
-    let index_name = format!("{}-{}-{}-documents-symbols", version, repo_name, new_index_id);
+    let index_name = format!(
+        "{}-{}-{}-documents-symbols",
+        version, repo_name, new_index_id
+    );
     return index_name;
 }
