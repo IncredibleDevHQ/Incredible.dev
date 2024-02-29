@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     nodes::{LocalDef, LocalImport, LocalScope, Reference, ScopeStack},
-    symbol::TextRange,
+    symbol_ops::TextRange,
 };
 
 /// Collection of symbol locations for *single* file
@@ -106,20 +106,6 @@ pub struct ScopeGraph {
     pub lang_id: usize,
 }
 
-// get line number from byte.
-pub fn get_line_number(byte: usize, line_end_indices: &[usize]) -> usize {
-    // if byte is zero, return 0
-    if byte == 0 {
-        return 0;
-    }
-    let line = line_end_indices
-        .iter()
-        .position(|&line_end_byte| (line_end_byte as usize) >= byte)
-        .unwrap_or(0);
-
-    return line;
-}
-
 impl ScopeGraph {
     pub fn new(range: TextRange, lang_id: usize) -> Self {
         let mut graph = Graph::new();
@@ -130,6 +116,7 @@ impl ScopeGraph {
             lang_id,
         }
     }
+
 
     pub fn get_node(&self, node_idx: NodeIndex) -> Option<&NodeKind> {
         self.graph.node_weight(node_idx)
@@ -436,7 +423,7 @@ impl ScopeGraph {
 }
 
 mod tests {
-    use crate::graph::symbol::{Point, SymbolId};
+    use crate::graph::symbol_ops::{Point, SymbolId};
 
     use super::*;
     use expect_test::expect;
