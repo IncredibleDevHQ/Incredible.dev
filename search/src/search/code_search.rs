@@ -1,18 +1,21 @@
 use std::sync::Arc;
 
 use crate::db::DbConnect;
-use crate::graph::scope_graph::{get_line_number, SymbolLocations};
-use crate::graph::symbol;
+use crate::graph::scope_graph::SymbolLocations;
+use crate::graph::symbol_ops;
 use crate::models::CodeChunk;
 use crate::parser::literal::Literal;
 use crate::search::payload::{CodeExtractMeta, PathExtractMeta, SymbolPayload};
 use crate::search::ranking::rank_symbol_payloads;
+use crate::utilities::util::get_line_number;
+
 use anyhow::{anyhow, Error, Result};
+use serde::{Deserialize, Serialize};
 
 use super::quikwit::get_file_from_quickwit;
 use md5::compute;
 
-#[derive(Default, Debug, Clone)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct ExtractedContent {
     pub path: String,
     pub content: String,
@@ -22,7 +25,15 @@ pub struct ExtractedContent {
     pub end_line: usize,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Serialize)]
+pub struct ExtractionConfig {
+    pub code_byte_expansion_range: usize,  // Number of bytes to expand from the start and end.
+    pub min_lines_to_return: usize,        // Minimum number of lines the extraction should return.
+    pub max_lines_limit: Option<usize>,    // Optional maximum number of lines to extract.
+}
+
+
+#[derive(Default, Debug, Clone, Serialize)]
 pub struct ContentDocument {
     pub repo_name: String,
     pub repo_ref: String,
@@ -32,6 +43,31 @@ pub struct ContentDocument {
     pub content: String,
     pub symbol_locations: Vec<u8>,
     pub symbols: String,
+}
+
+impl ContentDocument {
+    pub fn fetch_line_indices(&self) -> Vec<usize> {
+        let line_end_indices: Vec<usize> = self
+        .line_end_indices
+        .chunks(4)
+        .filter_map(|chunk| {
+            // Convert each 4-byte chunk to a u32.
+            if chunk.len() == 4 {
+                let value =
+                    u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as usize;
+                Some(value)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+       line_end_indices
+    }
+    pub fn symbol_locations(&self) -> Result<SymbolLocations> {
+        let symbol_locations = bincode::deserialize::<SymbolLocations>(&self.symbol_locations)?;
+        Ok(symbol_locations)
+    }
 }
 
 const CODE_SEARCH_LIMIT: u64 = 10;
@@ -152,25 +188,10 @@ async fn process_paths(
         let source_document = source_document.unwrap();
 
         // Deserialize the symbol locations embedded in the source document.
-        let symbol_locations: SymbolLocations =
-            bincode::deserialize::<SymbolLocations>(&source_document.symbol_locations).unwrap();
+        let symbol_locations: SymbolLocations = source_document.symbol_locations()?;
 
         // Convert the compacted u8 array of line end indices back to their original u32 format.
-        let line_end_indices: Vec<usize> = source_document
-            .line_end_indices
-            .chunks(4)
-            .filter_map(|chunk| {
-                // Convert each 4-byte chunk to a u32.
-                if chunk.len() == 4 {
-                    let value =
-                        u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as usize;
-                    Some(value)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
+        let line_end_indices: Vec<usize> = source_document.fetch_line_indices(); 
         // Retrieve the scope graph associated with symbol locations.
         let sg = symbol_locations
             .scope_graph()
@@ -184,116 +205,20 @@ async fn process_paths(
             let start_byte: usize = code_meta.start_byte.try_into().unwrap();
             let end_byte: usize = code_meta.end_byte.try_into().unwrap();
 
-            let mut new_start = start_byte.clone();
-            let mut new_end = end_byte.clone();
             // print the start and end byte
             println!(
                 "-symbol start_byte: {:?}, end_byte: {:?}, path: {}, score: {}",
                 start_byte, end_byte, path, path_meta.score
             );
-            // Locate the node in the scope graph that spans the range defined by start and end bytes.
-            let node_idx = sg.node_by_range(start_byte, end_byte);
 
-            // If we can't find such a node, skip to the next metadata.
-            if node_idx.is_none() {
-                // find start and end bytes for 100 bytes above start and 200 bytes below end
-                // check if the start byte greater than 100
-                // check if the end byte less than the length of the file
-                // if yes, then set the new start and end bytes
-                // print the new start and end bytes
-                println!("start_byte: {:?}, end_byte: {:?}", start_byte, end_byte);
-                if start_byte > 300 {
-                    new_start = start_byte - 300;
-                } else {
-                    new_start = 0;
-                }
-
-                if end_byte + 300 < source_document.content.len() {
-                    new_end = end_byte + 300;
-                } else {
-                    new_end = source_document.content.len();
-                }
-                (new_start, new_end) = adjust_byte_positions(new_start, new_end, &line_end_indices);
-
-                // print the new start and end
-                println!("---new_start: {:?}, new_end: {:?}", new_start, new_end);
-                let content = source_document.content[new_start..new_end].to_string();
-                // print content
-                println!(
-                    "--- nodexxx content: symbol: {} \n{:?}\n",
-                    code_meta.symbol, content
-                );
-            } else {
-                let node_idx = node_idx.unwrap();
-
-                // Get the byte range of the found node.
-                let range: symbol::TextRange =
-                    sg.graph[sg.value_of_definition(node_idx).unwrap_or(node_idx)].range();
-
-                // Adjust the starting byte to the beginning of the line.
-                new_start = range.start.byte - range.start.column;
-
-                // Determine the end byte based on the line end index or the range's end.
-                new_end = line_end_indices
-                    .get(range.end.line)
-                    .map(|l| *l as usize)
-                    .unwrap_or(range.end.byte);
-
-                println!(
-                    "Inside else adjusted start and end bytes: {:?}, {:?}",
-                    new_start, new_end
-                );
-                // Convert byte positions back to line numbers to identify the extracted range's start and end lines.
-                let starting_line = get_line_number(new_start, &line_end_indices);
-                let ending_line = get_line_number(new_end, &line_end_indices);
-                println!(
-                    "Inside else adjusted start and end lines: {:?}, {:?}",
-                    starting_line, ending_line
-                );
-                // subtract starting and ending line
-                let total_lines = ending_line - starting_line;
-
-                if total_lines < 8 {
-                    println!("---new_start: {:?}, new_end: {:?}", new_start, new_end);
-                    // Adjustments for ensuring content context.
-
-                    // Ensure the extracted content doesn't exceed the document's bounds.
-                    let mut temp_new_end = new_end.clone();
-                    if new_end + 300 > source_document.content.len() {
-                        new_end = source_document.content.len();
-                        temp_new_end = source_document.content.len() - 2;
-                    } else {
-                        new_end += 300;
-                        temp_new_end += 300;
-                    }
-                    (new_start, new_end) =
-                        adjust_byte_positions(new_start, temp_new_end, &line_end_indices);
-                } else if total_lines > 20 {
-                    // If the extracted content exceeds 25 lines, change the end byte to the end of the 25th line.
-                    new_end = line_end_indices
-                        .get(starting_line + 20)
-                        .map(|l| *l as usize)
-                        .unwrap_or(new_end);
-                }
-                // print new start and end
-            }
-
-            // find starting line and ending line
-            let ending_line = get_line_number(new_end, &line_end_indices);
-            let starting_line = get_line_number(new_start, &line_end_indices);
-
-            // Extract the desired content slice from the source document.
-            let content = source_document.content[new_start..new_end].to_string();
-
-            // Construct the extracted content object.
-            let extract_content = ExtractedContent {
-                path: path.clone(),
-                content,
-                start_byte: new_start,
-                end_byte: new_end,
-                start_line: starting_line,
-                end_line: ending_line,
+            let extraction_config = ExtractionConfig {
+                code_byte_expansion_range: 300,
+                min_lines_to_return: 8,
+                max_lines_limit: Some(20),
             };
+            
+            let extract_content = sg.expand_scope(path, start_byte, end_byte, &source_document, 
+                 &line_end_indices, &extraction_config);
 
             // Store the extracted content in the results vector.
             results.push(extract_content);
