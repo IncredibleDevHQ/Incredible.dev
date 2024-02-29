@@ -2,11 +2,12 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 use crate::agent::agent::{ContentDocument, FileDocument};
+use crate::config::Config;
 use crate::helpers::build_fuzzy_regex_filter::build_fuzzy_regex_filter;
 use crate::helpers::case_permutations::case_permutations;
 use crate::helpers::trigrams::trigrams;
 use crate::search;
-use crate::Configuration;
+use bincode::config;
 use compact_str::CompactString;
 use futures::future;
 
@@ -53,10 +54,12 @@ struct ResultItem {
 }
 
 impl DbConnect {
-    pub async fn new(config: Configuration) -> Result<Self, anyhow::Error> {
+    pub async fn new() -> Result<Self, anyhow::Error> {
         let http_client = reqwest::Client::new();
 
-        let semantic = search::semantic::Semantic::initialize(config).await;
+        let configuration = Config::new().unwrap();
+
+        let semantic = search::semantic::Semantic::initialize().await;
         match semantic {
             Ok(semantic) => Ok(Self {
                 semantic,
@@ -89,7 +92,7 @@ impl DbConnect {
             .collect::<Vec<_>>();
         //println!("Quick wit paths: {:?}", paths);
         //println!("search_query: {}", search_query);
-        
+
         Ok(response_array)
     }
 
@@ -99,7 +102,8 @@ impl DbConnect {
         search_field: &str,
         search_query: &str,
     ) -> Result<Option<ContentDocument>, Error> {
-        let base_url = "http://localhost:7280";
+        let configuration = Config::new().unwrap();
+        let base_url = configuration.quickwit_url.clone();
 
         let query = if !search_field.is_empty() {
             format!("{}:{}", search_field, search_query)
@@ -148,7 +152,6 @@ impl DbConnect {
                                 symbols: result_item.symbols,
                             });
                         }
-                        
                     }
                 }
                 Err(err) => {
@@ -173,7 +176,8 @@ impl DbConnect {
         search_query: &str,
     ) -> Result<Vec<FileDocument>, Error> {
         let client = Client::new();
-        let base_url = "http://localhost:7280";
+        let configuration = Config::new().unwrap();
+        let base_url = configuration.quickwit_url.clone();
 
         println!("search_query {}", search_query);
 
@@ -259,7 +263,7 @@ impl DbConnect {
 
         // Iterate over counts and populate file_documents
         for hit in hits {
-           // println!("hit: {:?}\n", hit.clone());
+            // println!("hit: {:?}\n", hit.clone());
             let result = self
                 .search_with_async(index_name, search_field, hit.clone().into())
                 .await;
