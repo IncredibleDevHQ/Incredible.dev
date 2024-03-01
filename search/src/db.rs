@@ -1,6 +1,7 @@
 use crate::{search::semantic::Semantic, Configuration};
 use reqwest::Client;
 use thiserror::Error;
+use log::{error, info};
 
 #[derive(Error, Debug)]
 pub enum SemanticError {
@@ -32,14 +33,14 @@ pub async fn init_db(config: Configuration) -> Result<DbConnect, anyhow::Error> 
     let semantic = Semantic::initialize(config).await;
     match semantic {
         Ok(semantic) => {
-            println!("Semantic search initialized");
+            info!("Semantic search initialized");
             Ok(DbConnect {
                 semantic,
                 http_client,
             })
         }
         Err(err) => {
-            println!("Failed to initialize semantic search: {}", err);
+            info!("Failed to initialize semantic search: {}", err);
             Err(err.into())
         }
     }

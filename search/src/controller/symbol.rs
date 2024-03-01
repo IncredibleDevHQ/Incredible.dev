@@ -1,21 +1,19 @@
-use anyhow::Context;
 use anyhow::Error;
+use log::{error, info};
+use reqwest::header::HeaderValue;
+use reqwest::Client;
 
 use std::convert::Infallible;
-use std::ffi::c_long;
 use std::sync::Arc;
 use warp::{self, http::StatusCode};
 
-use crate::db;
-use crate::db::DbConnect;
 use crate::models::SymbolSearchRequest;
 use crate::search::code_search::code_search;
-use crate::{search::semantic::Semantic, Configuration};
+use crate::AppState;
 use anyhow::Result;
 use md5::compute;
 use reqwest;
 use serde::{Deserialize, Serialize};
-use std::env;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CollectionStatus {
@@ -29,33 +27,40 @@ struct CollectionStatus {
 
 pub async fn symbol_search(
     search_request: SymbolSearchRequest,
+    app_state: Arc<AppState>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let namespace = generate_qdrant_index_name(&search_request.repo_name);
-    let is_collection_available = get_collection_status(
-        env::var("SEMANTIC_DB_URL").expect("SEMANTIC_DB_URL must be set"),
-        &namespace, // &search_request.repo_name,
-        &env::var("QDRANT_CLOUD_API_KEY").expect("QDRANT_CLOUD_API_KEY must be set"),
-    )
-    .await;
-    println!("Rest: {:?}", is_collection_available);
-    let configuration = Configuration {
-        symbol_collection_name: if is_collection_available {
-            namespace
-        } else {
-            env::var("SYMBOL_COLLECTION_NAME").expect("SYMBOL_COLLECTION_NAME must be set")
-        },
-        semantic_db_url: env::var("SEMANTIC_DB_URL").expect("SEMANTIC_DB_URL must be set"),
-        tokenizer_path: env::var("TOKENIZER_PATH").unwrap_or("model/tokenizer.json".to_string()),
-        model_path: env::var("MODEL_PATH").unwrap_or("model/model.onnx".to_string()),
-        qdrant_api_key: env::var("QDRANT_CLOUD_API_KEY").expect("QDRANT_CLOUD_API_KEY must be set"),
+    let config = app_state.configuration.clone();
+    // Qdrant key is only set while using Qdrant Cloud, otherwise we'll be using the local Qdrant instance.
+    // access the qdrant key from the app_state
+    let qdrant_key = config.qdrant_api_key;
+
+    // namespace is set to repo name from the search request if the qdrant key is not set
+    let namespace = if qdrant_key.is_none() {
+        search_request.repo_name.clone()
+    } else {
+        generate_qdrant_index_name(&search_request.repo_name)
     };
 
-    // print configuration
-    println!("Configuration: {:?}", configuration);
+    // check if the collection is available, use app state to access the configuration
 
-    let db: Result<DbConnect, Error> = db::init_db(configuration)
-        .await
-        .context("Failed to initialize db");
+    let is_collection_available = get_collection_status(
+        config.semantic_db_url,
+        &namespace, // &search_request.repo_name,
+        qdrant_key,
+    )
+    .await;
+
+    // if there is error finding the collection status return the API error
+    if is_collection_available.is_err() {
+        error!("Collection doesn't exist");
+        let response = format!("Error validating if the collection exists: {}", is_collection_available.err().unwrap());
+        return Ok(warp::reply::with_status(
+            warp::reply::json(&response),
+            warp::http::StatusCode::NOT_FOUND,
+        ));
+    }
+
+    let db = &app_state.db_connection;
 
     match code_search(&search_request.query, &search_request.repo_name, db).await {
         Ok(chunks) => Ok(warp::reply::with_status(
@@ -69,11 +74,12 @@ pub async fn symbol_search(
     }
 }
 
+// check if qdrant collection is available
 async fn get_collection_status(
     mut base_url: String,
     collection_name: &String,
-    apikey: &str,
-) -> bool {
+    apikey: Option<String>,
+) -> Result<bool, Error> {
     // Check if the base URL contains the port 6334 and replace it with 6333
     if base_url.contains(":6334") {
         base_url = base_url.replace(":6334", ":6333");
@@ -83,16 +89,34 @@ async fn get_collection_status(
     let url = format!("{}/collections/{}", base_url, collection_name);
     let api_key = apikey;
 
-    println!("Url: {}", url);
+    info!("Checking status for collection {}", collection_name);
+    info!("Url : {}", url);
 
-    let client = reqwest::Client::new();
-    let response = client.get(url).header("Api-Key", api_key).send().await;
+    let client = Client::new().get(&url);
+
+    let client = if let Some(key) = api_key {
+        match HeaderValue::from_str(&key) {
+            Ok(header_value) => client.header("Api-Key", header_value),
+            Err(e) => {
+                // log and return the error
+                error!("Error occurred while checking collection status: {}", e);
+                return Err(e.into());
+            }
+        }
+    } else {
+        client
+    };
+
+    let response = client.send().await;
 
     match response {
-        Ok(resp) => resp.status().is_success(),
+        Ok(resp) => return Ok(resp.status().is_success()),
         Err(e) => {
-            eprintln!("Error occurred: {}", e);
-            false
+            error!(
+                "Error occurred during call to check vector db status: {}",
+                e
+            );
+            return Err(e.into());
         }
     }
 }
