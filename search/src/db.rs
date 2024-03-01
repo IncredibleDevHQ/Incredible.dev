@@ -21,6 +21,7 @@ pub enum SemanticError {
     },
 }
 
+#[derive(Debug, Clone)]
 pub struct DbConnect {
     pub semantic: Semantic,
     pub http_client: Client,

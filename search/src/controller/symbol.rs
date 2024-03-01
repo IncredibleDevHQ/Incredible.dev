@@ -2,10 +2,10 @@ use anyhow::Context;
 use anyhow::Error;
 
 use std::convert::Infallible;
-use std::ffi::c_long;
 use std::sync::Arc;
 use warp::{self, http::StatusCode};
 
+use crate::AppState;
 use crate::db;
 use crate::db::DbConnect;
 use crate::models::SymbolSearchRequest;
@@ -29,9 +29,13 @@ struct CollectionStatus {
 
 pub async fn symbol_search(
     search_request: SymbolSearchRequest,
+    app_state: Arc<AppState>,
 ) -> Result<impl warp::Reply, Infallible> {
+    let config = app_state.configuration.clone();
     // Qdrant key is only set while using Qdrant Cloud, otherwise we'll be using the local Qdrant instance.
-    let qdrant_key = env::var("QDRANT_CLOUD_API_KEY").ok();
+    // access the qdrant key from the app_state
+    let qdrant_key = config.qdrant_api_key;
+
     // namespace is set to repo name from the search request if the qdrant key is not set
     let namespace = if qdrant_key.is_none() {
         search_request.repo_name
@@ -40,7 +44,6 @@ pub async fn symbol_search(
     };
     
 
-    let namespace = generate_qdrant_index_name(&search_request.repo_name);
     let is_collection_available = get_collection_status(
         env::var("SEMANTIC_DB_URL").expect("SEMANTIC_DB_URL must be set"),
         &namespace, // &search_request.repo_name,
@@ -48,25 +51,7 @@ pub async fn symbol_search(
     )
     .await;
 
-    println!("Rest: {:?}", is_collection_available);
-    let configuration = Configuration {
-        symbol_collection_name: if is_collection_available {
-            namespace
-        } else {
-            env::var("SYMBOL_COLLECTION_NAME").expect("SYMBOL_COLLECTION_NAME must be set")
-        },
-        semantic_db_url: env::var("SEMANTIC_DB_URL").expect("SEMANTIC_DB_URL must be set"),
-        tokenizer_path: env::var("TOKENIZER_PATH").unwrap_or("model/tokenizer.json".to_string()),
-        model_path: env::var("MODEL_PATH").unwrap_or("model/model.onnx".to_string()),
-        qdrant_api_key: env::var("QDRANT_CLOUD_API_KEY").expect("QDRANT_CLOUD_API_KEY must be set"),
-    };
-
-    // print configuration
-    println!("Configuration: {:?}", configuration);
-
-    let db: Result<DbConnect, Error> = db::init_db(configuration)
-        .await
-        .context("Failed to initialize db");
+    let db = app_state.db_connection.clone();
 
     match code_search(&search_request.query, &search_request.repo_name, db).await {
         Ok(chunks) => Ok(warp::reply::with_status(
