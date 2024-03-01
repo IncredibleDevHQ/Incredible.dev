@@ -1,6 +1,9 @@
 use crate::agent;
 use crate::db_client;
 use agent::llm_gateway;
+use futures::{future::Either, stream, StreamExt};
+use std::time::Duration;
+use tokio_stream::Stream;
 
 use crate::agent::agent::Action;
 use crate::agent::agent::Agent;
@@ -85,6 +88,69 @@ pub async fn handle_retrieve_code(
             panic!("Critical error: Initializing database failed.");
         }
     };
+
+    let (exchange_tx, exchange_rx) = tokio::sync::mpsc::channel(10);
+
+    let mut agent: Agent = Agent {
+        db: db_client,
+        exchange_tx,
+        exchanges,
+        llm_gateway,
+        query_id: id,
+        complete: false,
+    };
+    // ... [ rest of the setup code ]
+
+    let mut exchange_stream = tokio_stream::wrappers::ReceiverStream::new(exchange_rx);
+
+    let exchange_handler = tokio::spawn(async move {
+        while let exchange = exchange_stream.next().await {
+            match exchange {
+                Some(e) => {
+                    //println!("{:?}", e.compressed());
+                }
+                None => {
+                    eprintln!("No more messages or exchange channel was closed.");
+                    break;
+                }
+            }
+        }
+    });
+    // first action
+    println!("first action {:?}\n", action);
+
+    let mut i = 1;
+    'outer: loop {
+        // Now only focus on the step function inside this loop.
+        match agent.step(action).await {
+            Ok(next_action) => {
+                match next_action {
+                    Some(act) => {
+                        action = act;
+                    }
+                    None => break,
+                }
+
+                // print the action
+                i = i + 1;
+
+                println!("Action number: {}, Action: {:?}", i, action);
+            }
+            Err(e) => {
+                eprintln!("Error during processing: {}", e);
+                break 'outer;
+            }
+        }
+
+        // Optionally, you can add a small delay here to prevent the loop from being too tight.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+
+    agent.complete();
+
+    // Await the spawned task to ensure it has completed.
+    // Though it's not strictly necessary in this context since the task will end on its own when the stream ends.
+    let _ = exchange_handler.await;
 
     Ok(warp::reply::with_status(
         warp::reply::json(&response),
