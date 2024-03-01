@@ -64,6 +64,7 @@ dependencies = [
  "chrono",
  "compact_str",
  "comrak",
+ "dotenv",
  "expect-test",
  "futures",
  "hashbrown 0.14.3",
@@ -99,6 +100,7 @@ dependencies = [
  "tracing",
  "tree-sitter",
  "uuid",
+ "warp",
 ]
 
 [[package]]
