@@ -30,6 +30,16 @@ struct CollectionStatus {
 pub async fn symbol_search(
     search_request: SymbolSearchRequest,
 ) -> Result<impl warp::Reply, Infallible> {
+    // Qdrant key is only set while using Qdrant Cloud, otherwise we'll be using the local Qdrant instance.
+    let qdrant_key = env::var("QDRANT_CLOUD_API_KEY").ok();
+    // namespace is set to repo name from the search request if the qdrant key is not set
+    let namespace = if qdrant_key.is_none() {
+        search_request.repo_name
+    } else {
+        generate_qdrant_index_name(&search_request.repo_name)
+    };
+    
+
     let namespace = generate_qdrant_index_name(&search_request.repo_name);
     let is_collection_available = get_collection_status(
         env::var("SEMANTIC_DB_URL").expect("SEMANTIC_DB_URL must be set"),
@@ -37,6 +47,7 @@ pub async fn symbol_search(
         &env::var("QDRANT_CLOUD_API_KEY").expect("QDRANT_CLOUD_API_KEY must be set"),
     )
     .await;
+
     println!("Rest: {:?}", is_collection_available);
     let configuration = Configuration {
         symbol_collection_name: if is_collection_available {
