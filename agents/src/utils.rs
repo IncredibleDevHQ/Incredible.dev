@@ -1,9 +1,8 @@
 use crate::agent;
 use crate::db_client;
 use agent::llm_gateway;
-use futures::{future::Either, stream, StreamExt};
+use futures::StreamExt;
 use std::time::Duration;
-use tokio_stream::Stream;
 
 use crate::agent::agent::Action;
 use crate::agent::agent::Agent;
@@ -11,10 +10,10 @@ use crate::agent::exchange::Exchange;
 use crate::config::Config;
 use crate::parser;
 use crate::routes;
-use anyhow::{Context, Error, Result};
+use anyhow::Result;
 use core::panic;
 use std::convert::Infallible;
-use warp::{http::Response, http::StatusCode, Filter, Rejection, Reply};
+use warp::http::StatusCode;
 pub async fn handle_retrieve_code(
     req: routes::RetrieveCodeRequest,
 ) -> Result<impl warp::Reply, Infallible> {
