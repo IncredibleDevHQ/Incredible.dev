@@ -12,6 +12,8 @@ pub struct Config {
 
 impl Config {
     pub fn new() -> Result<Self, String> {
+        dotenv::dotenv().ok(); // This attempts to load the .env file, but ignores any error if the file is not found
+
         let repo_name =
             std::env::var("REPO_NAME").map_err(|_| "REPO_NAME environment variable not set")?;
         let semantic_url = std::env::var("SEMANTIC_URL")
