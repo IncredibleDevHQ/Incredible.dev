@@ -5,7 +5,7 @@ use std::sync::Arc;
 use warp::{self, http::Response, Filter};
 
 pub fn code_retrieve() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    retrieve_code();
+    home_route().or(retrieve_code())
 }
 
 #[derive(Deserialize)]
@@ -19,7 +19,7 @@ fn retrieve_code() -> impl Filter<Extract = impl warp::Reply, Error = warp::Reje
     warp::path("retrieve-code")
         .and(warp::get())
         .and(warp::query::<RetrieveCodeRequest>())
-        .and_then((utils::handle_retrieve_code))
+        .and_then(utils::handle_retrieve_code)
 }
 
 fn home_route() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
