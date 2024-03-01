@@ -141,9 +141,11 @@ async fn main() -> Result<()> {
     // let _ = exchange_handler.await;
 
     // // ... [ rest of your code ]
-    let search_routes = routes::search_routes();
+    let code_retrieve_routes = routes::code_retrieve();
 
-    warp::serve(search_routes).run(([0, 0, 0, 0], 3000)).await;
+    warp::serve(code_retrieve_routes)
+        .run(([0, 0, 0, 0], 3001))
+        .await;
 
     Ok(())
 }
