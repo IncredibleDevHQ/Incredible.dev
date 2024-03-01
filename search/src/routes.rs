@@ -6,18 +6,20 @@ use crate::controller::{symbol, span, parentscope};
 use crate::db::DbConnect;
 use crate::graph::symbol_ops;
 use crate::models::{SymbolSearchRequest, SpanSearchRequest, ParentScopeRequest};
+use crate::AppState;
 
 use serde::Deserialize;
 
-pub fn search_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    symbol_search().or(span_code_chunk_retrieve()).or(parent_scope_retrieve())
+pub fn search_routes(app_state: Arc<AppState>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    symbol_search(app_state.clone()).or(span_code_chunk_retrieve()).or(parent_scope_retrieve())
 }
 
 /// POST /symbols
-fn symbol_search() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn symbol_search(app_state: Arc<AppState>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("symbols")
         .and(warp::post())
         .and(warp::body::content_length_limit(1024 * 16).and(warp::body::json::<SymbolSearchRequest>()))
+        .and(warp::any().map(move || app_state.clone()))
         .and_then(symbol::symbol_search)
 }
 

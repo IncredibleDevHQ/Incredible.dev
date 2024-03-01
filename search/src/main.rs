@@ -60,7 +60,7 @@ async fn main() {
     // initialize the env configurations and database connection.
     let app_state = Arc::new(init_state().await.unwrap());
 
-    let search_routes = routes::search_routes(app_state.clone();
+    let search_routes = routes::search_routes(app_state.clone());
 
     warp::serve(search_routes).run(([0, 0, 0, 0], 3000)).await;
 }
