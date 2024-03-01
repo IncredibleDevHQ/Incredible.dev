@@ -3,6 +3,7 @@ use dotenv::dotenv;
 use std::sync::Arc;
 use warp;
 use std::env;
+use log;
 
 mod controller;
 mod db;
@@ -58,8 +59,18 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
 #[tokio::main]
 async fn main() {
     // initialize the env configurations and database connection.
-    let app_state = Arc::new(init_state().await.unwrap());
+    let app_state = init_state().await;
 
+    // use log library to gracefully log the error and exit the application if the app_state is not initialized.
+    let app_state = match app_state {
+        Ok(app_state) => Arc::new(app_state),
+        Err(err) => {
+            log::error!("Failed to initialize the app state: {}", err);
+            std::process::exit(1);
+        }
+    };
+
+    // set up the api routes
     let search_routes = routes::search_routes(app_state.clone());
 
     warp::serve(search_routes).run(([0, 0, 0, 0], 3000)).await;

@@ -5,11 +5,11 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use warp::{self, http::StatusCode};
 
-use crate::AppState;
 use crate::db;
 use crate::db::DbConnect;
 use crate::models::SymbolSearchRequest;
 use crate::search::code_search::code_search;
+use crate::AppState;
 use crate::{search::semantic::Semantic, Configuration};
 use anyhow::Result;
 use md5::compute;
@@ -42,16 +42,16 @@ pub async fn symbol_search(
     } else {
         generate_qdrant_index_name(&search_request.repo_name)
     };
-    
+
+    // check if the collection is available, use app state to access the configuration
 
     let is_collection_available = get_collection_status(
-        env::var("SEMANTIC_DB_URL").expect("SEMANTIC_DB_URL must be set"),
+        config.semantic_db_url,
         &namespace, // &search_request.repo_name,
-        &env::var("QDRANT_CLOUD_API_KEY").expect("QDRANT_CLOUD_API_KEY must be set"),
-    )
-    .await;
+        qdrant_key,
+    ).await;
 
-    let db = app_state.db_connection.clone();
+    let db = app_state.db_connection;
 
     match code_search(&search_request.query, &search_request.repo_name, db).await {
         Ok(chunks) => Ok(warp::reply::with_status(
@@ -65,10 +65,11 @@ pub async fn symbol_search(
     }
 }
 
+// check if qdrant collection is available
 async fn get_collection_status(
     mut base_url: String,
     collection_name: &String,
-    apikey: &str,
+    apikey: Option<String>,
 ) -> bool {
     // Check if the base URL contains the port 6334 and replace it with 6333
     if base_url.contains(":6334") {
@@ -81,8 +82,17 @@ async fn get_collection_status(
 
     println!("Url: {}", url);
 
-    let client = reqwest::Client::new();
-    let response = client.get(url).header("Api-Key", api_key).send().await;
+    let client = Client::new().get(&url);
+
+    let client = if let Some(key) = api_key {
+        client.header(
+            "Api-Key",
+            HeaderValue::from_str(&key),
+        )
+    } else {
+        client
+    };
+    let response = client.send().await;
 
     match response {
         Ok(resp) => resp.status().is_success(),
