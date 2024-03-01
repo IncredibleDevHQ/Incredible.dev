@@ -75,7 +75,7 @@ const CODE_SEARCH_LIMIT: u64 = 10;
 pub async fn code_search(
     query: &String,
     repo_name: &String,
-    db_client: Result<DbConnect, Error>,
+    db_client: &DbConnect,
 ) -> Result<Vec<CodeChunk>> {
     // performing semantic search on the symbols.
     println!("semantic search\n");
@@ -145,11 +145,10 @@ async fn semantic_search_symbol<'a>(
     offset: u64,
     threshold: f32,
     retrieve_more: bool,
-    db_client: Result<DbConnect, Error>,
+    db_client: &DbConnect,
     repo_name: &String,
 ) -> Result<Vec<SymbolPayload>> {
     let semantic_result = db_client
-        .unwrap()
         .semantic
         .search_symbol(query, limit, offset, threshold, retrieve_more, repo_name)
         .await;
@@ -226,34 +225,6 @@ async fn process_paths(
     }
 
     Ok(results)
-}
-
-pub fn adjust_byte_positions(
-    new_start: usize,
-    temp_new_end: usize,
-    line_end_indices: &Vec<usize>,
-) -> (usize, usize) {
-    let ending_line = get_line_number(temp_new_end, &line_end_indices);
-    let starting_line = get_line_number(new_start, &line_end_indices);
-
-    // If possible, use the ending of the previous line to determine the start of the current line.
-    let mut previous_line = starting_line;
-    if previous_line > 0 {
-        previous_line -= 1;
-    }
-
-    // Adjust the start and end byte positions based on line numbers for a clearer context.
-    let adjusted_start = line_end_indices
-        .get(previous_line)
-        .map(|l| *l as usize)
-        .unwrap_or(new_start)
-        + 1;
-    let adjusted_end = line_end_indices
-        .get(ending_line)
-        .map(|l: &usize| *l as usize)
-        .unwrap_or(temp_new_end);
-
-    (adjusted_start, adjusted_end)
 }
 
 // Input is repo name in format v2/owner_name/repo_name.

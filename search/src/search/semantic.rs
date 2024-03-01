@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::{str, time::Duration};
 use thiserror::Error;
+use crate::search::semantic::SemanticError::QdrantInitializationError;
 
 use crate::{
     parser::literal::Literal,
@@ -50,7 +51,7 @@ pub enum SemanticError {
 }
 
 // fetch the qdrant client
-pub async fn get_qdrant_client(config: Configuration) -> Result<QdrantClient, SemanticError> {
+pub async fn get_qdrant_client(config: &Configuration) -> Result<QdrantClient, SemanticError> {
     // if api key is not set, then initialize the qdrant client without the api key
     if config.qdrant_api_key.is_none() {
         let qdrant = QdrantClient::new(Some(
@@ -59,13 +60,12 @@ pub async fn get_qdrant_client(config: Configuration) -> Result<QdrantClient, Se
                 .with_connect_timeout(Duration::from_secs(30)),
         ))?;
         return Ok(qdrant);
-    }
-
+    } 
     let qdrant = QdrantClient::new(Some(
         QdrantClientConfig::from_url(&config.semantic_db_url)
             .with_timeout(Duration::from_secs(30))
             .with_connect_timeout(Duration::from_secs(30))
-            .with_api_key(config.qdrant_api_key),
+            .with_api_key(config.qdrant_api_key.clone()),
     ))?;
 
     Ok(qdrant)
@@ -73,13 +73,13 @@ pub async fn get_qdrant_client(config: Configuration) -> Result<QdrantClient, Se
 
 impl Semantic {
     pub async fn initialize(config: Configuration) -> Result<Self, SemanticError> {
-        let qdrant = QdrantClient::new(Some(
-            QdrantClientConfig::from_url(&config.semantic_db_url)
-                .with_timeout(Duration::from_secs(30))
-                .with_connect_timeout(Duration::from_secs(30))
-                .with_api_key(config.qdrant_api_key),
-        ))?;
+        let qdrant = get_qdrant_client(&config).await;
 
+        if qdrant.is_err() {
+            return Err(QdrantInitializationError);
+        }
+
+        let qdrant = qdrant.unwrap();
         let environment = Arc::new(
             Environment::builder()
                 .with_name("Encode")
