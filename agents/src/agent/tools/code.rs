@@ -4,6 +4,7 @@ use crate::helpers::symbol_search::symbol_search;
 use crate::agent::exchange::{CodeChunk, SearchStep, Update};
 use anyhow::Result;
 use tracing::instrument;
+use log::{info, error};
 
 const CODE_SEARCH_LIMIT: u64 = 10;
 impl Agent {
@@ -22,6 +23,16 @@ impl Agent {
         println!("semantic search\n");
 
         let results_symbol = symbol_search(query).await;
+
+        // log the error and return of there is error 
+        if results_symbol.is_err() {
+            let response = format!("Error validating if the collection exists: {}", results_symbol.err().unwrap());
+            error!("Error validating if the collection exists: {}", results_symbol.err().unwrap());
+            self.update(Update::Error(response.clone())).await?;
+            // TODO: Shankar, fix the return type of this function return Result<String, Error> , and abort 
+            // the agent flow on error.
+            return Ok(response);
+        }
 
         let code_snippet = results_symbol.unwrap();
 
