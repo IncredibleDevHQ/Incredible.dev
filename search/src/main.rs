@@ -3,7 +3,8 @@ use dotenv::dotenv;
 use std::sync::Arc;
 use warp;
 use std::env;
-use log;
+use log::{info, error};
+
 
 mod controller;
 mod db;
@@ -58,6 +59,7 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
     // initialize the env configurations and database connection.
     let app_state = init_state().await;
 
@@ -65,7 +67,8 @@ async fn main() {
     let app_state = match app_state {
         Ok(app_state) => Arc::new(app_state),
         Err(err) => {
-            log::error!("Failed to initialize the app state: {}", err);
+            error!("Failed to initialize the app state: {}", err);
+            //println!("Failed to initialize the app state: {}", err);
             std::process::exit(1);
         }
     };
