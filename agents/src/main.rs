@@ -13,6 +13,7 @@ use core::result::Result::Ok;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init();
     let code_retrieve_routes = routes::code_retrieve();
 
     warp::serve(code_retrieve_routes)

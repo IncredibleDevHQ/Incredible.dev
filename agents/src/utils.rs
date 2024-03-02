@@ -3,6 +3,7 @@ use crate::db_client;
 use agent::llm_gateway;
 use futures::StreamExt;
 use std::time::Duration;
+use log::{info, error};
 
 use crate::agent::agent::Action;
 use crate::agent::agent::Agent;
@@ -17,7 +18,8 @@ use warp::http::StatusCode;
 pub async fn handle_retrieve_code(
     req: routes::RetrieveCodeRequest,
 ) -> Result<impl warp::Reply, Infallible> {
-    println!("Query: {}, Repo: {}", req.query, req.repo);
+
+    info!("Query: {}, Repo: {}", req.query, req.repo);
     // Combine query and repo_name in the response
     let response = format!("Query: '{}', Repo: '{}'", req.query, req.repo);
 
