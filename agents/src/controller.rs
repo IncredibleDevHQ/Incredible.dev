@@ -4,6 +4,7 @@ use agent::llm_gateway;
 use futures::StreamExt;
 use std::time::Duration;
 use log::{info, error};
+use crate::AppState;
 
 use crate::agent::agent::Action;
 use crate::agent::agent::Agent;
@@ -15,12 +16,14 @@ use anyhow::Result;
 use core::panic;
 use std::convert::Infallible;
 use warp::http::StatusCode;
+use std::sync::Arc;
 
 pub async fn handle_retrieve_code(
     req: routes::RetrieveCodeRequest,
+    app_state: Arc<AppState>,
 ) -> Result<impl warp::Reply, Infallible> {
-
     info!("Query: {}, Repo: {}", req.query, req.repo);
+    
     // Combine query and repo_name in the response
     let response = format!("Query: '{}', Repo: '{}'", req.query, req.repo);
 
@@ -82,37 +85,26 @@ pub async fn handle_retrieve_code(
     let mut exchanges = vec![agent::exchange::Exchange::new(id, parse_query.clone())];
     exchanges.push(Exchange::new(id, parse_query));
 
-    let configuration = Config::new().unwrap();
-
+    // get the configuration from the app state
+    let configuration = &app_state.configuration;
+    
     // intialize new llm gateway.
     let llm_gateway = llm_gateway::Client::new(&configuration.openai_url)
         .temperature(0.0)
         .bearer(configuration.openai_key.clone())
         .model(&configuration.openai_model.clone());
 
-    // create new db client.
-    let db_client = match db_client::DbConnect::new().await {
-        Ok(client) => client,
-        Err(_) => {
-            eprintln!("Initializing database failed.");
-            // Since the function's return type is Infallible, you cannot return an error.
-            // Depending on your application's needs, you might decide to panic, or if there's
-            // a logical non-failing action to take, do that instead.
-            panic!("Critical error: Initializing database failed.");
-        }
-    };
-
+    // get db client from app state
     let (exchange_tx, exchange_rx) = tokio::sync::mpsc::channel(10);
 
     let mut agent: Agent = Agent {
-        db: db_client,
+        app_state: app_state,
         exchange_tx,
         exchanges,
         llm_gateway,
         query_id: id,
         complete: false,
     };
-    // ... [ rest of the setup code ]
 
     let mut exchange_stream = tokio_stream::wrappers::ReceiverStream::new(exchange_rx);
 
