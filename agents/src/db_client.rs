@@ -1,6 +1,3 @@
-use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
-
 use crate::agent::agent::{ContentDocument, FileDocument};
 use crate::config::Config;
 use crate::helpers::build_fuzzy_regex_filter::build_fuzzy_regex_filter;
@@ -10,6 +7,9 @@ use crate::search;
 use bincode::config;
 use compact_str::CompactString;
 use futures::future;
+use log::{error, info};
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 
 use anyhow::Result;
 
@@ -17,7 +17,6 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 
 use reqwest::{Client, Error};
-
 pub struct DbConnect {
     pub semantic: search::semantic::Semantic,
     pub http_client: Client,
@@ -54,12 +53,10 @@ struct ResultItem {
 }
 
 impl DbConnect {
-    pub async fn new() -> Result<Self, anyhow::Error> {
+    pub async fn new(config: &Config) -> Result<Self, anyhow::Error> {
         let http_client = reqwest::Client::new();
 
-        let configuration = Config::new().unwrap();
-
-        let semantic = search::semantic::Semantic::initialize().await;
+        let semantic = search::semantic::Semantic::initialize(config).await;
         match semantic {
             Ok(semantic) => Ok(Self {
                 semantic,
@@ -140,7 +137,7 @@ impl DbConnect {
                 Ok(api_response) => {
                     for result_item in api_response.hits {
                         if search_query == result_item.relative_path {
-                            println!("Found a match: {}", search_query);
+                            info!("Found a match: {}", search_query);
                             response_array.push(ContentDocument {
                                 relative_path: result_item.relative_path,
                                 repo_name: result_item.repo_name,
@@ -155,11 +152,11 @@ impl DbConnect {
                     }
                 }
                 Err(err) => {
-                    println!("Failed to parse JSON response: {}", err);
+                    error!("Failed to parse JSON response: {}", err);
                 }
             }
         } else {
-            println!("Request was not successful: {}", response.status());
+            error!("Request was not successful: {}", response.status());
         }
 
         if !response_array.is_empty() {
@@ -179,7 +176,7 @@ impl DbConnect {
         let configuration = Config::new().unwrap();
         let base_url = configuration.quickwit_url.clone();
 
-        println!("search_query {}", search_query);
+        info!("search_query {}", search_query);
 
         let query = if !search_field.is_empty() {
             format!("{}:{}", search_field, search_query)
@@ -223,11 +220,11 @@ impl DbConnect {
                     }
                 }
                 Err(err) => {
-                    println!("Failed to parse JSON response: {}", err);
+                    error!("Failed to parse JSON response: {}", err);
                 }
             }
         } else {
-            println!("Request was not successful: {}", response.status());
+            error!("Request was not successful: {}", response.status());
         }
 
         Ok(response_array)
