@@ -45,6 +45,7 @@ fn span_code_chunk_retrieve(app_state: Arc<AppState>) -> impl Filter<Extract = i
     warp::path("span")
         .and(warp::get())
         .and(warp::query::<SpanSearchRequest>())
+        .and(warp::any().map(move || app_state.clone()))
         .and_then(span::span_search)
 }
 
@@ -68,6 +69,7 @@ fn parent_scope_retrieve(app_state: Arc<AppState>) -> impl Filter<Extract = impl
     warp::path("parentscope")
         .and(warp::get())
         .and(warp::query::<ParentScopeRequest>())
+        .and(warp::any().map(move || app_state.clone()))
         .and_then(parentscope::parent_scope_search) // Assuming you have a corresponding handler in the controller
 }
 

@@ -62,9 +62,10 @@ pub async fn symbol_search(
         ));
     }
 
-    let db = &app_state.db_connection;
+    let app_state_clone = Arc::clone(&app_state);
+    let db = &app_state_clone.db_connection;
 
-    match code_search(&search_request.query, &search_request.repo_name, db).await {
+    match code_search(&search_request.query, &search_request.repo_name, db,app_state).await {
         Ok(chunks) => Ok(warp::reply::with_status(
             warp::reply::json(&chunks),
             StatusCode::OK,
@@ -135,3 +136,5 @@ pub fn generate_qdrant_index_name(namespace: &str) -> String {
     );
     return index_name;
 }
+
+

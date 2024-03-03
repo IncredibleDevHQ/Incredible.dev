@@ -1,16 +1,20 @@
+use std::sync::Arc;
+
 use crate::models::ParentScopeRequest;
 use crate::search::code_search::{get_file_content, ExtractionConfig};
 use crate::utilities::util::return_byte_range_from_line_numbers;
+use crate::AppState;
 use anyhow::anyhow;
 
 pub async fn parent_scope_search(
     params: ParentScopeRequest,
+    app_state: Arc<AppState>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let path = params.file.clone();
     let repo_name = params.repo.clone();
 
     // Attempt to retrieve the file content asynchronously based on the provided path and repository name.
-    let source_document = get_file_content(&path, &repo_name).await;
+    let source_document = get_file_content(&path, &repo_name,app_state).await;
 
     match source_document {
         Ok(content) => {
