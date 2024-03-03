@@ -21,8 +21,7 @@ impl Agent {
         self.update(Update::StartStep(SearchStep::Path {
             query: query.clone(),
             response: String::new(),
-        }))
-        .await?;
+        }))?;
 
         // First, perform a lexical search for the path
         let mut paths = self
@@ -64,8 +63,7 @@ impl Agent {
         self.update(Update::ReplaceStep(SearchStep::Path {
             query: query.clone(),
             response: response.clone(),
-        }))
-        .await?;
+        }))?;
         let result = "OK";
         Ok(result.to_string())
     }

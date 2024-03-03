@@ -39,8 +39,7 @@ impl Agent {
                 file_path: path.to_owned(),
                 start_line: 0,
                 end_line: doc.content.lines().count(),
-            }))
-            .await?;
+            }))?;
         }
 
         let context = self.answer_context(aliases, ANSWER_MODEL).await?;
@@ -73,10 +72,10 @@ impl Agent {
         //     response += &fragment;
 
             let (article, summary) = transform::decode(&response_message);
-            self.update(Update::Article(article)).await?;
+            self.update(Update::Article(article))?;
 
             if let Some(summary) = summary {
-                self.update(Update::Conclude(summary)).await?;
+                self.update(Update::Conclude(summary))?;
             //}
         }
 
@@ -97,7 +96,7 @@ impl Agent {
 
         println!("\ngenerated answer\n {:?}", article);
 
-        self.update(Update::Conclude(summary)).await?;
+        self.update(Update::Conclude(summary))?;
 
 
         Ok(())

@@ -152,7 +152,7 @@ impl Agent {
 
     /// Update the last exchange
     #[instrument(skip(self), level = "debug")]
-    pub async fn update(&mut self, update: Update) -> Result<()> {
+    pub fn update(&mut self, update: Update) -> Result<()> {
         self.last_exchange_mut().apply_update(update);
         //println!("update {:?}", update);
         Ok(())
