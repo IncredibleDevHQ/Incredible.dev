@@ -11,6 +11,7 @@ use crate::utilities::util::get_line_number;
 use crate::AppState;
 
 use anyhow::{anyhow, Error, Result};
+use ort::environment;
 use serde::{Deserialize, Serialize};
 
 use super::quikwit::get_file_from_quickwit;
@@ -246,6 +247,9 @@ pub fn generate_quikwit_index_name(namespace: &str) -> String {
 
 pub async fn get_file_content(path: &str, repo_name: &String,app_state:Arc<AppState>) -> Result<Option<ContentDocument>> {
     let config = app_state.configuration.clone();
+
+    let environment = config.environment.clone();
+    
     let new_index_id = generate_quikwit_index_name(repo_name);
 
     // println!("fetching file content {}\n", path);
