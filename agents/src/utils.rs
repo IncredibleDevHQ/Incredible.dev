@@ -15,6 +15,7 @@ use anyhow::Result;
 use core::panic;
 use std::convert::Infallible;
 use warp::http::StatusCode;
+
 pub async fn handle_retrieve_code(
     req: routes::RetrieveCodeRequest,
 ) -> Result<impl warp::Reply, Infallible> {
@@ -34,9 +35,12 @@ pub async fn handle_retrieve_code(
                 Some(semantic) => semantic.into_owned(),
                 None => {
                     // Handle the case where `into_semantic` returns `None`
-                    eprintln!("Error: got a 'Grep' query");
-                    // Use panic or consider a more graceful way to handle this scenario
-                    panic!("Error: got a 'Grep' query");
+                    error!("Error: got a 'Grep' query");
+                    // return error as API response 
+                    return Ok(warp::reply::with_status(
+                        warp::reply::json(&format!("Error: got a 'Grep' query")),
+                        StatusCode::BAD_REQUEST,
+                    ));
                 }
             }
         }
@@ -52,17 +56,25 @@ pub async fn handle_retrieve_code(
         Some(target) => match target.as_plain() {
             Some(plain) => plain.clone().into_owned(),
             None => {
-                eprintln!("Error: user query was not plain text");
-                panic!("Error: user query was not plain text");
+                error!("Error: user query was not plain text");
+                // return error as API response
+                return Ok(warp::reply::with_status(
+                    warp::reply::json(&format!("Error: user query was not plain text")),
+                    StatusCode::BAD_REQUEST,
+                ));
             }
         },
         None => {
-            eprintln!("Error: query was empty");
-            panic!("Error: query was empty");
+            error!("Error: query was empty");
+            // return error as API response
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&format!("Error: query was empty")),
+                StatusCode::BAD_REQUEST,
+            ));
         }
     };
 
-    println!("{:?}", query_target);
+    info!("Query target{:?}", query_target);
 
     let mut action = Action::Query(query_target);
     let id = uuid::Uuid::new_v4();
