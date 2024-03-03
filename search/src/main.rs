@@ -26,6 +26,7 @@ lazy_static! {
 }
 #[derive(Debug, Clone)]
 pub struct Configuration {
+    environment:String,
     symbol_collection_name: String,
     semantic_db_url: String,
     tokenizer_path: String,
@@ -41,6 +42,7 @@ struct AppState {
 async fn init_state() -> Result<AppState, anyhow::Error> {
     dotenv().ok();
     let configuration = Configuration {
+        environment: env::var("ENVIRONMENT").context("ENVRINOMENT must be set")?,
         symbol_collection_name: env::var("SYMBOL_COLLECTION_NAME").context("SYMBOL_COLLECTION_NAME must be set")?,
         semantic_db_url: env::var("SEMANTIC_DB_URL").context("SEMANTIC_DB_URL must be set")?,
         tokenizer_path: env::var("TOKENIZER_PATH").unwrap_or("model/tokenizer.json".to_string()),

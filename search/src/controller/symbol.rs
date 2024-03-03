@@ -32,7 +32,9 @@ pub async fn symbol_search(
     let config = app_state.configuration.clone();
     // Qdrant key is only set while using Qdrant Cloud, otherwise we'll be using the local Qdrant instance.
     // access the qdrant key from the app_state
-    let qdrant_key = config.qdrant_api_key;
+    
+    let environment = config.environment.clone();
+    let qdrant_key = config.qdrant_api_key.clone();
 
     // namespace is set to repo name from the search request if the qdrant key is not set
     let namespace = if qdrant_key.is_none() {
