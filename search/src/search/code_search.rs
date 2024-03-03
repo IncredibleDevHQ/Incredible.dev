@@ -8,6 +8,7 @@ use crate::parser::literal::Literal;
 use crate::search::payload::{CodeExtractMeta, PathExtractMeta, SymbolPayload};
 use crate::search::ranking::rank_symbol_payloads;
 use crate::utilities::util::get_line_number;
+use crate::AppState;
 
 use anyhow::{anyhow, Error, Result};
 use serde::{Deserialize, Serialize};
@@ -76,6 +77,7 @@ pub async fn code_search(
     query: &String,
     repo_name: &String,
     db_client: &DbConnect,
+    app_state: Arc<AppState>,
 ) -> Result<Vec<CodeChunk>> {
     // performing semantic search on the symbols.
     println!("semantic search\n");
@@ -107,7 +109,7 @@ pub async fn code_search(
     }
     // call self.get_scope_graph on top 3 paths from ranked_symbpls
     let extracted_chunks =
-        process_paths(ranked_symbols.iter().cloned().take(10).collect(), repo_name).await?;
+        process_paths(ranked_symbols.iter().cloned().take(10).collect(), repo_name,app_state).await?;
 
     // Most likely needs to be changed based on API response requirements
     // create codeChunks from the extracted_chunks and append to chunks
@@ -165,6 +167,7 @@ async fn semantic_search_symbol<'a>(
 async fn process_paths(
     path_extract_meta: Vec<PathExtractMeta>,
     repo_name: &String,
+    app_state: Arc<AppState>,
 ) -> Result<Vec<ExtractedContent>, anyhow::Error> {
     // Initialize an empty vector to store the extracted contents.
     let mut results = Vec::new();
@@ -175,7 +178,9 @@ async fn process_paths(
 
         println!("inside process path: {:?}", path);
         // Fetch the content of the file for the current path.
-        let source_document = get_file_content(path, repo_name).await?;
+        let app_state_clone = Arc::clone(&app_state);
+
+        let source_document = get_file_content(path, repo_name,app_state_clone).await?;
 
         // log the error and continue to the next path if the file content is not found.
         if source_document.is_none() {
@@ -239,8 +244,10 @@ pub fn generate_quikwit_index_name(namespace: &str) -> String {
     return index_name;
 }
 
-pub async fn get_file_content(path: &str, repo_name: &String) -> Result<Option<ContentDocument>> {
+pub async fn get_file_content(path: &str, repo_name: &String,app_state:Arc<AppState>) -> Result<Option<ContentDocument>> {
+    let config = app_state.configuration.clone();
     let new_index_id = generate_quikwit_index_name(repo_name);
+
     // println!("fetching file content {}\n", path);
     get_file_from_quickwit(&new_index_id, "relative_path", path).await
 }
