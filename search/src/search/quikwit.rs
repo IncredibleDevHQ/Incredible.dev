@@ -61,6 +61,7 @@ pub async fn search_quickwit(
     search_field: &str,
     search_query: &str,
 ) -> Result<Option<ContentDocument>, Error> {
+    
     let base_url = env::var("QUICKWIT_DB_URL").expect("QUICKWIT_DB_URL must be set");
 
     let query = if !search_field.is_empty() {
