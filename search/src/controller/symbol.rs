@@ -37,11 +37,12 @@ pub async fn symbol_search(
     let qdrant_key = config.qdrant_api_key.clone();
 
     // namespace is set to repo name from the search request if the qdrant key is not set
-    let namespace = if qdrant_key.is_none() {
-        search_request.repo_name.clone()
-    } else {
-        generate_qdrant_index_name(&search_request.repo_name)
-    };
+   let namespace = if environment == "development" {
+       search_request.repo_name.clone()
+     } else {
+     generate_qdrant_index_name(&search_request.repo_name)
+   };
+
 
     // check if the collection is available, use app state to access the configuration
 
