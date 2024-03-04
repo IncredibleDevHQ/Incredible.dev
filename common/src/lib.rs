@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-pub struct ContextFile {
+pub struct CodeContext {
     pub path: String,
     pub hidden: bool,
     pub repo: String,  // Ensure RepoRef is accessible or defined here.
