@@ -32,14 +32,17 @@ pub async fn symbol_search(
     let config = app_state.configuration.clone();
     // Qdrant key is only set while using Qdrant Cloud, otherwise we'll be using the local Qdrant instance.
     // access the qdrant key from the app_state
-    let qdrant_key = config.qdrant_api_key;
+    
+    let environment = config.environment.clone();
+    let qdrant_key = config.qdrant_api_key.clone();
 
     // namespace is set to repo name from the search request if the qdrant key is not set
-    let namespace = if qdrant_key.is_none() {
-        search_request.repo_name.clone()
-    } else {
-        generate_qdrant_index_name(&search_request.repo_name)
-    };
+   let namespace = if environment == "development" {
+       search_request.repo_name.clone()
+     } else {
+     generate_qdrant_index_name(&search_request.repo_name)
+   };
+
 
     // check if the collection is available, use app state to access the configuration
 
@@ -60,9 +63,10 @@ pub async fn symbol_search(
         ));
     }
 
-    let db = &app_state.db_connection;
+    let app_state_clone = Arc::clone(&app_state);
+    let db = &app_state_clone.db_connection;
 
-    match code_search(&search_request.query, &search_request.repo_name, db).await {
+    match code_search(&search_request.query, &search_request.repo_name, db,app_state).await {
         Ok(chunks) => Ok(warp::reply::with_status(
             warp::reply::json(&chunks),
             StatusCode::OK,
@@ -133,3 +137,5 @@ pub fn generate_qdrant_index_name(namespace: &str) -> String {
     );
     return index_name;
 }
+
+
