@@ -75,34 +75,17 @@ pub async fn handle_retrieve_code(
         .model(&configuration.openai_model.clone());
 
     // get db client from app state
-    let (exchange_tx, exchange_rx) = tokio::sync::mpsc::channel(10);
 
     let mut agent: Agent = Agent {
         app_state: app_state,
-        exchange_tx,
         exchanges,
         llm_gateway,
         query_id: id,
         complete: false,
     };
 
-    let mut exchange_stream = tokio_stream::wrappers::ReceiverStream::new(exchange_rx);
-
-    let exchange_handler = tokio::spawn(async move {
-        while let exchange = exchange_stream.next().await {
-            match exchange {
-                Some(e) => {
-                    //println!("{:?}", e.compressed());
-                }
-                None => {
-                    eprintln!("No more messages or exchange channel was closed.");
-                    break;
-                }
-            }
-        }
-    });
     // first action
-    println!("first action {:?}\n", action);
+    info!("first action {:?}\n", action);
 
     let mut i = 1;
     'outer: loop {
@@ -133,16 +116,8 @@ pub async fn handle_retrieve_code(
 
     agent.complete();
 
-    // Await the spawned task to ensure it has completed.
-    // Though it's not strictly necessary in this context since the task will end on its own when the stream ends.
-    let _ = exchange_handler.await;
-
     Ok(warp::reply::with_status(
         warp::reply::json(&response),
         StatusCode::OK,
     ))
-    // Err(e) => Ok(warp::reply::with_status(
-    //     warp::reply::json(&format!("Error: {}", e)),
-    //     StatusCode::INTERNAL_SERVER_ERROR,
-    // )),
 }
