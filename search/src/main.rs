@@ -40,7 +40,15 @@ struct AppState {
 }
 
 async fn init_state() -> Result<AppState, anyhow::Error> {
-    dotenv().ok();
+    let production_env = ""; // change this to production when working in production environment
+
+    let env_file = if production_env == "production" {
+        ".env.production"
+    } else {
+        ".env.development"
+    };
+    println!("env_file: {}", env_file);
+    dotenv::from_filename(env_file).ok();
     let configuration = Configuration {
         environment: env::var("ENVIRONMENT").context("ENVRINOMENT must be set")?,
         symbol_collection_name: env::var("SYMBOL_COLLECTION_NAME")
@@ -52,6 +60,7 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
         qdrant_api_key: env::var("QDRANT_CLOUD_API_KEY").ok(),
     };
 
+    println!("Configuration: {:#?}", configuration);
     let db_connection = db::init_db(configuration.clone()).await?;
 
     Ok(AppState {
