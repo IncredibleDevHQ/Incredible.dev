@@ -29,11 +29,10 @@ pub struct ExtractedContent {
 
 #[derive(Default, Debug, Clone, Serialize)]
 pub struct ExtractionConfig {
-    pub code_byte_expansion_range: usize,  // Number of bytes to expand from the start and end.
-    pub min_lines_to_return: usize,        // Minimum number of lines the extraction should return.
-    pub max_lines_limit: Option<usize>,    // Optional maximum number of lines to extract.
+    pub code_byte_expansion_range: usize, // Number of bytes to expand from the start and end.
+    pub min_lines_to_return: usize,       // Minimum number of lines the extraction should return.
+    pub max_lines_limit: Option<usize>,   // Optional maximum number of lines to extract.
 }
-
 
 #[derive(Default, Debug, Clone, Serialize)]
 pub struct ContentDocument {
@@ -50,21 +49,21 @@ pub struct ContentDocument {
 impl ContentDocument {
     pub fn fetch_line_indices(&self) -> Vec<usize> {
         let line_end_indices: Vec<usize> = self
-        .line_end_indices
-        .chunks(4)
-        .filter_map(|chunk| {
-            // Convert each 4-byte chunk to a u32.
-            if chunk.len() == 4 {
-                let value =
-                    u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as usize;
-                Some(value)
-            } else {
-                None
-            }
-        })
-        .collect();
+            .line_end_indices
+            .chunks(4)
+            .filter_map(|chunk| {
+                // Convert each 4-byte chunk to a u32.
+                if chunk.len() == 4 {
+                    let value =
+                        u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as usize;
+                    Some(value)
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-       line_end_indices
+        line_end_indices
     }
     pub fn symbol_locations(&self) -> Result<SymbolLocations> {
         let symbol_locations = bincode::deserialize::<SymbolLocations>(&self.symbol_locations)?;
@@ -109,8 +108,12 @@ pub async fn code_search(
         println!("Path: {}, Score: {}", meta.path, meta.score);
     }
     // call self.get_scope_graph on top 3 paths from ranked_symbpls
-    let extracted_chunks =
-        process_paths(ranked_symbols.iter().cloned().take(10).collect(), repo_name,app_state).await?;
+    let extracted_chunks = process_paths(
+        ranked_symbols.iter().cloned().take(10).collect(),
+        repo_name,
+        app_state,
+    )
+    .await?;
 
     // Most likely needs to be changed based on API response requirements
     // create codeChunks from the extracted_chunks and append to chunks
@@ -181,7 +184,7 @@ async fn process_paths(
         // Fetch the content of the file for the current path.
         let app_state_clone = Arc::clone(&app_state);
 
-        let source_document = get_file_content(path, repo_name,app_state_clone).await?;
+        let source_document = get_file_content(path, repo_name, app_state_clone).await?;
 
         // log the error and continue to the next path if the file content is not found.
         if source_document.is_none() {
@@ -196,7 +199,7 @@ async fn process_paths(
         let symbol_locations: SymbolLocations = source_document.symbol_locations()?;
 
         // Convert the compacted u8 array of line end indices back to their original u32 format.
-        let line_end_indices: Vec<usize> = source_document.fetch_line_indices(); 
+        let line_end_indices: Vec<usize> = source_document.fetch_line_indices();
         // Retrieve the scope graph associated with symbol locations.
         let sg = symbol_locations
             .scope_graph()
@@ -221,9 +224,15 @@ async fn process_paths(
                 min_lines_to_return: 8,
                 max_lines_limit: Some(20),
             };
-            
-            let extract_content = sg.expand_scope(path, start_byte, end_byte, &source_document, 
-                 &line_end_indices, &extraction_config);
+
+            let extract_content = sg.expand_scope(
+                path,
+                start_byte,
+                end_byte,
+                &source_document,
+                &line_end_indices,
+                &extraction_config,
+            );
 
             // Store the extracted content in the results vector.
             results.push(extract_content);
@@ -245,13 +254,22 @@ pub fn generate_quikwit_index_name(namespace: &str) -> String {
     return index_name;
 }
 
-pub async fn get_file_content(path: &str, repo_name: &String,app_state:Arc<AppState>) -> Result<Option<ContentDocument>> {
+pub async fn get_file_content(
+    path: &str,
+    repo_name: &String,
+    app_state: Arc<AppState>,
+) -> Result<Option<ContentDocument>> {
     let config = app_state.configuration.clone();
 
     let environment = config.environment.clone();
-    
-    let new_index_id = generate_quikwit_index_name(repo_name);
+
+    let new_index_id = if environment == "development" {
+        repo_name.clone()
+    } else {
+        generate_quikwit_index_name(repo_name)
+    };
 
     // println!("fetching file content {}\n", path);
-    get_file_from_quickwit(&new_index_id, "relative_path", path).await
+
+    get_file_from_quickwit(&new_index_id, "relative_path", path, app_state).await
 }
