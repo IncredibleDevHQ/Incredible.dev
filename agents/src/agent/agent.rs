@@ -86,7 +86,6 @@ pub enum AgentError {
 pub struct Agent {
     pub app_state: Arc<AppState>,
     pub exchanges: Vec<Exchange>,
-    pub exchange_tx: Sender<Exchange>,
 
     pub llm_gateway: llm_gateway::Client,
 
