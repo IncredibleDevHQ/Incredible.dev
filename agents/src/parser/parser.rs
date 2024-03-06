@@ -1,10 +1,11 @@
+use crate::search::semantic::SemanticQuery;
 use pest::{iterators::Pair, Parser};
 use regex::Regex;
+use regex_syntax::ast::parse;
+use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
 use std::{borrow::Cow, collections::HashSet, mem};
-use serde::{Serialize, Deserialize};
-use crate::parser::languages;
-use crate::search::semantic::SemanticQuery;
+use log::{error, info};
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct Query<'a> {
@@ -41,7 +42,6 @@ impl<'a> ParsedQuery<'a> {
         }
     }
 }
-
 
 impl<'a> Query<'a> {
     /// Merge this query with another, overwriting current terms by terms in the new query, if they
@@ -326,6 +326,54 @@ enum Expr<'a> {
     /// Not actively used anywhere.
     GlobalMode(ForceParsingAs),
 }
+
+
+pub fn parse_query(query: String) -> Result<SemanticQuery<'static>, anyhow::Error> {
+    let parse_query = match parse_nl(&query.to_string().clone()) {
+        Ok(parsed) => {
+            // Adjust handling for `Option` type returned by `into_semantic`
+            match parsed.into_semantic() {
+                Some(semantic) => Ok(semantic.into_owned()),
+                None => {
+                    // Handle the case where `into_semantic` returns `None`
+                    error!("Error: got a 'Grep' query");
+                    // return error for the result type
+                    Err(anyhow::Error::msg("Error: got a 'Grep' query"))
+                }
+            }
+        }
+        Err(_) => {
+            // Handle parse error, e.g., log it
+            error!("Error: parse error");
+            // return error for the result type
+            Err(anyhow::Error::msg("Error: parse error"))
+        }
+    };
+    parse_query
+}
+
+// initial processing of the user query.
+pub fn parse_query_target(parsed_query: &SemanticQuery<'_>) -> Result<String, anyhow::Error> {
+
+    let query_target = match parsed_query.target.as_ref() {
+        Some(target) => match target.as_plain() {
+            Some(plain) => Ok(plain.clone().into_owned()),
+            None => {
+                error!("Error: user query was not plain text");
+                // return error as API response
+                return Err(anyhow::Error::msg("Error: user query was not plain text"));
+            }
+        },
+        None => {
+            error!("Error: query was empty");
+            // return error as API response
+            return Err(anyhow::Error::msg("Error: query was empty"));
+        }
+    };
+
+    query_target
+}
+
 
 impl<'a> Expr<'a> {
     fn parse(pair: Pair<'a, Rule>, top_level: bool) -> Result<Self, Pair<'a, Rule>> {
