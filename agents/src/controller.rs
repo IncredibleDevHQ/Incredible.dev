@@ -154,12 +154,11 @@ pub async fn handle_retrieve_code(
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 
-    agent.complete();
-
     // Await the spawned task to ensure it has completed.
     // Though it's not strictly necessary in this context since the task will end on its own when the stream ends.
     let _ = exchange_handler.await;
-    let final_answer = agent.get_final_anwer().answer.unwrap();
+    let final_answer = agent.get_final_anwer().answer.as_ref().unwrap().to_string();
+    agent.complete();
 
     Ok(warp::reply::with_status(
         warp::reply::json(&final_answer),
@@ -170,7 +169,10 @@ pub async fn handle_retrieve_code(
     //     StatusCode::INTERNAL_SERVER_ERROR,
     // )),
 }
-
+pub struct GenerateQuestionRequest {
+    pub issue_desc: String,
+    pub repo_name: String,
+}
 pub async fn generate_question_array(
     req: GenerateQuestionRequest,
 ) -> Result<impl warp::Reply, Infallible> {
@@ -189,13 +191,34 @@ pub async fn generate_question_array(
     let system_prompt: String = prompts::question_generator_prompt(&issue_desc, &repo_name);
     let system_message = llm_gateway::api::Message::system(&system_prompt);
     let messages = Some(system_message).into_iter().collect::<Vec<_>>();
-    let mut response = llm_gateway
+
+    let response = match llm_gateway
         .clone()
         .model(ANSWER_MODEL)
         .chat(&messages, None)
-        .await?;
+        .await
+    {
+        Ok(response) => Some(response),
+        Err(_) => None,
+    };
+    let final_response = match response {
+        Some(response) => response,
+        None => {
+            error!("Error: Unable to fetch response from the gateway");
+            // Return error as API response
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&format!("Error: Unable to fetch response from the gateway")),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ));
+        }
+    };
 
-    let mut question_array = vec![];
+    let choices = final_response.choices[0].clone();
 
-    question_array
+    let response_message = choices.message.content.unwrap();
+
+    Ok(warp::reply::with_status(
+        warp::reply::json(&response_message),
+        StatusCode::OK,
+    ))
 }
