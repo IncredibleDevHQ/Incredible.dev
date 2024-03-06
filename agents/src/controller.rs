@@ -17,6 +17,7 @@ use crate::parser;
 use crate::routes;
 use anyhow::Result;
 use core::panic;
+use serde::Deserialize;
 use std::convert::Infallible;
 use std::sync::Arc;
 use warp::http::StatusCode;
@@ -169,6 +170,9 @@ pub async fn handle_retrieve_code(
     //     StatusCode::INTERNAL_SERVER_ERROR,
     // )),
 }
+
+#[derive(Debug, Deserialize)]
+
 pub struct GenerateQuestionRequest {
     pub issue_desc: String,
     pub repo_name: String,
