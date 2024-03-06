@@ -369,22 +369,36 @@ pub fn question_generator_prompt(issue_desc: &str, repo_name: &str) -> String {
         - If the issue description is something like \"As soon as I click on all repos, prompt guide or any button - history gets opened even if i have closed it. every action like new chat, etc gets the history opened. It should not do so\" or related  transform it to  \"["What causes the history to open when clicking on buttons?", "Why does every action trigger the history to open?", "How to prevent the history from opening with each action?"]\"
         - DO NOT CHANGE MEANING OF THE QUERY
         - RETURN ARRAY CONTAINING THREE Generated QUERIES 
+
+
         
+
         ----Example start----
         
         issue description- '''Current problem - In the application preview mode, the Built with ToolJet badge does not have any indication that it won't be shown once the user upgrades their plan. This is confusing to the user, that is trying to remove the badge and also does not give them an idea of the benefits of upgrading.
         '''
-        
-        response- ["What alterations can be made to the Built with ToolJet badge in the application preview mode to indicate that it will no longer be displayed after a user upgrades their plan?",
+        repo_name- '''Tooljet/tooljet'''
+
+    
+
+        Respone from LLM -["What alterations can be made to the Built with ToolJet badge in the application preview mode to indicate that it will no longer be displayed after a user upgrades their plan?",
         "How might we adjust the Built with ToolJet badge in the preview mode to clearly demonstrate to users that it can be removed upon upgrading their plan?",
         "What modifications are required for the Built with ToolJet badge to inform users that upgrading their plan will enable them to remove the badge from the application preview mode?"
         ]
 
         ----Example end----
+
+
+        issue description- '''{issue_desc}'''
+        repo name- '''{repo_name}'''
+
+        Above given example is for only understanding the way you have to response to the issue description.
+        Do not return response of given example
         
         GIVE ONLY ARRAY  containing  updated queries.
 
         DO NOT give queries in number, like 1. \"How are conversation routes implemented?\" 2. \"What is the implementation process for conversation routes?\" 3. \"Can you explain the implementation of conversation routes?\"
+        Do not return issue description in your response.
 
 "#
     );

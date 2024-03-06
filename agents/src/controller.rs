@@ -179,6 +179,8 @@ pub async fn generate_question_array(
 
     let response_message = choices.message.content.unwrap();
 
+    println!("Response: {}", response_message);
+
     Ok(warp::reply::with_status(
         warp::reply::json(&response_message),
         StatusCode::OK,
