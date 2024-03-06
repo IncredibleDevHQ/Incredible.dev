@@ -358,7 +358,7 @@ pub fn try_parse_hypothetical_documents(document: &str) -> Vec<String> {
         .collect()
 }
 
-pub fn question_generator_prompt(query: &str, repo_name: &str) -> String {
+pub fn question_generator_prompt(issue_desc: &str, repo_name: &str) -> String {
     let question_generator_prompt = format!(
         r#"#####
 
