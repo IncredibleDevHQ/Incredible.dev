@@ -5,6 +5,7 @@ mod config;
 mod db_client;
 mod helpers;
 mod parser;
+mod question_generator;
 mod routes;
 mod search;
 mod utils;

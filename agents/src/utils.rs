@@ -2,8 +2,8 @@ use crate::agent;
 use crate::db_client;
 use agent::llm_gateway;
 use futures::StreamExt;
+use log::{error, info};
 use std::time::Duration;
-use log::{info, error};
 
 use crate::agent::agent::Action;
 use crate::agent::agent::Agent;
@@ -18,7 +18,6 @@ use warp::http::StatusCode;
 pub async fn handle_retrieve_code(
     req: routes::RetrieveCodeRequest,
 ) -> Result<impl warp::Reply, Infallible> {
-
     info!("Query: {}, Repo: {}", req.query, req.repo);
     // Combine query and repo_name in the response
     let response = format!("Query: '{}', Repo: '{}'", req.query, req.repo);
@@ -152,9 +151,10 @@ pub async fn handle_retrieve_code(
     // Await the spawned task to ensure it has completed.
     // Though it's not strictly necessary in this context since the task will end on its own when the stream ends.
     let _ = exchange_handler.await;
+    let final_answer = agent.get_final_anwer().answer.unwrap();
 
     Ok(warp::reply::with_status(
-        warp::reply::json(&response),
+        warp::reply::json(&final_answer),
         StatusCode::OK,
     ))
     // Err(e) => Ok(warp::reply::with_status(
