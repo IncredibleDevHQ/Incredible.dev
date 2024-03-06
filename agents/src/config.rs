@@ -1,6 +1,8 @@
+#[derive(Clone, Debug)]
 pub struct Config {
     pub repo_name: String,
     pub semantic_url: String,
+    pub qdrant_api_key: Option<String>,
     pub tokenizer_path: String,
     pub model_path: String,
     pub openai_key: String,
@@ -11,31 +13,25 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new() -> Result<Self, String> {
+    pub fn new() -> Result<Self, anyhow::Error> {
         dotenv::dotenv().ok(); // This attempts to load the .env file, but ignores any error if the file is not found
 
-        let repo_name =
-            std::env::var("REPO_NAME").map_err(|_| "REPO_NAME environment variable not set")?;
-        let semantic_url = std::env::var("SEMANTIC_URL")
-            .map_err(|_| "SEMANTIC_URL environment variable not set")?;
-        let tokenizer_path = std::env::var("TOKENIZER_PATH")
-            .map_err(|_| "TOKENIZER_PATH environment variable not set")?;
-        let model_path =
-            std::env::var("MODEL_PATH").map_err(|_| "MODEL_PATH environment variable not set")?;
-        let openai_key =
-            std::env::var("OPENAI_KEY").map_err(|_| "OPENAI_KEY environment variable not set")?;
-        let openai_url =
-            std::env::var("OPENAI_URL").map_err(|_| "OPENAI_URL environment variable not set")?;
-        let openai_model = std::env::var("OPENAI_MODEL")
-            .map_err(|_| "OPENAI_MODEL environment variable not set")?;
-        let quickwit_url = std::env::var("QUICKWIT_URL")
-            .map_err(|_| "QUICKWIT_URL environment variable not set")?;
-        let semantic_collection_name = std::env::var("SEMANTIC_COLLECTION_NAME")
-            .map_err(|_| "SEMANTIC_COLLECTION_NAME environment variable not set")?;
-
+        // TODO: For Prod also look for QDRANT API KEY.
+        // Directly use `?` to propagate the error if the environment variable is not set.
+        let repo_name = std::env::var("REPO_NAME")?;
+        let semantic_url = std::env::var("SEMANTIC_URL")?;
+        let qdrant_api_key = std::env::var("QDRANT_API_KEY").ok();
+        let tokenizer_path = std::env::var("TOKENIZER_PATH")?;
+        let model_path = std::env::var("MODEL_PATH")?;
+        let openai_key = std::env::var("OPENAI_KEY")?;
+        let openai_url = std::env::var("OPENAI_URL")?;
+        let openai_model = std::env::var("OPENAI_MODEL")?;
+        let quickwit_url = std::env::var("QUICKWIT_URL")?;
+        let semantic_collection_name = std::env::var("SEMANTIC_COLLECTION_NAME")?;
         Ok(Config {
             repo_name,
             semantic_url,
+            qdrant_api_key,
             tokenizer_path,
             model_path,
             openai_key,

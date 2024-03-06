@@ -1,11 +1,12 @@
-use crate::utils;
+use crate::controller;
 use serde::Deserialize;
 use std::convert::Infallible;
 use std::sync::Arc;
 use warp::{self, http::Response, Filter};
+use crate::AppState;
 
-pub fn code_retrieve() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    home_route().or(retrieve_code())
+pub fn code_retrieve(app_state: Arc<AppState>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    home_route().or(retrieve_code(app_state.clone()))
 }
 
 #[derive(Deserialize)]
@@ -15,11 +16,12 @@ pub struct RetrieveCodeRequest {
 }
 
 /// GET /retrieve-code?query=<query>&repo=<repo_name>
-fn retrieve_code() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn retrieve_code(app_state: Arc<AppState>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("retrieve-code")
         .and(warp::get())
         .and(warp::query::<RetrieveCodeRequest>())
-        .and_then(utils::handle_retrieve_code)
+        .and(warp::any().map(move || app_state.clone()))
+        .and_then(controller::handle_retrieve_code)
 }
 
 fn home_route() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
