@@ -30,8 +30,7 @@ impl Agent {
             query: query.to_string(),
             paths: paths.clone(),
             response: String::new(),
-        }))
-        .await?;
+        }))?;
 
         // Immutable reborrow of `self`, to copy freely to async closures.
         let self_ = &*self;
@@ -213,8 +212,7 @@ impl Agent {
             query: query.to_string(),
             paths,
             response: response.clone(),
-        }))
-        .await?;
+        }))?;
 
         Ok(response)
     }

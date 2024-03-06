@@ -12,8 +12,7 @@ use std::time::Duration;
 use crate::agent::agent::Action;
 use crate::agent::agent::Agent;
 use crate::agent::exchange::Exchange;
-use crate::config::Config;
-use crate::parser;
+use crate::parser::parser::{parse_query, parse_query_target};
 use crate::routes;
 use anyhow::Result;
 use core::panic;
@@ -31,63 +30,46 @@ pub async fn handle_retrieve_code(
     // Combine query and repo_name in the response
     let response = format!("Query: '{}', Repo: '{}'", req.query, req.repo);
 
-    let query = req.query;
+    // if query or repo is empty, return bad request.
+    if req.query.is_empty() || req.repo.is_empty() {
+        error!("Query or Repo from the user request is empty");
+        return Ok(warp::reply::with_status(
+            warp::reply::json(&format!("Error: Query or Repo is empty")),
+            StatusCode::BAD_REQUEST,
+        ));
+    }
 
-    let query_clone = query.clone();
+    // parse the query
+    let query_clone = req.query.clone();
+    let parsed_query = parse_query(req.query.clone());
+    // if the query is not parsed, return internal server error.
+    if parsed_query.is_err() {
+        error!("Error parsing the query");
+        return Ok(warp::reply::with_status(
+            warp::reply::json(&format!("Error: {}", parsed_query.err().unwrap())),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ));
+    }
 
-    let parse_query = match parser::parser::parse_nl(&query_clone) {
-        Ok(parsed) => {
-            // Adjust handling for `Option` type returned by `into_semantic`
-            match parsed.into_semantic() {
-                Some(semantic) => semantic.into_owned(),
-                None => {
-                    // Handle the case where `into_semantic` returns `None`
-                    error!("Error: got a 'Grep' query");
-                    // return error as API response
-                    return Ok(warp::reply::with_status(
-                        warp::reply::json(&format!("Error: got a 'Grep' query")),
-                        StatusCode::BAD_REQUEST,
-                    ));
-                }
-            }
-        }
-        Err(_) => {
-            // Handle parse error, e.g., log it
-            eprintln!("Error: parse error");
-            // Since we can't return errors, consider logging or a default action
-            panic!("Error parsing query");
-        }
-    };
+    let parsed_query = parsed_query.unwrap();
+    let query_target = parse_query_target(&parsed_query);
+    // if the query target is not parsed, return internal server error.
+    if query_target.is_err() {
+        error!("Error parsing the query target");
+        return Ok(warp::reply::with_status(
+            warp::reply::json(&format!("Error: {}", query_target.err().unwrap())),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ));
+    }
 
-    let query_target = match parse_query.target.as_ref() {
-        Some(target) => match target.as_plain() {
-            Some(plain) => plain.clone().into_owned(),
-            None => {
-                error!("Error: user query was not plain text");
-                // return error as API response
-                return Ok(warp::reply::with_status(
-                    warp::reply::json(&format!("Error: user query was not plain text")),
-                    StatusCode::BAD_REQUEST,
-                ));
-            }
-        },
-        None => {
-            error!("Error: query was empty");
-            // return error as API response
-            return Ok(warp::reply::with_status(
-                warp::reply::json(&format!("Error: query was empty")),
-                StatusCode::BAD_REQUEST,
-            ));
-        }
-    };
-
+    let query_target = query_target.unwrap();
     info!("Query target{:?}", query_target);
 
     let mut action = Action::Query(query_target);
     let id = uuid::Uuid::new_v4();
 
-    let mut exchanges = vec![agent::exchange::Exchange::new(id, parse_query.clone())];
-    exchanges.push(Exchange::new(id, parse_query));
+    let mut exchanges = vec![agent::exchange::Exchange::new(id, parsed_query.clone())];
+    exchanges.push(Exchange::new(id, parsed_query));
 
     // get the configuration from the app state
     let configuration = &app_state.configuration;
@@ -99,34 +81,17 @@ pub async fn handle_retrieve_code(
         .model(&configuration.openai_model.clone());
 
     // get db client from app state
-    let (exchange_tx, exchange_rx) = tokio::sync::mpsc::channel(10);
 
     let mut agent: Agent = Agent {
         app_state: app_state,
-        exchange_tx,
         exchanges,
         llm_gateway,
         query_id: id,
         complete: false,
     };
 
-    let mut exchange_stream = tokio_stream::wrappers::ReceiverStream::new(exchange_rx);
-
-    let exchange_handler = tokio::spawn(async move {
-        while let exchange = exchange_stream.next().await {
-            match exchange {
-                Some(e) => {
-                    //println!("{:?}", e.compressed());
-                }
-                None => {
-                    eprintln!("No more messages or exchange channel was closed.");
-                    break;
-                }
-            }
-        }
-    });
     // first action
-    println!("first action {:?}\n", action);
+    info!("first action {:?}\n", action);
 
     let mut i = 1;
     'outer: loop {
@@ -155,9 +120,6 @@ pub async fn handle_retrieve_code(
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 
-    // Await the spawned task to ensure it has completed.
-    // Though it's not strictly necessary in this context since the task will end on its own when the stream ends.
-    let _ = exchange_handler.await;
     let final_answer = agent.get_final_anwer().answer.as_ref().unwrap().to_string();
     agent.complete();
 
@@ -165,10 +127,6 @@ pub async fn handle_retrieve_code(
         warp::reply::json(&final_answer),
         StatusCode::OK,
     ))
-    // Err(e) => Ok(warp::reply::with_status(
-    //     warp::reply::json(&format!("Error: {}", e)),
-    //     StatusCode::INTERNAL_SERVER_ERROR,
-    // )),
 }
 
 #[derive(Debug, Deserialize)]

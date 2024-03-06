@@ -87,7 +87,6 @@ pub enum AgentError {
 pub struct Agent {
     pub app_state: Arc<AppState>,
     pub exchanges: Vec<Exchange>,
-    pub exchange_tx: Sender<Exchange>,
 
     pub llm_gateway: llm_gateway::Client,
 
@@ -153,7 +152,7 @@ impl Agent {
 
     /// Update the last exchange
     #[instrument(skip(self), level = "debug")]
-    pub async fn update(&mut self, update: Update) -> Result<()> {
+    pub fn update(&mut self, update: Update) -> Result<()> {
         self.last_exchange_mut().apply_update(update);
         //println!("update {:?}", update);
         Ok(())

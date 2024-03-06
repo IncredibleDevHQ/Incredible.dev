@@ -13,8 +13,7 @@ impl Agent {
         self.update(Update::StartStep(SearchStep::Code {
             query: query.clone(),
             response: String::new(),
-        }))
-        .await?;
+        }))?;
 
         // let results = self
         //     .semantic_search(query.into(), CODE_SEARCH_LIMIT, 0, 0.0, true)
@@ -72,8 +71,7 @@ impl Agent {
         self.update(Update::ReplaceStep(SearchStep::Code {
             query: query.clone(),
             response: response.clone(),
-        }))
-        .await?;
+        }))?;
 
         Ok(response)
     }
