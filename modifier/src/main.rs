@@ -7,8 +7,8 @@ mod db_client;
 mod helpers;
 mod parser;
 mod routes;
-mod search;
 mod controller;
+mod models;
 use std::sync::Arc;
 
 use core::result::Result::Ok;
