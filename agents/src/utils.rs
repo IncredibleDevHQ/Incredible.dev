@@ -1,4 +1,6 @@
 use crate::agent;
+use crate::agent::agent::ANSWER_MODEL;
+use crate::agent::prompts;
 use crate::db_client;
 use agent::llm_gateway;
 use futures::StreamExt;
@@ -15,6 +17,12 @@ use anyhow::Result;
 use core::panic;
 use std::convert::Infallible;
 use warp::http::StatusCode;
+
+pub struct GenerateQuestionRequest {
+    pub issue_desc: String,
+    pub repo_name: String,
+}
+
 pub async fn handle_retrieve_code(
     req: routes::RetrieveCodeRequest,
 ) -> Result<impl warp::Reply, Infallible> {
@@ -161,4 +169,33 @@ pub async fn handle_retrieve_code(
     //     warp::reply::json(&format!("Error: {}", e)),
     //     StatusCode::INTERNAL_SERVER_ERROR,
     // )),
+}
+
+pub async fn generate_question_array(
+    req: GenerateQuestionRequest,
+) -> Result<impl warp::Reply, Infallible> {
+    // info!("Query: {}, Repo: {}", req.issue_desc, req.repo);
+
+    let configuration = Config::new().unwrap();
+
+    let issue_desc = req.issue_desc;
+    let repo_name = req.repo_name;
+    // intialize new llm gateway.
+    let llm_gateway = llm_gateway::Client::new(&configuration.openai_url)
+        .temperature(0.0)
+        .bearer(configuration.openai_key.clone())
+        .model(&configuration.openai_model.clone());
+
+    let system_prompt: String = prompts::question_generator_prompt(&issue_desc, &repo_name);
+    let system_message = llm_gateway::api::Message::system(&system_prompt);
+    let messages = Some(system_message).into_iter().collect::<Vec<_>>();
+    let mut response = llm_gateway
+        .clone()
+        .model(ANSWER_MODEL)
+        .chat(&messages, None)
+        .await?;
+
+    let mut question_array = vec![];
+
+    question_array
 }

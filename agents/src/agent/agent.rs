@@ -181,7 +181,7 @@ impl Agent {
     }
 
     pub fn paths(&self) -> impl Iterator<Item = &str> {
-        self.exchanges
+        self.exchanges=
             .iter()
             .flat_map(|e| e.paths.iter())
             .map(String::as_str)

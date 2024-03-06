@@ -1,20 +1,19 @@
 use std::{collections::HashMap, mem, ops::Range, pin::pin};
 
-use anyhow::{anyhow, Context, Result};
 use crate::agent::llm_gateway;
+use anyhow::{anyhow, Context, Result};
 use futures::StreamExt;
+use ort::sys;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tracing::{debug, info, instrument, trace};
 
-use crate::{
-    agent::{
-        exchange::{CodeChunk, FocusedChunk, Update},
-        prompts, transform,
-    },
+use crate::agent::{
+    exchange::{CodeChunk, FocusedChunk, Update},
+    prompts, transform,
 };
 
-use crate::agent::agent::ANSWER_MODEL;
 use crate::agent::agent::Agent;
+use crate::agent::agent::ANSWER_MODEL;
 
 impl Agent {
     #[instrument(skip(self))]
@@ -46,24 +45,26 @@ impl Agent {
         let context = self.answer_context(aliases, ANSWER_MODEL).await?;
         let system_prompt = prompts::answer_article_prompt(aliases, &context);
         let system_message = llm_gateway::api::Message::system(&system_prompt);
+
         let history = {
             let h = self.utter_history().collect::<Vec<_>>();
             let system_headroom =
                 tiktoken_rs::num_tokens_from_messages(ANSWER_MODEL, &[(&system_message).into()])?;
             trim_utter_history(h, ANSWER_HEADROOM + system_headroom)?
         };
+
         let messages = Some(system_message)
             .into_iter()
             .chain(history.iter().cloned())
             .collect::<Vec<_>>();
 
         println!("Answer message: {:?}", messages.clone());
-        let mut response = 
-            self.llm_gateway
-                .clone()
-                .model(ANSWER_MODEL)
-                .chat(&messages, None)
-                .await?;
+        let mut response = self
+            .llm_gateway
+            .clone()
+            .model(ANSWER_MODEL)
+            .chat(&messages, None)
+            .await?;
 
         // retrieve messages from chatcompletion.
         let choices = response.choices[0].clone();
@@ -72,11 +73,11 @@ impl Agent {
         //     let fragment: String = fragment?;
         //     response += &fragment;
 
-            let (article, summary) = transform::decode(&response_message);
-            self.update(Update::Article(article)).await?;
+        let (article, summary) = transform::decode(&response_message);
+        self.update(Update::Article(article)).await?;
 
-            if let Some(summary) = summary {
-                self.update(Update::Conclude(summary)).await?;
+        if let Some(summary) = summary {
+            self.update(Update::Conclude(summary)).await?;
             //}
         }
 
@@ -98,7 +99,6 @@ impl Agent {
         println!("\ngenerated answer\n {:?}", article);
 
         self.update(Update::Conclude(summary)).await?;
-
 
         Ok(())
     }
@@ -279,7 +279,7 @@ impl Agent {
                     .collect::<Vec<_>>();
                 println!("Inside stream");
                 println!("{:?}", path);
-                println!("{:?}",lines.len());
+                println!("{:?}", lines.len());
 
                 (path.clone(), lines)
             })
@@ -300,11 +300,11 @@ impl Agent {
                 .iter()
                 .flat_map(|(path, spans)| spans.iter().map(move |s| (path, s)))
                 .map(|(path, span)| {
-                    // print the hashmap line_by_file and print path 
-                   // println!("lines_by_file: {:?}\n", lines_by_file);
+                    // print the hashmap line_by_file and print path
+                    // println!("lines_by_file: {:?}\n", lines_by_file);
                     //println!("path: {:?}\n", path);
-                    println!("path {:?}", path );
-                    println!("lines of code {:?}", lines_by_file.get(path).unwrap().len() );
+                    println!("path {:?}", path);
+                    println!("lines of code {:?}", lines_by_file.get(path).unwrap().len());
                     println!("Current span {:?}", span);
                     let snippet = lines_by_file.get(path).unwrap()[span.clone()].join("\n");
                     bpe.encode_ordinary(&snippet).len()
