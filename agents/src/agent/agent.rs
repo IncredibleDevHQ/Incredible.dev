@@ -1,4 +1,5 @@
 use hashbrown::HashMap;
+use semver::Op;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 use std::time::Duration;
@@ -165,6 +166,10 @@ impl Agent {
         self.last_exchange_mut().apply_update(update);
         //println!("update {:?}", update);
         Ok(())
+    }
+
+    pub fn get_final_anwer(&self) -> &Exchange {
+        self.exchanges.last().expect("answer was not set")
     }
 
     pub fn last_exchange(&self) -> &Exchange {
