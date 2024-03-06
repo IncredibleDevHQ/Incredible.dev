@@ -2,8 +2,10 @@ use crate::agent;
 use crate::agent::agent::ANSWER_MODEL;
 use crate::agent::prompts;
 use crate::db_client;
+use crate::AppState;
 use agent::llm_gateway;
 use futures::StreamExt;
+use log::{error, info};
 use log::{error, info};
 use std::time::Duration;
 
@@ -16,17 +18,15 @@ use crate::routes;
 use anyhow::Result;
 use core::panic;
 use std::convert::Infallible;
+use std::sync::Arc;
 use warp::http::StatusCode;
-
-pub struct GenerateQuestionRequest {
-    pub issue_desc: String,
-    pub repo_name: String,
-}
 
 pub async fn handle_retrieve_code(
     req: routes::RetrieveCodeRequest,
+    app_state: Arc<AppState>,
 ) -> Result<impl warp::Reply, Infallible> {
     info!("Query: {}, Repo: {}", req.query, req.repo);
+
     // Combine query and repo_name in the response
     let response = format!("Query: '{}', Repo: '{}'", req.query, req.repo);
 
@@ -41,9 +41,12 @@ pub async fn handle_retrieve_code(
                 Some(semantic) => semantic.into_owned(),
                 None => {
                     // Handle the case where `into_semantic` returns `None`
-                    eprintln!("Error: got a 'Grep' query");
-                    // Use panic or consider a more graceful way to handle this scenario
-                    panic!("Error: got a 'Grep' query");
+                    error!("Error: got a 'Grep' query");
+                    // return error as API response
+                    return Ok(warp::reply::with_status(
+                        warp::reply::json(&format!("Error: got a 'Grep' query")),
+                        StatusCode::BAD_REQUEST,
+                    ));
                 }
             }
         }
@@ -59,17 +62,25 @@ pub async fn handle_retrieve_code(
         Some(target) => match target.as_plain() {
             Some(plain) => plain.clone().into_owned(),
             None => {
-                eprintln!("Error: user query was not plain text");
-                panic!("Error: user query was not plain text");
+                error!("Error: user query was not plain text");
+                // return error as API response
+                return Ok(warp::reply::with_status(
+                    warp::reply::json(&format!("Error: user query was not plain text")),
+                    StatusCode::BAD_REQUEST,
+                ));
             }
         },
         None => {
-            eprintln!("Error: query was empty");
-            panic!("Error: query was empty");
+            error!("Error: query was empty");
+            // return error as API response
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&format!("Error: query was empty")),
+                StatusCode::BAD_REQUEST,
+            ));
         }
     };
 
-    println!("{:?}", query_target);
+    info!("Query target{:?}", query_target);
 
     let mut action = Action::Query(query_target);
     let id = uuid::Uuid::new_v4();
@@ -77,7 +88,8 @@ pub async fn handle_retrieve_code(
     let mut exchanges = vec![agent::exchange::Exchange::new(id, parse_query.clone())];
     exchanges.push(Exchange::new(id, parse_query));
 
-    let configuration = Config::new().unwrap();
+    // get the configuration from the app state
+    let configuration = &app_state.configuration;
 
     // intialize new llm gateway.
     let llm_gateway = llm_gateway::Client::new(&configuration.openai_url)
@@ -85,29 +97,17 @@ pub async fn handle_retrieve_code(
         .bearer(configuration.openai_key.clone())
         .model(&configuration.openai_model.clone());
 
-    // create new db client.
-    let db_client = match db_client::DbConnect::new().await {
-        Ok(client) => client,
-        Err(_) => {
-            eprintln!("Initializing database failed.");
-            // Since the function's return type is Infallible, you cannot return an error.
-            // Depending on your application's needs, you might decide to panic, or if there's
-            // a logical non-failing action to take, do that instead.
-            panic!("Critical error: Initializing database failed.");
-        }
-    };
-
+    // get db client from app state
     let (exchange_tx, exchange_rx) = tokio::sync::mpsc::channel(10);
 
     let mut agent: Agent = Agent {
-        db: db_client,
+        app_state: app_state,
         exchange_tx,
         exchanges,
         llm_gateway,
         query_id: id,
         complete: false,
     };
-    // ... [ rest of the setup code ]
 
     let mut exchange_stream = tokio_stream::wrappers::ReceiverStream::new(exchange_rx);
 

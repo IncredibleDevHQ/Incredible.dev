@@ -12,7 +12,7 @@ use std::{
 // import anyhow from anyhow
 use crate::config::Config;
 use anyhow::Result;
-
+use log::{error, info};
 use crate::parser::parser::Literal;
 use crate::search::payload::{Embedding, Payload, SymbolPayload};
 use std::sync::Arc;
@@ -62,16 +62,27 @@ pub enum SemanticError {
 }
 
 impl Semantic {
-    pub async fn initialize() -> Result<Self, SemanticError> {
-        // let qdrant = QdrantClient::new(Some(QdrantClientConfig::from_url(&config.semantic_url)))?;
-        let config = Config::new().unwrap();
-        let qdrant_api_key = "yfxX63AauMGbXoGVSveAjq373wEOTASLLmHfTvMiOZKJtyYFKq9wHg";
-        let qdrant_url = "https://81e9d930-b73c-4870-914b-2c8b6c5a3b9a.ap-southeast-1-0.aws.cloud.qdrant.io:6334";
-        let qdrant = QdrantClient::from_url(qdrant_url)
-            // using an env variable for the API KEY, for example
-            .with_api_key(qdrant_api_key)
-            .build()?;
+    // Define an asynchronous function 'initialize' that takes a reference to a Config object and returns a Result.
+    // This function initializes the struct it belongs to.
+    pub async fn initialize(config: &Config) -> Result<Self, SemanticError> {
+        // Retrieve the Qdrant URL from the config object. We use a reference here to avoid ownership issues.
+        let qdrant_url = &config.semantic_url;
 
+        // Start building the Qdrant client with the URL.
+        let mut qdrant_client_builder = QdrantClient::from_url(qdrant_url);
+
+        // Check if the qdrant_api_key is present in the config. If it is, add it to the client builder.
+        if let Some(ref key) = config.qdrant_api_key {
+            info!("Using Qdrant API key. Using Qdrant with authentication.");
+            qdrant_client_builder = qdrant_client_builder.with_api_key(key.as_str());
+        } else {
+            info!("No Qdrant API key found. Using Qdrant without authentication.")
+        }
+
+        // Finalize building the Qdrant client. If this fails, the error will be propagated by `?`.
+        let qdrant = qdrant_client_builder.build()?;
+
+        // Create a new environment for the ONNX session, configuring various parameters.
         let environment = Arc::new(
             Environment::builder()
                 .with_name("Encode")
@@ -81,24 +92,24 @@ impl Semantic {
                 .build()?,
         );
 
-        let threads = if let Ok(v) = std::env::var("NUM_OMP_THREADS") {
-            str::parse(&v).unwrap_or(1)
-        } else {
-            1
-        };
+        // Determine the number of threads to use based on the NUM_OMP_THREADS environment variable.
+        let threads = std::env::var("NUM_OMP_THREADS")
+            .map(|v| v.parse().unwrap_or(1))
+            .unwrap_or(1);
 
+        // Construct and return the new instance, initializing each field.
         Ok(Self {
             qdrant: qdrant.into(),
-            tokenizer: tokenizers::Tokenizer::from_file(config.tokenizer_path.as_str())
+            tokenizer: tokenizers::Tokenizer::from_file(&config.tokenizer_path)
                 .unwrap()
                 .into(),
             session: SessionBuilder::new(&environment)?
                 .with_optimization_level(GraphOptimizationLevel::Level3)?
                 .with_intra_threads(threads)?
-                .with_model_from_file(config.model_path)?
+                .with_model_from_file(&config.model_path)?
                 .into(),
-            qdrant_collection_name: config.semantic_collection_name,
-            repo_name: config.repo_name,
+            qdrant_collection_name: config.semantic_collection_name.clone(),
+            repo_name: config.repo_name.clone(),
         })
     }
 
