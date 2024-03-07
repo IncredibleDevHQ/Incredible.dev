@@ -1,3 +1,6 @@
+extern crate common;
+use common::CodeSpanRequest;
+
 use std::convert::Infallible;
 use std::sync::Arc;
 use warp::{self, Filter};
@@ -5,7 +8,7 @@ use warp::{self, Filter};
 use crate::controller::{symbol, span, parentscope};
 use crate::db::DbConnect;
 use crate::graph::symbol_ops;
-use crate::models::{SymbolSearchRequest, SpanSearchRequest, ParentScopeRequest};
+use crate::models::{SymbolSearchRequest, ParentScopeRequest};
 use crate::AppState;
 
 use serde::Deserialize;
@@ -44,7 +47,7 @@ fn symbol_search(app_state: Arc<AppState>) -> impl Filter<Extract = impl warp::R
 fn span_code_chunk_retrieve(app_state: Arc<AppState>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("span")
         .and(warp::get())
-        .and(warp::query::<SpanSearchRequest>())
+        .and(warp::query::<CodeSpanRequest>())
         .and(warp::any().map(move || app_state.clone()))
         .and_then(span::span_search)
 }
