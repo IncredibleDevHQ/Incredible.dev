@@ -1,6 +1,9 @@
+use std::sync::Arc;
+
 use crate::models::SpanSearchRequest;
 use crate::search::code_search::get_file_content;
 use crate::utilities::util::pluck_code_by_lines;
+use crate::AppState;
 
 /// Asynchronously handles a search request for a specific span within a file in a repository.
 ///
@@ -10,13 +13,13 @@ use crate::utilities::util::pluck_code_by_lines;
 /// # Returns
 /// - An `Ok` variant of `Result` containing an `impl warp::Reply` that represents the HTTP response,
 ///   which varies based on the outcome of the file content retrieval.
-pub async fn span_search(params: SpanSearchRequest) -> Result<impl warp::Reply, warp::Rejection> {
+pub async fn span_search(params: SpanSearchRequest,app_state:Arc<AppState>) -> Result<impl warp::Reply, warp::Rejection> {
     // Clone necessary parameters from the request for local use.
     let path = params.path.clone();
     let repo_name = params.repo.clone();
 
     // Attempt to retrieve the file content asynchronously based on the provided path and repository name.
-    let source_document = get_file_content(&path, &repo_name).await;
+    let source_document = get_file_content(&path, &repo_name,app_state).await;
 
 
     match source_document {
