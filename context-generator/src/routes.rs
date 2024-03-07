@@ -21,7 +21,7 @@ pub fn fetch_code_context(app_state: Arc<AppState>) -> impl Filter<Extract = imp
 #[derive(Deserialize)]
 pub struct RetrieveCodeRequest {
     // Contains the detailed code understandings and issue description to be processed.
-    qna_context: CodeUnderstandings,
+    pub qna_context: CodeUnderstandings,
 }
 
 // Find the API doc here https://www.notion.so/Context-generator-b7941ee220e54c979095c563bf746611?pvs=4
