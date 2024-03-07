@@ -47,7 +47,7 @@ serde_yaml = "0.8"
 reqwest = "0.11"
 itertools = "0.10.1"
 env_logger = "0.10.0"
-log = "0.4.14"
+log = "0.4.21"
 md5 = "0.7.0"
 stack-graphs = { git = "https://github.com/SubhamPramanik/stack-graphs.git", features = ["serde", "visualization", "storage"] }
 tree-sitter-stack-graphs = { git = "https://github.com/SubhamPramanik/stack-graphs.git", features = ["cli"],  branch="SubhamPramanik-patch-1"}
