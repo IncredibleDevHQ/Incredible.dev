@@ -1,50 +1,58 @@
 use anyhow::Result;
 use log::{error, info};
+use reqwest::Client;
 
-mod agent;
-mod config;
-mod db_client;
-mod helpers;
-mod parser;
-mod routes;
-mod search;
 mod controller;
+mod models;
+mod routes;
+use core::result::Result::Ok;
 use std::sync::Arc;
 
-use core::result::Result::Ok;
 struct AppState {
-    configuration: config::Config,
-    db_connection: db_client::DbConnect,  // Assuming DbConnection is your database connection type
+    configuration: Configuration,
+    database_connection: DatabaseConnection,
 }
 
-// initialize the app state with the configuration and database connection.
+#[derive(Debug, Clone)]
+pub struct Configuration {
+    environment: String,
+    quikwit_db_url: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct DatabaseConnection {
+    http_client: Client,
+}
+
 async fn init_state() -> Result<AppState, anyhow::Error> {
-    let configuration = config::Config::new()?;
+    let environment = std::env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string());
+    let env_file = format!(".env.{}", environment);
 
-      // create new db client.
-      let db_client = match db_client::DbConnect::new(&configuration).await {
-        Ok(client) => client,
-        Err(_) => {
-            error!("Initializing database failed.");
-            return Err(anyhow::anyhow!("Initializing database failed."));
-        }
+    info!("Loading configurations from {}", env_file);
+    dotenv::from_filename(env_file).ok();
+
+    let configuration = Configuration {
+        environment: std::env::var("ENVIRONMENT").unwrap_or("development".to_string()),
+        quikwit_db_url: std::env::var("QUICKWIT_DB_URL").unwrap_or("quickwit_db_url".to_string()),
     };
+    info!("Initialized configuration: {:?}", configuration);
 
+    let db_client = DatabaseConnection {
+        http_client: Client::new(),
+    };
 
     Ok(AppState {
         configuration,
-        db_connection: db_client,
+        database_connection: db_client,
     })
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
-    
-    // initialize the env configurations and database connection.
-    let app_state = init_state().await;
 
-    // Exit the process with a non-zero code if the app state is not initialized.
+    // Iniitialize app state and throw error if failed
+    let app_state = init_state().await;
     let app_state = match app_state {
         Ok(app_state) => Arc::new(app_state),
         Err(err) => {
@@ -53,11 +61,11 @@ async fn main() -> Result<()> {
         }
     };
 
-    let code_retrieve_routes = routes::modify_code(app_state);
-
-    warp::serve(code_retrieve_routes)
+    let modification_routes = routes::modify_code(app_state);
+    warp::serve(modification_routes)
         .run(([0, 0, 0, 0], 3001))
         .await;
+    info!("Started web server on http://localhost:3001");
 
     Ok(())
 }
