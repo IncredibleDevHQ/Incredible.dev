@@ -3,7 +3,8 @@ members = [
     "agents",
     "search",
     "ingestion",
-    "code-navigator", 
+    "code-navigator",
     "context-generator",
-    "modifier"
-, "common"]
+    "modifier",
+    "common",
+]
