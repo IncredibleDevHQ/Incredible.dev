@@ -1,10 +1,12 @@
 use anyhow::{Error, Result};
+use bincode::config;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::env;
+use std::sync::Arc;
 
-use crate::CLIENT;
 use crate::search::code_search::ContentDocument;
+use crate::{AppState, CLIENT};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct BodyRes {
@@ -40,8 +42,9 @@ pub async fn get_file_from_quickwit(
     index_name: &str,
     search_field: &str,
     search_query: &str,
+    app_state: Arc<AppState>,
 ) -> Result<Option<ContentDocument>> {
-    let response_array = search_quickwit(index_name, search_field, search_query).await?;
+    let response_array = search_quickwit(index_name, search_field, search_query, app_state).await?;
 
     let cloned_response_array = response_array.clone(); // Clone the response_array
 
@@ -60,8 +63,11 @@ pub async fn search_quickwit(
     index_name: &str,
     search_field: &str,
     search_query: &str,
+    app_state: Arc<AppState>,
 ) -> Result<Option<ContentDocument>, Error> {
-    let base_url = env::var("QUICKWIT_DB_URL").expect("QUICKWIT_DB_URL must be set");
+    let config = app_state.configuration.clone();
+
+    let base_url = config.quikwit_db_url.clone();
 
     let query = if !search_field.is_empty() {
         format!("{}:{}", search_field, search_query)

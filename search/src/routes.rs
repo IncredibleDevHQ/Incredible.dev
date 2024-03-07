@@ -11,7 +11,7 @@ use crate::AppState;
 use serde::Deserialize;
 
 pub fn search_routes(app_state: Arc<AppState>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    symbol_search(app_state.clone()).or(span_code_chunk_retrieve()).or(parent_scope_retrieve())
+    symbol_search(app_state.clone()).or(span_code_chunk_retrieve(app_state.clone())).or(parent_scope_retrieve(app_state.clone()))
 }
 
 /// POST /symbols
@@ -41,10 +41,11 @@ fn symbol_search(app_state: Arc<AppState>) -> impl Filter<Extract = impl warp::R
 /// curl "<http://example.com/span?repo=example-repo&branch=main&path=src/example.js&range=1:5&id=12345>"
 
 
-fn span_code_chunk_retrieve() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn span_code_chunk_retrieve(app_state: Arc<AppState>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("span")
         .and(warp::get())
         .and(warp::query::<SpanSearchRequest>())
+        .and(warp::any().map(move || app_state.clone()))
         .and_then(span::span_search)
 }
 
@@ -64,10 +65,11 @@ fn span_code_chunk_retrieve() -> impl Filter<Extract = impl warp::Reply, Error =
 /// # Responses
 /// - Returns a `warp::Reply` on success, containing the parent scope code.
 /// - Returns a `warp::Rejection` in case of errors or if the request parameters are invalid.
-fn parent_scope_retrieve() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn parent_scope_retrieve(app_state: Arc<AppState>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("parentscope")
         .and(warp::get())
         .and(warp::query::<ParentScopeRequest>())
+        .and(warp::any().map(move || app_state.clone()))
         .and_then(parentscope::parent_scope_search) // Assuming you have a corresponding handler in the controller
 }
 
