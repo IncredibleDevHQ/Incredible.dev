@@ -26,7 +26,7 @@ pub struct CodeContext {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct CodeUnderstanding {
-    pub context: CodeContext,
+    pub context: Vec<CodeContext>,
     pub question: String,
     pub answer: String,
 }
