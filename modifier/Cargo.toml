@@ -1,11 +1,13 @@
 [package]
-name = "agents"
+name = "modifier"
 version = "0.0.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+common = { path = "../common" }
+
 regex = "1.9.1"
 regex-syntax = "0.7.3"
 # query parsing
@@ -60,6 +62,5 @@ phf_codegen = "0.11.1"
 serde_yaml = "0.9.22"
 phf = "0.11.1"
 reqwest = { version = "0.11.18", default-features = false, features = ["blocking", "json"] }
-env_logger = "0.11.2"
-log = "0.4.21"
+
 

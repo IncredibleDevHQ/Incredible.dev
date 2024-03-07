@@ -4,7 +4,6 @@ use crate::search::payload::{Payload, SymbolPayload};
 use crate::search::semantic::{Semantic, SemanticQuery, make_kv_keyword_filter, deduplicate_snippets};
 use anyhow::Result;
 use tracing::debug;
-use tracing::instrument;
 use qdrant_client::qdrant::{ScoredPoint, SearchPoints, WithPayloadSelector, WithVectorsSelector, Filter, Condition, with_payload_selector, with_vectors_selector};
 
 
@@ -27,7 +26,7 @@ impl Agent {
 
         debug!(?query, "executing semantic query");
         let semantic_result = self
-            .db
+            .app_state.db_connection
             .semantic
             .search(&query, limit, offset, threshold, retrieve_more)
             .await;
@@ -68,7 +67,7 @@ impl Agent {
 
         debug!(?query, "executing semantic query");
         let semantic_result = self
-            .db
+            .app_state.db_connection
             .semantic
             .search_symbol(&query, limit, offset, threshold, retrieve_more)
             .await;

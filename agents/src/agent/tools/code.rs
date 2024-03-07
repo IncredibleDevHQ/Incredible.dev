@@ -13,8 +13,7 @@ impl Agent {
         self.update(Update::StartStep(SearchStep::Code {
             query: query.clone(),
             response: String::new(),
-        }))
-        .await?;
+        }))?;
 
         // let results = self
         //     .semantic_search(query.into(), CODE_SEARCH_LIMIT, 0, 0.0, true)
@@ -27,8 +26,7 @@ impl Agent {
         // log the error and return of there is error 
         if results_symbol.is_err() {
             let response = format!("Error validating if the collection exists: {}", results_symbol.err().unwrap());
-            error!("Error validating if the collection exists: {}", results_symbol.err().unwrap());
-            self.update(Update::Error(response.clone())).await?;
+            error!("Error validating if the collection exists: {}", response);
             // TODO: Shankar, fix the return type of this function return Result<String, Error> , and abort 
             // the agent flow on error.
             return Ok(response);
@@ -73,8 +71,7 @@ impl Agent {
         self.update(Update::ReplaceStep(SearchStep::Code {
             query: query.clone(),
             response: response.clone(),
-        }))
-        .await?;
+        }))?;
 
         Ok(response)
     }
