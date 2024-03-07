@@ -1,14 +1,15 @@
 use hashbrown::HashMap;
+use semver::Op;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::agent::graph::symbol;
 use crate::agent::llm_gateway::{self, api::FunctionCall};
-use crate::{parser, AppState};
 use crate::search::payload::{CodeExtractMeta, PathExtractMeta};
 use crate::search::semantic::SemanticQuery;
+use crate::{parser, AppState};
 use anyhow::{anyhow, Context, Result};
 use futures::stream::{StreamExt, TryStreamExt}; // Ensure these are imported
 use tokio::sync::mpsc::Sender;
@@ -52,7 +53,6 @@ pub struct ContentDocument {
     pub symbol_locations: Vec<u8>,
     pub symbols: String,
 }
-
 
 #[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize, Clone)]
 pub struct FileDocument {
@@ -155,6 +155,10 @@ impl Agent {
         self.last_exchange_mut().apply_update(update);
         //println!("update {:?}", update);
         Ok(())
+    }
+
+    pub fn get_final_anwer(&self) -> &Exchange {
+        self.exchanges.last().expect("answer was not set")
     }
 
     pub fn last_exchange(&self) -> &Exchange {
@@ -597,7 +601,8 @@ impl Agent {
         // println!("fetching file content {}\n", path);
         let configuration = Config::new().unwrap();
 
-        self.app_state.db_connection
+        self.app_state
+            .db_connection
             .get_file_from_quickwit(&configuration.repo_name, "relative_path", path)
             .await
     }
@@ -617,7 +622,8 @@ impl Agent {
     ) -> impl Iterator<Item = FileDocument> + 'a {
         println!("executing fuzzy search {}\n", query);
         let configuration = Config::new().unwrap();
-        self.app_state.db_connection
+        self.app_state
+            .db_connection
             .fuzzy_path_match(&configuration.repo_name, "relative_path", query, 50)
             .await
     }

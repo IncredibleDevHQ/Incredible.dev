@@ -71,6 +71,7 @@ dependencies = [
  "hashbrown 0.14.3",
  "lazy-regex",
  "log",
+ "log",
  "ndarray",
  "ort",
  "pest",
@@ -737,6 +738,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "compact_str"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1261,6 +1269,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.49",
+]
+
+[[package]]
+name = "env_filter"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a009aa4810eb158359dda09d0c87378e4bbb89b5a801f016885a4707ba24f7ea"
+dependencies = [
+ "log",
+ "regex",
 ]
 
 [[package]]
@@ -2321,7 +2339,9 @@ dependencies = [
 [[package]]
 name = "log"
 version = "0.4.21"
+version = "0.4.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 
 [[package]]
@@ -3618,6 +3638,7 @@ dependencies = [
  "expect-test",
  "hashbrown 0.14.3",
  "lazy_static",
+ "log",
  "log",
  "md5",
  "ndarray",
