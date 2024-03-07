@@ -1,22 +1,21 @@
 use hashbrown::HashMap;
+use semver::Op;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::agent::graph::symbol;
 use crate::agent::llm_gateway::{self, api::FunctionCall};
-use crate::db_client::DbConnect;
-use crate::parser;
-use crate::parser::parser::Literal;
 use crate::search::payload::{CodeExtractMeta, PathExtractMeta};
 use crate::search::semantic::SemanticQuery;
+use crate::{parser, AppState};
 use anyhow::{anyhow, Context, Result};
 use futures::stream::{StreamExt, TryStreamExt}; // Ensure these are imported
 use tokio::sync::mpsc::Sender;
 use tracing::{debug, info, instrument};
 
 use crate::agent::graph::scope_graph::{get_line_number, SymbolLocations};
-use crate::search::semantic;
 
 use crate::config::Config;
 
@@ -55,14 +54,6 @@ pub struct ContentDocument {
     pub symbols: String,
 }
 
-// impl ContentDocument {
-//     pub fn hoverable_ranges(&self) -> Option<Vec<TextRange>> {
-//         TreeSitterFile::try_build(self.content.as_bytes(), self.lang.as_ref()?)
-//             .and_then(TreeSitterFile::hoverable_ranges)
-//             .ok()
-//     }
-// }
-
 #[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize, Clone)]
 pub struct FileDocument {
     pub relative_path: String,
@@ -93,9 +84,8 @@ pub enum AgentError {
 }
 
 pub struct Agent {
-    pub db: DbConnect,
+    pub app_state: Arc<AppState>,
     pub exchanges: Vec<Exchange>,
-    pub exchange_tx: Sender<Exchange>,
 
     pub llm_gateway: llm_gateway::Client,
 
@@ -161,10 +151,14 @@ impl Agent {
 
     /// Update the last exchange
     #[instrument(skip(self), level = "debug")]
-    pub async fn update(&mut self, update: Update) -> Result<()> {
+    pub fn update(&mut self, update: Update) -> Result<()> {
         self.last_exchange_mut().apply_update(update);
         //println!("update {:?}", update);
         Ok(())
+    }
+
+    pub fn get_final_anwer(&self) -> &Exchange {
+        self.exchanges.last().expect("answer was not set")
     }
 
     pub fn last_exchange(&self) -> &Exchange {
@@ -607,7 +601,8 @@ impl Agent {
         // println!("fetching file content {}\n", path);
         let configuration = Config::new().unwrap();
 
-        self.db
+        self.app_state
+            .db_connection
             .get_file_from_quickwit(&configuration.repo_name, "relative_path", path)
             .await
     }
@@ -627,7 +622,8 @@ impl Agent {
     ) -> impl Iterator<Item = FileDocument> + 'a {
         println!("executing fuzzy search {}\n", query);
         let configuration = Config::new().unwrap();
-        self.db
+        self.app_state
+            .db_connection
             .fuzzy_path_match(&configuration.repo_name, "relative_path", query, 50)
             .await
     }
