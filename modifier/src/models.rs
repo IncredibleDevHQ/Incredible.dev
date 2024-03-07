@@ -40,9 +40,9 @@ pub struct CodeModifierRequest {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct ContextFile {
-    path: String,
-    hidden: bool,
-    repo: String,
-    branch: Option<String>,
-    ranges: Vec<Range<usize>>,
+    pub path: String,
+    pub hidden: bool,
+    pub repo: String,
+    pub branch: Option<String>,
+    pub ranges: Vec<Range<usize>>,
 }
