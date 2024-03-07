@@ -1,6 +1,7 @@
 use std::sync::Arc;
+extern crate common;
 
-use crate::models::SpanSearchRequest;
+use common::CodeSpanRequest;
 use crate::search::code_search::get_file_content;
 use crate::utilities::util::pluck_code_by_lines;
 use crate::AppState;
@@ -13,7 +14,7 @@ use crate::AppState;
 /// # Returns
 /// - An `Ok` variant of `Result` containing an `impl warp::Reply` that represents the HTTP response,
 ///   which varies based on the outcome of the file content retrieval.
-pub async fn span_search(params: SpanSearchRequest,app_state:Arc<AppState>) -> Result<impl warp::Reply, warp::Rejection> {
+pub async fn span_search(params: CodeSpanRequest,app_state:Arc<AppState>) -> Result<impl warp::Reply, warp::Rejection> {
     // Clone necessary parameters from the request for local use.
     let path = params.path.clone();
     let repo_name = params.repo.clone();
