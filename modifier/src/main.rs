@@ -2,24 +2,29 @@ use anyhow::Result;
 use log::{error, info};
 use reqwest::Client;
 
+mod agent;
 mod controller;
 mod models;
 mod routes;
+
 use core::result::Result::Ok;
 use std::sync::Arc;
 
+#[allow(unused)]
 struct AppState {
     configuration: Configuration,
     database_connection: DatabaseConnection,
 }
 
 #[derive(Debug, Clone)]
+#[allow(unused)]
 pub struct Configuration {
     environment: String,
     quikwit_db_url: String,
 }
 
 #[derive(Debug, Clone)]
+#[allow(unused)]
 pub struct DatabaseConnection {
     http_client: Client,
 }
