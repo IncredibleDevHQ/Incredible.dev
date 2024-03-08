@@ -22,6 +22,9 @@ struct AppState {
 pub struct Configuration {
     environment: String,
     code_search_url: String,
+    openai_url: String,
+    openai_api_key: String,
+    openai_model: String,
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +44,10 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
         environment: std::env::var("ENVIRONMENT").unwrap_or("development".to_string()),
         code_search_url: std::env::var("CODE_SEARCH_URL")
             .unwrap_or("http://127.0.0.1:3000".to_string()),
+        openai_url: std::env::var("OPENAI_URL").unwrap_or("https://api.openai.com".to_string()),
+        openai_api_key: std::env::var("OPENAI_API_KEY")
+            .unwrap_or("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".to_string()),
+        openai_model: std::env::var("OPENAI_MODEL").unwrap_or("gpt-4-1106-preview".to_string()),
     };
     info!("Initialized configuration: {:?}", configuration);
 
