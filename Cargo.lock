@@ -733,6 +733,7 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "reqwest",
  "serde",
  "serde_json",
