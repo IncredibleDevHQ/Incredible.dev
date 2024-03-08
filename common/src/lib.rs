@@ -1,25 +1,24 @@
 use std::ops::Range;
 pub mod service_interaction;
 
-
-
-pub mod prompt_string_generator{
+pub mod prompt_string_generator {
     use std::future::Future;
     use std::pin::Pin;
 
     pub trait GeneratePromptString {
         // Return a boxed future. This method will be implemented to generate a prompt.
         // The generic RequestData allows flexibility in what data is required to generate the prompt.
-        fn generate_prompt(&self)  -> Pin<Box<dyn Future<Output = Result<String, Box<dyn std::error::Error>>> + Send>>;
+        fn generate_prompt(
+            &self,
+        ) -> Pin<Box<dyn Future<Output = Result<String, Box<dyn std::error::Error>>> + Send>>;
     }
 }
-
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct CodeContext {
     pub path: String,
     pub hidden: bool,
-    pub repo: String,  // Ensure RepoRef is accessible or defined here.
+    pub repo: String, // Ensure RepoRef is accessible or defined here.
     pub branch: Option<String>,
     pub ranges: Vec<Range<usize>>,
 }
@@ -45,9 +44,18 @@ pub struct CodeSpanRequest {
     pub branch: Option<String>,
     pub path: String,
     // text range of the code chunk from the file to extract
-    pub start: Option<usize>,
-    pub end: Option<usize>,
+    pub ranges: Option<Vec<Range<usize>>>,
     pub id: Option<String>,
 }
 
-
+// Represents a code chunk
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CodeChunk {
+    pub path: String,
+    #[serde(rename = "snippet")]
+    pub snippet: String,
+    #[serde(rename = "start")]
+    pub start_line: usize,
+    #[serde(rename = "end")]
+    pub end_line: usize,
+}
