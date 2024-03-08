@@ -59,3 +59,16 @@ pub struct CodeChunk {
     #[serde(rename = "end")]
     pub end_line: usize,
 }
+
+impl std::fmt::Display for CodeChunk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let lines: Vec<&str> = self.snippet.lines().collect();
+        for (i, line) in lines.iter().enumerate() {
+            // Calculate the line number starting from start_line
+            let line_number = i + self.start_line;
+            writeln!(f, "{}: {}", line_number, line)?;
+        }
+
+        Ok(())
+    }
+}
