@@ -20,7 +20,7 @@ struct AppState {
 #[allow(unused)]
 pub struct Configuration {
     environment: String,
-    quikwit_db_url: String,
+    code_search_url: String,
 }
 
 #[derive(Debug, Clone)]
@@ -38,7 +38,7 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
 
     let configuration = Configuration {
         environment: std::env::var("ENVIRONMENT").unwrap_or("development".to_string()),
-        quikwit_db_url: std::env::var("QUICKWIT_DB_URL").unwrap_or("quickwit_db_url".to_string()),
+        code_search_url: std::env::var("CODE_SEARCH_URL").unwrap_or("http://127.0.0.1:3000".to_string()),
     };
     info!("Initialized configuration: {:?}", configuration);
 
