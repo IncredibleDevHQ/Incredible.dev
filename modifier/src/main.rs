@@ -6,6 +6,7 @@ mod agent;
 mod controller;
 mod models;
 mod routes;
+mod utils;
 
 use core::result::Result::Ok;
 use std::sync::Arc;
@@ -38,7 +39,8 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
 
     let configuration = Configuration {
         environment: std::env::var("ENVIRONMENT").unwrap_or("development".to_string()),
-        code_search_url: std::env::var("CODE_SEARCH_URL").unwrap_or("http://127.0.0.1:3000".to_string()),
+        code_search_url: std::env::var("CODE_SEARCH_URL")
+            .unwrap_or("http://127.0.0.1:3000".to_string()),
     };
     info!("Initialized configuration: {:?}", configuration);
 
