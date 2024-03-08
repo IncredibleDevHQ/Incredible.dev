@@ -1,3 +1,4 @@
+use std::ops::Range;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -32,7 +33,16 @@ pub struct FileChange {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct CodeModifierRequest {
-    pub query: String,
-    pub repo_name: String,
-    pub file_paths: Vec<String>,
+    pub user_query: String,
+    pub assistant_query: String,
+    pub context_files: Vec<ContextFile>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+pub struct ContextFile {
+    path: String,
+    hidden: bool,
+    repo: String,
+    branch: Option<String>,
+    ranges: Vec<Range<usize>>,
 }
