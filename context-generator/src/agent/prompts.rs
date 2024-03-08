@@ -1,67 +1,77 @@
+use crate::routes::RetrieveCodeRequest;
 use std::future::Future;
 use std::pin::Pin;
-use crate::routes::RetrieveCodeRequest;
-use futures::future::{try_join_all};
 
 extern crate common;
 
-use common::CodeSpanRequest;
-use common::service_interaction::fetch_code_span;
 use common::prompt_string_generator::GeneratePromptString;
-
+use common::service_interaction::fetch_code_span;
+use common::CodeSpanRequest;
 
 struct RetrieveCodeRequestWithUrl {
     pub url: String,
     pub request_data: RetrieveCodeRequest,
 }
 
-
+// Implement the GeneratePromptString trait for RetrieveCodeRequestWithUrl structure.
 impl GeneratePromptString for RetrieveCodeRequestWithUrl {
-    // Define the asynchronous method to generate a prompt string.
-    fn generate_prompt(&self) -> Pin<Box<dyn Future<Output = Result<String, Box<dyn std::error::Error>>> + Send>> {
-        // Clone necessary data to move it into the async block. This is required because the async block takes ownership of the variables it uses.
+    // Define an asynchronous method to generate a prompt based on the provided request data.
+    // The method returns a future that, when awaited, will yield a Result containing the generated prompt or an error.
+    fn generate_prompt(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<String, Box<dyn std::error::Error>>> + Send>> {
+        // Clone the qna_context from request_data to allow its move into the async block due to the `move` semantics.
         let qna_context_clone = self.request_data.qna_context.clone();
         let url_clone = self.url.clone();
 
         // Create and return a pinned Future that, when awaited, generates the prompt.
         Box::pin(async move {
-            // Iterate over each CodeUnderstanding object. Since each question-answer pair can have multiple contexts, we use nested iteration.
-            let fetches = qna_context_clone.qna.into_iter().flat_map(|qna| {
-                // For each CodeUnderstanding, iterate over its vector of CodeContext objects.
-                qna.context.into_iter().flat_map(move |context| {
-                    // For each CodeContext, iterate over its ranges to create individual fetch tasks.
-                    context.ranges.into_iter().map(move |range| {
-                        // Construct a CodeSpanRequest for each range. This struct contains all necessary details to fetch the code span.
+            // Transform each QnA in the cloned context into a future.
+            // Each future corresponds to fetching the code span(s) and formatting it (them) with its related question and answer.
+            let fetches = qna_context_clone
+                .qna
+                .into_iter()
+                .flat_map(move |qna| {
+                    qna.context.into_iter().map(move |context| {
+                        // Create a request object containing necessary data to fetch the code span(s).
                         let request = CodeSpanRequest {
-                            repo: context.repo.clone(), // Repository information.
-                            branch: context.branch.clone(), // Optional branch information.
-                            path: context.path.clone(), // File path in the repository.
-                            start: Some(range.start), // Start line of the code span.
-                            end: Some(range.end), // End line of the code span.
-                            id: None, // Optional identifier, not used in this context.
+                            repo: context.repo.clone(),
+                            branch: context.branch.clone(),
+                            path: context.path.clone(),
+                            ranges: Some(context.ranges), // Send the ranges directly
+                            id: None, // No ID is required in this scenario; it's set to None.
                         };
 
-                        // Define an async block that fetches the code span and constructs a part of the final prompt.
+                        // Define an asynchronous block that will be responsible for fetching the code span(s) using the above request,
+                        // and then formatting it (them) together with the corresponding question and answer.
                         async move {
-                            // Fetch the code span using the URL and request details. This is likely a network call to a code retrieval service.
+                            // Fetch the code span(s) using the provided URL and request data.
+                            // The fetched code is then formatted with the question and answer.
                             let code = fetch_code_span(url_clone.clone(), request).await?;
-                            // Format the fetched code along with the question and answer. Including the path adds clarity to the prompt.
-                            Ok(format!("{}\nQuestion: {}\nAnswer: {}\n\nContext: {}\n", code, qna.question, qna.answer, context.path))
+
+                            let mut formatted_code = String::new();
+                            for chunk in code {
+                                formatted_code.push_str(&format!("{}\n", chunk));
+                            }
+
+                            Ok(format!(
+                                "{}\nQuestion: {}\nAnswer: {}\n\n",
+                                formatted_code, qna.question, qna.answer
+                            ))
                         }
                     })
                 })
-            });
+                .collect::<Vec<_>>(); // Collect into Vec to use with future::try_join_all
 
-            // Use try_join_all to await all fetch tasks concurrently. This returns a Result containing either all successful results concatenated or the first error encountered.
-            match try_join_all(fetches).await {
-                Ok(results) => Ok(results.concat()), // Concatenate all successful results into a single string.
-                Err(e) => Err(e), // Propagate any errors encountered during fetch operations.
+            // Await all the futures created for each code span fetch. This uses try_join_all to wait for all futures to complete.
+            // If all succeed, it collects the results into a vector of strings. If any future fails, it returns the first encountered error.
+            match futures::future::try_join_all(fetches).await {
+                Ok(results) => Ok(results.concat()), // Concatenate all successful fetch results into a single string.
+                Err(e) => Err(e), // Propagate the first error encountered during the fetches.
             }
         })
     }
 }
-
-
 
 pub fn functions_new(add_proc: bool) -> serde_json::Value {
     let mut funcs = serde_json::json!(
@@ -158,7 +168,6 @@ pub fn functions_new(add_proc: bool) -> serde_json::Value {
     funcs
 }
 
-
 // new system prompt
 pub fn new_system_prompt_v2<'a>(paths: impl IntoIterator<Item = &'a str>) -> String {
     let mut s = "".to_string();
@@ -199,9 +208,8 @@ pub fn new_system_prompt_v2<'a>(paths: impl IntoIterator<Item = &'a str>) -> Str
         This enhanced prompt ensures that the process of using `function.expand`, `function.range`, and `function.none` is clear and structured, including how to properly provide parameters for expansions, ensuring a thorough and effective analysis and modification of the code.
         
         "#);
-        s
+    s
 }
-
 
 pub fn file_explanation(question: &str, path: &str, code: &str) -> String {
     format!(
@@ -237,4 +245,3 @@ Q: {question}
 A: "#
     )
 }
-
