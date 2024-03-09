@@ -263,11 +263,7 @@ pub async fn get_file_content(
 
     let environment = config.environment.clone();
 
-    let new_index_id = if environment == "development" {
-        repo_name.clone()
-    } else {
-        generate_quikwit_index_name(repo_name)
-    };
+    let new_index_id = generate_quikwit_index_name(repo_name);
 
     // println!("fetching file content {}\n", path);
 
