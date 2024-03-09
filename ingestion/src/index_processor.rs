@@ -53,6 +53,10 @@ pub async fn process_entries(all_entries: Vec<FileFields>, repo_name: &str, quic
 
     let config = include_str!("../index-config.yaml");
     let new_index_id = generate_quikwit_index_name(repo_name);
+    info!(
+        "Quickwit index_id: {} for repo: {}",
+        new_index_id, repo_name
+    );
     let index_config =
         generate_index_schema::replace_index_id_in_yaml(config.to_string(), &new_index_id).unwrap();
 
