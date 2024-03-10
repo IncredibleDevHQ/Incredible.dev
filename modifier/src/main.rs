@@ -7,6 +7,7 @@ mod controller;
 mod models;
 mod routes;
 mod utils;
+mod diff;
 
 use core::result::Result::Ok;
 use std::sync::Arc;
