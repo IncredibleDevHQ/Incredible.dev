@@ -1,10 +1,10 @@
 use crate::{
-    agent::prompts, models::{CodeModifierRequest, ContextFile}, utils::llm_gateway, AppState
+    agent::prompts, models::{CodeModifierRequest, ContextFile}, utils::llm_gateway, CONFIG
 };
 use common::{service_interaction::fetch_code_span, CodeChunk, CodeSpanRequest};
 use futures::future::try_join_all;
 use reqwest::StatusCode;
-use std::{collections::HashMap, convert::Infallible, sync::Arc};
+use std::{collections::HashMap, convert::Infallible};
 use anyhow::Result;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
@@ -15,12 +15,9 @@ struct CodeSnippets {
 }
 
 pub async fn handle_modify_code(
-    request: CodeModifierRequest,
-    app_state: Arc<AppState>,
+    request: CodeModifierRequest
 ) -> Result<impl warp::Reply, Infallible> {
-    let configuration = app_state.configuration.clone();
-
-    let code_snippets = match get_code_snippets(request.clone(), configuration.code_search_url.clone()).await {
+    let code_snippets = match get_code_snippets(request.clone(), CONFIG.code_search_url.clone()).await {
         Ok(code_snippets) => code_snippets,
         Err(e) => {
             log::error!("Failed to fetch code snippets: {}", e);
@@ -36,10 +33,10 @@ pub async fn handle_modify_code(
     };
 
     // TODO: Refactor llm gateway to be a common package and log the OpenAI request and response.
-    let llm_gateway = llm_gateway::Client::new(&configuration.openai_url.clone())
+    let llm_gateway = llm_gateway::Client::new(&CONFIG.openai_url.clone())
         .temperature(0.0)
-        .bearer(configuration.openai_api_key.clone())
-        .model(&configuration.openai_model.clone());
+        .bearer(CONFIG.openai_api_key.clone())
+        .model(&CONFIG.openai_model.clone());
 
     let system_prompt = prompts::diff_prompt(&context.clone());
     let user_message = format!("Create a patch for the task \"{}\".\n\n\nHere is the solution:\n\n{}", request.user_query, request.assistant_query);
