@@ -1,6 +1,7 @@
 use crate::agent;
 use crate::AppState;
 use agent::llm_gateway;
+use common::prompt_string_generator;
 use futures::StreamExt;
 use log::{error, info};
 use std::time::Duration;
@@ -9,19 +10,41 @@ use crate::agent::agent::Action;
 use crate::agent::agent::Agent;
 use crate::agent::exchange::Exchange;
 use crate::routes;
-use anyhow::Result;
+use agent::prompts::RetrieveCodeRequestWithUrl;
+use anyhow::{Result, format_err};
 use std::convert::Infallible;
 use std::sync::Arc;
 use warp::http::StatusCode;
 
+extern crate common;
+use common::prompt_string_generator::GeneratePromptString;
 
 pub async fn handle_find_context_context(
     req: routes::RetrieveCodeRequest,
     app_state: Arc<AppState>,
 ) -> Result<impl warp::Reply, Infallible> {
+    // create an instance of retreive code request with url
+    // TODO: Remove the hardcoded URL
+    let retrieve_code_request = RetrieveCodeRequestWithUrl::from("http://localhost:8080/span");
+    // use the questions, answer and their code spans to create header for the prompt string.
+    let prompt_string_code_context_result = retrieve_code_request.generate_prompt().await;
 
-    
-    let mut action = Action::Query(query_target);
+    // return internal server error on error constructing prompt header
+     if prompt_string_code_context_result.is_err() {
+        // error warp json error with internal server error status 
+        let error_str = format!("Unable to fetch code context: {}", prompt_string_code_context_result.err().unwrap());
+        error!("Error constructing prompt header: {}", error_str);
+        // error warp json error with internal server error status
+        return Ok(warp::reply::with_status(
+            warp::reply::json(&error_str),
+            StatusCode::INTERNAL_SERVER_ERROR
+        ));
+
+    };
+
+    let prompt_string_context = prompt_string_code_context_result.unwrap();
+
+    let mut action = Action::Query(prompt_string_context);
     let id = uuid::Uuid::new_v4();
 
     let mut exchanges = vec![agent::exchange::Exchange::new(id, parsed_query.clone())];
