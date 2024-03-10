@@ -8,7 +8,7 @@ use common::prompt_string_generator::GeneratePromptString;
 use common::service_interaction::fetch_code_span;
 use common::CodeSpanRequest;
 
-struct RetrieveCodeRequestWithUrl {
+pub struct RetrieveCodeRequestWithUrl {
     pub url: String,
     pub request_data: RetrieveCodeRequest,
 }
@@ -20,12 +20,17 @@ impl GeneratePromptString for RetrieveCodeRequestWithUrl {
     fn generate_prompt(
         &self,
     ) -> Pin<Box<dyn Future<Output = Result<String, Box<dyn std::error::Error>>> + Send>> {
-        // Clone the qna_context from request_data to allow its move into the async block due to the `move` semantics.
+        // Clone the qna_context from request_data to allow its move into the async block due to the `move` semantics
+
         let qna_context_clone = self.request_data.qna_context.clone();
         let url_clone = self.url.clone();
 
         // Create and return a pinned Future that, when awaited, generates the prompt.
         Box::pin(async move {
+            let intro = format!(
+                "Here is the issue described by the user from the repository '{}':\n'{}'\nHere are some interesting facts in the form of question and answer and their corresponding code context to help you identify relevant code snippets to solve the problem:\n",
+                qna_context_clone.repo, qna_context_clone.issue_description
+            );
             // Transform each QnA in the cloned context into a future.
             // Each future corresponds to fetching the code span(s) and formatting it (them) with its related question and answer.
             let fetches = qna_context_clone
@@ -41,22 +46,24 @@ impl GeneratePromptString for RetrieveCodeRequestWithUrl {
                             ranges: Some(context.ranges), // Send the ranges directly
                             id: None, // No ID is required in this scenario; it's set to None.
                         };
-
-                        // Define an asynchronous block that will be responsible for fetching the code span(s) using the above request,
-                        // and then formatting it (them) together with the corresponding question and answer.
                         async move {
-                            // Fetch the code span(s) using the provided URL and request data.
-                            // The fetched code is then formatted with the question and answer.
-                            let code = fetch_code_span(url_clone.clone(), request).await?;
+                            // Fetch the code spans using the provided URL and request data.
+                            let code_chunks = fetch_code_span(url_clone.clone(), request).await?;
 
+                            // Initialize an empty string to accumulate the formatted code.
                             let mut formatted_code = String::new();
-                            for chunk in code {
-                                formatted_code.push_str(&format!("{}\n", chunk));
+
+                            // Iterate over each code chunk, appending each to the `formatted_code` string.
+                            // Assuming each `CodeChunk` can be displayed as a string (using to_string() or similar).
+                            for chunk in code_chunks {
+                                formatted_code.push_str(&format!("Code:\n{}\n", chunk.to_string()));
                             }
 
+                            // Format the entire section with the question, answer, and associated code.
+                            // This string will be concatenated with others to form the complete prompt.
                             Ok(format!(
-                                "{}\nQuestion: {}\nAnswer: {}\n\n",
-                                formatted_code, qna.question, qna.answer
+                                "Question: {}\nAnswer: {}\n{}\n", // Include the formatted_code within the output.
+                                qna.question, qna.answer, formatted_code
                             ))
                         }
                     })
