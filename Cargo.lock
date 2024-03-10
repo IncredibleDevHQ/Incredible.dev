@@ -2527,6 +2527,7 @@ dependencies = [
  "lazy-regex",
  "log",
  "ndarray",
+ "once_cell",
  "ort",
  "pest",
  "pest_derive",
