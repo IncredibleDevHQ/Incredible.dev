@@ -1,10 +1,10 @@
 use crate::{
-    models::{CodeModifierRequest, ContextFile},
-    AppState,
+    agent::{llm_gateway, prompts}, models::{CodeModifierRequest, ContextFile}, AppState
 };
 use common::{service_interaction::fetch_code_span, CodeChunk, CodeSpanRequest};
 use futures::future::try_join_all;
-use std::{collections::HashMap, convert::Infallible, error::Error, sync::Arc};
+use reqwest::StatusCode;
+use std::{collections::HashMap, convert::Infallible, sync::Arc};
 use anyhow::Result;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
@@ -18,15 +18,48 @@ pub async fn handle_modify_code(
     request: CodeModifierRequest,
     app_state: Arc<AppState>,
 ) -> Result<impl warp::Reply, Infallible> {
-    // Logic to process code modification request
+    let configuration = app_state.configuration.clone();
 
-    Ok(warp::reply())
+    let code_snippets = match get_code_snippets(request.clone(), configuration.code_search_url.clone()).await {
+        Ok(code_snippets) => code_snippets,
+        Err(e) => {
+            log::error!("Failed to fetch code snippets: {}", e);
+            return Ok(warp::reply::with_status(warp::reply::json(&format!("Error: Failed to fetch code snippets")), StatusCode::INTERNAL_SERVER_ERROR))
+        },
+    };
+    let context = match generate_llm_context(code_snippets.clone(), request.context_files.clone()) {
+        Ok(context) => context,
+        Err(e) => {
+            log::error!("Failed to generate LLM context: {}", e);
+            return Ok(warp::reply::with_status(warp::reply::json(&format!("Error: Failed to generate LLM context")), StatusCode::INTERNAL_SERVER_ERROR))
+        },
+    };
+
+    let llm_gateway = llm_gateway::Client::new(&configuration.openai_url.clone())
+        .temperature(0.0)
+        .bearer(configuration.openai_api_key.clone())
+        .model(&configuration.openai_model.clone());
+
+    let system_prompt = prompts::diff_prompt(&context.clone());
+    let user_message = format!("Create a patch for the task \"{}\".\n\n\nHere is the solution:\n\n{}", request.user_query, request.assistant_query);
+
+    let messages = vec![llm_gateway::api::Message::system(&system_prompt), llm_gateway::api::Message::user(&user_message)];
+
+    let response = match llm_gateway.chat(&messages, None).await {
+        Ok(response) => Some(response),
+        Err(_) => None,
+    };
+
+    Ok(warp::reply::with_status(
+        warp::reply::json(&response),
+        StatusCode::OK,
+    ))
 }
 
 async fn get_code_snippets(
     request: CodeModifierRequest,
     code_search_url: String,
-) -> Result<Vec<CodeSnippets>, Box<dyn Error>> {
+) -> Result<Vec<CodeSnippets>, anyhow::Error> {
     let url = format!("{}/span", code_search_url);
 
     let futures: Vec<_> = request
@@ -43,21 +76,26 @@ async fn get_code_snippets(
             };
             let repo_clone = context_file.repo.clone();
             async move {
-                fetch_code_span(url, code_span_request)
-                    .await
-                    .map(|chunks| (repo_clone, chunks))
+                match fetch_code_span(url, code_span_request)
+                    .await {
+                        Ok(code_chunks) => Ok((repo_clone, code_chunks)),
+                        Err(e) => {
+                            log::error!("Failed to fetch code span: {}", e); 
+                            Ok((repo_clone, Vec::new()))
+                        },
+                    }
             }
         })
         .collect();
 
-    let results = try_join_all(futures).await?;
+    let results = try_join_all(futures).await;
 
-    aggregate_code_chunks(results)
+    results.and_then(|chunks| aggregate_code_chunks(chunks))
 }
 
 fn aggregate_code_chunks(
     results: Vec<(String, Vec<CodeChunk>)>,
-) -> Result<Vec<CodeSnippets>, Box<dyn Error>> {
+) -> Result<Vec<CodeSnippets>, anyhow::Error> {
     let mut snippets_map: HashMap<(String, String), Vec<CodeChunk>> = HashMap::new();
 
     for (repo, code_chunks) in results {
