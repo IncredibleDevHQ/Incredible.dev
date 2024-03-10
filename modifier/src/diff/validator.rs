@@ -6,7 +6,6 @@ use futures::{StreamExt, TryStreamExt};
 
 use super::diff::{self, DiffChunk, DiffHunk};
 
-#[allow(unused)]
 pub async fn validate_diffs(
     diff_response: &str,
     llm_context: String,
