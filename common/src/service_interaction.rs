@@ -2,7 +2,7 @@ use crate::CodeChunk;
 
 use super::CodeSpanRequest;
 use anyhow::{anyhow, Error, Result};
-use reqwest;
+use reqwest::{self, StatusCode};
 use serde_json::Value; // Ensure this is accessible, either defined here or imported.
 
 // Async function to fetch a specific span of code from a service.
@@ -15,29 +15,54 @@ pub async fn fetch_code_span(
     // Create a new HTTP client instance. This client will be used to make the HTTP request.
     let client = reqwest::Client::new();
 
-    // Send a POST request to the search_service_url with the JSON-serialized CodeSpanRequest.
-    let res: Value = client
+    log::debug!(
+        "Fetching code span from {} with request: {:?}",
+        search_service_url,
+        request
+    );
+
+    // Send the POST request to the search_service_url with the JSON-serialized CodeSpanRequest.
+    let response = client
         .post(search_service_url)
         .json(&request)
         .send()
-        .await?
-        .json::<Value>()
         .await?;
 
-    // Check the "status" field in the response to determine if the operation was successful.
-    // If the status is "success", retrieve the "content" field from the data object, which contains the requested code span.
-    // If the status is not "success", or if any fields are missing, return an error with the description provided in the response or a default error message.
-    match res["status"].as_str() {
-        Some("success") => {
-            let code_chunks = serde_json::from_value::<Vec<CodeChunk>>(res["data"].clone())
-                .map_err(|e| anyhow!("Failed to deserialize code chunks: {}", e))?; // Use anyhow! to convert the error.
+    match response.status() {
+        // Handle successful responses (200-299).
+        StatusCode::OK => {
+            let res: Value = response.json::<Value>().await?;
+            log::debug!("Received successful response for code span: {:?}", res);
+
+            // TODO: Send the deserialize error in a more structured way.
+            let code_chunks = serde_json::from_value::<Vec<CodeChunk>>(res.clone())
+                .map_err(|e| anyhow!("Failed to deserialize code chunks: {}", e))?;
             Ok(code_chunks)
         }
-        _ => Err(anyhow!(
-            "Error fetching code span: {}",
-            res.get("data")
-                .and_then(|d| d["error"].as_str())
-                .unwrap_or("Unknown error")
-        )),
+        // Handle client errors (400-499).
+        StatusCode::BAD_REQUEST
+        | StatusCode::UNAUTHORIZED
+        | StatusCode::FORBIDDEN
+        | StatusCode::NOT_FOUND
+        | StatusCode::METHOD_NOT_ALLOWED => {
+            let error_message = format!("Client error: {}", response.status());
+            log::error!("{}", error_message);
+            Err(anyhow!(error_message))
+        }
+        // Handle server errors (500-599).
+        StatusCode::INTERNAL_SERVER_ERROR
+        | StatusCode::BAD_GATEWAY
+        | StatusCode::SERVICE_UNAVAILABLE
+        | StatusCode::GATEWAY_TIMEOUT => {
+            let error_message = format!("Server error: {}", response.status());
+            log::error!("{}", error_message);
+            Err(anyhow!(error_message))
+        }
+        // Handle any other statuses.
+        _ => {
+            let error_message = format!("Unexpected HTTP response: {}", response.status());
+            log::error!("{}", error_message);
+            Err(anyhow!(error_message))
+        }
     }
 }
