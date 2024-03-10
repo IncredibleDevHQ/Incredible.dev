@@ -100,7 +100,7 @@ dependencies = [
  "tokio-stream",
  "tower",
  "tracing",
- "tree-sitter 0.20.10",
+ "tree-sitter",
  "uuid",
  "warp",
 ]
@@ -706,10 +706,10 @@ dependencies = [
  "anyhow",
  "pathdiff",
  "serde_json",
- "stack-graphs 0.13.0",
- "tree-sitter 0.20.10",
+ "stack-graphs 0.13.0 (git+https://github.com/github/stack-graphs.git)",
+ "tree-sitter",
  "tree-sitter-python",
- "tree-sitter-stack-graphs 0.8.1",
+ "tree-sitter-stack-graphs 0.8.1 (git+https://github.com/github/stack-graphs.git)",
  "walkdir",
 ]
 
@@ -841,7 +841,7 @@ dependencies = [
  "tokio-stream",
  "tower",
  "tracing",
- "tree-sitter 0.20.10",
+ "tree-sitter",
  "uuid",
  "warp",
 ]
@@ -2073,13 +2073,13 @@ dependencies = [
  "serde_json",
  "serde_yaml 0.8.26",
  "smallvec",
- "stack-graphs 0.12.0 (git+https://github.com/SubhamPramanik/stack-graphs.git)",
+ "stack-graphs 0.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
  "thiserror-impl",
  "tokenizers",
  "tokio",
  "tracing",
- "tree-sitter 0.20.10",
+ "tree-sitter",
  "tree-sitter-c",
  "tree-sitter-c-sharp",
  "tree-sitter-cpp",
@@ -2091,7 +2091,7 @@ dependencies = [
  "tree-sitter-r",
  "tree-sitter-ruby",
  "tree-sitter-rust",
- "tree-sitter-stack-graphs 0.7.1",
+ "tree-sitter-stack-graphs 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tree-sitter-stack-graphs-python",
  "tree-sitter-typescript",
  "uuid",
@@ -2361,24 +2361,14 @@ dependencies = [
 
 [[package]]
 name = "lsp-positions"
-version = "0.3.2"
-source = "git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1#e5b7cbcfe21611a86c98e8bfa799a286cee27da2"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa61ce94f83d24eba829bbba054b40e9996d8531c87670799fd0c43dea97be37"
 dependencies = [
  "bincode 2.0.0-rc.3",
  "memchr",
  "serde",
- "tree-sitter 0.21.0",
- "unicode-segmentation",
-]
-
-[[package]]
-name = "lsp-positions"
-version = "0.3.2"
-source = "git+https://github.com/SubhamPramanik/stack-graphs.git#cb0f675f4fa2863e62728eee806ca0cfe240ec48"
-dependencies = [
- "bincode 2.0.0-rc.3",
- "memchr",
- "serde",
+ "tree-sitter",
  "unicode-segmentation",
 ]
 
@@ -2390,7 +2380,7 @@ dependencies = [
  "bincode 2.0.0-rc.3",
  "memchr",
  "serde",
- "tree-sitter 0.20.10",
+ "tree-sitter",
  "unicode-segmentation",
 ]
 
@@ -2564,7 +2554,7 @@ dependencies = [
  "tokio-stream",
  "tower",
  "tracing",
- "tree-sitter 0.20.10",
+ "tree-sitter",
  "uuid",
  "warp",
 ]
@@ -3649,7 +3639,7 @@ dependencies = [
  "tokenizers",
  "tokio",
  "tracing",
- "tree-sitter 0.20.10",
+ "tree-sitter",
  "warp",
 ]
 
@@ -3919,8 +3909,9 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
 name = "stack-graphs"
-version = "0.12.0"
-source = "git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1#e5b7cbcfe21611a86c98e8bfa799a286cee27da2"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af63a628b6666b3ce870cac60623d71d1575a9ccc5b2f0a2f83143c3e7da9a3a"
 dependencies = [
  "bincode 2.0.0-rc.3",
  "bitvec",
@@ -3930,29 +3921,7 @@ dependencies = [
  "fxhash",
  "itertools 0.10.5",
  "libc",
- "lsp-positions 0.3.2 (git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1)",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_with",
- "smallvec",
- "thiserror",
-]
-
-[[package]]
-name = "stack-graphs"
-version = "0.12.0"
-source = "git+https://github.com/SubhamPramanik/stack-graphs.git#cb0f675f4fa2863e62728eee806ca0cfe240ec48"
-dependencies = [
- "bincode 2.0.0-rc.3",
- "bitvec",
- "controlled-option",
- "either",
- "enumset",
- "fxhash",
- "itertools 0.10.5",
- "libc",
- "lsp-positions 0.3.2 (git+https://github.com/SubhamPramanik/stack-graphs.git)",
+ "lsp-positions 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusqlite",
  "serde",
  "serde_json",
@@ -3974,7 +3943,7 @@ dependencies = [
  "fxhash",
  "itertools 0.10.5",
  "libc",
- "lsp-positions 0.3.3",
+ "lsp-positions 0.3.3 (git+https://github.com/github/stack-graphs.git)",
  "rusqlite",
  "serde",
  "serde_json",
@@ -4611,23 +4580,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "tree-sitter"
-version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "705bf7c0958d0171dd7d3a6542f2f4f21d87ed5f1dc8db52919d3a6bed9a359a"
-dependencies = [
- "cc",
- "regex",
-]
-
-[[package]]
 name = "tree-sitter-c"
 version = "0.20.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4bbd5f3d8658c08581f8f2adac6c391c2e9fa00fe9246bf6c5f52213b9cc6b72"
 dependencies = [
  "cc",
- "tree-sitter 0.20.10",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -4637,7 +4596,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9ab3dc608f34924fa9e10533a95f62dbc14b6de0ddd7107722eba66fe19ae31"
 dependencies = [
  "cc",
- "tree-sitter 0.20.10",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -4659,7 +4618,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46b04a5ada71059afb9895966a6cc1094acc8d2ea1971006db26573e7dfebb74"
 dependencies = [
  "cc",
- "tree-sitter 0.20.10",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -4668,7 +4627,7 @@ version = "0.19.1"
 source = "git+https://github.com/tree-sitter/tree-sitter-go.git?rev=05900faa3cdb5d2d8c8bd5e77ee698487e0a8611#05900faa3cdb5d2d8c8bd5e77ee698487e0a8611"
 dependencies = [
  "cc",
- "tree-sitter 0.20.10",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -4685,7 +4644,7 @@ dependencies = [
  "smallvec",
  "string-interner",
  "thiserror",
- "tree-sitter 0.20.10",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -4696,7 +4655,7 @@ checksum = "042342584c5a7a0b833d9fc4e2bdab3f9868ddc6c4b339a1e01451c6720868bc"
 dependencies = [
  "regex",
  "thiserror",
- "tree-sitter 0.20.10",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -4706,7 +4665,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2adc5696bf5abf761081d7457d2bb82d0e3b28964f4214f63fd7e720ef462653"
 dependencies = [
  "cc",
- "tree-sitter 0.20.10",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -4716,7 +4675,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38d1463af5be7052171161db7cfe45c7621ed959ae533972ab47a09b1ed70ec0"
 dependencies = [
  "cc",
- "tree-sitter 0.20.10",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -4733,7 +4692,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "tree-sitter 0.20.10",
+ "tree-sitter",
  "tree-sitter-highlight",
  "tree-sitter-tags",
 ]
@@ -4744,7 +4703,7 @@ version = "0.19.1"
 source = "git+https://github.com/tree-sitter/tree-sitter-php.git?rev=d43130fd1525301e9826f420c5393a4d169819fc#d43130fd1525301e9826f420c5393a4d169819fc"
 dependencies = [
  "cc",
- "tree-sitter 0.20.10",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -4754,7 +4713,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6c93b1b1fbd0d399db3445f51fd3058e43d0b4dcff62ddbdb46e66550978aa5"
 dependencies = [
  "cc",
- "tree-sitter 0.20.10",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -4764,7 +4723,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "522c13f4cc46213148b19d4ad40a988ffabd51fd90eb7de759844fbde49bda0c"
 dependencies = [
  "cc",
- "tree-sitter 0.20.10",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -4774,7 +4733,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44d50ef383469df8485f024c5fb01faced8cb90368192a7ba02605b43b2427fe"
 dependencies = [
  "cc",
- "tree-sitter 0.20.10",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -4784,13 +4743,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0832309b0b2b6d33760ce5c0e818cb47e1d72b468516bfe4134408926fa7594"
 dependencies = [
  "cc",
- "tree-sitter 0.20.10",
+ "tree-sitter",
 ]
 
 [[package]]
 name = "tree-sitter-stack-graphs"
-version = "0.7.1"
-source = "git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1#e5b7cbcfe21611a86c98e8bfa799a286cee27da2"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e32c7eb7d8ce3a06f1b9b52921095fc3318af748949917ee77131ca28d7f35d"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
@@ -4803,17 +4763,17 @@ dependencies = [
  "indoc",
  "itertools 0.10.5",
  "log",
- "lsp-positions 0.3.2 (git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1)",
+ "lsp-positions 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "once_cell",
  "pathdiff",
  "regex",
  "rust-ini",
  "serde_json",
  "sha1",
- "stack-graphs 0.12.0 (git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1)",
+ "stack-graphs 0.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
  "time",
- "tree-sitter 0.21.0",
+ "tree-sitter",
  "tree-sitter-config",
  "tree-sitter-graph",
  "tree-sitter-loader",
@@ -4836,17 +4796,17 @@ dependencies = [
  "indoc",
  "itertools 0.10.5",
  "log",
- "lsp-positions 0.3.3",
+ "lsp-positions 0.3.3 (git+https://github.com/github/stack-graphs.git)",
  "once_cell",
  "pathdiff",
  "regex",
  "rust-ini",
  "serde_json",
  "sha1",
- "stack-graphs 0.13.0",
+ "stack-graphs 0.13.0 (git+https://github.com/github/stack-graphs.git)",
  "thiserror",
  "time",
- "tree-sitter 0.20.10",
+ "tree-sitter",
  "tree-sitter-config",
  "tree-sitter-graph",
  "tree-sitter-loader",
@@ -4856,12 +4816,13 @@ dependencies = [
 [[package]]
 name = "tree-sitter-stack-graphs-python"
 version = "0.1.0"
-source = "git+https://github.com/SubhamPramanik/stack-graphs.git?branch=SubhamPramanik-patch-1#e5b7cbcfe21611a86c98e8bfa799a286cee27da2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be8371b7b134ca52e064f2b2e1f2e4bd9cb9e92a07c7f357fa66f5ea111ab15c"
 dependencies = [
  "anyhow",
  "clap 4.5.2",
  "tree-sitter-python",
- "tree-sitter-stack-graphs 0.7.1",
+ "tree-sitter-stack-graphs 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -4873,7 +4834,7 @@ dependencies = [
  "memchr",
  "regex",
  "thiserror",
- "tree-sitter 0.20.10",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -4883,7 +4844,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8bc1d2c24276a48ef097a71b56888ac9db63717e8f8d0b324668a27fd619670"
 dependencies = [
  "cc",
- "tree-sitter 0.20.10",
+ "tree-sitter",
 ]
 
 [[package]]

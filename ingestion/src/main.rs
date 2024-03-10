@@ -398,6 +398,8 @@ impl Repository {
         let head_ref = self.git_repo.find_reference(&branch_ref_str)?;
         let head_commit = self.git_repo.find_commit(head_ref.target().unwrap())?;
         let tree = head_commit.tree()?;
+
+        #[cfg(feature = "stack_graph")]
         // Suppoerted files for stack graph construction
         let mut supported_files: HashSet<PathBuf> = HashSet::new();
 
@@ -481,6 +483,7 @@ impl Repository {
                             return git2::TreeWalkResult::Ok;
                         }
 
+                        #[cfg(feature = "stack_graph")]
                         // Add supported files to the `supported_files` HashSet to build stack-graph representation of the files later.
                         if ["Java", "Python", "Typescript", "Javascript"]
                             .contains(&language.as_str())
@@ -625,6 +628,7 @@ impl Repository {
             git2::TreeWalkResult::Ok
         })?;
 
+        #[cfg(feature = "stack_graph")]
         // Creating the stack graph for the supported files
         let _ = stack_graph::graph::index_files(supported_files.into_iter().collect(), "Python");
 
