@@ -1,11 +1,10 @@
-use crate::{
-    agent::prompts, models::{CodeModifierRequest, ContextFile}, utils::llm_gateway, CONFIG
-};
 use common::{service_interaction::fetch_code_span, CodeChunk, CodeSpanRequest};
 use futures::future::try_join_all;
 use reqwest::StatusCode;
 use std::{collections::HashMap, convert::Infallible};
-use anyhow::Result;
+use anyhow::{Context, Result};
+
+use crate::{agent::prompts, diff::{formatter::{format_diffs, Diff}, validator::validate_diffs}, models::{CodeModifierRequest, ContextFile}, utils::llm_gateway, CONFIG};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 struct CodeSnippets {
@@ -14,23 +13,25 @@ struct CodeSnippets {
     code_chunks: Vec<CodeChunk>,
 }
 
-pub async fn handle_modify_code(
-    request: CodeModifierRequest
+pub async fn handle_modify_code_wrapper(
+    request: CodeModifierRequest,
 ) -> Result<impl warp::Reply, Infallible> {
-    let code_snippets = match get_code_snippets(request.clone(), CONFIG.code_search_url.clone()).await {
-        Ok(code_snippets) => code_snippets,
+    match handle_modify_code_core(request).await {
+        Ok(response) => Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK)),
         Err(e) => {
-            log::error!("Failed to fetch code snippets: {}", e);
-            return Ok(warp::reply::with_status(warp::reply::json(&format!("Error: Failed to fetch code snippets")), StatusCode::INTERNAL_SERVER_ERROR))
-        },
-    };
-    let context = match generate_llm_context(code_snippets.clone(), request.context_files.clone()) {
-        Ok(context) => context,
-        Err(e) => {
-            log::error!("Failed to generate LLM context: {}", e);
-            return Ok(warp::reply::with_status(warp::reply::json(&format!("Error: Failed to generate LLM context")), StatusCode::INTERNAL_SERVER_ERROR))
-        },
-    };
+            log::error!("Error processing modify code request: {}", e);
+            // TODO: Convert the error message into a structured error response
+            let error_message = format!("Error processing request: {}", e);
+            Ok(warp::reply::with_status(warp::reply::json(&error_message), StatusCode::INTERNAL_SERVER_ERROR))
+        }
+    }
+}
+
+async fn handle_modify_code_core(
+    request: CodeModifierRequest,
+) -> Result<Diff, anyhow::Error> {
+    let code_snippets = get_code_snippets(request.clone(), CONFIG.code_search_url.clone()).await.context("Failed to fetch code snippets")?;
+    let context = generate_llm_context(code_snippets, request.context_files.clone()).context("Failed to generate LLM response")?;
 
     // TODO: Refactor llm gateway to be a common package and log the OpenAI request and response.
     let llm_gateway = llm_gateway::Client::new(&CONFIG.openai_url.clone())
@@ -38,20 +39,21 @@ pub async fn handle_modify_code(
         .bearer(CONFIG.openai_api_key.clone())
         .model(&CONFIG.openai_model.clone());
 
+
     let system_prompt = prompts::diff_prompt(&context.clone());
     let user_message = format!("Create a patch for the task \"{}\".\n\n\nHere is the solution:\n\n{}", request.user_query, request.assistant_query);
 
     let messages = vec![llm_gateway::api::Message::system(&system_prompt), llm_gateway::api::Message::user(&user_message)];
 
-    let response = match llm_gateway.chat(&messages, None).await {
-        Ok(response) => Some(response),
-        Err(_) => None,
-    };
+    let response = llm_gateway.chat(&messages, None).await?
+                                        .choices[0]
+                                        .message
+                                        .content
+                                        .clone()
+                                        .unwrap_or_else(|| String::new());
 
-    Ok(warp::reply::with_status(
-        warp::reply::json(&response),
-        StatusCode::OK,
-    ))
+    let valid_chunks = validate_diffs(&response, context, llm_gateway).await?;
+    Ok(format_diffs(valid_chunks)?)
 }
 
 async fn get_code_snippets(
