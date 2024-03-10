@@ -76,9 +76,13 @@ pub async fn span_search(
                 }
 
                 // If ranges is None or empty, or if the code above does not execute, return the entire content
-                // TODO: The response should be sent in Vec<CodeChunk> format with file starting line and ending line.
                 Ok(warp::reply::with_status(
-                    warp::reply::json(&code_file),
+                    warp::reply::json(&Vec::from([CodeChunk {
+                        path: path.clone(),
+                        snippet: code_file.to_string(),
+                        start_line: 1,
+                        end_line: code_file.lines().count(),
+                    }])),
                     warp::http::StatusCode::OK,
                 ))
             }
