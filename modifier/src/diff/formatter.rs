@@ -47,7 +47,6 @@ pub struct Hunk {
     pub patch: String,
 }
 
-#[allow(unused)]
 pub fn format_diffs(chunks: Vec<DiffChunk>) -> Result<Diff, anyhow::Error> {
     let mut diff = Diff { chunks: vec![] };
 
