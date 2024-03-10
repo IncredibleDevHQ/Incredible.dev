@@ -230,7 +230,6 @@ pub struct Client {
 }
 
 impl Client {
-    #[allow(unused)]
     pub fn new(base_url: &str) -> Self {
         Self {
             http: reqwest::Client::new(),
@@ -248,7 +247,6 @@ impl Client {
         }
     }
 
-    #[allow(unused)]
     pub fn model(mut self, model: &str) -> Self {
         if model.is_empty() {
             self.model = None;
@@ -271,7 +269,6 @@ impl Client {
         self
     }
 
-    #[allow(unused)]
     pub fn temperature(mut self, temperature: impl Into<Option<f32>>) -> Self {
         self.temperature = temperature.into();
         self
@@ -283,7 +280,6 @@ impl Client {
         self
     }
 
-    #[allow(unused)]
     pub fn bearer(mut self, bearer: String) -> Self {
         self.bearer_token = Some(bearer.clone());
 
@@ -309,7 +305,6 @@ impl Client {
             .await
     }
 
-    #[allow(unused)]
     pub async fn chat(
         &self,
         messages: &[api::Message],
@@ -319,7 +314,7 @@ impl Client {
         // const SCALE_FACTOR: f32 = 1.5;
         println!("llm call");
         match functions {
-            Some(func_call) => {}
+            Some(_func_call) => {}
             None => {}
         }
         // println!("Messages: \n {:?}", messages);
