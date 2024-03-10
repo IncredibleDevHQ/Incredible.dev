@@ -13,8 +13,8 @@ use core::result::Result::Ok;
 use std::env;
 
 #[derive(Debug, Clone)]
-#[allow(unused)]
 pub struct Configuration {
+    #[allow(unused)]
     environment: String,
     code_search_url: String,
     openai_url: String,

@@ -3,7 +3,6 @@ use std::fmt;
 use anyhow::{bail, Context, Result};
 use lazy_regex::regex;
 
-#[allow(unused)]
 pub fn extract(chat_response: &str) -> Result<impl Iterator<Item = DiffChunk>> {
     Ok(relaxed_parse(&extract_diff(chat_response)?)
         // We eagerly collect the iterator, and re-create it, as our input string is created in and
