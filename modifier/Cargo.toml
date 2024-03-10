@@ -79,6 +79,7 @@ strsim = "0.10.0"
 log = "0.4.21"
 env_logger = "0.11.2"
 diffy = "0.3.0"
+once_cell = "1.8.0"
 
 [build-dependencies]
 serde = { version = "1.0.166", features = ["derive"] }
