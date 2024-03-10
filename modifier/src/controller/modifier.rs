@@ -1,5 +1,5 @@
 use crate::{
-    agent::{llm_gateway, prompts}, models::{CodeModifierRequest, ContextFile}, AppState
+    agent::prompts, models::{CodeModifierRequest, ContextFile}, utils::llm_gateway, AppState
 };
 use common::{service_interaction::fetch_code_span, CodeChunk, CodeSpanRequest};
 use futures::future::try_join_all;
@@ -35,6 +35,7 @@ pub async fn handle_modify_code(
         },
     };
 
+    // TODO: Refactor llm gateway to be a common package and log the OpenAI request and response.
     let llm_gateway = llm_gateway::Client::new(&configuration.openai_url.clone())
         .temperature(0.0)
         .bearer(configuration.openai_api_key.clone())
