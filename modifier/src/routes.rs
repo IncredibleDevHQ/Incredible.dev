@@ -23,7 +23,7 @@ fn perform_code_modifications(
             warp::body::content_length_limit(1024 * 16)
                 .and(warp::body::json::<CodeModifierRequest>()),
         )
-        .and_then(modifier::handle_modify_code)
+        .and_then(modifier::handle_modify_code_wrapper)
 }
 
 fn home_route() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
