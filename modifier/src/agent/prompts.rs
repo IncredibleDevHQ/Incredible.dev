@@ -74,3 +74,15 @@ Removing an existing file:
 {context_formatted}"#
     )
 }
+
+pub fn studio_diff_regen_hunk_prompt(context_formatted: &str) -> String {
+    format!(
+        r#"The provided diff contains no context lines. Output a new hunk with the correct 3 context lines.
+
+Here is the full context for reference:
+
+#####
+
+{context_formatted}"#
+    )
+}
