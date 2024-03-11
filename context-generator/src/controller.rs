@@ -23,9 +23,13 @@ pub async fn handle_find_context_context(
     req: routes::RetrieveCodeRequest,
     app_state: Arc<AppState>,
 ) -> Result<impl warp::Reply, Infallible> {
-    // create an instance of retreive code request with url
+    // create an instance of retreive code request with url using req and url 
+    // use localhost:8080/span as the url
     // TODO: Remove the hardcoded URL
-    let retrieve_code_request = RetrieveCodeRequestWithUrl::from("http://localhost:8080/span");
+    let retrieve_code_request = RetrieveCodeRequestWithUrl{
+        url: "http://localhost:8080/span".to_string(),
+        request_data: req.clone()
+    };
     // use the questions, answer and their code spans to create header for the prompt string.
     let prompt_string_code_context_result = retrieve_code_request.generate_prompt().await;
 
@@ -47,8 +51,7 @@ pub async fn handle_find_context_context(
     let mut action = Action::Query(prompt_string_context);
     let id = uuid::Uuid::new_v4();
 
-    let mut exchanges = vec![agent::exchange::Exchange::new(id, parsed_query.clone())];
-    exchanges.push(Exchange::new(id, parsed_query));
+    let mut exchanges = vec![Exchange::new(id, &prompt_string_context)]; 
 
     // get the configuration from the app state
     let configuration = &app_state.configuration;

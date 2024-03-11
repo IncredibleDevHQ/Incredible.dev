@@ -65,7 +65,7 @@ pub fn fetch_code_context(app_state: Arc<AppState>) -> impl Filter<Extract = imp
 
 // RetrieveCodeRequest struct defines the expected structure of the JSON payload
 // for the POST /find-code-context endpoint.
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct RetrieveCodeRequest {
     // Contains the detailed code understandings and issue description to be processed.
     pub qna_context: CodeUnderstandings,
