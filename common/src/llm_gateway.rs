@@ -1,12 +1,4 @@
-//! A Rust-friendly interface to Bloop's LLM Gateway service.
-
-use std::time::Duration;
-
-use anyhow::{anyhow, bail, Result};
-use axum::http::StatusCode;
-use futures::{Stream, StreamExt};
-use reqwest_eventsource::EventSource;
-use tracing::{debug, error, warn};
+use anyhow::{Result};
 use tiktoken_rs;
 use self::api::FunctionCall;
 

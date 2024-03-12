@@ -1,8 +1,5 @@
 use crate::agent;
 use crate::AppState;
-use agent::llm_gateway;
-use common::prompt_string_generator;
-use futures::StreamExt;
 use log::{error, info};
 use std::time::Duration;
 
@@ -18,6 +15,7 @@ use warp::http::StatusCode;
 
 extern crate common;
 use common::prompt_string_generator::GeneratePromptString;
+use common::llm_gateway::Client;
 
 pub async fn handle_find_context_context(
     req: routes::RetrieveCodeRequest,
@@ -43,12 +41,11 @@ pub async fn handle_find_context_context(
             warp::reply::json(&error_str),
             StatusCode::INTERNAL_SERVER_ERROR
         ));
-
     };
 
     let prompt_string_context = prompt_string_code_context_result.unwrap();
 
-    let mut action = Action::Query(prompt_string_context);
+    let mut action = Action::Query(prompt_string_context.clone());
     let id = uuid::Uuid::new_v4();
 
     let mut exchanges = vec![Exchange::new(id, &prompt_string_context)]; 
@@ -57,7 +54,7 @@ pub async fn handle_find_context_context(
     let configuration = &app_state.configuration;
 
     // intialize new llm gateway.
-    let llm_gateway = llm_gateway::Client::new(&configuration.openai_url)
+    let llm_gateway = Client::new(&configuration.openai_url)
         .temperature(0.0)
         .bearer(configuration.openai_key.clone())
         .model(&configuration.openai_model.clone());
@@ -104,8 +101,10 @@ pub async fn handle_find_context_context(
 
     agent.complete();
 
+    // send a dummy response for now
+    // TODO: Fix the dummy response
     Ok(warp::reply::with_status(
-        warp::reply::json(&response),
+        warp::reply::json(&format!("Code context fetched successfully")),
         StatusCode::OK,
     ))
 }
