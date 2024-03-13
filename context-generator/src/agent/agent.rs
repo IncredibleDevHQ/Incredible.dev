@@ -1,11 +1,11 @@
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
 
 //use crate::agent::graph::symbol;
-use crate::{parser, AppState};
+use crate::AppState;
 //use crate::search::payload::{CodeExtractMeta, PathExtractMeta};
 use anyhow::{anyhow, Context, Result};
 use futures::stream::{StreamExt, TryStreamExt}; // Ensure these are imported
@@ -54,7 +54,6 @@ pub struct ContentDocument {
     pub symbol_locations: Vec<u8>,
     pub symbols: String,
 }
-
 
 #[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize, Clone)]
 pub struct FileDocument {
@@ -188,8 +187,8 @@ impl Agent {
     }
 
     #[instrument(skip(self))]
-    pub async fn step(&mut self, action: Action) -> Result<Option<Action>> {
-        println!("\ninside step {:?}\n", action);
+    pub async fn step(&mut self, action: Action) -> Result<Option<Action>, anyhow::Error> {
+        debug!("\ninside step {:?}\n", action);
 
         // match &action {
         //     Action::Query(s) => s.clone(),
@@ -209,9 +208,9 @@ impl Agent {
         )
         .unwrap();
 
-        let mut history = vec![llm_gateway::api::Message::system(&prompts::new_system_prompt_v2(
-            self.paths(),
-        ))];
+        let mut history = vec![llm_gateway::api::Message::system(
+            &prompts::new_system_prompt_v2(self.paths()),
+        )];
         //history.extend(self.history()?);
 
         println!("full history:\n {:?}", history);
@@ -317,9 +316,7 @@ impl Agent {
     //         })?;
     //     Ok(history)
     // }
-    
-    
-    
+
     // pub async fn get_file_content(&self, path: &str) -> Result<Option<ContentDocument>> {
     //     // println!("fetching file content {}\n", path);
     //     let configuration = Config::new().unwrap();

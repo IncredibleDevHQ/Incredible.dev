@@ -1,7 +1,6 @@
 use crate::controller;
 use crate::AppState;
 use serde::Deserialize;
-use std::convert::Infallible;
 use std::sync::Arc;
 use warp::{self, http::Response, Filter};
 
