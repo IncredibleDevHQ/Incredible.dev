@@ -2,9 +2,9 @@ use crate::agent;
 use crate::agent::agent::ANSWER_MODEL;
 use crate::agent::prompts;
 use crate::config::Config;
-use crate::db_client;
 use crate::AppState;
 use agent::llm_gateway;
+use common::CodeUnderstanding;
 use futures::StreamExt;
 use log::{error, info};
 use std::time::Duration;
@@ -38,8 +38,6 @@ pub async fn handle_retrieve_code(
         ));
     }
 
-    // parse the query
-    let query_clone = req.query.clone();
     let parsed_query = parse_query(req.query.clone());
     // if the query is not parsed, return internal server error.
     if parsed_query.is_err() {
@@ -120,10 +118,15 @@ pub async fn handle_retrieve_code(
     }
 
     let final_answer = agent.get_final_anwer().answer.as_ref().unwrap().to_string();
+    let final_context = agent.get_final_anwer().final_context.clone();
     agent.complete();
 
     Ok(warp::reply::with_status(
-        warp::reply::json(&final_answer),
+        warp::reply::json(&CodeUnderstanding {
+            question: req.query.clone(),
+            answer: final_answer.clone(),
+            context: final_context.clone(),
+        }),
         StatusCode::OK,
     ))
 }
