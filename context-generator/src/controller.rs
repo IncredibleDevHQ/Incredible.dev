@@ -8,7 +8,7 @@ use crate::agent::agent::Agent;
 use crate::agent::exchange::Exchange;
 use crate::routes;
 use agent::prompts::RetrieveCodeRequestWithUrl;
-use anyhow::{Result, format_err};
+use anyhow::Result;
 use std::convert::Infallible;
 use std::sync::Arc;
 use warp::http::StatusCode;
@@ -21,11 +21,11 @@ pub async fn handle_find_context_context(
     req: routes::RetrieveCodeRequest,
     app_state: Arc<AppState>,
 ) -> Result<impl warp::Reply, Infallible> {
-    // create an instance of retreive code request with url using req and url 
-    // use localhost:8080/span as the url
-    // TODO: Remove the hardcoded URL
+    // get search api url from app state config 
+    let search_api_url = app_state.configuration.search_service_url.clone();
+    
     let retrieve_code_request = RetrieveCodeRequestWithUrl{
-        url: "http://localhost:8080/span".to_string(),
+        url: search_api_url.to_string(),
         request_data: req.clone()
     };
     // // use the questions, answer and their code spans to create header for the prompt string.
