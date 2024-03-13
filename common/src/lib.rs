@@ -1,5 +1,6 @@
 use std::ops::Range;
 pub mod service_interaction;
+pub mod llm_gateway;
 
 pub mod prompt_string_generator {
     use std::future::Future;
@@ -9,8 +10,8 @@ pub mod prompt_string_generator {
         // Return a boxed future. This method will be implemented to generate a prompt.
         // The generic RequestData allows flexibility in what data is required to generate the prompt.
         fn generate_prompt(
-            &self,
-        ) -> Pin<Box<dyn Future<Output = Result<String, Box<dyn std::error::Error>>> + Send>>;
+            &self, url: String,
+        ) -> Pin<Box<dyn Future<Output = Result<String, Box<dyn std::error::Error + Send>>> + Send>>;
     }
 }
 

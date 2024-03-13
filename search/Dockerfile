@@ -25,8 +25,8 @@ COPY src ./src
 
 # RUN doppler setup -p semantic-search-rust --config $DOPPLER_CONFIG
 
-# Expose 3000 to the outside world
-EXPOSE 3000
+# Expose 3003 to the outside world
+EXPOSE 3003
 
 # Copy the entrypoint script into a global path and make it executable
 COPY entrypoint.sh /usr/local/bin/
