@@ -89,8 +89,8 @@ fn parent_scope_retrieve(
     app_state: Arc<AppState>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("parentscope")
-        .and(warp::get())
-        .and(warp::query::<ParentScopeRequest>())
+        .and(warp::post())
+        .and(warp::body::content_length_limit(1024 * 16).and(warp::body::json::<ParentScopeRequest>()))
         .and(warp::any().map(move || app_state.clone()))
         .and_then(parentscope::parent_scope_search) // Assuming you have a corresponding handler in the controller
 }

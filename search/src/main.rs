@@ -40,15 +40,9 @@ struct AppState {
 }
 
 async fn init_state() -> Result<AppState, anyhow::Error> {
-    let production_env = ""; // change this to production when working in production environment
 
-    let env_file = if production_env == "production" {
-        ".env.production"
-    } else {
-        ".env.development"
-    };
-    println!("env_file: {}", env_file);
-    dotenv::from_filename(env_file).ok();
+    // load using dotenv
+    dotenv().ok();
     let configuration = Configuration {
         environment: env::var("ENVIRONMENT").context("ENVRINOMENT must be set")?,
         symbol_collection_name: env::var("SYMBOL_COLLECTION_NAME")
@@ -88,5 +82,5 @@ async fn main() {
     // set up the api routes
     let search_routes = routes::search_routes(app_state.clone());
 
-    warp::serve(search_routes).run(([0, 0, 0, 0], 3000)).await;
+    warp::serve(search_routes).run(([0, 0, 0, 0], 3003)).await;
 }
