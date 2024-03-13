@@ -3,6 +3,7 @@ use crate::search::semantic::SemanticQuery;
 use std::{fmt, mem};
 
 use chrono::prelude::{DateTime, Utc};
+use common::CodeContext;
 
 /// A continually updated conversation exchange.
 ///
@@ -32,6 +33,9 @@ pub struct Exchange {
     response_timestamp: Option<DateTime<Utc>>,
 
     conclusion: Option<String>,
+
+    // Final context that was used to generate the conclusion
+    pub final_context: Vec<CodeContext>
 }
 
 impl Exchange {
@@ -67,6 +71,9 @@ impl Exchange {
             }
             Update::Focus(chunk) => {
                 self.focused_chunk = Some(chunk);
+            }
+            Update::Context(chunks) => {
+                self.final_context = chunks;
             }
         }
     }
@@ -196,4 +203,5 @@ pub enum Update {
     Article(String),
     Conclude(String),
     Focus(FocusedChunk),
+    Context(Vec<CodeContext>),
 }
