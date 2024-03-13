@@ -5,7 +5,6 @@ mod agent;
 mod config;
 mod db_client;
 mod helpers;
-mod parser;
 mod routes;
 mod search;
 mod controller;

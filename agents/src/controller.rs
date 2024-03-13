@@ -15,7 +15,6 @@ use crate::agent::exchange::Exchange;
 use crate::parser::parser::{parse_query, parse_query_target};
 use crate::routes;
 use anyhow::Result;
-use core::panic;
 use serde::Deserialize;
 use std::convert::Infallible;
 use std::sync::Arc;

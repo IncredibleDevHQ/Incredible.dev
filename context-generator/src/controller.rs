@@ -28,23 +28,25 @@ pub async fn handle_find_context_context(
         url: "http://localhost:8080/span".to_string(),
         request_data: req.clone()
     };
-    // use the questions, answer and their code spans to create header for the prompt string.
-    let prompt_string_code_context_result = retrieve_code_request.generate_prompt().await;
+    // // use the questions, answer and their code spans to create header for the prompt string.
+    // let prompt_string_code_context_result = retrieve_code_request.generate_prompt().await;
 
-    // return internal server error on error constructing prompt header
-     if prompt_string_code_context_result.is_err() {
-        // error warp json error with internal server error status 
-        let error_str = format!("Unable to fetch code context: {}", prompt_string_code_context_result.err().unwrap());
-        error!("Error constructing prompt header: {}", error_str);
-        // error warp json error with internal server error status
-        return Ok(warp::reply::with_status(
-            warp::reply::json(&error_str),
-            StatusCode::INTERNAL_SERVER_ERROR
-        ));
-    };
+    // // return internal server error on error constructing prompt header
+    //  if prompt_string_code_context_result.is_err() {
+    //     // error warp json error with internal server error status 
+    //     let error_str = format!("Unable to fetch code context: {}", prompt_string_code_context_result.err().unwrap());
+    //     error!("Error constructing prompt header: {}", error_str);
+    //     // error warp json error with internal server error status
+    //     return Ok(warp::reply::with_status(
+    //         warp::reply::json(&error_str),
+    //         StatusCode::INTERNAL_SERVER_ERROR
+    //     ));
+    // };
 
-    let prompt_string_context = prompt_string_code_context_result.unwrap();
+    // let prompt_string_context = prompt_string_code_context_result.unwrap();
 
+    // create a sample prompt string context for now
+    let prompt_string_context = "Given the following code context, what is the purpose of the function?".to_string();
     let mut action = Action::Query(prompt_string_context.clone());
     let id = uuid::Uuid::new_v4();
 

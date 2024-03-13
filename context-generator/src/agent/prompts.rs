@@ -2,6 +2,8 @@ use crate::routes::RetrieveCodeRequest;
 use std::future::Future;
 use std::pin::Pin;
 
+use std::sync::Arc;
+
 extern crate common;
 
 use common::prompt_string_generator::GeneratePromptString;
@@ -13,72 +15,77 @@ pub struct RetrieveCodeRequestWithUrl {
     pub request_data: RetrieveCodeRequest,
 }
 
-// Implement the GeneratePromptString trait for RetrieveCodeRequestWithUrl structure.
+// Implementing GeneratePromptString for RetrieveCodeRequestWithUrl to generate prompts asynchronously.
 impl GeneratePromptString for RetrieveCodeRequestWithUrl {
-    // Define an asynchronous method to generate a prompt based on the provided request data.
-    // The method returns a future that, when awaited, will yield a Result containing the generated prompt or an error.
+    // Asynchronously generate a prompt based on request data.
+    // Returns a future resolving to either the generated prompt string or an error.
     fn generate_prompt(
         &self,
-    ) -> Pin<Box<dyn Future<Output = Result<String, Box<dyn std::error::Error>>> + Send>> {
-        // Clone the qna_context from request_data to allow its move into the async block due to the `move` semantics
-
+        url: String,
+    ) -> Pin<Box<dyn Future<Output = Result<String, Box<dyn std::error::Error + Send>>> + Send>> {
+        // Clone necessary data to move into the async block.
+        let url_arc = Arc::new(self.url.clone());
         let qna_context_clone = self.request_data.qna_context.clone();
-        let url_clone = self.url.clone();
 
-        // Create and return a pinned Future that, when awaited, generates the prompt.
+        // The async block generates the prompt, returning a Future.
         Box::pin(async move {
+            // Introduction for the prompt, including the issue description and repository.
             let intro = format!(
                 "Here is the issue described by the user from the repository '{}':\n'{}'\nHere are some interesting facts in the form of question and answer and their corresponding code context to help you identify relevant code snippets to solve the problem:\n",
                 qna_context_clone.repo, qna_context_clone.issue_description
             );
-            // Transform each QnA in the cloned context into a future.
-            // Each future corresponds to fetching the code span(s) and formatting it (them) with its related question and answer.
-            let fetches = qna_context_clone
-                .qna
-                .into_iter()
-                .flat_map(move |qna| {
-                    qna.context.into_iter().map(move |context| {
-                        // Create a request object containing necessary data to fetch the code span(s).
-                        let request = CodeSpanRequest {
-                            repo: context.repo.clone(),
-                            branch: context.branch.clone(),
-                            path: context.path.clone(),
-                            ranges: Some(context.ranges), // Send the ranges directly
-                            id: None, // No ID is required in this scenario; it's set to None.
-                        };
-                        async move {
-                            // Fetch the code spans using the provided URL and request data.
-                            let code_chunks = fetch_code_span(url_clone.clone(), request).await?;
 
-                            // Initialize an empty string to accumulate the formatted code.
-                            let mut formatted_code = String::new();
+            // Transform each QnA into a future that fetches and formats code spans.
+            let fetches = qna_context_clone.qna.into_iter().map(move |qna| {
+                let question_arc = Arc::new(qna.question);
+                let answer_arc = Arc::new(qna.answer);
+                let url_arc = Arc::clone(&url_arc);
 
-                            // Iterate over each code chunk, appending each to the `formatted_code` string.
-                            // Assuming each `CodeChunk` can be displayed as a string (using to_string() or similar).
-                            for chunk in code_chunks {
-                                formatted_code.push_str(&format!("Code:\n{}\n", chunk.to_string()));
-                            }
+                // Process each code context within a QnA.
+                qna.context.into_iter().map(move |context| {
+                    let url_clone = Arc::clone(&url_arc);
+                    let question_clone = Arc::clone(&question_arc);
+                    let answer_clone = Arc::clone(&answer_arc);
 
-                            // Format the entire section with the question, answer, and associated code.
-                            // This string will be concatenated with others to form the complete prompt.
-                            Ok(format!(
-                                "Question: {}\nAnswer: {}\n{}\n", // Include the formatted_code within the output.
-                                qna.question, qna.answer, formatted_code
-                            ))
+                    // Construct the request for code spans.
+                    let request = CodeSpanRequest {
+                        repo: context.repo.clone(),
+                        branch: context.branch.clone(),
+                        path: context.path.clone(),
+                        ranges: Some(context.ranges),
+                        id: None,
+                    };
+
+                    // Asynchronously fetch and format each code chunk.
+                    async move {
+                        let code_chunks = fetch_code_span(url_clone.to_string(), request).await?;
+                        let mut formatted_code = String::new();
+
+                        // Concatenate all code chunks into a single formatted string.
+                        for chunk in code_chunks {
+                            formatted_code.push_str(&format!("Code:\n{}\n", chunk.to_string()));
                         }
-                    })
-                })
-                .collect::<Vec<_>>(); // Collect into Vec to use with future::try_join_all
 
-            // Await all the futures created for each code span fetch. This uses try_join_all to wait for all futures to complete.
-            // If all succeed, it collects the results into a vector of strings. If any future fails, it returns the first encountered error.
+                        // Combine question, answer, and formatted code into the final output.
+                        Ok(format!(
+                            "Question: {}\nAnswer: {}\n{}\n",
+                            question_clone.as_str(),
+                            answer_clone.as_str(),
+                            formatted_code
+                        ))
+                    }
+                })
+            }).flatten().collect::<Vec<_>>();
+
+            // Await all fetch and format operations, combining successful results.
             match futures::future::try_join_all(fetches).await {
-                Ok(results) => Ok(results.concat()), // Concatenate all successful fetch results into a single string.
-                Err(e) => Err(e), // Propagate the first error encountered during the fetches.
+                Ok(results) => Ok(intro + &results.concat()),  // Prepend the intro to the concatenated results.
+                Err(e) => Err(e),  // Return the first encountered error.
             }
         })
     }
 }
+
 
 pub fn functions_new(add_proc: bool) -> serde_json::Value {
     let mut funcs = serde_json::json!(
