@@ -5,7 +5,6 @@ mod agent;
 mod config;
 mod db_client;
 mod helpers;
-mod parser;
 mod routes;
 mod search;
 mod controller;
@@ -14,7 +13,7 @@ use std::sync::Arc;
 use core::result::Result::Ok;
 struct AppState {
     configuration: config::Config,
-    db_connection: db_client::DbConnect,  // Assuming DbConnection is your database connection type
+    //db_connection: db_client::DbConnect,  // Assuming DbConnection is your database connection type
 }
 
 // initialize the app state with the configuration and database connection.
@@ -33,7 +32,7 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
 
     Ok(AppState {
         configuration,
-        db_connection: db_client,
+       // db_connection: db_client,
     })
 }
 
