@@ -6,6 +6,7 @@ use super::{
     symbol_ops::TextRange,
 };
 
+use log::debug;
 /// Collection of symbol locations for *single* file
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
 #[non_exhaustive]
@@ -117,6 +118,36 @@ impl ScopeGraph {
         }
     }
 
+    // print n nodes and edges of the scope graph along with their line ranges
+    pub fn print_graph(&self, n: usize) {
+        debug!(" Printing Scope Graph:");
+        let nodes = self.graph.node_indices().take(n).collect::<Vec<_>>();
+        for node_idx in nodes {
+            let node = self.graph.node_weight(node_idx).unwrap();
+            match node {
+                NodeKind::Scope(scope) => {
+                    debug!("Scope: {:?}", scope.range);
+                }
+                NodeKind::Def(def) => {
+                    debug!("Def: {:?}", def.range);
+                }
+                NodeKind::Import(import) => {
+                    debug!("Import: {:?}", import.range);
+                }
+                NodeKind::Ref(ref_) => {
+                    debug!("Ref: {:?}", ref_.range);
+                }
+            }
+            let edges: Vec<_> = self
+                .graph
+                .edges_directed(node_idx, Direction::Incoming)
+                .collect();
+            for edge in edges {
+                let kind = self.graph.edge_weight(edge.id()).unwrap();
+                debug!("  - Incoming edge: {:?}", kind);
+            }
+        }
+    }
 
     pub fn get_node(&self, node_idx: NodeIndex) -> Option<&NodeKind> {
         self.graph.node_weight(node_idx)
@@ -332,22 +363,29 @@ impl ScopeGraph {
     pub fn node_by_range(&self, start_byte: usize, end_byte: usize) -> Option<NodeIndex> {
         self.graph
             .node_indices()
-            .filter(|&idx| {
-                if self.is_scope(idx) {
-                    let node = self.graph[idx].range();
-                    if start_byte >= node.start.byte && end_byte <= node.end.byte {
-                        // print the range
-                        println!("Range CONTAINS SCOPE: {:?}", node);
-                    }
-                }
-                self.is_definition(idx) || self.is_reference(idx) || self.is_import(idx)
-            })
+            .filter(|&idx| self.is_definition(idx) || self.is_reference(idx) || self.is_import(idx))
             .find(|&idx| {
                 let node = self.graph[idx].range();
                 start_byte >= node.start.byte && end_byte <= node.end.byte
             })
     }
 
+    pub fn smallest_encompassing_node(&self, start_byte: usize, end_byte: usize) -> Option<NodeIndex> {
+        self.graph
+            .node_indices()
+            .filter_map(|idx| {
+                let node = self.graph[idx].range();
+                if start_byte >= node.start.byte && end_byte <= node.end.byte {
+                    debug!("Found matching node within byte range: {:?} {:?}", node.start.byte, node.end.byte);
+                    Some((idx, node.end.byte - node.start.byte))
+                } else {
+                    None
+                }
+            })
+            .min_by_key(|&(_, size)| size)
+            .map(|(idx, _)| idx)
+    }
+    
     /// The "value" of a definition is loosely characterized as
     ///
     /// - the body of a function block

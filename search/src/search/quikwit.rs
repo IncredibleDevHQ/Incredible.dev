@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::env;
 use std::sync::Arc;
+use log::{error, info, debug};
 
 use crate::search::code_search::ContentDocument;
 use crate::{AppState, CLIENT};
@@ -54,7 +55,7 @@ pub async fn get_file_from_quickwit(
         .collect::<HashSet<_>>() // Removes duplicates
         .into_iter()
         .collect::<Vec<_>>();
-    println!("Quickwit paths: {:?}", paths);
+    debug!("Quickwit paths: {:?}", paths);
 
     Ok(response_array)
 }
@@ -103,7 +104,7 @@ pub async fn search_quickwit(
             Ok(api_response) => {
                 for result_item in api_response.hits {
                     if search_query == result_item.relative_path {
-                        println!("Found a match: {}", search_query);
+                        debug!("Found a match: {}", search_query);
                         response_array.push(ContentDocument {
                             relative_path: result_item.relative_path,
                             repo_name: result_item.repo_name,
@@ -118,11 +119,11 @@ pub async fn search_quickwit(
                 }
             }
             Err(err) => {
-                println!("Failed to parse JSON response: {}", err);
+                error!("Failed to parse JSON response: {}", err);
             }
         }
     } else {
-        println!("Request was not successful: {}", response.status());
+        error!("Request was not successful: {}", response.status());
     }
 
     if !response_array.is_empty() {
