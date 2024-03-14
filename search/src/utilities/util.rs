@@ -1,6 +1,7 @@
 use std::io::{self, ErrorKind};
+use log::debug;
 
-/// Returns the byte range for a specific line range in a document. 
+/// Returns the byte range for a specific line range in a document.
 ///
 /// # Arguments
 /// * `indices` - An array of byte indices marking the end of each line in the text.
@@ -8,7 +9,7 @@ use std::io::{self, ErrorKind};
 /// * `end_line` - An optional 1-based index specifying the ending line to extract.
 ///
 /// # Returns
-/// * A tuple containing the start and end byte indices for the specified line range. 
+/// * A tuple containing the start and end byte indices for the specified line range.
 /// * An IO error if the line numbers are out of bounds or invalid.
 ///
 /// # Errors
@@ -27,7 +28,12 @@ pub fn return_byte_range_from_line_numbers<'a>(
         Some(line_start) if line_start > 1 => {
             indices
                 .get(line_start - 2) // Adjust for zero-based indexing and get the previous line's end.
-                .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "Invalid starting line number, cannot be greater than total lines of code"))?
+                .ok_or_else(|| {
+                    io::Error::new(
+                        ErrorKind::InvalidInput,
+                        "Invalid starting line number, cannot be greater than total lines of code",
+                    )
+                })?
                 + 1 // Move to the character right after the line end.
         }
         // Default to the start of the text if no valid start is provided.
@@ -41,7 +47,12 @@ pub fn return_byte_range_from_line_numbers<'a>(
         // Use the last line if no end line is specified.
         None => indices.len(),
         // Return an error if the end line is invalid.
-        Some(_) => return Err(io::Error::new(ErrorKind::InvalidInput, "Start and end line cannot be negative")),
+        Some(_) => {
+            return Err(io::Error::new(
+                ErrorKind::InvalidInput,
+                "Start and end line cannot be negative",
+            ))
+        }
     };
 
     let char_end = if line_end < indices.len() {
@@ -49,12 +60,18 @@ pub fn return_byte_range_from_line_numbers<'a>(
         indices[line_end] as usize
     } else {
         // Return an error if the end line is beyond the available lines.
-        return Err(io::Error::new(ErrorKind::InvalidInput, "End line cannot be greater than the total number of lines"));
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "End line cannot be greater than the total number of lines",
+        ));
     };
 
     // Check for logical consistency: start should not be after end.
     if char_start > char_end {
-        return Err(io::Error::new(ErrorKind::InvalidInput, "Start line cannot be greater than end line"));
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "Start line cannot be greater than end line",
+        ));
     }
 
     // Return the specified substring, which is a range of lines.
@@ -83,7 +100,8 @@ pub fn pluck_code_by_lines<'a>(
     end_line: Option<usize>,
 ) -> Result<&'a str, io::Error> {
     // call return_byte_range_from_line_numbers to get the byte range for the specified line range.
-    let (char_start, char_end) = return_byte_range_from_line_numbers(indices, start_line, end_line)?;
+    let (char_start, char_end) =
+        return_byte_range_from_line_numbers(indices, start_line, end_line)?;
     // Return the specified substring, which is a range of lines.
     Ok(&text[char_start..=char_end])
 }
@@ -166,10 +184,14 @@ pub fn get_line_number(byte: usize, line_end_indices: &[usize]) -> usize {
         .position(|&line_end_byte| line_end_byte >= byte)
         // If no such line end byte is found, default to 0, indicating an unexpected input or byte beyond the document.
         .unwrap_or(0);
+    // debug print the the byte position for the obtained line number from line_end_indices
+    debug!(
+        "Reverse byte lookup: {}, line number: {}",
+        line_end_indices[line], line
+    );
 
     return line;
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -202,7 +224,7 @@ mod tests {
         // Case 4: Start and end at the beginning of lines.
         let (adjusted_start, adjusted_end) = adjust_byte_positions(11, 31, &line_end_indices);
         assert_eq!(adjusted_start, 11);
-        assert_eq!(adjusted_end, 30);  // Adjusted because end should fall at the end of the previous line.
+        assert_eq!(adjusted_end, 30); // Adjusted because end should fall at the end of the previous line.
 
         // Case 5: Start and end at the end of lines.
         let (adjusted_start, adjusted_end) = adjust_byte_positions(20, 40, &line_end_indices);
@@ -219,7 +241,6 @@ mod tests {
         assert_eq!(adjusted_start, 1); // Adjusted to the first character of the document (after line end index at 0).
         assert_eq!(adjusted_end, 10); // Adjusted to the end of the line containing position 15.
     }
-
 
     #[test]
     fn test_get_line_number() {
@@ -244,7 +265,7 @@ mod tests {
         assert_eq!(get_line_number(50, &line_end_indices), 4);
 
         // Case 7: Byte is beyond the last line.
-        assert_eq!(get_line_number(55, &line_end_indices), 0);  // Returns 0 since it's beyond the known lines.
+        assert_eq!(get_line_number(55, &line_end_indices), 0); // Returns 0 since it's beyond the known lines.
 
         // Case 8: Checking with a byte position that's right at a line ending.
         // Should return the line on which the byte is located (not the next line).
