@@ -23,10 +23,13 @@ pub struct SymbolCodeChunk {
     pub index: usize,
 }
 
-pub async fn symbol_search(query: &str) -> Result<Vec<SymbolCodeChunk>, Box<dyn Error>> {
-    let configuration = Config::new().unwrap();
+pub async fn symbol_search(
+    query: &str,
+    repo_name: &str,
+) -> Result<Vec<SymbolCodeChunk>, Box<dyn Error>> {
+    // TODO: Remove this hard coded base_url
     let base_url = "http://localhost:3000";
-    let namespace = configuration.repo_name;
+    let namespace = repo_name;
     let client = reqwest::Client::new();
     let url = format!("{}/symbols", base_url);
 
