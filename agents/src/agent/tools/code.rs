@@ -7,6 +7,7 @@ use tracing::instrument;
 use log::{info, error};
 
 const CODE_SEARCH_LIMIT: u64 = 10;
+
 impl Agent {
     #[instrument(skip(self))]
     pub async fn code_search(&mut self, query: &String) -> Result<String> {
@@ -15,13 +16,9 @@ impl Agent {
             response: String::new(),
         }))?;
 
-        // let results = self
-        //     .semantic_search(query.into(), CODE_SEARCH_LIMIT, 0, 0.0, true)
-        //     .await?;
-
         println!("semantic search\n");
 
-        let results_symbol = symbol_search(query).await;
+        let results_symbol = symbol_search(query, &self.repo_name).await;
 
         // log the error and return of there is error 
         if results_symbol.is_err() {

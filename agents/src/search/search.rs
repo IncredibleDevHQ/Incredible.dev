@@ -28,7 +28,7 @@ impl Agent {
         let semantic_result = self
             .app_state.db_connection
             .semantic
-            .search(&query, limit, offset, threshold, retrieve_more)
+            .search(&query, limit, offset, threshold, retrieve_more, &self.repo_name)
             .await;
 
         match semantic_result {
@@ -69,7 +69,7 @@ impl Agent {
         let semantic_result = self
             .app_state.db_connection
             .semantic
-            .search_symbol(&query, limit, offset, threshold, retrieve_more)
+            .search_symbol(&query, limit, offset, threshold, retrieve_more, &self.repo_name)
             .await;
 
         match semantic_result {
@@ -103,10 +103,11 @@ impl Semantic {
         limit: u64,
         offset: u64,
         threshold: f32,
+        repo_name: &str,
     ) -> anyhow::Result<Vec<ScoredPoint>> {
         let mut conditions: Vec<Condition> = Vec::new();
 
-        conditions.push(make_kv_keyword_filter("repo_name", &self.repo_name).into());
+        conditions.push(make_kv_keyword_filter("repo_name", repo_name).into());
 
         let response = self
             .qdrant
@@ -162,6 +163,7 @@ impl Semantic {
         offset: u64,
         threshold: f32,
         retrieve_more: bool,
+        repo_name: &str,
     ) -> anyhow::Result<Vec<SymbolPayload>> {
         let Some(query) = parsed_query.target() else {
             anyhow::bail!("no search target for query");
@@ -179,6 +181,7 @@ impl Semantic {
                 if retrieve_more { limit * 2 } else { limit }, // Retrieve double `limit` and deduplicate
                 offset,
                 threshold,
+                repo_name,
             )
             .await
             .map(|raw| {
@@ -196,6 +199,7 @@ impl Semantic {
         offset: u64,
         threshold: f32,
         retrieve_more: bool,
+        repo_name: &str,
     ) -> anyhow::Result<Vec<Payload>> {
         let Some(query) = parsed_query.target() else {
             anyhow::bail!("no search target for query");
@@ -213,6 +217,7 @@ impl Semantic {
                 if retrieve_more { limit * 2 } else { limit }, // Retrieve double `limit` and deduplicate
                 offset,
                 threshold,
+                repo_name,
             )
             .await
             .map(|raw| {
