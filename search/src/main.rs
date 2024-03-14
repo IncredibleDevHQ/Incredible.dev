@@ -54,7 +54,7 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
         qdrant_api_key: env::var("QDRANT_CLOUD_API_KEY").ok(),
     };
 
-    println!("Configuration: {:#?}", configuration);
+    info!("Configuration: {:#?}", configuration);
     let db_connection = db::init_db(configuration.clone()).await?;
 
     Ok(AppState {

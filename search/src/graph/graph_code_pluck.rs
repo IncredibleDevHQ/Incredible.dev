@@ -1,3 +1,6 @@
+use log::debug;
+use tracing::field::debug;
+
 use crate::graph::scope_graph::ScopeGraph;
 use crate::search::code_search::{ContentDocument, ExtractedContent, ExtractionConfig};
 use crate::utilities::util::{adjust_byte_positions, get_line_number};
@@ -26,13 +29,15 @@ impl ScopeGraph {
         line_end_indices: &Vec<usize>,
         config: &ExtractionConfig,
     ) -> ExtractedContent {
+        debug!("Looking for scope between byte range {} and {}", start_byte, end_byte);
         // Attempt to find a node within the scope graph that spans the given byte range.
-        let node_idx = self.node_by_range(start_byte, end_byte);
-
+        let node_idx = self.smallest_encompassing_node(start_byte, end_byte);
+        //self.print_graph(5);
         let mut new_start = start_byte;
         let mut new_end = end_byte;
 
         if let Some(idx) = node_idx {
+            debug!("Node found: extracting using node's range");
             // Node found: extract using the node's range.
             let node = &self.graph[self.value_of_definition(idx).unwrap_or(idx)];
             let range = node.range();
@@ -59,6 +64,7 @@ impl ScopeGraph {
             }
         } else {
             // No node found: expand the range based on the configuration.
+            debug!("Node not found");
             new_start = if start_byte > config.code_byte_expansion_range {
                 start_byte - config.code_byte_expansion_range
             } else {
@@ -66,13 +72,14 @@ impl ScopeGraph {
             };
 
             new_end = std::cmp::min(end_byte + config.code_byte_expansion_range, source_document.content.len());
-            adjust_byte_positions(new_start, new_end, line_end_indices);
+            (new_start, new_end) = adjust_byte_positions(new_start, new_end, line_end_indices);
         }
 
         // Recalculate line numbers after adjustment.
         let starting_line = get_line_number(new_start, line_end_indices);
         let ending_line = get_line_number(new_end, line_end_indices);
-
+        debug!("Final byte range: {} to {}", new_start, new_end);
+        debug!("Start line: {}, End line: {} after adjusting in file {}", starting_line, ending_line, path); 
         // Extract the content within the new byte range.
         let content = source_document.content[new_start..new_end].to_string();
 
