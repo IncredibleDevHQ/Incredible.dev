@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::{str, time::Duration};
 use thiserror::Error;
+use crate::controller::symbol::generate_qdrant_index_name;
 use crate::search::semantic::SemanticError::QdrantInitializationError;
 
 use crate::{
@@ -208,7 +209,7 @@ impl Semantic {
         let search_request = &SearchPoints {
             limit,
             vector,
-            collection_name: collection_name.to_owned().to_string(),
+            collection_name: generate_qdrant_index_name(repo_name),
             offset: Some(offset),
             score_threshold: Some(threshold),
             with_payload: Some(WithPayloadSelector {
