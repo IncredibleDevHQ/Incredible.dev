@@ -1,5 +1,3 @@
-use hashbrown::HashMap;
-use semver::Op;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 use std::sync::Arc;
@@ -8,16 +6,12 @@ use std::time::Duration;
 use crate::agent::graph::symbol;
 use crate::agent::llm_gateway::{self, api::FunctionCall};
 use crate::search::payload::{CodeExtractMeta, PathExtractMeta};
-use crate::search::semantic::SemanticQuery;
 use crate::{parser, AppState};
 use anyhow::{anyhow, Context, Result};
 use futures::stream::{StreamExt, TryStreamExt}; // Ensure these are imported
-use tokio::sync::mpsc::Sender;
 use tracing::{debug, info, instrument};
 
 use crate::agent::graph::scope_graph::{get_line_number, SymbolLocations};
-
-use crate::config::Config;
 
 // Types of repo
 #[derive(Serialize, Deserialize, Hash, PartialEq, Eq, Clone, Debug)]
@@ -65,10 +59,7 @@ pub struct FileDocument {
 use crate::agent::exchange::{Exchange, SearchStep, Update};
 
 use crate::agent::prompts;
-use crate::agent::tools::{answer, code, path, proc};
 use crate::agent::transform;
-
-use super::graph::scope_graph::ScopeGraph;
 
 /// A collection of modules that each add methods to `Agent`.
 ///
@@ -84,11 +75,10 @@ pub enum AgentError {
 }
 
 pub struct Agent {
+    pub repo_name: String,
     pub app_state: Arc<AppState>,
     pub exchanges: Vec<Exchange>,
-
     pub llm_gateway: llm_gateway::Client,
-
     pub query_id: uuid::Uuid,
 
     /// Indicate whether the request was answered.
@@ -320,97 +310,6 @@ impl Agent {
         Ok(history)
     }
 
-    // pub async fn get_scope_graphs_for_paths(
-    //     &self,
-    //     paths: Vec<String>,
-    //     code_extract_meta: Vec<PathEx>,
-    // ) -> Result<HashMap<String, SymbolLocations>> {
-    //     let mut scope_graphs = HashMap::new();
-
-    //     for path in paths {
-    //         let symbol_locations: SymbolLocations =
-    //             self.get_scope_graph_from_path(&path).await.unwrap();
-
-    //         let sg = symbol_locations
-    //             .scope_graph()
-    //             .ok_or_else(|| anyhow!("path not supported for /token-value"))?;
-
-    //         let node_idx = sg
-    //             .node_by_range(payload.start, payload.end)
-    //             .ok_or_else(|| anyhow!("token not supported for /token-value"))?;
-
-    //         let range = sg.graph[sg.value_of_definition(node_idx).unwrap_or(node_idx)].range();
-
-    //         // extend the range to cover the entire start line and the entire end line
-    //         let new_start = range.start.byte - range.start.column;
-    //         let new_end = source_document
-    //             .line_end_indices
-    //             .get(range.end.line)
-    //             .map(|l| *l as usize)
-    //             .unwrap_or(range.end.byte);
-    //         let content = source_document.content[new_start..new_end].to_string();
-
-    //         scope_graphs.insert(path, symbol_locations);
-    //     }
-
-    //     scope_graphs
-    // }
-
-    // pub async fn get_scope_graph_from_path(
-    //     &self,
-    //     paths: Vec<String>,
-    //     code_extract_meta: Vec<CodeExtractMeta>,
-    // ) -> Result<SymbolLocations> {
-
-    //     for path in paths {
-    //         let source_document = self
-    //             .get_file_content(&path)
-    //             .await?
-    //             .ok_or_else(|| anyhow!("path not found"))?;
-
-    //         let symbol_locations = source_document.symbol_locations;
-    //         // print the symbol locations
-    //         //println!("symbol_locations: {:?}", symbol_locations);
-    //         // deserialize the symbol_locations into a scope graph using bincode deserializer
-    //         let symbol_locations: SymbolLocations =
-    //             bincode::deserialize(&symbol_locations).unwrap()?;
-    //         // print the scope graph
-
-    //         let sg = source_document
-    //             .symbol_locations
-    //             .scope_graph()
-    //             .ok_or_else(|| anyhow!("path not supported for /token-value"))?;
-
-    //         let node_idx = sg
-    //             .node_by_range(payload.start, payload.end)
-    //             .ok_or_else(|| Error::internal("token not supported for /token-value"))?;
-
-    //         let range = sg.graph[sg.value_of_definition(node_idx).unwrap_or(node_idx)].range(symbol_location?;
-
-    //         // extend the range to cover the entire start line and the entire end line
-    //         let new_start = range.start.byte - range.start.column;
-    //         let new_end = source_document
-    //             .line_end_indices
-    //             .get(range.end.line)
-    //             .map(|l| *l as usize)
-    //             .unwrap_or(range.end.byte);
-    //         let content = source_document.content[new_start..new_end].to_string();
-    //     }
-
-    //     let content = self.get_file_content(path).await?;
-    //     let content_doc = content.unwrap();
-    //     // print symbol locations
-    //     let symbol_locations = content_doc.symbol_locations;
-    //     // print the symbol locations
-    //     //println!("symbol_locations: {:?}", symbol_locations);
-    //     // deserialize the symbol_locations into a scope graph using bincode deserializer
-    //     let symbol_locations: SymbolLocations = bincode::deserialize(&symbol_locations).unwrap();
-    //     // print the scope graph
-    //     //println!("scope_graph: {:?}", symbol_locations);
-    //     //println!("---------------------success deserializing: {:?}-------------", symbol_locations.scope_graph());
-    //     Ok(symbol_locations)
-    // }
-
     // Make sure to import StreamExt
 
     /// Asynchronously processes given file paths and extracts content based on the provided metadata.
@@ -474,8 +373,8 @@ impl Agent {
                 path_meta.code_extract_meta.iter().take(3).collect();
 
             for code_meta in top_three_chunks {
-                let mut start_byte: usize = code_meta.start_byte.try_into().unwrap();
-                let mut end_byte: usize = code_meta.end_byte.try_into().unwrap();
+                let start_byte: usize = code_meta.start_byte.try_into().unwrap();
+                let end_byte: usize = code_meta.end_byte.try_into().unwrap();
 
                 let mut new_start = start_byte.clone();
                 let mut new_end = end_byte.clone();
@@ -545,7 +444,7 @@ impl Agent {
                         starting_line, ending_line
                     );
                     // subtract starting and ending line
-                    let mut total_lines = ending_line - starting_line;
+                    let total_lines = ending_line - starting_line;
 
                     if total_lines < 8 {
                         println!("---new_start: {:?}, new_end: {:?}", new_start, new_end);
@@ -598,33 +497,20 @@ impl Agent {
     }
 
     pub async fn get_file_content(&self, path: &str) -> Result<Option<ContentDocument>> {
-        // println!("fetching file content {}\n", path);
-        let configuration = Config::new().unwrap();
-
         self.app_state
             .db_connection
-            .get_file_from_quickwit(&configuration.repo_name, "relative_path", path)
+            .get_file_from_quickwit(&self.repo_name, "relative_path", path)
             .await
     }
-    // pub async fn get_file_content(&self, path: &str) -> Result<Option<ContentDocument>> {
-    //     println!("executing file search {}\n", path);
-    //     self.db
-    //         .indexes
-    //         .file
-    //         .by_path(path)
-    //         .await
-    //         .with_context(|| format!("failed to read path: {}", path))
-    // }
 
     pub async fn fuzzy_path_search<'a>(
         &'a self,
         query: &str,
     ) -> impl Iterator<Item = FileDocument> + 'a {
         println!("executing fuzzy search {}\n", query);
-        let configuration = Config::new().unwrap();
         self.app_state
             .db_connection
-            .fuzzy_path_match(&configuration.repo_name, "relative_path", query, 50)
+            .fuzzy_path_match(&self.repo_name, "relative_path", query, 50)
             .await
     }
 }
