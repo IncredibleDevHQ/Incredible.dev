@@ -1,4 +1,4 @@
-use std::{collections::HashMap, mem, ops::Range, pin::pin};
+use std::{collections::HashMap, mem, ops::Range};
 
 use crate::agent::llm_gateway;
 use anyhow::{anyhow, Context, Result};
@@ -58,7 +58,7 @@ impl Agent {
             .collect::<Vec<_>>();
 
         println!("Answer message: {:?}", messages.clone());
-        let mut response = self
+        let response = self
             .llm_gateway
             .clone()
             .model(ANSWER_MODEL)
@@ -67,7 +67,7 @@ impl Agent {
 
         // retrieve messages from chatcompletion.
         let choices = response.choices[0].clone();
-        let mut response_message = choices.message.content.unwrap();
+        let response_message = choices.message.content.unwrap();
         // while let Some(fragment) = stream.next().await {
         //     let fragment: String = fragment?;
         //     response += &fragment;

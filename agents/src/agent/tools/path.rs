@@ -7,14 +7,6 @@ use crate::agent::agent::Agent;
 
 use crate::agent::exchange::{SearchStep, Update};
 
-pub struct FileDocument {
-    pub relative_path: String,
-    pub repo_name: String,
-    pub repo_ref: String,
-    pub lang: Option<String>,
-    pub branches: String,
-}
-
 impl Agent {
     #[instrument(skip(self))]
     pub async fn path_search(&mut self, query: &String) -> Result<String> {
@@ -31,8 +23,6 @@ impl Agent {
             .collect::<HashSet<_>>() // TODO: This shouldn't be necessary. Path search should return unique results.
             .into_iter()
             .collect::<Vec<_>>();
-
-        let is_semantic = paths.is_empty();
 
         // If there are no lexical results, perform a semantic search.
         if paths.is_empty() {

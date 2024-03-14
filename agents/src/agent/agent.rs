@@ -1,17 +1,12 @@
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::agent::graph::symbol;
 use crate::agent::llm_gateway::{self, api::FunctionCall};
-use crate::search::payload::{CodeExtractMeta, PathExtractMeta};
-use crate::{parser, AppState};
+use crate::AppState;
 use anyhow::{anyhow, Context, Result};
-use futures::stream::{StreamExt, TryStreamExt}; // Ensure these are imported
-use tracing::{debug, info, instrument};
-
-use crate::agent::graph::scope_graph::{get_line_number, SymbolLocations};
 
 // Types of repo
 #[derive(Serialize, Deserialize, Hash, PartialEq, Eq, Clone, Debug)]
@@ -69,6 +64,7 @@ use crate::agent::transform;
 
 pub const ANSWER_MODEL: &str = "gpt-4-0613";
 
+#[allow(unused)]
 pub enum AgentError {
     Timeout(Duration),
     Processing(anyhow::Error),
@@ -104,6 +100,7 @@ impl Drop for Agent {
 }
 
 // gien the start and end byte, readjust them to cover the entire start line and the entire end line.
+#[allow(unused)]
 pub fn adjust_byte_positions(
     new_start: usize,
     temp_new_end: usize,
@@ -130,6 +127,19 @@ pub fn adjust_byte_positions(
         .unwrap_or(temp_new_end);
 
     (adjusted_start, adjusted_end)
+}
+
+pub fn get_line_number(byte: usize, line_end_indices: &[usize]) -> usize {
+    // if byte is zero, return 0
+    if byte == 0 {
+        return 0;
+    }
+    let line = line_end_indices
+        .iter()
+        .position(|&line_end_byte| (line_end_byte as usize) >= byte)
+        .unwrap_or(0);
+
+    return line 
 }
 
 impl Agent {
@@ -308,192 +318,6 @@ impl Agent {
                 Ok(acc)
             })?;
         Ok(history)
-    }
-
-    // Make sure to import StreamExt
-
-    /// Asynchronously processes given file paths and extracts content based on the provided metadata.
-    ///
-    /// # Arguments
-    /// - `code_extract_meta`: A vector containing metadata about file paths and associated extraction details.
-    ///
-    /// # Returns
-    /// - A result containing a vector of `ExtractedContent` or an error.
-    pub async fn process_paths(
-        &self,
-        path_extract_meta: Vec<PathExtractMeta>,
-    ) -> Result<Vec<ExtractedContent>, anyhow::Error> {
-        // Initialize an empty vector to store the extracted contents.
-        let mut results = Vec::new();
-
-        // Iterate over each provided path and its associated metadata.
-        for path_meta in &path_extract_meta {
-            let path = &path_meta.path;
-
-            println!("inside process path: {:?}", path);
-            // Fetch the content of the file for the current path.
-            let source_document = self.get_file_content(path).await?;
-
-            // log the error and continue to the next path if the file content is not found.
-            if source_document.is_none() {
-                println!("file content not found for path: {:?}", path);
-                continue;
-            }
-
-            // unwrap the source document
-            let source_document = source_document.unwrap();
-
-            // Deserialize the symbol locations embedded in the source document.
-            let symbol_locations: SymbolLocations =
-                bincode::deserialize::<SymbolLocations>(&source_document.symbol_locations).unwrap();
-
-            // Convert the compacted u8 array of line end indices back to their original u32 format.
-            let line_end_indices: Vec<usize> = source_document
-                .line_end_indices
-                .chunks(4)
-                .filter_map(|chunk| {
-                    // Convert each 4-byte chunk to a u32.
-                    if chunk.len() == 4 {
-                        let value =
-                            u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as usize;
-                        Some(value)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            // Retrieve the scope graph associated with symbol locations.
-            let sg = symbol_locations
-                .scope_graph()
-                .ok_or_else(|| anyhow!("path not supported for /token-value"))?;
-
-            // For each metadata about code extraction, process and extract the required content.
-            let top_three_chunks: Vec<&CodeExtractMeta> =
-                path_meta.code_extract_meta.iter().take(3).collect();
-
-            for code_meta in top_three_chunks {
-                let start_byte: usize = code_meta.start_byte.try_into().unwrap();
-                let end_byte: usize = code_meta.end_byte.try_into().unwrap();
-
-                let mut new_start = start_byte.clone();
-                let mut new_end = end_byte.clone();
-                // print the start and end byte
-                println!(
-                    "-symbol start_byte: {:?}, end_byte: {:?}, path: {}, score: {}",
-                    start_byte, end_byte, path, path_meta.score
-                );
-                // Locate the node in the scope graph that spans the range defined by start and end bytes.
-                let node_idx = sg.node_by_range(start_byte, end_byte);
-
-                // If we can't find such a node, skip to the next metadata.
-                if node_idx.is_none() {
-                    // find start and end bytes for 100 bytes above start and 200 bytes below end
-                    // check if the start byte greater than 100
-                    // check if the end byte less than the length of the file
-                    // if yes, then set the new start and end bytes
-                    // print the new start and end bytes
-                    println!("start_byte: {:?}, end_byte: {:?}", start_byte, end_byte);
-                    if start_byte > 300 {
-                        new_start = start_byte - 300;
-                    } else {
-                        new_start = 0;
-                    }
-
-                    if end_byte + 300 < source_document.content.len() {
-                        new_end = end_byte + 300;
-                    } else {
-                        new_end = source_document.content.len();
-                    }
-                    (new_start, new_end) =
-                        adjust_byte_positions(new_start, new_end, &line_end_indices);
-
-                    // print the new start and end
-                    println!("---new_start: {:?}, new_end: {:?}", new_start, new_end);
-                    let content = source_document.content[new_start..new_end].to_string();
-                    // print content
-                    println!(
-                        "--- nodexxx content: symbol: {} \n{:?}\n",
-                        code_meta.symbol, content
-                    );
-                } else {
-                    let node_idx = node_idx.unwrap();
-
-                    // Get the byte range of the found node.
-                    let range: symbol::TextRange =
-                        sg.graph[sg.value_of_definition(node_idx).unwrap_or(node_idx)].range();
-
-                    // Adjust the starting byte to the beginning of the line.
-                    new_start = range.start.byte - range.start.column;
-
-                    // Determine the end byte based on the line end index or the range's end.
-                    new_end = line_end_indices
-                        .get(range.end.line)
-                        .map(|l| *l as usize)
-                        .unwrap_or(range.end.byte);
-
-                    println!(
-                        "Inside else adjusted start and end bytes: {:?}, {:?}",
-                        new_start, new_end
-                    );
-                    // Convert byte positions back to line numbers to identify the extracted range's start and end lines.
-                    let starting_line = get_line_number(new_start, &line_end_indices);
-                    let ending_line = get_line_number(new_end, &line_end_indices);
-                    println!(
-                        "Inside else adjusted start and end lines: {:?}, {:?}",
-                        starting_line, ending_line
-                    );
-                    // subtract starting and ending line
-                    let total_lines = ending_line - starting_line;
-
-                    if total_lines < 8 {
-                        println!("---new_start: {:?}, new_end: {:?}", new_start, new_end);
-                        // Adjustments for ensuring content context.
-
-                        // Ensure the extracted content doesn't exceed the document's bounds.
-                        let mut temp_new_end = new_end.clone();
-                        if new_end + 300 > source_document.content.len() {
-                            new_end = source_document.content.len();
-                            temp_new_end = source_document.content.len() - 2;
-                        } else {
-                            new_end += 300;
-                            temp_new_end += 300;
-                        }
-                        (new_start, new_end) =
-                            adjust_byte_positions(new_start, temp_new_end, &line_end_indices);
-                    } else if total_lines > 20 {
-                        // If the extracted content exceeds 25 lines, change the end byte to the end of the 25th line.
-                        new_end = line_end_indices
-                            .get(starting_line + 20)
-                            .map(|l| *l as usize)
-                            .unwrap_or(new_end);
-                    }
-                    // print new start and end
-                }
-
-                // find starting line and ending line
-                let ending_line = get_line_number(new_end, &line_end_indices);
-                let starting_line = get_line_number(new_start, &line_end_indices);
-
-                // Extract the desired content slice from the source document.
-                let content = source_document.content[new_start..new_end].to_string();
-
-                // Construct the extracted content object.
-                let extract_content = ExtractedContent {
-                    path: path.clone(),
-                    content,
-                    start_byte: new_start,
-                    end_byte: new_end,
-                    start_line: starting_line,
-                    end_line: ending_line,
-                };
-
-                // Store the extracted content in the results vector.
-                results.push(extract_content);
-            }
-        }
-
-        Ok(results)
     }
 
     pub async fn get_file_content(&self, path: &str) -> Result<Option<ContentDocument>> {
