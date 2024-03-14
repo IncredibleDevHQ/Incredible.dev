@@ -19,3 +19,4 @@ tracing = "0.1.37"
 tiktoken-rs = "0.4.5"
 semver = { version = "1", features = ["serde"] }
 thiserror = "1.0.41"
+md5 = "0.7.0"
