@@ -1,6 +1,7 @@
 use std::ops::Range;
 pub mod service_interaction;
 pub mod llm_gateway;
+pub mod hasher;
 
 pub mod prompt_string_generator {
     use std::future::Future;
