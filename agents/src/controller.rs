@@ -6,7 +6,6 @@ use crate::AppState;
 use agent::llm_gateway;
 use common::CodeUnderstanding;
 use futures::StreamExt;
-use log::{error, info};
 use std::time::Duration;
 
 use crate::agent::agent::Action;
@@ -24,14 +23,11 @@ pub async fn handle_retrieve_code(
     req: routes::RetrieveCodeRequest,
     app_state: Arc<AppState>,
 ) -> Result<impl warp::Reply, Infallible> {
-    info!("Query: {}, Repo: {}", req.query, req.repo);
-
-    // Combine query and repo_name in the response
-    let response = format!("Query: '{}', Repo: '{}'", req.query, req.repo);
+    log::info!("Query: {}, Repo: {}", req.query, req.repo);
 
     // if query or repo is empty, return bad request.
     if req.query.is_empty() || req.repo.is_empty() {
-        error!("Query or Repo from the user request is empty");
+        log::error!("Query or Repo from the user request is empty");
         return Ok(warp::reply::with_status(
             warp::reply::json(&format!("Error: Query or Repo is empty")),
             StatusCode::BAD_REQUEST,
@@ -41,7 +37,7 @@ pub async fn handle_retrieve_code(
     let parsed_query = parse_query(req.query.clone());
     // if the query is not parsed, return internal server error.
     if parsed_query.is_err() {
-        error!("Error parsing the query");
+        log::error!("Error parsing the query");
         return Ok(warp::reply::with_status(
             warp::reply::json(&format!("Error: {}", parsed_query.err().unwrap())),
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -52,7 +48,7 @@ pub async fn handle_retrieve_code(
     let query_target = parse_query_target(&parsed_query);
     // if the query target is not parsed, return internal server error.
     if query_target.is_err() {
-        error!("Error parsing the query target");
+        log::error!("Error parsing the query target");
         return Ok(warp::reply::with_status(
             warp::reply::json(&format!("Error: {}", query_target.err().unwrap())),
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -60,12 +56,12 @@ pub async fn handle_retrieve_code(
     }
 
     let query_target = query_target.unwrap();
-    info!("Query target{:?}", query_target);
+    log::info!("Query target{:?}", query_target);
 
     let mut action = Action::Query(query_target);
     let id = uuid::Uuid::new_v4();
 
-    let mut exchanges = vec![agent::exchange::Exchange::new(id, parsed_query.clone())];
+    let mut exchanges = vec![];
     exchanges.push(Exchange::new(id, parsed_query));
 
     // get the configuration from the app state
@@ -85,10 +81,11 @@ pub async fn handle_retrieve_code(
         llm_gateway,
         query_id: id,
         complete: false,
+        repo_name: req.repo.clone(),
     };
 
     // first action
-    info!("first action {:?}\n", action);
+    log::info!("first action {:?}\n", action);
 
     let mut i = 1;
     'outer: loop {
@@ -105,10 +102,10 @@ pub async fn handle_retrieve_code(
                 // print the action
                 i = i + 1;
 
-                println!("Action number: {}, Action: {:?}", i, action);
+                log::info!("Action number: {}, Action: {:?}", i, action);
             }
             Err(e) => {
-                eprintln!("Error during processing: {}", e);
+                log::error!("Error during processing: {}", e);
                 break 'outer;
             }
         }
@@ -117,7 +114,17 @@ pub async fn handle_retrieve_code(
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 
-    let final_answer = agent.get_final_anwer().answer.as_ref().unwrap().to_string();
+    // These need to be put beind a try catch sort of setup
+    let final_answer = match agent.get_final_anwer().answer.clone() {
+        Some(ans) => ans,
+        None => {
+            log::error!("Error getting final answer");
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&format!("Error: {}", "Error getting final answer")),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ));
+        }
+    };
     let final_context = agent.get_final_anwer().final_context.clone();
     agent.complete();
 
@@ -168,7 +175,7 @@ pub async fn generate_question_array(
     let final_response = match response {
         Some(response) => response,
         None => {
-            error!("Error: Unable to fetch response from the gateway");
+            log::error!("Error: Unable to fetch response from the gateway");
             // Return error as API response
             return Ok(warp::reply::with_status(
                 warp::reply::json(&format!("Error: Unable to fetch response from the gateway")),
