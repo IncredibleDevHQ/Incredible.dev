@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
     let code_retrieve_routes = routes::code_retrieve(app_state);
 
     warp::serve(code_retrieve_routes)
-        .run(([0, 0, 0, 0], 3001))
+        .run(([0, 0, 0, 0], 3002))
         .await;
 
     Ok(())
