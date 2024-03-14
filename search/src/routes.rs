@@ -69,22 +69,56 @@ fn span_code_chunk_retrieve(
         .and_then(span::span_search)
 }
 
-/// GET /parentscope
-/// Retrieves the code defining the parent scope based on the provided file path, line range, and optional id.
+// POST /parentscope
+/// Retrieves hierarchical scope information for a specified segment of code within a file.
 ///
-/// This endpoint listens for GET requests at the "/parentscope" path and expects query parameters
-/// encapsulated in the `ParentScopeRequest` struct.
+/// This endpoint listens for POST requests at the "/parentscope" path and expects a JSON payload
+/// encapsulated in the `ParentScopeRequest` struct. The endpoint provides detailed hierarchical
+/// scope information and code containing the expanded scope, facilitating a deeper understanding of the code's structure.
 ///
 /// # Request Parameters
 /// - `repo`: The name of the repository containing the file.
 /// - `file`: The file path within the repository.
 /// - `start_line`: The starting line number of the code range.
 /// - `end_line`: The ending line number of the code range.
-/// - `id`: An optional identifier for the request.
+/// - `id`: An optional identifier for the request, used for tracking or caching purposes.
+///
+/// # Sample Request
+/// ```json
+/// {
+///   "repo": "bloop-ai",
+///   "file": "server/bleep/src/webserver/answer.rs",
+///   "start_line": 191,
+///   "end_line": 193
+/// }
+/// ```
 ///
 /// # Responses
-/// - Returns a `warp::Reply` on success, containing the parent scope code.
-/// - Returns a `warp::Rejection` in case of errors or if the request parameters are invalid.
+/// On success, the endpoint returns a JSON object containing the path, content, byte range, line range,
+/// and the hierarchical scope map. In case of errors or invalid request parameters, a `warp::Rejection` is returned.
+///
+/// ## Successful Response Fields
+/// - `path`: The path to the file for which the scope information was requested.
+/// - `content`: The extracted content based on the provided line range, with additional context.
+/// - `start_byte`: The starting byte index of the extracted content.
+/// - `end_byte`: The ending byte index of the extracted content.
+/// - `start_line`: The starting line number of the extracted content (may differ from the request).
+/// - `end_line`: The ending line number of the extracted content (may differ from the request).
+/// - `scope_map`: A string representation of the hierarchical scope structure related to the specified code.
+///
+/// ## Sample Response
+/// ```json
+/// {
+///   "path": "server/bleep/src/webserver/answer.rs",
+///   "content": "        if let Err(err) = response.as_ref() { ... }",
+///   "start_byte": 4814,
+///   "end_byte": 5354,
+///   "start_line": 182,
+///   "end_line": 195,
+///   "scope_map": "<Root Scope Line number 1> use std::{...};\n    <Line number 178> impl AgentExecutor { ... }"
+/// }
+/// ```
+///
 fn parent_scope_retrieve(
     app_state: Arc<AppState>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
