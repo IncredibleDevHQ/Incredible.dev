@@ -1,9 +1,6 @@
 use log::debug;
 use petgraph::graph::NodeIndex;
-use tracing::field::debug;
-
 use crate::graph::scope_graph::ScopeGraph;
-use crate::graph::symbol_ops;
 use crate::search::code_search::{ContentDocument, ExtractedContent, ExtractionConfig};
 use crate::utilities::util::{adjust_byte_positions, get_line_number};
 
@@ -151,7 +148,36 @@ impl ScopeGraph {
         (line.to_string(), range.start.line + 1)
     }
 
-    /// Constructs a string representation of the hierarchical code structure starting from a given node.
+    /// Constructs a hierarchical view of the code structure starting from a given node,
+    /// moving upward through its parent scopes until it reaches the root level.
+    /// Each line of code associated with a node is indented to reflect its depth in the hierarchy,
+    /// and ellipses ("..") are included to represent skipped lines of code for readability.
+    ///
+    /// # Example
+    ///
+    /// Given a sample file content (a simplified representation of a code structure):
+    ///
+    /// ```plaintext
+    /// 1: mod my_module {
+    /// 2:     fn my_function() {
+    /// 3:         println!("Hello, world!");
+    /// 4:     }
+    /// 5: }
+    /// ```
+    ///
+    /// And a starting node corresponding to the line `println!("Hello, world!");`
+    ///
+    /// The output of `get_scope_map` would be:
+    ///
+    /// ```plaintext
+    /// <Root Scope Line number 1> mod my_module {
+    ///     <Line number 2> fn my_function() {
+    ///         <Line number 3> println!("Hello, world!");
+    ///         ..
+    ///     }
+    ///     ..
+    /// }
+    /// ```
     ///
     /// # Arguments
     /// * `start` - The starting NodeIndex from which to begin the extraction.
@@ -166,55 +192,46 @@ impl ScopeGraph {
         file_content: &str,
         line_end_indices: &Vec<usize>,
     ) -> String {
-        // Initialize with the starting node and prepare for traversal.
         let mut current_node = start;
         let mut code_blocks = Vec::new();
-        let mut depth = 0; // Tracks the depth of nesting for indentation.
+        let mut depth = 0; // Depth of nesting
+        let mut last_added_line_number: Option<usize> = None;
 
-        // Traverse up the hierarchy until a top-level node is reached.
         while !self.is_top_level(current_node) {
-            // Extract the line of code and its line number for the current node.
             let (line, line_number) =
                 self.get_code_line(current_node, file_content, line_end_indices);
-            // Prepare indentation based on the current depth.
             let indent = "    ".repeat(depth);
 
-            // Insert ellipses to indicate skipped lines for non-consecutive code blocks.
-            if let Some(last_line_number) = code_blocks
-                .last()
-                .and_then(|last: &String| last.split('>').next().unwrap().split_whitespace().last())
-                .map(|num| num.parse::<usize>().ok())
-                .flatten()
-            {
-                if last_line_number + 1 < line_number {
+            // Ensure ellipses are added for skipped line numbers.
+            if let Some(last_line) = last_added_line_number {
+                if last_line + 1 < line_number {
                     code_blocks.push(format!("{}..", indent));
                 }
             }
 
-            // Add the extracted line of code with proper indentation and line number annotation.
-            code_blocks.push(format!("{}<Line number {}> {}", indent, line_number, line));
+            // Add the line of code if it's not repeating the last line number.
+            if last_added_line_number.map_or(true, |last_line| last_line != line_number) {
+                code_blocks.push(format!("{}<Line number {}> {}", indent, line_number, line));
+                last_added_line_number = Some(line_number);
+            }
 
-            // Move to the parent scope and increase depth, if possible.
+            // Move to the parent scope and increase depth.
             if let Some(parent) = self.parent_scope(current_node) {
                 current_node = parent;
                 depth += 1;
             } else {
-                // Exit the loop if no parent is found, indicating the top level has been reached.
                 break;
             }
         }
 
-        // Add the line for the root scope node, without leading ellipses.
-        let (root_line, root_line_number) =
-            self.get_code_line(current_node, file_content, line_end_indices);
-        code_blocks.push(format!(
-            "<Root Scope Line number {}> {}",
-            root_line_number, root_line
-        ));
+        // Add the root scope's first line of code assuming it always starts from line 1, byte 0.
+        if self.is_top_level(current_node) {
+            // No indent for the root level.
+            let root_line = &file_content[0..line_end_indices[0]];
+            code_blocks.push(format!("<Root Scope Line number 1> {}", root_line));
+        }
 
-        // Since the traversal was bottom-up, reverse the blocks to present them top-down.
         code_blocks.reverse();
-        // Join the code blocks into a single string, separated by new lines.
         code_blocks.join("\n")
     }
 }
