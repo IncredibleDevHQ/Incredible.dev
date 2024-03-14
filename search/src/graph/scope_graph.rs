@@ -296,7 +296,7 @@ impl ScopeGraph {
     }
 
     // Produce the parent scope of a given scope
-    fn parent_scope(&self, start: NodeIndex) -> Option<NodeIndex> {
+    pub fn parent_scope(&self, start: NodeIndex) -> Option<NodeIndex> {
         if matches!(self.graph[start], NodeKind::Scope(_)) {
             return self
                 .graph
@@ -370,13 +370,20 @@ impl ScopeGraph {
             })
     }
 
-    pub fn smallest_encompassing_node(&self, start_byte: usize, end_byte: usize) -> Option<NodeIndex> {
+    pub fn smallest_encompassing_node(
+        &self,
+        start_byte: usize,
+        end_byte: usize,
+    ) -> Option<NodeIndex> {
         self.graph
             .node_indices()
             .filter_map(|idx| {
                 let node = self.graph[idx].range();
                 if start_byte >= node.start.byte && end_byte <= node.end.byte {
-                    debug!("Found matching node within byte range: {:?} {:?}", node.start.byte, node.end.byte);
+                    debug!(
+                        "Found matching node within byte range: {:?} {:?}",
+                        node.start.byte, node.end.byte
+                    );
                     Some((idx, node.end.byte - node.start.byte))
                 } else {
                     None
@@ -385,7 +392,7 @@ impl ScopeGraph {
             .min_by_key(|&(_, size)| size)
             .map(|(idx, _)| idx)
     }
-    
+
     /// The "value" of a definition is loosely characterized as
     ///
     /// - the body of a function block
