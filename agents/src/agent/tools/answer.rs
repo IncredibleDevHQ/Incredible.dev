@@ -2,8 +2,8 @@ use std::{collections::HashMap, mem, ops::Range, pin::pin};
 
 use crate::agent::llm_gateway;
 use anyhow::{anyhow, Context, Result};
+use common::CodeContext;
 use futures::StreamExt;
-use ort::sys;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tracing::{debug, info, instrument, trace};
 
@@ -161,6 +161,20 @@ impl Agent {
             remaining_prompt_tokens -= snippet_tokens;
             debug!("{}", remaining_prompt_tokens);
         }
+
+        // Store the focused chunks to be passed on to the upstream
+        let final_focused_chunks: Vec<CodeContext> = recent_chunks
+            .iter()
+            .map(|(c, _)| CodeContext {
+                path: c.path.clone(),
+                hidden: false,
+                repo: "repo".to_owned(), // Change to RepoRef
+                branch: None,
+                ranges: vec![c.start_line..c.end_line],
+            })
+            .collect();
+
+        self.update(Update::Context(final_focused_chunks))?;
 
         // group recent chunks by path alias
         let mut recent_chunks_by_alias: HashMap<_, _> =
