@@ -6,13 +6,21 @@ use crate::utilities::util::return_byte_range_from_line_numbers;
 use crate::AppState;
 use anyhow::anyhow;
 
+use log::{debug, info, error};
+
 pub async fn parent_scope_search(
     params: ParentScopeRequest,
     app_state: Arc<AppState>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let path = params.file.clone();
     let repo_name = params.repo.clone();
-
+    // debug log of the request 
+    debug!(
+        "Parent scope search request for file {} at lines {}-{}",
+        path,
+        params.start_line,
+        params.end_line
+    );
     // Attempt to retrieve the file content asynchronously based on the provided path and repository name.
     let source_document = get_file_content(&path, &repo_name,app_state).await;
 
@@ -70,6 +78,7 @@ pub async fn parent_scope_search(
 
                 // return HTTP bad request response from the api if scope graph cant be foud 
                 if sg.is_none() {
+                    error!("Scope graph not found for the file: {}", path);
                     let response = format!("Error: Scope graph not found for the file: {}", path);
                     return Ok(warp::reply::with_status(
                         warp::reply::json(&response),
@@ -81,7 +90,7 @@ pub async fn parent_scope_search(
 
                 let extraction_config = ExtractionConfig {
                     code_byte_expansion_range: 300,
-                    min_lines_to_return: 8,
+                    min_lines_to_return: 4,
                     max_lines_limit: Some(200),
                 };
 

@@ -245,13 +245,13 @@ async fn process_paths(
 // Input is repo name in format v2/owner_name/repo_name.
 // We generate hash of namespace using md5 and prefix it with the repo name extracted from namespace.
 pub fn generate_quikwit_index_name(namespace: &str) -> String {
-    let repo_name = namespace.split("/").last().unwrap();
-    let version = namespace.split("/").nth(0).unwrap();
-    let md5_index_id = compute(namespace);
-    // create a hex string
-    let new_index_id = format!("{:x}", md5_index_id);
-    let index_name = format!("{}-{}-{}", version, repo_name, new_index_id);
-    return index_name;
+    // let repo_name = namespace.split("/").last().unwrap();
+    // let version = namespace.split("/").nth(0).unwrap();
+    // let md5_index_id = compute(namespace);
+    // // create a hex string
+    // let new_index_id = format!("{:x}", md5_index_id);
+    // let index_name = format!("{}-{}-{}", version, repo_name, new_index_id);
+    return "bloop-ai".to_string();
 }
 
 pub async fn get_file_content(
