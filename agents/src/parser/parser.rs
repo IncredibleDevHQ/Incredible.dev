@@ -1,11 +1,8 @@
 use crate::search::semantic::SemanticQuery;
 use pest::{iterators::Pair, Parser};
 use regex::Regex;
-use regex_syntax::ast::parse;
-use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
 use std::{borrow::Cow, collections::HashSet, mem};
-use log::{error, info};
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct Query<'a> {
@@ -109,6 +106,7 @@ impl<'a> Query<'a> {
         }
     }
 
+    #[allow(unused)]
     pub fn is_case_sensitive(&self) -> bool {
         // defaults to false if unset
         self.case_sensitive.unwrap_or_default()
@@ -126,6 +124,7 @@ impl<'a> Query<'a> {
 }
 
 impl<'a> Target<'a> {
+    #[allow(unused)]
     /// Get the inner literal for this target, regardless of the variant.
     pub fn literal(&self) -> &Literal<'_> {
         match self {
@@ -134,6 +133,7 @@ impl<'a> Target<'a> {
         }
     }
 
+    #[allow(unused)]
     /// Get the symbol literal, if present
     pub fn symbol(&self) -> Option<&Literal<'_>> {
         match self {
@@ -142,6 +142,7 @@ impl<'a> Target<'a> {
         }
     }
 
+    #[allow(unused)]
     /// Get the content literal, if present
     pub fn content(&self) -> Option<&Literal<'_>> {
         match self {
@@ -214,6 +215,7 @@ impl<'a> Literal<'a> {
         }
     }
 
+    #[allow(unused)]
     pub fn regex(&self) -> Result<Regex, regex::Error> {
         Regex::new(&self.regex_str())
     }
@@ -232,6 +234,7 @@ impl<'a> Literal<'a> {
         }
     }
 
+    #[allow(unused)]
     pub fn unwrap(self) -> Cow<'a, str> {
         match self {
             Literal::Plain(v) => v,
@@ -336,7 +339,7 @@ pub fn parse_query(query: String) -> Result<SemanticQuery<'static>, anyhow::Erro
                 Some(semantic) => Ok(semantic.into_owned()),
                 None => {
                     // Handle the case where `into_semantic` returns `None`
-                    error!("Error: got a 'Grep' query");
+                    log::error!("Error: got a 'Grep' query");
                     // return error for the result type
                     Err(anyhow::Error::msg("Error: got a 'Grep' query"))
                 }
@@ -344,7 +347,7 @@ pub fn parse_query(query: String) -> Result<SemanticQuery<'static>, anyhow::Erro
         }
         Err(_) => {
             // Handle parse error, e.g., log it
-            error!("Error: parse error");
+            log::error!("Error: parse error");
             // return error for the result type
             Err(anyhow::Error::msg("Error: parse error"))
         }
@@ -359,13 +362,13 @@ pub fn parse_query_target(parsed_query: &SemanticQuery<'_>) -> Result<String, an
         Some(target) => match target.as_plain() {
             Some(plain) => Ok(plain.clone().into_owned()),
             None => {
-                error!("Error: user query was not plain text");
+                log::error!("Error: user query was not plain text");
                 // return error as API response
                 return Err(anyhow::Error::msg("Error: user query was not plain text"));
             }
         },
         None => {
-            error!("Error: query was empty");
+            log::error!("Error: query was empty");
             // return error as API response
             return Err(anyhow::Error::msg("Error: query was empty"));
         }

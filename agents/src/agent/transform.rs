@@ -2,7 +2,7 @@ use serde_json::de;
 use anyhow::{Context, Result};
 use std::borrow::Cow;
 use regex::Regex;
-use comrak::{nodes::{NodeValue, NodeHtmlBlock}, Arena};
+use comrak::nodes::{NodeValue, NodeHtmlBlock};
 use tiktoken_rs;
 use tiktoken_rs::CoreBPE;
 use lazy_regex::regex;

@@ -1,5 +1,4 @@
 use anyhow::Result;
-use log::{error, info};
 
 mod agent;
 mod config;
@@ -25,7 +24,7 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
     let db_client = match db_client::DbConnect::new(&configuration).await {
         Ok(client) => client,
         Err(_) => {
-            error!("Initializing database failed.");
+            log::error!("Initializing database failed.");
             return Err(anyhow::anyhow!("Initializing database failed."));
         }
     };
@@ -47,7 +46,7 @@ async fn main() -> Result<()> {
     let app_state = match app_state {
         Ok(app_state) => Arc::new(app_state),
         Err(err) => {
-            error!("Failed to initialize app state: {}", err);
+            log::error!("Failed to initialize app state: {}", err);
             std::process::exit(1);
         }
     };

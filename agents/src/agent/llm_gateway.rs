@@ -1,12 +1,5 @@
 //! A Rust-friendly interface to Bloop's LLM Gateway service.
-
-use std::time::Duration;
-
-use anyhow::{anyhow, bail, Result};
-use axum::http::StatusCode;
-use futures::{Stream, StreamExt};
-use reqwest_eventsource::EventSource;
-use tracing::{debug, error, warn};
+use anyhow::Result;
 
 use self::api::FunctionCall;
 
@@ -143,6 +136,7 @@ pub mod api {
         BadConfiguration,
     }
 
+    #[allow(unused)]
     pub type Result = std::result::Result<String, Error>;
 }
 
@@ -215,6 +209,7 @@ impl From<&api::Message> for tiktoken_rs::ChatCompletionRequestMessage {
     }
 }
 
+#[allow(unused)]
 enum ChatError {
     BadRequest,
     TooManyRequests,
@@ -294,11 +289,13 @@ impl Client {
         self
     }
 
+    #[allow(unused)]
     pub fn session_reference_id(mut self, session_reference_id: String) -> Self {
         self.session_reference_id = Some(session_reference_id);
         self
     }
 
+    #[allow(unused)]
     pub async fn is_compatible(
         &self,
         version: semver::Version,
@@ -319,7 +316,7 @@ impl Client {
         // const SCALE_FACTOR: f32 = 1.5;
         println!("llm call");
         match functions {
-            Some(func_call) => {}
+            Some(_func_call) => {}
             None => {}
         }
         // println!("Messages: \n {:?}", messages);

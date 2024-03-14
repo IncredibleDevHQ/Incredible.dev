@@ -1,8 +1,4 @@
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-    mem,
-};
+use std::mem;
 
 use compact_str::CompactString;
 use smallvec::SmallVec;

@@ -4,13 +4,10 @@ use crate::helpers::build_fuzzy_regex_filter::build_fuzzy_regex_filter;
 use crate::helpers::case_permutations::case_permutations;
 use crate::helpers::trigrams::trigrams;
 use crate::search;
-use bincode::config;
 use common::hasher::generate_quikwit_index_name;
 use compact_str::CompactString;
-use futures::future;
 use log::{error, info};
 use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
 
 use anyhow::Result;
 
@@ -80,9 +77,9 @@ impl DbConnect {
             .search_quickwit(index_name, search_field, search_query)
             .await?;
 
-        let cloned_response_array = response_array.clone(); // Clone the response_array
-
-        let paths: Vec<_> = cloned_response_array
+        #[allow(unused)]
+        let paths: Vec<_> = response_array
+            .clone()
             .into_iter()
             .map(|c| c.relative_path)
             .collect::<HashSet<_>>() // Removes duplicates

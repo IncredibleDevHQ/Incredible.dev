@@ -1,7 +1,7 @@
 use crate::agent::agent::Agent;
 use crate::agent::llm_gateway;
 use anyhow::{anyhow, Context, Result};
-use futures::{stream, StreamExt, TryStreamExt};
+use futures::{stream, StreamExt};
 use tiktoken_rs::CoreBPE;
 use tracing::{debug, instrument};
 
@@ -89,7 +89,7 @@ impl Agent {
                     .await?;
 
                 let choices = response.choices[0].clone();
-                let mut response_message = choices.message.content.unwrap();
+                let response_message = choices.message.content.unwrap();
 
                 #[derive(
                     serde::Deserialize,
