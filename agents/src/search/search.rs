@@ -1,14 +1,17 @@
 use crate::agent::agent::Agent;
 use crate::parser::parser::Literal;
-use crate::search::payload::{Payload, SymbolPayload};
-use crate::search::semantic::{Semantic, SemanticQuery, make_kv_keyword_filter, deduplicate_snippets};
+use crate::search::payload::Payload;
+use crate::search::semantic::{
+    deduplicate_snippets, make_kv_keyword_filter, Semantic, SemanticQuery,
+};
 use anyhow::Result;
+use qdrant_client::qdrant::{
+    with_payload_selector, with_vectors_selector, Condition, Filter, ScoredPoint, SearchPoints,
+    WithPayloadSelector, WithVectorsSelector,
+};
 use tracing::debug;
-use qdrant_client::qdrant::{ScoredPoint, SearchPoints, WithPayloadSelector, WithVectorsSelector, Filter, Condition, with_payload_selector, with_vectors_selector};
-
 
 pub type Embedding = Vec<f32>;
-
 
 impl Agent {
     pub async fn semantic_search<'a>(
@@ -26,50 +29,17 @@ impl Agent {
 
         debug!(?query, "executing semantic query");
         let semantic_result = self
-            .app_state.db_connection
+            .app_state
+            .db_connection
             .semantic
-            .search(&query, limit, offset, threshold, retrieve_more, &self.repo_name)
-            .await;
-
-        match semantic_result {
-            Ok(result) => {
-                // loop through the result and print the relative path, language, sniipet, start line and end line.
-                // for chunk in result.clone() {
-                //     println!("relative_path: {:?}", chunk.relative_path);
-                //     println!("lang: {:?}", chunk.lang);
-                //     println!("snippet: {:?}", chunk.text);
-                //     println!("start_line: {:?}", chunk.start_line);
-                //     println!("end_line: {:?}\n", chunk.end_line);
-                // }
-
-                //println!("semantic search result: {:?}", result.);
-                Ok(result)
-            }
-            Err(err) => {
-                println!("semantic search error: {:?}", err);
-                Err(err)
-            }
-        }
-    }
-
-    pub async fn semantic_search_symbol<'a>(
-        &'a self,
-        query: Literal<'a>,
-        limit: u64,
-        offset: u64,
-        threshold: f32,
-        retrieve_more: bool,
-    ) -> Result<Vec<SymbolPayload>> {
-        let query = SemanticQuery {
-            target: Some(query),
-            ..self.last_exchange().query.clone()
-        };
-
-        debug!(?query, "executing semantic query");
-        let semantic_result = self
-            .app_state.db_connection
-            .semantic
-            .search_symbol(&query, limit, offset, threshold, retrieve_more, &self.repo_name)
+            .search(
+                &query,
+                limit,
+                offset,
+                threshold,
+                retrieve_more,
+                &self.repo_name,
+            )
             .await;
 
         match semantic_result {
@@ -98,7 +68,6 @@ impl Semantic {
     pub async fn search_with<'a>(
         &self,
         collection_name: &str,
-        parsed_query: &SemanticQuery<'a>,
         vector: Embedding,
         limit: u64,
         offset: u64,
@@ -138,6 +107,7 @@ impl Semantic {
         println!("---------xxxxxxxxxxxxxxx----------------");
         //println!("{:?}",results.clone());
 
+        #[allow(unused)]
         let acc = results
             .iter()
             .flat_map(|result| {
@@ -153,43 +123,6 @@ impl Semantic {
             .collect::<Vec<_>>();
 
         Ok(response.result)
-    }
-
-    // function to perform semantic search on the symbols.
-    pub async fn search_symbol<'a>(
-        &self,
-        parsed_query: &SemanticQuery<'a>,
-        limit: u64,
-        offset: u64,
-        threshold: f32,
-        retrieve_more: bool,
-        repo_name: &str,
-    ) -> anyhow::Result<Vec<SymbolPayload>> {
-        let Some(query) = parsed_query.target() else {
-            anyhow::bail!("no search target for query");
-        };
-        let vector = self.embed(&query)?;
-
-        // TODO: Remove the need for `retrieve_more`. It's here because:
-        // In /q `limit` is the maximum number of results returned (the actual number will often be lower due to deduplication)
-        // In /answer we want to retrieve `limit` results exactly
-        let results = self
-            .search_with(
-                "documents_symbol",
-                parsed_query,
-                vector.clone(),
-                if retrieve_more { limit * 2 } else { limit }, // Retrieve double `limit` and deduplicate
-                offset,
-                threshold,
-                repo_name,
-            )
-            .await
-            .map(|raw| {
-                raw.into_iter()
-                    .map(SymbolPayload::from_qdrant)
-                    .collect::<Vec<_>>()
-            })?;
-        Ok(results)
     }
 
     pub async fn search<'a>(
@@ -212,7 +145,6 @@ impl Semantic {
         let results = self
             .search_with(
                 &self.qdrant_collection_name,
-                parsed_query,
                 vector.clone(),
                 if retrieve_more { limit * 2 } else { limit }, // Retrieve double `limit` and deduplicate
                 offset,

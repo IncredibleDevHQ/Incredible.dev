@@ -1,5 +1,5 @@
 use tantivy::schema::{
-    BytesOptions, Field, IndexRecordOption, Schema, SchemaBuilder, TextFieldIndexing, TextOptions,
+    BytesOptions, Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions,
     FAST, STORED, STRING,
 };
 

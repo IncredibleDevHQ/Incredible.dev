@@ -10,6 +10,7 @@ pub fn parse_alias(lang: Cow<str>) -> Cow<str> {
     }
 }
 
+#[allow(unused)]
 pub fn proper_case(lower: Cow<str>) -> Cow<str> {
     if let Some(s) = PROPER_CASE_MAP.get(&lower) {
         (*s).into()

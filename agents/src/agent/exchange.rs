@@ -97,6 +97,7 @@ impl Exchange {
     ///
     /// This is used to reduce the size of an exchange when we send it over the wire, by removing
     /// data that the front-end does not use.
+    #[allow(unused)]
     pub fn compressed(&self) -> Self {
         let mut ex = self.clone();
 

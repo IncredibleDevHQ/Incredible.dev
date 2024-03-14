@@ -1,25 +1,21 @@
 // import all the necessary modules.
 use std::{borrow::Cow, collections::HashMap, str};
 
-use qdrant_client::{
-    prelude::{QdrantClient, QdrantClientConfig},
-    qdrant::{point_id::PointIdOptions, vectors::VectorsOptions, PointId, Vectors,Value,  ScoredPoint},
+use qdrant_client::qdrant::{
+    point_id::PointIdOptions, vectors::VectorsOptions, PointId, ScoredPoint, Value, Vectors,
 };
 
 pub type Embedding = Vec<f32>;
 
-
 // Payload format to write and deserialize data in and from qdrant.
 #[derive(Default, Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct SymbolPayload {
-
     pub repo_name: String,
     pub symbol: String,
 
-    
     pub symbol_types: Vec<String>,
     pub lang_ids: Vec<String>,
-    pub is_globals: Vec<bool>, 
+    pub is_globals: Vec<bool>,
     pub start_bytes: Vec<i64>,
     pub end_bytes: Vec<i64>,
     pub relative_paths: Vec<String>,
@@ -33,7 +29,7 @@ pub struct SymbolPayload {
     pub score: Option<f32>,
 }
 
-// metadata to extract code chunks from scope graph 
+// metadata to extract code chunks from scope graph
 #[derive(Default, Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct CodeExtractMeta {
     pub is_global: bool,
@@ -52,68 +48,6 @@ pub struct PathExtractMeta {
     pub history: Vec<String>,
     pub code_extract_meta: Vec<CodeExtractMeta>,
 }
-
-impl SymbolPayload {
-    pub fn from_qdrant(orig: ScoredPoint) -> SymbolPayload {
-        let ScoredPoint {
-            id,
-            payload,
-            score,
-            vectors,
-            ..
-        } = orig;
-
-        parse_symbol_payload(id, vectors, payload, score)
-    }
-}
-
-fn parse_symbol_payload(
-    id: Option<PointId>,
-    vectors: Option<Vectors>,
-    payload: HashMap<String, Value>,
-    score: f32,
-) -> SymbolPayload {
-    let Some(PointId {
-        point_id_options: Some(PointIdOptions::Uuid(id)),
-    }) = id
-    else {
-        // unless the db was corrupted/written by someone else,
-        // this shouldn't happen
-        unreachable!("corrupted db");
-    };
-
-    let embedding = match vectors {
-        None => None,
-        Some(Vectors {
-            vectors_options: Some(VectorsOptions::Vector(v)),
-        }) => Some(v.data),
-        _ => {
-            // this also should probably never happen
-            unreachable!("got non-vector value");
-        }
-    };
-
-    let mut converted = payload
-        .into_iter()
-        .map(|(key, value)| (key, kind_to_value(value.kind)))
-        .collect::<HashMap<String, serde_json::Value>>();
-
-    SymbolPayload {
-        repo_name: val_str!(converted, "repo_name"),
-        symbol: val_str!(converted, "symbol"),
-        symbol_types: val_str!(converted, "symbol_type"),
-        lang_ids: val_str!(converted, "lang"),
-        is_globals: val_str!(converted, "is_global"),
-        start_bytes: val_str!(converted, "start_byte"),
-        end_bytes: val_str!(converted, "end_byte"),
-        relative_paths: val_str!(converted, "relative_path"),
-        node_kinds: val_str!(converted, "node_kind"),
-        id: Some(id),
-        score: Some(score),
-        embedding,
-    }
-}
-
 
 #[derive(Default, Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct Payload {
@@ -149,7 +83,6 @@ impl Payload {
     }
 }
 
-
 impl PartialEq for Payload {
     fn eq(&self, other: &Self) -> bool {
         self.lang == other.lang
@@ -174,7 +107,7 @@ macro_rules! val_parse_str(($hash:ident, $val:expr) => {
         .parse()
         .unwrap()
 });
-pub(crate) use val_str; 
+pub(crate) use val_str;
 
 fn kind_to_value(kind: Option<qdrant_client::qdrant::value::Kind>) -> serde_json::Value {
     use qdrant_client::qdrant::value::Kind;
