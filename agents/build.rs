@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     env,
-    ffi::OsStr,
     fs::File,
     io::{BufWriter, Write},
     path::Path,
@@ -10,20 +9,15 @@ use std::{
 extern crate phf;
 extern crate phf_codegen;
 
-
-
-
 #[derive(serde::Deserialize)]
 struct Language {
     r#type: String,
     aliases: Option<Vec<String>>,
 }
 fn main() {
- 
     process_languages();
     println!("cargo:rerun-if-changed=migrations");
 }
-
 
 fn process_languages() {
     let langs_file = File::open("./languages.yml").unwrap();

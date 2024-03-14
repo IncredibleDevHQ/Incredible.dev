@@ -5,7 +5,6 @@ use crate::config::Config;
 use crate::AppState;
 use agent::llm_gateway;
 use common::CodeUnderstanding;
-use futures::StreamExt;
 use std::time::Duration;
 
 use crate::agent::agent::Action;

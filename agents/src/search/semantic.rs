@@ -1,12 +1,9 @@
-use bincode::config;
 use thiserror::Error;
 use tracing::log::debug;
 // import hashset from collections
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
-    env,
-    path::Path,
     str,
 };
 // import anyhow from anyhow
@@ -14,23 +11,17 @@ use crate::config::Config;
 use anyhow::Result;
 use log::{error, info};
 use crate::parser::parser::Literal;
-use crate::search::payload::{Embedding, Payload, SymbolPayload};
+use crate::search::payload::{Embedding, Payload};
 use std::sync::Arc;
-
-pub(crate) const EMBEDDING_DIM: usize = 384;
 
 use ndarray::Axis;
 use ort::tensor::OrtOwnedTensor;
 use ort::value::Value;
 use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, LoggingLevel, SessionBuilder};
 use qdrant_client::{
-    prelude::{QdrantClient, QdrantClientConfig},
+    prelude::QdrantClient,
     qdrant::{
-        point_id::PointIdOptions, r#match::MatchValue, vectors::VectorsOptions, vectors_config,
-        with_payload_selector, with_vectors_selector, CollectionOperationResponse, Condition,
-        CreateCollection, Distance, FieldCondition, FieldType, Filter, Match, PointId,
-        RetrievedPoint, ScoredPoint, SearchPoints, VectorParams, Vectors, VectorsConfig,
-        WithPayloadSelector, WithVectorsSelector,
+        r#match::MatchValue, FieldCondition, Match,
     },
 };
 
@@ -45,6 +36,7 @@ pub struct Semantic {
 #[derive(Error, Debug)]
 pub enum SemanticError {
     /// Represents failure to initialize Qdrant client
+    #[allow(unused)]
     #[error("Qdrant initialization failed. Is Qdrant running on `qdrant-url`?")]
     QdrantInitializationError,
 
@@ -184,10 +176,12 @@ pub struct SemanticQuery<'a> {
 }
 
 impl<'a> SemanticQuery<'a> {
+    #[allow(unused)]
     pub fn paths(&'a self) -> impl Iterator<Item = Cow<'a, str>> {
         self.paths.iter().filter_map(|t| t.as_plain())
     }
 
+    #[allow(unused)]
     pub fn langs(&'a self) -> impl Iterator<Item = Cow<'a, str>> {
         self.langs.iter().cloned()
     }
