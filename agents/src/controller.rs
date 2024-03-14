@@ -174,14 +174,26 @@ pub async fn generate_question_array(
         }
     };
 
-    let choices = final_response.choices[0].clone();
+    let choices_str = final_response.choices[0]
+        .message
+        .content
+        .clone()
+        .unwrap_or_else(|| "".to_string());
 
-    let response_message = choices.message.content.unwrap();
+    let response_questions: Vec<String> = match serde_json::from_str(&choices_str) {
+        Ok(c) => c,
+        Err(_) => {
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&format!("Error: Failed to parse choices")),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ));
+        }
+    };
 
-    println!("Response: {}", response_message);
+    println!("Response: {}", choices_str);
 
     Ok(warp::reply::with_status(
-        warp::reply::json(&response_message),
+        warp::reply::json(&response_questions),
         StatusCode::OK,
     ))
 }
