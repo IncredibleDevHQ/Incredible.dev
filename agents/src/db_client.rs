@@ -5,6 +5,7 @@ use crate::helpers::case_permutations::case_permutations;
 use crate::helpers::trigrams::trigrams;
 use crate::search;
 use bincode::config;
+use common::hasher::generate_quikwit_index_name;
 use compact_str::CompactString;
 use futures::future;
 use log::{error, info};
@@ -115,7 +116,12 @@ impl DbConnect {
 
         let json_string = serde_json::to_string(&json_data).expect("Failed to serialize object");
 
-        let url = format!("{}/api/v1/{}/search", base_url, index_name);
+        let var_name = format!(
+            "{}/api/v1/{}/search",
+            base_url,
+            generate_quikwit_index_name(index_name)
+        );
+        let url = var_name;
 
         let response = self
             .http_client
@@ -191,7 +197,11 @@ impl DbConnect {
 
         let json_string = serde_json::to_string(&json_data).expect("Failed to serialize object");
 
-        let url = format!("{}/api/v1/{}/search", base_url, index_name);
+        let url = format!(
+            "{}/api/v1/{}/search",
+            base_url,
+            generate_quikwit_index_name(index_name)
+        );
 
         let response = client
             .post(url)
