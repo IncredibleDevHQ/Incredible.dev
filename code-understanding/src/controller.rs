@@ -206,3 +206,67 @@ pub async fn generate_question_array(
         StatusCode::OK,
     ))
 }
+
+pub async fn generate_question_array_v2(
+    req: GenerateQuestionRequest,
+) -> Result<impl warp::Reply, Infallible> {
+    // info!("Query: {}, Repo: {}", req.issue_desc, req.repo);
+
+    let configuration = Config::new().unwrap();
+
+    let issue_desc = req.issue_desc;
+    let repo_name = req.repo_name;
+    // intialize new llm gateway.
+    let llm_gateway = llm_gateway::Client::new(&configuration.openai_url)
+        .temperature(0.0)
+        .bearer(configuration.openai_key.clone())
+        .model(&configuration.openai_model.clone());
+
+    let system_prompt: String = prompts::question_concept_generator_prompt(&issue_desc, &repo_name);
+    let system_message = llm_gateway::api::Message::system(&system_prompt);
+    let messages = Some(system_message).into_iter().collect::<Vec<_>>();
+
+    let response = match llm_gateway
+        .clone()
+        .model(ANSWER_MODEL)
+        .chat(&messages, None)
+        .await
+    {
+        Ok(response) => Some(response),
+        Err(_) => None,
+    };
+    let final_response = match response {
+        Some(response) => response,
+        None => {
+            log::error!("Error: Unable to fetch response from the gateway");
+            // Return error as API response
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&format!("Error: Unable to fetch response from the gateway")),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ));
+        }
+    };
+
+    let choices_str = final_response.choices[0]
+        .message
+        .content
+        .clone()
+        .unwrap_or_else(|| "".to_string());
+
+    let response_questions: Vec<String> = match serde_json::from_str(&choices_str) {
+        Ok(c) => c,
+        Err(_) => {
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&format!("Error: Failed to parse choices")),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ));
+        }
+    };
+
+    println!("Response: {}", choices_str);
+
+    Ok(warp::reply::with_status(
+        warp::reply::json(&response_questions),
+        StatusCode::OK,
+    ))
+}
