@@ -1,7 +1,8 @@
 use std::ops::Range;
-pub mod service_interaction;
-pub mod llm_gateway;
 pub mod hasher;
+pub mod llm_gateway;
+pub mod models;
+pub mod service_interaction;
 
 pub mod prompt_string_generator {
     use std::future::Future;
@@ -11,7 +12,8 @@ pub mod prompt_string_generator {
         // Return a boxed future. This method will be implemented to generate a prompt.
         // The generic RequestData allows flexibility in what data is required to generate the prompt.
         fn generate_prompt(
-            &self, url: String,
+            &self,
+            url: String,
         ) -> Pin<Box<dyn Future<Output = Result<String, Box<dyn std::error::Error + Send>>> + Send>>;
     }
 }
@@ -32,22 +34,11 @@ pub struct CodeUnderstanding {
     pub answer: String,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct CodeUnderstandings {
     pub repo: String,
     pub issue_description: String,
     pub qna: Vec<CodeUnderstanding>,
-}
-
-// Used to get code chunks given the repo, branch, path, range and id.
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-pub struct CodeSpanRequest {
-    pub repo: String,
-    pub branch: Option<String>,
-    pub path: String,
-    // text range of the code chunk from the file to extract
-    pub ranges: Option<Vec<Range<usize>>>,
-    pub id: Option<String>,
 }
 
 // Represents a code chunk

@@ -4,6 +4,7 @@ use crate::agent::prompts;
 use crate::config::Config;
 use crate::AppState;
 use agent::llm_gateway;
+use common::models::{GenerateQuestionRequest, CodeUnderstandRequest};
 use common::CodeUnderstanding;
 use std::time::Duration;
 
@@ -11,15 +12,13 @@ use crate::agent::agent::Action;
 use crate::agent::agent::Agent;
 use crate::agent::exchange::Exchange;
 use crate::parser::parser::{parse_query, parse_query_target};
-use crate::routes;
 use anyhow::Result;
-use serde::Deserialize;
 use std::convert::Infallible;
 use std::sync::Arc;
 use warp::http::StatusCode;
 
 pub async fn handle_retrieve_code(
-    req: routes::RetrieveCodeRequest,
+    req: CodeUnderstandRequest,
     app_state: Arc<AppState>,
 ) -> Result<impl warp::Reply, Infallible> {
     log::info!("Query: {}, Repo: {}", req.query, req.repo);
@@ -137,12 +136,6 @@ pub async fn handle_retrieve_code(
     ))
 }
 
-#[derive(Debug, Deserialize)]
-
-pub struct GenerateQuestionRequest {
-    pub issue_desc: String,
-    pub repo_name: String,
-}
 pub async fn generate_question_array(
     req: GenerateQuestionRequest,
 ) -> Result<impl warp::Reply, Infallible> {

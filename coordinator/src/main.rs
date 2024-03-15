@@ -65,9 +65,9 @@ async fn main() -> Result<()> {
 
     let coordinator_routes = routes::coordinator();
     warp::serve(coordinator_routes)
-        .run(([0, 0, 0, 0], 3001))
+        .run(([0, 0, 0, 0], 3004))
         .await;
-    info!("Started web server on http://localhost:3001");
+    info!("Started web server on http://localhost:3004");
 
     Ok(())
 }

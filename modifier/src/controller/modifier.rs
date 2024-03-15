@@ -1,4 +1,4 @@
-use common::{service_interaction::fetch_code_span, CodeChunk, CodeSpanRequest};
+use common::{models::CodeSpanRequest, service_interaction::fetch_code_span, CodeChunk};
 use futures::future::try_join_all;
 use reqwest::StatusCode;
 use std::{collections::HashMap, convert::Infallible};

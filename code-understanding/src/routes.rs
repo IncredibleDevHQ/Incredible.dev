@@ -1,7 +1,7 @@
 use crate::controller;
 use crate::AppState;
-use serde::Deserialize;
 use std::sync::Arc;
+use common::models::CodeUnderstandRequest;
 use warp::{self, http::Response, Filter};
 
 pub fn code_retrieve(
@@ -13,19 +13,13 @@ pub fn code_retrieve(
         .or(question_list_v2())
 }
 
-#[derive(Deserialize)]
-pub struct RetrieveCodeRequest {
-    pub query: String,
-    pub repo: String,
-}
-
 /// GET /retrieve-code?query=<query>&repo=<repo_name>
 fn retrieve_code(
     app_state: Arc<AppState>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("retrieve-code")
         .and(warp::get())
-        .and(warp::query::<RetrieveCodeRequest>())
+        .and(warp::query::<CodeUnderstandRequest>())
         .and(warp::any().map(move || app_state.clone()))
         .and_then(controller::handle_retrieve_code)
 }

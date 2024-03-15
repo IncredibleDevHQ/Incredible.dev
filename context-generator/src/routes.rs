@@ -1,11 +1,10 @@
 use crate::controller;
 use crate::AppState;
-use serde::Deserialize;
+use common::models::CodeContextRequest;
 use std::sync::Arc;
 use warp::{self, http::Response, Filter};
 
 extern crate common;
-use common::CodeUnderstandings;
 
 // fetch_code_context sets up the routes for the API. It combines the home route and the
 // route to expand and find code context based on the app state.
@@ -65,14 +64,6 @@ pub fn fetch_code_context(
     home_route().or(expand_find_code_context(app_state.clone()))
 }
 
-// RetrieveCodeRequest struct defines the expected structure of the JSON payload
-// for the POST /find-code-context endpoint.
-#[derive(Deserialize, Clone)]
-pub struct RetrieveCodeRequest {
-    // Contains the detailed code understandings and issue description to be processed.
-    pub qna_context: CodeUnderstandings,
-}
-
 // Find the API doc here https://www.notion.so/Context-generator-b7941ee220e54c979095c563bf746611?pvs=4
 // expand_find_code_context sets up the Warp filter for the find-code-context endpoint.
 // This function constructs a filter chain that captures the POST request to find code context.
@@ -83,8 +74,8 @@ fn expand_find_code_context(
     warp::path("find-code-context")
         // Specifies that this route accepts POST requests.
         .and(warp::get())
-        // Extracts the JSON body as a RetrieveCodeRequest, ensuring the request structure matches the expected format.
-        .and(warp::query::<RetrieveCodeRequest>())
+        // Extracts the JSON body as a CodeContextRequest, ensuring the request structure matches the expected format.
+        .and(warp::query::<CodeContextRequest>())
         // Clones and passes the app_state to subsequent handlers, ensuring each handler has access to the shared state.
         .and(warp::any().map(move || app_state.clone()))
         // Chains the request handling logic, delegating to the controller's handle_find_context_context function.
