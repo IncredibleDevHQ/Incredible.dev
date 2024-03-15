@@ -1,12 +1,12 @@
 use crate::agent;
 use crate::AppState;
+use common::models::CodeContextRequest;
 use log::{error, info};
 use std::time::Duration;
 
 use crate::agent::agent::Action;
 use crate::agent::agent::Agent;
 use crate::agent::exchange::Exchange;
-use crate::routes;
 use agent::prompts::RetrieveCodeRequestWithUrl;
 use anyhow::Result;
 use std::convert::Infallible;
@@ -18,7 +18,7 @@ use common::prompt_string_generator::GeneratePromptString;
 use common::llm_gateway::Client;
 
 pub async fn handle_find_context_context(
-    req: routes::RetrieveCodeRequest,
+    req: CodeContextRequest,
     app_state: Arc<AppState>,
 ) -> Result<impl warp::Reply, Infallible> {
     // get search api url from app state config 

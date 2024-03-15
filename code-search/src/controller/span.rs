@@ -4,7 +4,7 @@ extern crate common;
 use crate::search::code_search::get_file_content;
 use crate::utilities::util::pluck_code_by_lines;
 use crate::AppState;
-use common::{CodeChunk, CodeSpanRequest};
+use common::{models::CodeSpanRequest, CodeChunk};
 
 /// Asynchronously handles a search request for a specific span within a file in a repository.
 ///

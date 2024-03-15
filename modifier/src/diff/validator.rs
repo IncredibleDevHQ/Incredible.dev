@@ -1,6 +1,6 @@
 use crate::{agent::prompts, utils::llm_gateway, CONFIG};
 use anyhow::{anyhow, Context, Result};
-use common::{service_interaction::fetch_code_span, CodeChunk, CodeSpanRequest};
+use common::{service_interaction::fetch_code_span, CodeChunk, models::CodeSpanRequest};
 
 use futures::{StreamExt, TryStreamExt};
 
