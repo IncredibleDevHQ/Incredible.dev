@@ -35,9 +35,8 @@ impl Configuration {
                 .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string()),
             openai_url: env::var("OPENAI_URL")
                 .unwrap_or_else(|_| "https://api.openai.com".to_string()),
-            openai_api_key: env::var("OPENAI_API_KEY").unwrap_or_else(|_| {
-                "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".to_string()
-            }),
+            openai_api_key: env::var("OPENAI_API_KEY")
+                .unwrap_or_else(|_| "default_api_key".to_string()),
             openai_model: env::var("OPENAI_MODEL")
                 .unwrap_or_else(|_| "gpt-4-1106-preview".to_string()),
         }
@@ -49,6 +48,7 @@ static CONFIG: Lazy<Configuration> = Lazy::new(|| Configuration::load_from_env()
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
+    dotenv::dotenv().ok();
 
     info!("Loaded configuration: {:?}", *CONFIG);
 
