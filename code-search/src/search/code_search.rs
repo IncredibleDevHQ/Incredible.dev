@@ -25,6 +25,7 @@ pub struct ExtractedContent {
     pub end_byte: usize,
     pub start_line: usize,
     pub end_line: usize,
+    pub scope_map: Option<String>,
 }
 
 #[derive(Default, Debug, Clone, Serialize)]
