@@ -253,6 +253,7 @@ pub async fn generate_question_array_v2(
         .clone()
         .unwrap_or_else(|| "".to_string());
 
+    log::debug!("Choices: {}", choices_str);
     let response_questions: Vec<String> = match serde_json::from_str(&choices_str) {
         Ok(c) => c,
         Err(_) => {
