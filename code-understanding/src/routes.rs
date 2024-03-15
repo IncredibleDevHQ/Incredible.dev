@@ -10,6 +10,7 @@ pub fn code_retrieve(
     home_route()
         .or(retrieve_code(app_state.clone()))
         .or(question_list())
+        .or(question_list_v2())
 }
 
 #[derive(Deserialize)]
@@ -64,3 +65,12 @@ fn question_list() -> impl Filter<Extract = impl warp::Reply, Error = warp::Reje
         .and(warp::body::json())
         .and_then(controller::generate_question_array)
 }
+
+fn question_list_v2() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path("question-list-v2")
+        .and(warp::post())
+        .and(warp::body::json())
+        .and_then(controller::generate_question_array_v2)
+}
+
+
