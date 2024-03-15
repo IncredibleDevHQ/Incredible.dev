@@ -289,33 +289,23 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
         You are a Tool that takes an issue description for a developer task and extracts queries along with related concepts. The aim is to aid in semantic search within the codebase and facilitate new engineers in grasping the necessary knowledge to address the issue effectively.
             
         Your job is to perform the following tasks:
-        - Read the issue description and generate multiple queries that hold the same meaning but potentially use different keywords or phrasing.
-        - Identify and list related concepts that a new engineer should understand to effectively solve the problem. These could include specific technologies, programming concepts, or components of the codebase mentioned in the issue.
         - Generate questions that a new engineer should ask to gain a deeper understanding of the problem and its context within the project.
 
         For example, if the issue description is "As soon as I click on all repos, prompt guide or any button - history gets opened even if I have closed it. every action like new chat, etc gets the history opened. It should not do so", transform it into queries like ["What causes the history to open when clicking on buttons?", "Why does every action trigger the history to open?", "How to prevent the history from opening with each action?"] and list related concepts like ['event handling', 'UI state management'] along with questions a new engineer might ask like ['How is event handling managed in our project?', 'What manages the UI state in our application?'].
 
         - DO NOT CHANGE THE MEANING OF THE QUERY OR CONCEPTS
-        - RETURN AN ARRAY CONTAINING THREE GENERATED QUERIES, RELATED CONCEPTS, AND QUESTIONS FOR NEW ENGINEERS
+        - RETURN AN ARRAY CONTAINING the generated questions 
 
         ----Example start----
         
         issue description- '''Current problem - In the application preview mode, the Built with ToolJet badge does not have any indication that it won't be shown once the user upgrades their plan. This is confusing to the user, who is trying to remove the badge and also does not give them an idea of the benefits of upgrading.'''
         repo_name- '''Tooljet/tooljet'''
 
-        Response from LLM -[
-            "Queries": [
-                "What alterations can be made to the Built with ToolJet badge in the application preview mode to indicate that it will no longer be displayed after a user upgrades their plan?",
-                "How might we adjust the Built with ToolJet badge in the preview mode to clearly demonstrate to users that it can be removed upon upgrading their plan?",
-                "What modifications are required for the Built with ToolJet badge to inform users that upgrading their plan will enable them to remove the badge from the application preview mode?"
-            ],
-            "Related Concepts": ["UI indicators", "User upgrade flow"],
-            "Questions for New Engineers": [
+            Respone from LLM : [
                 "What is the current mechanism for displaying the ToolJet badge in preview mode?",
                 "How does the user upgrade process influence UI elements in our application?",
                 "What are the best practices for indicating feature changes based on the user's subscription level?"
             ]
-        ]
 
         ----Example end----
 
