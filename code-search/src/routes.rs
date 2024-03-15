@@ -1,5 +1,5 @@
 extern crate common;
-use common::CodeSpanRequest;
+use common::models::CodeSpanRequest;
 
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -124,7 +124,10 @@ fn parent_scope_retrieve(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("parentscope")
         .and(warp::post())
-        .and(warp::body::content_length_limit(1024 * 16).and(warp::body::json::<ParentScopeRequest>()))
+        .and(
+            warp::body::content_length_limit(1024 * 16)
+                .and(warp::body::json::<ParentScopeRequest>()),
+        )
         .and(warp::any().map(move || app_state.clone()))
         .and_then(parentscope::parent_scope_search) // Assuming you have a corresponding handler in the controller
 }
