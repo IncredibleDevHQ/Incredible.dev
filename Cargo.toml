@@ -7,4 +7,5 @@ members = [
     "context-generator",
     "modifier",
     "common",
+    "coordinator",
 ]
