@@ -1,9 +1,11 @@
-use crate::CodeChunk;
+use std::collections::HashMap;
 
-use super::CodeSpanRequest;
+use crate::{models::CodeSpanRequest, CodeChunk};
+
 use anyhow::{anyhow, Error, Result};
-use reqwest::{self, StatusCode};
-use serde_json::Value; // Ensure this is accessible, either defined here or imported.
+use reqwest::{self, Client, Method, StatusCode, Url};
+use serde::{de::DeserializeOwned, Serialize};
+use serde_json::{json, Value}; // Ensure this is accessible, either defined here or imported.
 
 // Async function to fetch a specific span of code from a service.
 // search_service_url: The URL of the search service where the code span should be fetched from.
@@ -13,7 +15,7 @@ pub async fn fetch_code_span(
     request: CodeSpanRequest,
 ) -> Result<Vec<CodeChunk>, Error> {
     // Create a new HTTP client instance. This client will be used to make the HTTP request.
-    let client = reqwest::Client::new();
+    let client = Client::new();
 
     log::debug!(
         "Fetching code span from {} with request: {:?}",
@@ -59,6 +61,72 @@ pub async fn fetch_code_span(
             Err(anyhow!(error_message))
         }
         // Handle any other statuses.
+        _ => {
+            let error_message = format!("Unexpected HTTP response: {}", response.status());
+            log::error!("{}", error_message);
+            Err(anyhow!(error_message))
+        }
+    }
+}
+
+// Async function to call a service and return the response as a deserialized object.
+pub async fn service_caller<A: Serialize, B: DeserializeOwned>(
+    url: String,
+    method: Method,
+    body: Option<A>,
+    query_params: Option<HashMap<String, String>>,
+) -> Result<B, Error> {
+    // Parse the URL to ensure it's valid
+    let url = Url::parse(&url).map_err(|e| anyhow!("Invalid URL: {}", e))?;
+
+    // Create a new HTTP client instance
+    let client = Client::new();
+
+    log::debug!("Calling service at {} with method {:?}", url, method);
+
+    // Prepare the request with the specified method
+    let mut request_builder = client.request(method.clone(), url);
+
+    // Add query parameters if present
+    if let Some(params) = query_params {
+        request_builder = request_builder.query(&params);
+    }
+
+    // If there is a body, serialize it to JSON and attach it to the request.
+    if let Some(body_value) = body {
+        if method != Method::GET {
+            let json_body = json!(body_value);
+            request_builder = request_builder.json(&json_body);
+        } else {
+            log::warn!("Body provided for a GET request will be ignored.");
+        }
+    }
+
+    let response = request_builder.send().await?;
+
+    // General response handling
+    match response.status() {
+        StatusCode::OK => {
+            let res: Value = response.json::<Value>().await?;
+            log::debug!("Received successful response: {:?}", res);
+
+            let res_obj = serde_json::from_value::<B>(res.clone())
+                .map_err(|e| anyhow!("Failed to deserialize: {}", e))?;
+            Ok(res_obj)
+        }
+        StatusCode::BAD_REQUEST
+        | StatusCode::UNAUTHORIZED
+        | StatusCode::FORBIDDEN
+        | StatusCode::NOT_FOUND
+        | StatusCode::METHOD_NOT_ALLOWED
+        | StatusCode::INTERNAL_SERVER_ERROR
+        | StatusCode::BAD_GATEWAY
+        | StatusCode::SERVICE_UNAVAILABLE
+        | StatusCode::GATEWAY_TIMEOUT => {
+            let error_message = format!("Error: {}", response.status());
+            log::error!("{}", error_message);
+            Err(anyhow!(error_message))
+        }
         _ => {
             let error_message = format!("Unexpected HTTP response: {}", response.status());
             log::error!("{}", error_message);
