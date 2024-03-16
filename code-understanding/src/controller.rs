@@ -5,7 +5,7 @@ use crate::config::Config;
 use crate::AppState;
 use agent::llm_gateway;
 use common::models::{GenerateQuestionRequest, CodeUnderstandRequest};
-use common::CodeUnderstanding;
+use common::{CodeUnderstanding, TaskList};
 use std::time::Duration;
 
 use crate::agent::agent::Action;
@@ -16,6 +16,7 @@ use anyhow::Result;
 use std::convert::Infallible;
 use std::sync::Arc;
 use warp::http::StatusCode;
+
 
 pub async fn handle_retrieve_code(
     req: CodeUnderstandRequest,
@@ -136,8 +137,10 @@ pub async fn handle_retrieve_code(
     ))
 }
 
-pub async fn generate_question_array(
+
+pub async fn generate_task_list(
     req: GenerateQuestionRequest,
+    app_state: Arc<AppState>,
 ) -> Result<impl warp::Reply, Infallible> {
     // info!("Query: {}, Repo: {}", req.issue_desc, req.repo);
 
@@ -151,7 +154,7 @@ pub async fn generate_question_array(
         .bearer(configuration.openai_key.clone())
         .model(&configuration.openai_model.clone());
 
-    let system_prompt: String = prompts::question_generator_prompt(&issue_desc, &repo_name);
+    let system_prompt: String = prompts::question_concept_generator_prompt(&issue_desc, &repo_name);
     let system_message = llm_gateway::api::Message::system(&system_prompt);
     let messages = Some(system_message).into_iter().collect::<Vec<_>>();
 
@@ -182,20 +185,25 @@ pub async fn generate_question_array(
         .clone()
         .unwrap_or_else(|| "".to_string());
 
-    let response_questions: Vec<String> = match serde_json::from_str(&choices_str) {
-        Ok(c) => c,
-        Err(_) => {
+    log::debug!("Choices: {}", choices_str);
+
+    let response_task_list: Result<TaskList, _> = serde_json::from_str(&choices_str);
+
+    let response_task_list = match response_task_list {
+        Ok(task_list) => task_list,
+        Err(e) => {
+            log::error!("Failed to parse choices: {}", e);
             return Ok(warp::reply::with_status(
-                warp::reply::json(&format!("Error: Failed to parse choices")),
+                warp::reply::json(&"Error: Failed to parse choices".to_string()),
                 StatusCode::INTERNAL_SERVER_ERROR,
             ));
         }
     };
 
-    println!("Response: {}", choices_str);
+    log::debug!("{}", response_task_list);
 
     Ok(warp::reply::with_status(
-        warp::reply::json(&response_questions),
+        warp::reply::json(&response_task_list),
         StatusCode::OK,
     ))
 }

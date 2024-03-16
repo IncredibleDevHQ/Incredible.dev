@@ -281,3 +281,62 @@ pub fn question_generator_prompt(issue_desc: &str, repo_name: &str) -> String {
     );
     question_generator_prompt
 }
+
+pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> String {
+    let question_concept_generator_prompt = format!(
+        r#"#####
+
+        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Alongside each task and subtask, you will generate questions aimed at understanding the current codebase. These questions should provide insight without suggesting direct actions or changes.
+
+        Your job is to perform the following tasks:
+        - Define clear, actionable tasks and subtasks based on the issue description, focusing on the necessary code modifications.
+        - For each task and subtask, generate questions that delve into the existing codebase's structure and behavior. Ensure these questions are direct, specific, and avoid vague references.
+
+        When referring to APIs or other components:
+        - Always use specific and descriptive names. Never use generic terms like "other API." Instead, clarify the API's purpose or function. For instance, if the API is responsible for processing questions, refer to it as "the question-processing API" rather than "the other API."
+
+        ----Example start----
+        
+        issue description- '''Enhance the communication between services in our application to improve data processing efficiency.'''
+        repo_name- '''service-communication-enhancement'''
+
+        Response from LLM:
+        {{
+          "tasks": [
+            {{
+              "task": "Enhance the Service A API to integrate with the Data Processing API for improved efficiency",
+              "subtasks": [
+                {{
+                  "subtask": "Analyze the current interaction between Service A API and the Data Processing API",
+                  "questions": [
+                    "How does Service A API currently interact with the Data Processing API?",
+                    "What data structures are used in the communication between Service A API and the Data Processing API?"
+                  ]
+                }},
+                {{
+                  "subtask": "Identify the enhancements needed for Service A API to optimize its interaction with the Data Processing API",
+                  "questions": [
+                    "What specific enhancements are required in Service A API to improve its efficiency with the Data Processing API?",
+                    "How can Service A API better handle the data exchange with the Data Processing API to improve processing speed?"
+                  ]
+                }}
+              ]
+            }}
+          ]
+        }}
+
+        ----Example end----
+
+        issue description- '''{issue_desc}'''
+        repo_name- '''{repo_name}'''
+
+        Ensure that the tasks and subtasks explicitly outline the modification actions required, and the questions deepen understanding of the current codebase, focusing on its existing structures and behaviors. Always use specific and descriptive names for APIs and avoid generic references.
+
+        RETURN a JSON object containing the structured breakdown of tasks, subtasks, and their associated questions.
+
+        DO NOT confuse tasks with questions. Tasks should outline 'what' needs to be done, while questions should clarify 'how' the current system operates, without suggesting direct actions.
+
+"#
+    );
+    question_concept_generator_prompt
+}
