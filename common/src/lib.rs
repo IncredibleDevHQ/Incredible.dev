@@ -70,18 +70,18 @@ impl std::fmt::Display for CodeChunk {
 
 // types for parsing the breakdown of task into subtasks and their corresponding questions 
 #[derive(Serialize, Deserialize, Debug)]
-struct TaskList {
-    tasks: Vec<Task>,
+pub struct TaskList {
+    pub tasks: Vec<Task>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Task {
-    task: String,
-    subtasks: Vec<Subtask>,
+pub struct Task {
+    pub task: String,
+    pub subtasks: Vec<Subtask>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Subtask {
-    subtask: String,
-    questions: Vec<String>,
+pub struct Subtask {
+    pub subtask: String,
+    pub questions: Vec<String>,
 }
