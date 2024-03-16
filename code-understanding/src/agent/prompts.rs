@@ -286,42 +286,57 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
     let question_concept_generator_prompt = format!(
         r#"#####
 
-        You are a Tool that takes an issue description for a developer task and extracts queries along with related concepts. The aim is to aid in semantic search within the codebase and facilitate new engineers in grasping the necessary knowledge to address the issue effectively.
-            
+        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Alongside each task and subtask, you will generate questions aimed at understanding the current codebase. These questions should provide insight without suggesting direct actions or changes.
+
         Your job is to perform the following tasks:
-        - Generate questions that a new engineer should ask to gain a deeper understanding of the problem and its context within the project.
+        - Define clear, actionable tasks and subtasks based on the issue description, focusing on the necessary code modifications.
+        - For each task and subtask, generate questions that delve into the existing codebase's structure and behavior. Ensure these questions are direct, specific, and avoid vague references.
 
-        For example, if the issue description is "As soon as I click on all repos, prompt guide or any button - history gets opened even if I have closed it. every action like new chat, etc gets the history opened. It should not do so", transform it into queries like ["What causes the history to open when clicking on buttons?", "Why does every action trigger the history to open?", "How to prevent the history from opening with each action?"] and list related concepts like ['event handling', 'UI state management'] along with questions a new engineer might ask like ['How is event handling managed in our project?', 'What manages the UI state in our application?'].
-
-        - DO NOT CHANGE THE MEANING OF THE QUERY OR CONCEPTS
-        - RETURN AN ARRAY CONTAINING the generated questions 
+        When referring to APIs or other components:
+        - Always use specific and descriptive names. Never use generic terms like "other API." Instead, clarify the API's purpose or function. For instance, if the API is responsible for processing questions, refer to it as "the question-processing API" rather than "the other API."
 
         ----Example start----
         
-        issue description- '''Current problem - In the application preview mode, the Built with ToolJet badge does not have any indication that it won't be shown once the user upgrades their plan. This is confusing to the user, who is trying to remove the badge and also does not give them an idea of the benefits of upgrading.'''
-        repo_name- '''Tooljet/tooljet'''
+        issue description- '''Enhance the communication between services in our application to improve data processing efficiency.'''
+        repo_name- '''service-communication-enhancement'''
 
-            Respone from LLM : [
-                "What is the current mechanism for displaying the ToolJet badge in preview mode?",
-                "How does the user upgrade process influence UI elements in our application?",
-                "What are the best practices for indicating feature changes based on the user's subscription level?"
-            ]
+        Response from LLM:
+        {{
+          "tasks": [
+            {{
+              "task": "Enhance the Service A API to integrate with the Data Processing API for improved efficiency",
+              "subtasks": [
+                {{
+                  "subtask": "Analyze the current interaction between Service A API and the Data Processing API",
+                  "questions": [
+                    "How does Service A API currently interact with the Data Processing API?",
+                    "What data structures are used in the communication between Service A API and the Data Processing API?"
+                  ]
+                }},
+                {{
+                  "subtask": "Identify the enhancements needed for Service A API to optimize its interaction with the Data Processing API",
+                  "questions": [
+                    "What specific enhancements are required in Service A API to improve its efficiency with the Data Processing API?",
+                    "How can Service A API better handle the data exchange with the Data Processing API to improve processing speed?"
+                  ]
+                }}
+              ]
+            }}
+          ]
+        }}
 
         ----Example end----
 
         issue description- '''{issue_desc}'''
-        repo name- '''{repo_name}'''
+        repo_name- '''{repo_name}'''
 
-        Above given example is for only understanding the way you have to respond to the issue description.
-        Do not return the response of the given example.
-        
-        GIVE ONLY ARRAY containing updated queries, related concepts, and questions for new engineers.
+        Ensure that the tasks and subtasks explicitly outline the modification actions required, and the questions deepen understanding of the current codebase, focusing on its existing structures and behaviors. Always use specific and descriptive names for APIs and avoid generic references.
 
-        DO NOT give queries in number, like 1. "How are conversation routes implemented?" 2. "What is the implementation process for conversation routes?" 3. "Can you explain the implementation of conversation routes?"
-        Do not return the issue description in your response.
+        RETURN a JSON object containing the structured breakdown of tasks, subtasks, and their associated questions.
+
+        DO NOT confuse tasks with questions. Tasks should outline 'what' needs to be done, while questions should clarify 'how' the current system operates, without suggesting direct actions.
 
 "#
     );
     question_concept_generator_prompt
 }
-
