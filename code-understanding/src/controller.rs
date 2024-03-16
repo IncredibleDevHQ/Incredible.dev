@@ -201,6 +201,57 @@ pub async fn generate_question_array(
     ))
 }
 
+
+
+// sample query and response
+// {
+//     "issue_desc": "I want to modify the API inside orchestor service, make it call the code-understanding service API, and then for each questions returned, I would like to call another API from same service to obtain answers",
+//     "repo_name": "nezuko-ai"
+// }
+
+// {
+//     "tasks": [
+//       {
+//         "task": "Modify the API inside Orchestor Service to call the Code-Understanding Service API",
+//         "subtasks": [
+//           {
+//             "subtask": "Investigate current behavior of Orchestor Service when it's calling other APIs",
+//             "questions": [
+//               "How does the Orchestor Service currently handle API calls?",
+//               "Does the Orchestor Service currently call the Code-Understanding Service API?"
+//             ]
+//           },
+//           {
+//             "subtask": "Modify the Orchestor Service to call the Code-Understanding Service API",
+//             "questions": [
+//               "How should the Orchestor Service be changed to incorporate the Code-Understanding Service API call?",
+//               "What data is required to make the Code-Understanding Service API call successfully?"
+//             ]
+//           }
+//         ]
+//       },
+//       {
+//         "task": "Modify the Orchestor Service API to call another API for processing questions obtained from the Code-Understanding Service API",
+//         "subtasks": [
+//           {
+//             "subtask": "Analyze the current handling of obtained questions from Code-Understanding Service API",
+//             "questions": [
+//               "How are the obtained questions from the Code-Understanding Service API currently being handled?",
+//               "What is the existing procedure for processing these questions in the Orchestor Service?"
+//             ]
+//           },
+//           {
+//             "subtask": "Implement functionalities to process each question obtained from the Code-Understanding Service API using another API from the Orchestor Service",
+//             "questions": [
+//               "How to ensure the correct matching of each question to its corresponding API call within the Orchestor Service?",
+//               "What are the potential challenges in updating Orchestor Service to process the questions with another API call?"
+//             ]
+//           }
+//         ]
+//       }
+//     ]
+//   }
+
 pub async fn generate_question_array_v2(
     req: GenerateQuestionRequest,
 ) -> Result<impl warp::Reply, Infallible> {
@@ -262,7 +313,7 @@ pub async fn generate_question_array_v2(
         }
     };
 
-    println!("Response: {}", choices_str);
+    log::debug!("{}", response_task_list);
 
     Ok(warp::reply::with_status(
         warp::reply::json(&response_task_list),
