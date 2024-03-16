@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::fmt;
 use serde::{Serialize, Deserialize};
 
 pub mod hasher;
@@ -84,4 +85,34 @@ pub struct Task {
 pub struct Subtask {
     pub subtask: String,
     pub questions: Vec<String>,
+}
+
+
+impl fmt::Display for TaskList {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for (i, task) in self.tasks.iter().enumerate() {
+            writeln!(f, "Task {}: {}", i + 1, task)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Task {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "{}", self.task)?;
+        for (i, subtask) in self.subtasks.iter().enumerate() {
+            writeln!(f, "  Subtask {}: {}", i + 1, subtask)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Subtask {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "{}", self.subtask)?;
+        for (i, question) in self.questions.iter().enumerate() {
+            writeln!(f, "    Question {}: {}", i + 1, question)?;
+        }
+        Ok(())
+    }
 }
