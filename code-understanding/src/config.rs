@@ -1,6 +1,5 @@
 #[derive(Clone, Debug)]
 pub struct Config {
-    pub repo_name: String,
     pub semantic_url: String,
     pub qdrant_api_key: Option<String>,
     pub tokenizer_path: String,
@@ -18,7 +17,6 @@ impl Config {
 
         // TODO: For Prod also look for QDRANT API KEY.
         // Directly use `?` to propagate the error if the environment variable is not set.
-        let repo_name = std::env::var("REPO_NAME")?;
         let semantic_url = std::env::var("SEMANTIC_URL")?;
         let qdrant_api_key = std::env::var("QDRANT_API_KEY").ok();
         let tokenizer_path = std::env::var("TOKENIZER_PATH")?;
@@ -29,7 +27,6 @@ impl Config {
         let quickwit_url = std::env::var("QUICKWIT_URL")?;
         let semantic_collection_name = std::env::var("SEMANTIC_COLLECTION_NAME")?;
         Ok(Config {
-            repo_name,
             semantic_url,
             qdrant_api_key,
             tokenizer_path,
