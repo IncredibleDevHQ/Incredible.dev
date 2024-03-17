@@ -11,7 +11,6 @@ use std::time::Duration;
 use crate::agent::agent::Action;
 use crate::agent::agent::Agent;
 use crate::agent::exchange::Exchange;
-use crate::parser::parser::{parse_query, parse_query_target};
 use anyhow::Result;
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -33,35 +32,11 @@ pub async fn handle_retrieve_code(
         ));
     }
 
-    let parsed_query = parse_query(req.query.clone());
-    // if the query is not parsed, return internal server error.
-    if parsed_query.is_err() {
-        log::error!("Error parsing the query");
-        return Ok(warp::reply::with_status(
-            warp::reply::json(&format!("Error: {}", parsed_query.err().unwrap())),
-            StatusCode::INTERNAL_SERVER_ERROR,
-        ));
-    }
-
-    let parsed_query = parsed_query.unwrap();
-    let query_target = parse_query_target(&parsed_query);
-    // if the query target is not parsed, return internal server error.
-    if query_target.is_err() {
-        log::error!("Error parsing the query target");
-        return Ok(warp::reply::with_status(
-            warp::reply::json(&format!("Error: {}", query_target.err().unwrap())),
-            StatusCode::INTERNAL_SERVER_ERROR,
-        ));
-    }
-
-    let query_target = query_target.unwrap();
-    log::info!("Query target{:?}", query_target);
-
-    let mut action = Action::Query(query_target);
+    let mut action = Action::Query(req.query.clone());
     let id = uuid::Uuid::new_v4();
 
     let mut exchanges = vec![];
-    exchanges.push(Exchange::new(id, parsed_query));
+    exchanges.push(Exchange::new(id, req.query.clone()));
 
     // get the configuration from the app state
     let configuration = &app_state.configuration;

@@ -1,5 +1,3 @@
-use crate::search::semantic::SemanticQuery;
-
 use std::{fmt, mem};
 
 use chrono::prelude::{DateTime, Utc};
@@ -12,7 +10,7 @@ use common::CodeContext;
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
 pub struct Exchange {
     pub id: uuid::Uuid,
-    pub query: SemanticQuery<'static>,
+    pub query: String, 
     pub answer: Option<String>,
     pub search_steps: Vec<SearchStep>,
     pub paths: Vec<String>,
@@ -39,7 +37,7 @@ pub struct Exchange {
 }
 
 impl Exchange {
-    pub fn new(id: uuid::Uuid, query: SemanticQuery<'static>) -> Self {
+    pub fn new(id: uuid::Uuid, query: String) -> Self {
         // generate new uuid
 
         Self {
@@ -80,7 +78,7 @@ impl Exchange {
 
     /// Get the query associated with this exchange, if it has been made.
     pub fn query(&self) -> Option<String> {
-        self.query.target().map(|q| q.to_string())
+        self.query.clone().into()
     }
 
     /// Get the answer and conclusion associated with this exchange, if a conclusion has been made.
