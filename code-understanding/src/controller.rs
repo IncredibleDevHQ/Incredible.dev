@@ -62,6 +62,7 @@ pub async fn handle_retrieve_code(
     log::info!("first action {:?}\n", action);
 
     let mut i = 1;
+    let mut is_action_error = false;
     'outer: loop {
         // Now only focus on the step function inside this loop.
         match agent.step(action).await {
@@ -79,7 +80,8 @@ pub async fn handle_retrieve_code(
                 log::info!("Action number: {}, Action: {:?}", i, action);
             }
             Err(e) => {
-                log::error!("Error during processing: {}", e);
+                log::error!("Error during step function: {}", e);
+                is_action_error = true;
                 break 'outer;
             }
         }
@@ -88,6 +90,14 @@ pub async fn handle_retrieve_code(
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 
+    if is_action_error {
+        log::error!("Error during step function");
+        return Ok(warp::reply::with_status(
+            warp::reply::json(&format!("Error: {}", "Error during step function")),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ));
+    }
+    
     // These need to be put beind a try catch sort of setup
     let final_answer = match agent.get_final_anwer().answer.clone() {
         Some(ans) => ans,
