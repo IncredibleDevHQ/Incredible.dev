@@ -1,3 +1,5 @@
+use anyhow::{Context, Error};
+
 #[derive(Clone, Debug)]
 pub struct Config {
     pub semantic_url: String,
@@ -9,6 +11,7 @@ pub struct Config {
     pub openai_model: String,
     pub quickwit_url: String,
     pub semantic_collection_name: String,
+    pub search_server_url: String,
 }
 
 impl Config {
@@ -26,6 +29,8 @@ impl Config {
         let openai_model = std::env::var("OPENAI_MODEL")?;
         let quickwit_url = std::env::var("QUICKWIT_URL")?;
         let semantic_collection_name = std::env::var("SEMANTIC_COLLECTION_NAME")?;
+        let search_server_url = std::env::var("SEARCH_SERVER_URL")?;
+
         Ok(Config {
             semantic_url,
             qdrant_api_key,
@@ -36,6 +41,7 @@ impl Config {
             openai_model,
             quickwit_url,
             semantic_collection_name,
+            search_server_url,
         })
     }
 }

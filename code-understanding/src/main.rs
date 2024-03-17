@@ -1,4 +1,7 @@
 use anyhow::Result;
+use lazy_static::lazy_static;
+use std::sync::Once;
+use config::Config;
 
 mod agent;
 mod config;
@@ -12,13 +15,25 @@ use std::sync::Arc;
 
 use core::result::Result::Ok;
 struct AppState {
-    configuration: config::Config,
+    configuration: &'static config::Config,
     db_connection: db_client::DbConnect, // Assuming DbConnection is your database connection type
 }
 
 // initialize the app state with the configuration and database connection.
 async fn init_state() -> Result<AppState, anyhow::Error> {
-    let configuration = config::Config::new()?;
+    let configuration = get_config(); 
+    // call the search url home route and see if the server is running. If not return a message to the user to first start the server.
+    let search_url = format!("{}/", configuration.search_server_url);
+    let response = reqwest::get(&search_url).await;
+    match response {
+        Ok(_) => {
+            log::info!("Search server is running at {}", search_url);
+        }
+        Err(_) => {
+            log::error!("Search server is not running. Please start the search server first.");
+            return Err(anyhow::anyhow!("Search server is not running. Please start the search server first."));
+        }
+    }
 
     // create new db client.
     let db_client = match db_client::DbConnect::new(&configuration).await {
@@ -35,10 +50,27 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
     })
 }
 
+
+// Global variable to hold the configuration
+lazy_static! {
+    static ref CONFIG: Config = {
+        Config::new().expect("Failed to load configuration")
+    };
+}
+
+// Initialize once to ensure that the global variable is only initialized once
+static INIT: Once = Once::new();
+
+// Function to access the global CONFIG variable
+pub fn get_config() -> &'static Config {
+    // Ensure that the global variable is initialized only once
+    INIT.call_once(|| {});
+    &CONFIG
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
-
     // initialize the env configurations and database connection.
     let app_state = init_state().await;
 
