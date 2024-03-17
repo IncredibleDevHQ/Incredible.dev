@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use log::debug;
 
 use crate::db::DbConnect;
 use crate::graph::scope_graph::SymbolLocations;
@@ -81,7 +82,7 @@ pub async fn code_search(
     app_state: Arc<AppState>,
 ) -> Result<Vec<CodeChunk>> {
     // performing semantic search on the symbols.
-    println!("semantic search\n");
+    log::debug!("semantic search\n");
     let results_symbol: Vec<crate::search::payload::SymbolPayload> = semantic_search_symbol(
         query.into(),
         CODE_SEARCH_LIMIT,
@@ -93,10 +94,10 @@ pub async fn code_search(
     )
     .await?;
 
-    println!("semantic search results: {:?}", results_symbol);
+    log::debug!("semantic search results: {:?}", results_symbol);
     // for top 3 symbols, perform semantic search using the symbol as a query and print the results with good formatting
     for symbol in results_symbol.iter().take(10) {
-        println!(
+        log::debug!(
                 "Symbol semantic search on chunk: Symbol: {}, Score: {:?}, Relative paths: {:?}, Types: {:?}, isglobals:{:?}, node_types:{:?}",
                 symbol.symbol, symbol.score, symbol.relative_paths, symbol.symbol_types, symbol.is_globals, symbol.node_kinds,
             );
@@ -106,7 +107,7 @@ pub async fn code_search(
 
     // iterate and print the top paths with score
     for meta in ranked_symbols.iter().take(10) {
-        println!("Path: {}, Score: {}", meta.path, meta.score);
+        log::debug!("Path: {}, Score: {}", meta.path, meta.score);
     }
     // call self.get_scope_graph on top 3 paths from ranked_symbpls
     let extracted_chunks = process_paths(
@@ -134,7 +135,7 @@ pub async fn code_search(
 
     // iterate and print the code chunks
     for code_chunk in code_chunks.iter().take(10) {
-        println!(
+        log::debug!(
             "Code chunk: Path: {}, Start line: {}, End line: {}, Snippet: {}",
             code_chunk.path, code_chunk.start_line, code_chunk.end_line, code_chunk.snippet
         );
@@ -163,7 +164,7 @@ async fn semantic_search_symbol<'a>(
     match semantic_result {
         Ok(result) => Ok(result),
         Err(err) => {
-            println!("semantic search error: {:?}", err);
+            log::debug!("semantic search error: {:?}", err);
             Err(err)
         }
     }
@@ -181,7 +182,7 @@ async fn process_paths(
     for path_meta in &path_extract_meta {
         let path = &path_meta.path;
 
-        println!("inside process path: {:?}", path);
+        log::debug!("inside process path: {:?}", path);
         // Fetch the content of the file for the current path.
         let app_state_clone = Arc::clone(&app_state);
 
@@ -189,7 +190,7 @@ async fn process_paths(
 
         // log the error and continue to the next path if the file content is not found.
         if source_document.is_none() {
-            println!("file content not found for path: {:?}", path);
+            log::debug!("file content not found for path: {:?}", path);
             continue;
         }
 
@@ -215,7 +216,7 @@ async fn process_paths(
             let end_byte: usize = code_meta.end_byte.try_into().unwrap();
 
             // print the start and end byte
-            println!(
+            log::debug!(
                 "-symbol start_byte: {:?}, end_byte: {:?}, path: {}, score: {}",
                 start_byte, end_byte, path, path_meta.score
             );
@@ -266,7 +267,7 @@ pub async fn get_file_content(
 
     let new_index_id = generate_quikwit_index_name(repo_name);
 
-    // println!("fetching file content {}\n", path);
+    // log::debug!("fetching file content {}\n", path);
 
     get_file_from_quickwit(&new_index_id, "relative_path", path, app_state).await
 }
