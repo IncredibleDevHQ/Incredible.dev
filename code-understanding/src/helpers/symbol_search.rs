@@ -1,7 +1,8 @@
 use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::error::Error;
+use anyhow::Error;
+use crate::get_config;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SymbolSearchResult {
@@ -23,9 +24,8 @@ pub struct SymbolCodeChunk {
 pub async fn symbol_search(
     query: &str,
     repo_name: &str,
-) -> Result<Vec<SymbolCodeChunk>, Box<dyn Error>> {
-    // TODO: Remove this hard coded base_url
-    let base_url = "http://localhost:3000";
+) -> Result<Vec<SymbolCodeChunk>, Error> {
+    let base_url = &get_config().search_server_url;
     let namespace = repo_name;
     let client = reqwest::Client::new();
     let url = format!("{}/symbols", base_url);
@@ -38,20 +38,13 @@ pub async fn symbol_search(
         .await?;
 
     if response.status() != reqwest::StatusCode::OK {
-        return Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Error in SymbolSearch",
+        return Err(Error::msg(format!(
+            "Symbol Search API request returned error:  {}",
+            response.status()
         )));
     }
 
     let search_results: Vec<SymbolSearchResult> = response.json().await?;
-
-    println!("search_results: {:?}", search_results);
-    // Process search_results to create CodeChunks...
-    // Implement the logic similar to JavaScript's map and filter here
-    // Note: The ranking functionality needs to be implemented or integrated
-
-    // Placeholder for processed code chunks
 
     let results = search_results
         .into_iter()
@@ -64,6 +57,5 @@ pub async fn symbol_search(
         })
         .collect::<Vec<_>>();
 
-    println!("shankar: {:?}", results);
     Ok(results)
 }

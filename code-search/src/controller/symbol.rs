@@ -1,5 +1,5 @@
 use anyhow::Error;
-use log::{error, info};
+use log::{error, debug, info};
 use reqwest::header::HeaderValue;
 use reqwest::Client;
 
@@ -131,14 +131,16 @@ async fn get_collection_status(
 }
 
 pub fn generate_qdrant_index_name(namespace: &str) -> String {
-    let repo_name = namespace.split("/").last().unwrap();
-    let version = namespace.split("/").nth(0).unwrap();
-    let md5_index_id = compute(namespace);
-    // create a hex string
-    let new_index_id = format!("{:x}", md5_index_id);
-    let index_name = format!(
-        "{}-{}-{}-documents-symbols",
-        version, repo_name, new_index_id
-    );
-    return index_name;
+    // TODO: Temporarily changed for ease of development
+    debug!("Namespace inside qdrant: {}", namespace);
+    // let repo_name = namespace.split("/").last().unwrap();
+    // let version = namespace.split("/").nth(0).unwrap();
+    // let md5_index_id = compute(namespace);
+    // // create a hex string
+    // let new_index_id = format!("{:x}", md5_index_id);
+    // let index_name = format!(
+    //     "{}-{}-{}-documents-symbols",
+    //     version, repo_name, new_index_id
+    // );
+    return namespace.to_string();
 }

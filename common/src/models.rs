@@ -1,6 +1,7 @@
 use std::ops::Range;
-
+use serde::{Serialize, Deserialize};
 use crate::CodeUnderstandings;
+use std::fmt;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct GenerateQuestionRequest {
@@ -29,4 +30,53 @@ pub struct CodeUnderstandRequest {
 pub struct CodeContextRequest {
     // Contains the detailed code understandings and issue description to be processed.
     pub qna_context: CodeUnderstandings,
+}
+
+
+// types for parsing the breakdown of task into subtasks and their corresponding questions 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TaskList {
+    pub tasks: Vec<Task>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Task {
+    pub task: String,
+    pub subtasks: Vec<Subtask>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Subtask {
+    pub subtask: String,
+    pub questions: Vec<String>,
+}
+
+
+impl fmt::Display for TaskList {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for (i, task) in self.tasks.iter().enumerate() {
+            writeln!(f, "Task {}: {}", i + 1, task)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Task {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "{}", self.task)?;
+        for (i, subtask) in self.subtasks.iter().enumerate() {
+            writeln!(f, "  Subtask {}: {}", i + 1, subtask)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Subtask {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "{}", self.subtask)?;
+        for (i, question) in self.questions.iter().enumerate() {
+            writeln!(f, "    Question {}: {}", i + 1, question)?;
+        }
+        Ok(())
+    }
 }

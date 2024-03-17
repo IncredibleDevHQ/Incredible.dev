@@ -5,6 +5,8 @@ use crate::agent::exchange::{CodeChunk, SearchStep, Update};
 use anyhow::Result;
 use tracing::instrument;
 
+use log::{error, debug};
+
 impl Agent {
     #[instrument(skip(self))]
     pub async fn code_search(&mut self, query: &String) -> Result<String> {
@@ -17,15 +19,12 @@ impl Agent {
 
         let results_symbol = symbol_search(query, &self.repo_name).await;
 
-        // log the error and return of there is error 
+        // log and return the error 
         if results_symbol.is_err() {
-            let response = format!("Error validating if the collection exists: {}", results_symbol.err().unwrap());
-            log::error!("Error validating if the collection exists: {}", response);
-            // TODO: Fix the return type of this function return Result<String, Error> , and abort 
-            // the agent flow on error.
-            return Ok(response);
+            let err = results_symbol.err().unwrap();
+            error!("Call to Symbol search API failed: {:?}", err);
+            return Err(err);
         }
-
         let code_snippet = results_symbol.unwrap();
 
         // println!("Size of semantic search: {}", results.len());
