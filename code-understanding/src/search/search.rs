@@ -1,8 +1,7 @@
 use crate::agent::agent::Agent;
-use crate::parser::parser::Literal;
 use crate::search::payload::Payload;
 use crate::search::semantic::{
-    deduplicate_snippets, make_kv_keyword_filter, Semantic, SemanticQuery,
+    deduplicate_snippets, make_kv_keyword_filter, Semantic, 
 };
 use anyhow::Result;
 use qdrant_client::qdrant::{
@@ -16,24 +15,19 @@ pub type Embedding = Vec<f32>;
 impl Agent {
     pub async fn semantic_search<'a>(
         &'a self,
-        query: Literal<'a>,
+        query: String, 
         limit: u64,
         offset: u64,
         threshold: f32,
         retrieve_more: bool,
     ) -> Result<Vec<Payload>> {
-        let query = SemanticQuery {
-            target: Some(query),
-            ..self.last_exchange().query.clone()
-        };
-
         debug!(?query, "executing semantic query");
         let semantic_result = self
             .app_state
             .db_connection
             .semantic
             .search(
-                &query,
+                query,
                 limit,
                 offset,
                 threshold,
@@ -127,16 +121,13 @@ impl Semantic {
 
     pub async fn search<'a>(
         &self,
-        parsed_query: &SemanticQuery<'a>,
+        query: String, 
         limit: u64,
         offset: u64,
         threshold: f32,
         retrieve_more: bool,
         repo_name: &str,
     ) -> anyhow::Result<Vec<Payload>> {
-        let Some(query) = parsed_query.target() else {
-            anyhow::bail!("no search target for query");
-        };
         let vector = self.embed(&query)?;
 
         // TODO: Remove the need for `retrieve_more`. It's here because:
