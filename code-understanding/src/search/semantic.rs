@@ -26,7 +26,6 @@ use qdrant_client::{
 
 pub struct Semantic {
     pub qdrant_collection_name: String,
-    pub repo_name: String,
     pub qdrant: QdrantClient,
     pub tokenizer: tokenizers::Tokenizer,
     pub session: ort::Session,
@@ -100,7 +99,6 @@ impl Semantic {
                 .with_model_from_file(&config.model_path)?
                 .into(),
             qdrant_collection_name: config.semantic_collection_name.clone(),
-            repo_name: config.repo_name.clone(),
         })
     }
 

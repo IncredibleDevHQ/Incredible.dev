@@ -1,8 +1,9 @@
+use crate::controller::symbol::generate_qdrant_index_name;
+use crate::search::semantic::SemanticError::QdrantInitializationError;
 use anyhow::Result;
 use std::{str, time::Duration};
 use thiserror::Error;
-use crate::controller::symbol::generate_qdrant_index_name;
-use crate::search::semantic::SemanticError::QdrantInitializationError;
+use log::debug;
 
 use crate::{
     parser::literal::Literal,
@@ -61,7 +62,7 @@ pub async fn get_qdrant_client(config: &Configuration) -> Result<QdrantClient, S
                 .with_connect_timeout(Duration::from_secs(30)),
         ))?;
         return Ok(qdrant);
-    } 
+    }
     let qdrant = QdrantClient::new(Some(
         QdrantClientConfig::from_url(&config.semantic_db_url)
             .with_timeout(Duration::from_secs(30))
@@ -112,7 +113,6 @@ impl Semantic {
 
     pub fn embed(&self, sequence: &str) -> anyhow::Result<Embedding> {
         let tokenizer_output = self.tokenizer.encode(sequence, true).unwrap();
-        print!("tokenizer_output {:?}", tokenizer_output);
 
         let input_ids = tokenizer_output.get_ids();
         let attention_mask = tokenizer_output.get_attention_mask();
@@ -209,7 +209,8 @@ impl Semantic {
         let search_request = &SearchPoints {
             limit,
             vector,
-            collection_name: generate_qdrant_index_name(repo_name),
+            // TODO: collection name is hard coded, eliminate that later.
+            collection_name: generate_qdrant_index_name("documents_symbol"),
             offset: Some(offset),
             score_threshold: Some(threshold),
             with_payload: Some(WithPayloadSelector {
@@ -225,17 +226,12 @@ impl Semantic {
             ..Default::default()
         };
 
-        // Print the serialized request
-        println!("Search Request Debug: {:?}", search_request);
 
         let response = self.qdrant.search_points(search_request).await?;
 
         // iterate through the results and print the score and payload from each entry in the results
         let mut results = response.result.clone();
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
-
-        println!("---------xxxxxxxxxxxxxxx----------------");
-        println!("{:?}", results.clone());
 
         let _acc = results
             .iter()
