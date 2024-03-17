@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use log::debug;
+use std::sync::Arc;
 
 use crate::db::DbConnect;
 use crate::graph::scope_graph::SymbolLocations;
@@ -137,7 +137,10 @@ pub async fn code_search(
     for code_chunk in code_chunks.iter().take(10) {
         log::debug!(
             "Code chunk: Path: {}, Start line: {}, End line: {}, Snippet: {}",
-            code_chunk.path, code_chunk.start_line, code_chunk.end_line, code_chunk.snippet
+            code_chunk.path,
+            code_chunk.start_line,
+            code_chunk.end_line,
+            code_chunk.snippet
         );
     }
     //chunks.append(&mut codeChunks);
@@ -156,6 +159,7 @@ async fn semantic_search_symbol<'a>(
     db_client: &DbConnect,
     repo_name: &String,
 ) -> Result<Vec<SymbolPayload>> {
+    debug!("Repo name inside semantic search symbol: {:?}", repo_name);
     let semantic_result = db_client
         .semantic
         .search_symbol(query, limit, offset, threshold, retrieve_more, repo_name)
@@ -164,7 +168,7 @@ async fn semantic_search_symbol<'a>(
     match semantic_result {
         Ok(result) => Ok(result),
         Err(err) => {
-            log::debug!("semantic search error: {:?}", err);
+            log::error!("semantic search error: {:?}", err);
             Err(err)
         }
     }
@@ -218,7 +222,10 @@ async fn process_paths(
             // print the start and end byte
             log::debug!(
                 "-symbol start_byte: {:?}, end_byte: {:?}, path: {}, score: {}",
-                start_byte, end_byte, path, path_meta.score
+                start_byte,
+                end_byte,
+                path,
+                path_meta.score
             );
 
             let extraction_config = ExtractionConfig {
@@ -247,13 +254,15 @@ async fn process_paths(
 // Input is repo name in format v2/owner_name/repo_name.
 // We generate hash of namespace using md5 and prefix it with the repo name extracted from namespace.
 pub fn generate_quikwit_index_name(namespace: &str) -> String {
+    // TODO: Temporarily changed for ease of development
+    log::debug!("Generating quikwit index name for namespace: {}", namespace);
     // let repo_name = namespace.split("/").last().unwrap();
     // let version = namespace.split("/").nth(0).unwrap();
     // let md5_index_id = compute(namespace);
     // // create a hex string
     // let new_index_id = format!("{:x}", md5_index_id);
     // let index_name = format!("{}-{}-{}", version, repo_name, new_index_id);
-    return "bloop-ai".to_string();
+    return namespace.to_string();
 }
 
 pub async fn get_file_content(
