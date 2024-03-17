@@ -10,6 +10,7 @@ const template = (params: {
   view: ViewKey;
   srcUri: string;
   publicPath: string;
+  cssUri: string;
   title: string;
   nonce: string;
 }) => `
@@ -20,6 +21,7 @@ const template = (params: {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${params.title}</title>
     <meta http-equiv="Content-Security-Policy" content="${params.csp}" />
+    <link href="${params.cssUri}" rel="stylesheet" />
   </head>
 
   <body>
@@ -76,6 +78,9 @@ const setViewHtml = <V extends ViewKey>(
 
   const publicPath = isProduction ? uri() : `${DEV_SERVER_HOST}/`;
   const srcUri = isProduction ? uri("views.js") : `${DEV_SERVER_HOST}/views.js`;
+  const cssUri = isProduction
+    ? uri("media", "style.css")
+    : `${DEV_SERVER_HOST}/media/style.css`;
 
   const csp = (
     isProduction
@@ -99,6 +104,7 @@ const setViewHtml = <V extends ViewKey>(
     csp,
     srcUri,
     publicPath,
+    cssUri,
     view: viewId,
     nonce,
   });
