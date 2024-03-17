@@ -10,7 +10,6 @@ use std::{
 use crate::config::Config;
 use anyhow::Result;
 use log::{error, info};
-use crate::parser::parser::Literal;
 use crate::search::payload::{Embedding, Payload};
 use std::sync::Arc;
 
@@ -164,43 +163,6 @@ pub(crate) fn make_kv_keyword_filter(key: &str, value: &str) -> FieldCondition {
             match_value: MatchValue::Keyword(value).into(),
         }),
         ..Default::default()
-    }
-}
-
-#[derive(Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct SemanticQuery<'a> {
-    pub paths: HashSet<Literal<'a>>,
-    pub langs: HashSet<Cow<'a, str>>,
-
-    pub target: Option<Literal<'a>>,
-}
-
-impl<'a> SemanticQuery<'a> {
-    #[allow(unused)]
-    pub fn paths(&'a self) -> impl Iterator<Item = Cow<'a, str>> {
-        self.paths.iter().filter_map(|t| t.as_plain())
-    }
-
-    #[allow(unused)]
-    pub fn langs(&'a self) -> impl Iterator<Item = Cow<'a, str>> {
-        self.langs.iter().cloned()
-    }
-
-    pub fn target(&self) -> Option<Cow<'a, str>> {
-        self.target.as_ref().and_then(|t| t.as_plain())
-    }
-
-    pub fn into_owned(self) -> SemanticQuery<'static> {
-        SemanticQuery {
-            paths: self.paths.into_iter().map(Literal::into_owned).collect(),
-            langs: self
-                .langs
-                .into_iter()
-                .map(|c| c.into_owned().into())
-                .collect(),
-
-            target: self.target.map(Literal::into_owned),
-        }
     }
 }
 

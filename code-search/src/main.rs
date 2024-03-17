@@ -48,9 +48,9 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
         symbol_collection_name: env::var("SYMBOL_COLLECTION_NAME")
             .context("SYMBOL_COLLECTION_NAME must be set")?,
         semantic_db_url: env::var("SEMANTIC_DB_URL").context("SEMANTIC_DB_URL must be set")?,
-        tokenizer_path: env::var("TOKENIZER_PATH").unwrap_or("model/tokenizer.json".to_string()),
-        model_path: env::var("MODEL_PATH").unwrap_or("model/model.onnx".to_string()),
-        quikwit_db_url: env::var("QUICKWIT_DB_URL").unwrap_or("quickwit_db_url".to_string()),
+        tokenizer_path: env::var("TOKENIZER_PATH").context("TOKENIZER_PATH must be set")?,
+        model_path: env::var("MODEL_PATH").context("MODEL_PATH must be set")?,
+        quikwit_db_url: env::var("QUICKWIT_DB_URL").context("QUICKWIT_DB_URL must be set")?,
         qdrant_api_key: env::var("QDRANT_CLOUD_API_KEY").ok(),
     };
 
