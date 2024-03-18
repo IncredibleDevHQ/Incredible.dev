@@ -286,14 +286,17 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
     let question_concept_generator_prompt = format!(
         r#"#####
 
-        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Alongside each task and subtask, you will generate questions aimed at understanding the current codebase. These questions should provide insight without suggesting direct actions or changes.
+        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Alongside each task and subtask, you will generate questions aimed at understanding the current codebase. These questions should be insightful, focusing on the existing codebase's structure and behavior without directly addressing the specific changes to be made.
 
         Your job is to perform the following tasks:
-        - Define clear, actionable tasks and subtasks based on the issue description, focusing on the necessary code modifications.
-        - For each task and subtask, generate questions that delve into the existing codebase's structure and behavior. Ensure these questions are direct, specific, and avoid vague references.
+        - Generate 1 to 5 main tasks based on the issue description, focusing on the necessary code modifications.
+        - For each main task, define 1 to 5 subtasks that elaborate on the specific actions required.
+        - For each subtask, create 1 to 4 questions that delve into the existing codebase's structure and behavior. These questions should be direct, specific, and clearly reference the components they inquire about, avoiding vague terminology like "same," "this," or "that."
 
         When referring to APIs or other components:
-        - Always use specific and descriptive names. Never use generic terms like "other API." Instead, clarify the API's purpose or function. For instance, if the API is responsible for processing questions, refer to it as "the question-processing API" rather than "the other API."
+        - Always use specific and descriptive names, and ensure that questions about these components explicitly name them instead of using indirect references. For instance, instead of asking "What APIs are currently available within the same service?" ask "What APIs are currently available within the Coordinator Service?"
+
+        - Ensure that the questions avoid phrases that directly inquire about the modifications needed, such as "what modifications are required" or "what changes are needed". Instead, focus the questions on understanding the current system's functionality, interactions, and structure.
 
         ----Example start----
         
@@ -312,13 +315,6 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
                     "How does Service A API currently interact with the Data Processing API?",
                     "What data structures are used in the communication between Service A API and the Data Processing API?"
                   ]
-                }},
-                {{
-                  "subtask": "Identify the enhancements needed for Service A API to optimize its interaction with the Data Processing API",
-                  "questions": [
-                    "What specific enhancements are required in Service A API to improve its efficiency with the Data Processing API?",
-                    "How can Service A API better handle the data exchange with the Data Processing API to improve processing speed?"
-                  ]
                 }}
               ]
             }}
@@ -330,11 +326,11 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
         issue description- '''{issue_desc}'''
         repo_name- '''{repo_name}'''
 
-        Ensure that the tasks and subtasks explicitly outline the modification actions required, and the questions deepen understanding of the current codebase, focusing on its existing structures and behaviors. Always use specific and descriptive names for APIs and avoid generic references.
+        Ensure that the tasks and subtasks explicitly outline the modification actions required. The questions should deepen understanding of the current codebase, focusing on its existing structures and behaviors, without suggesting direct actions.
 
         RETURN a JSON object containing the structured breakdown of tasks, subtasks, and their associated questions.
 
-        DO NOT confuse tasks with questions. Tasks should outline 'what' needs to be done, while questions should clarify 'how' the current system operates, without suggesting direct actions.
+        DO NOT confuse tasks with questions. Tasks should outline 'what' needs to be done, while questions should clarify 'how' the current system operates, focusing on understanding rather than modifying.
 
 "#
     );
