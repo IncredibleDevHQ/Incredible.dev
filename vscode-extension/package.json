@@ -44,7 +44,9 @@
     "uuid": "^9.0.1",
     "webpack": "^5.89.0",
     "webpack-cli": "^5.1.4",
-    "webpack-dev-server": "^4.15.1"
+    "webpack-dev-server": "^4.15.1",
+    "react-markdown": "^9.0.1",
+    "zod": "^3.22.4"
   },
   "activationEvents": [
     "onView:exampleViewA",
@@ -56,14 +58,14 @@
       "activitybar": [
         {
           "id": "exampleActivityBarContainer",
-          "title": "example",
+          "title": "Nezuko",
           "icon": "static/jersey.svg"
         }
       ],
       "panel": [
         {
           "id": "examplePanelContainer",
-          "title": "example",
+          "title": "Nezuko",
           "icon": "static/jersey.svg"
         }
       ]
@@ -71,9 +73,9 @@
     "views": {
       "exampleActivityBarContainer": [
         {
-          "id": "exampleViewA",
+          "id": "chatConversation",
           "type": "webview",
-          "name": "View A"
+          "name": "Chat Conversation"
         }
       ],
       "examplePanelContainer": [
