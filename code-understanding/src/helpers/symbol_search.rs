@@ -1,19 +1,10 @@
 use reqwest;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use anyhow::Error;
 use crate::get_config;
 extern crate common;
 
 use common::models::CodeChunk;
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct SymbolSearchResult {
-    path: String,
-    snippet: String,
-    start_line: usize,
-    end_line: usize,
-}
 
 pub async fn symbol_search(
     query: &str,
@@ -38,17 +29,7 @@ pub async fn symbol_search(
         )));
     }
 
-    let search_results: Vec<SymbolSearchResult> = response.json().await?;
+    let search_results: Vec<CodeChunk> = response.json().await?;
 
-    let results = search_results
-        .into_iter()
-        .map(|result| CodeChunk {
-            path : result.path,
-            snippet: result.snippet,
-            start_line: result.start_line,
-            end_line: result.end_line,
-        })
-        .collect::<Vec<_>>();
-
-    Ok(results)
+    Ok(search_results)
 }
