@@ -3,13 +3,14 @@ use futures::future::join_all;
 use std::{collections::HashMap, convert::Infallible};
 
 use common::{
-    models::{CodeContextRequest, CodeUnderstandRequest, GenerateQuestionRequest},
+    models::{CodeContextRequest, CodeUnderstandRequest, GenerateQuestionRequest, TaskList},
     service_interaction::service_caller,
     CodeUnderstanding, CodeUnderstandings,
 };
 use reqwest::{Method, StatusCode};
 
 use crate::{models::SuggestRequest, CONFIG};
+use log::debug;
 
 pub async fn handle_suggest_wrapper(
     request: SuggestRequest,
@@ -31,7 +32,7 @@ pub async fn handle_suggest_wrapper(
     }
 }
 
-async fn handle_suggest_core(request: SuggestRequest) -> Result<CodeUnderstandings, anyhow::Error> {
+async fn handle_suggest_core(request: SuggestRequest) -> Result<Vec<TaskList>, anyhow::Error> {
     let generated_questions = match get_generated_questions(
         request.user_query.clone(),
         request.repo_name.clone(),
@@ -45,38 +46,40 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<CodeUnderstandin
         }
     };
 
-    let answers_to_questions =
-        match get_code_understandings(request.repo_name.clone(), generated_questions).await {
-            Ok(answers) => answers,
-            Err(e) => {
-                log::error!("Failed to get answers to questions: {}", e);
-                return Err(e);
-            }
-        };
+    debug!("Generated questions: {:?}", generated_questions);
 
-    let code_context_request = CodeUnderstandings {
-        repo: request.repo_name.clone(),
-        issue_description: request.user_query.clone(),
-        qna: answers_to_questions.clone(),
-    };
-    // TODO: Uncomment this once the context generator is implemented
-    // let code_contexts = match get_code_context(code_context_request).await {
-    //     Ok(contexts) => contexts,
-    //     Err(e) => {
-    //         log::error!("Failed to get code contexts: {}", e);
-    //         return Err(e);
-    //     }
+    // let answers_to_questions =
+    //     match get_code_understandings(request.repo_name.clone(), generated_questions).await {
+    //         Ok(answers) => answers,
+    //         Err(e) => {
+    //             log::error!("Failed to get answers to questions: {}", e);
+    //             return Err(e);
+    //         }
+    //     };
+
+    // let code_context_request = CodeUnderstandings {
+    //     repo: request.repo_name.clone(),
+    //     issue_description: request.user_query.clone(),
+    //     qna: answers_to_questions.clone(),
     // };
+    // // TODO: Uncomment this once the context generator is implemented
+    // // let code_contexts = match get_code_context(code_context_request).await {
+    // //     Ok(contexts) => contexts,
+    // //     Err(e) => {
+    // //         log::error!("Failed to get code contexts: {}", e);
+    // //         return Err(e);
+    // //     }
+    // // };
 
-    Ok(code_context_request)
+    Ok(generated_questions)
 }
 
 async fn get_generated_questions(
     user_query: String,
     repo_name: String,
-) -> Result<Vec<String>, anyhow::Error> {
-    let generate_questions_url = format!("{}/question-list", CONFIG.code_understanding_url);
-    let generated_questions = service_caller::<GenerateQuestionRequest, Vec<String>>(
+) -> Result<Vec<TaskList>, anyhow::Error> {
+    let generate_questions_url = format!("{}/task-list", CONFIG.code_understanding_url);
+    let generated_questions = service_caller::<GenerateQuestionRequest, Vec<TaskList>>(
         generate_questions_url,
         Method::POST,
         Some(GenerateQuestionRequest {
