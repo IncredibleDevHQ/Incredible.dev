@@ -9,6 +9,27 @@ pub struct GenerateQuestionRequest {
     pub repo_name: String,
 }
 
+/// Represents a code chunk
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CodeChunk {
+    pub path: String,
+    #[serde(rename = "snippet")]
+    pub snippet: String,
+    #[serde(rename = "start")]
+    pub start_line: usize,
+    #[serde(rename = "end")]
+    pub end_line: usize,
+}
+
+impl std::fmt::Display for CodeChunk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let lines: Vec<&str> = self.snippet.lines().collect();
+        for (i, line) in lines.iter().enumerate() {
+            writeln!(f, "{:4} {}", i + self.start_line, line)?;
+        }
+        Ok(())
+    }
+}
 // Used to get code chunks given the repo, branch, path, range and id.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct CodeSpanRequest {

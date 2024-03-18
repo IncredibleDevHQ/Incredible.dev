@@ -15,8 +15,6 @@ impl Agent {
             response: String::new(),
         }))?;
 
-        println!("semantic search\n");
-
         let results_symbol = symbol_search(query, &self.repo_name).await;
 
         // log and return the error 
@@ -25,6 +23,13 @@ impl Agent {
             error!("Call to Symbol search API failed: {:?}", err);
             return Err(err);
         }
+
+        // return error if the result is empty
+        if results_symbol.as_ref().unwrap().is_empty() {
+            let err = "No results found for symbol search API call";
+            error!("{}", err);
+            return Err(anyhow::Error::msg(err));
+        }
         let code_snippet = results_symbol.unwrap();
 
         // println!("Size of semantic search: {}", results.len());
@@ -32,11 +37,11 @@ impl Agent {
         let mut code_chunks = code_snippet
             .into_iter()
             .map(|chunk| {
-                let relative_path = chunk.relative_path.clone(); // Clone relative_path
+                let relative_path = chunk.path.clone(); // Clone relative_path
                 CodeChunk {
                     path: relative_path,                              // Use the cloned relative_path
-                    alias: self.get_path_alias(&chunk.relative_path), // Use the original relative_path for this call
-                    snippet: chunk.snippets,
+                    alias: self.get_path_alias(&chunk.path), // Use the original relative_path for this call
+                    snippet: chunk.snippet,
                     start_line: chunk.start_line as usize,
                     end_line: chunk.end_line as usize,
                 }
