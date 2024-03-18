@@ -3,28 +3,22 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use anyhow::Error;
 use crate::get_config;
+extern crate common;
+
+use common::models::CodeChunk;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SymbolSearchResult {
     path: String,
     snippet: String,
-    start_line: u32,
-    end_line: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct SymbolCodeChunk {
-    pub relative_path: String,
-    pub snippets: String,
-    pub start_line: u32,
-    pub end_line: u32,
-    pub index: usize,
+    start_line: usize,
+    end_line: usize,
 }
 
 pub async fn symbol_search(
     query: &str,
     repo_name: &str,
-) -> Result<Vec<SymbolCodeChunk>, Error> {
+) -> Result<Vec<CodeChunk>, Error> {
     let base_url = &get_config().search_server_url;
     let namespace = repo_name;
     let client = reqwest::Client::new();
@@ -48,12 +42,11 @@ pub async fn symbol_search(
 
     let results = search_results
         .into_iter()
-        .map(|result| SymbolCodeChunk {
-            relative_path: result.path,
-            snippets: result.snippet,
+        .map(|result| CodeChunk {
+            path : result.path,
+            snippet: result.snippet,
             start_line: result.start_line,
             end_line: result.end_line,
-            index: 0,
         })
         .collect::<Vec<_>>();
 
