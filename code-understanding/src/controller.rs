@@ -4,8 +4,8 @@ use crate::agent::prompts;
 use crate::config::Config;
 use crate::AppState;
 use agent::llm_gateway;
-use common::models::{GenerateQuestionRequest, CodeUnderstandRequest};
-use common::{CodeUnderstanding, models::TaskList};
+use common::models::{CodeUnderstandRequest, GenerateQuestionRequest};
+use common::{models::TaskList, CodeUnderstanding};
 use std::time::Duration;
 
 use crate::agent::agent::Action;
@@ -15,7 +15,6 @@ use anyhow::Result;
 use std::convert::Infallible;
 use std::sync::Arc;
 use warp::http::StatusCode;
-
 
 pub async fn handle_retrieve_code(
     req: CodeUnderstandRequest,
@@ -62,8 +61,8 @@ pub async fn handle_retrieve_code(
     log::info!("first action {:?}\n", action);
 
     let mut i = 1;
-    let mut is_action_error = false;
-    'outer: loop {
+    // return error from the loop if there is an error in the action.
+    let action_result: Result<(), anyhow::Error> = loop {
         // Now only focus on the step function inside this loop.
         match agent.step(action).await {
             Ok(next_action) => {
@@ -71,33 +70,31 @@ pub async fn handle_retrieve_code(
                     Some(act) => {
                         action = act;
                     }
-                    None => break,
+                    None => break Ok(()),
                 }
 
-                // print the action
-                i = i + 1;
+                i += 1;
 
                 log::info!("Action number: {}, Action: {:?}", i, action);
             }
             Err(e) => {
                 log::error!("Error during step function: {}", e);
-                is_action_error = true;
-                break 'outer;
+                break Err(e.into()); // Convert the error into a Box<dyn std::error::Error>
             }
         }
 
         // Optionally, you can add a small delay here to prevent the loop from being too tight.
         tokio::time::sleep(Duration::from_millis(500)).await;
-    }
+    };
 
-    if is_action_error {
-        log::error!("Error during step function");
+    // if there is an error in the action, return the error.
+    if action_result.is_err() {
         return Ok(warp::reply::with_status(
-            warp::reply::json(&format!("Error: {}", "Error during step function")),
+            warp::reply::json(&format!("Error: {}", action_result.err().unwrap())),
             StatusCode::INTERNAL_SERVER_ERROR,
         ));
     }
-    
+
     // These need to be put beind a try catch sort of setup
     let final_answer = match agent.get_final_anwer().answer.clone() {
         Some(ans) => ans,
@@ -121,7 +118,6 @@ pub async fn handle_retrieve_code(
         StatusCode::OK,
     ))
 }
-
 
 pub async fn generate_task_list(
     req: GenerateQuestionRequest,
