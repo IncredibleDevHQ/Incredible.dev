@@ -239,17 +239,16 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
     let question_concept_generator_prompt = format!(
         r#"#####
 
-        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Alongside each task and subtask, you will generate questions aimed at understanding the current codebase. These questions should be clear, direct, and use the full names of services or components without resorting to acronyms or shorthand notations.
+        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Generate questions that pinpoint the critical knowledge a new developer must acquire to tackle the issue effectively. Each question should uncover information that is essential for understanding and addressing the task, ensuring that without the knowledge gained from these questions, the developer would not have sufficient insight to proceed.
 
         Your job is to perform the following tasks:
-        - Generate 1 to 5 main tasks based on the issue description, focusing on the necessary code modifications.
+        - Generate 1 to 5 main tasks based on the issue description, focusing on necessary code modifications.
         - For each main task, define 1 to 5 subtasks that elaborate on the specific actions required.
-        - For each subtask, create 1 to 4 questions that delve into the existing codebase's structure and behavior. Ensure these questions use full names and avoid abbreviations, integrating similar lines of inquiry into concise, comprehensive questions.
+        - For each subtask, create 1 to 4 questions that are fundamental for a new developer to understand and engage with the existing codebase effectively. These questions should be crucial, with their answers providing the foundational knowledge required to solve the task.
 
-        When referring to APIs or other components:
-        - Always use the full and specific names of APIs or components in the questions. Avoid using acronyms, abbreviations, or shorthand notations to ensure clarity and avoid ambiguity.
-
-        - Focus questions on understanding the current system's functionality, interactions, and structure. Ensure that the language used is precise and unambiguous, emphasizing comprehension over alteration.
+        When framing questions:
+        - Ensure each question seeks information that is vital for the new developer to solve the task. The absence of this information should significantly hinder progress on the task.
+        - Phrase questions clearly and directly, targeting the core aspects that need to be understood. Avoid any assumptions about the system's current state or the developer's prior knowledge.
 
         ----Example start----
         
@@ -263,9 +262,9 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
               "task": "Enhance the Service A API to integrate with the Data Processing API for improved efficiency",
               "subtasks": [
                 {{
-                  "subtask": "Analyze the current interaction between the Service A API and the Data Processing API",
+                  "subtask": "Determine the necessity and structure of interaction between the Service A API and the Data Processing API",
                   "questions": [
-                    "How does the Service A API currently interact with the Data Processing API and what data structures are used in this communication?"
+                    "Is there a current interaction between the Service A API and the Data Processing API? If so, what is its nature and structure?"
                   ]
                 }}
               ]
@@ -278,11 +277,11 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
         issue description- '''{issue_desc}'''
         repo_name- '''{repo_name}'''
 
-        Ensure that the tasks and subtasks explicitly outline the modification actions required. The questions should deepen understanding of the current codebase, focusing on its existing structures and behaviors, while being clear, concise, and using full names.
+        Ensure that the tasks and subtasks explicitly outline the modification actions required. The questions should reveal indispensable knowledge for the new developer, focusing on gaining a comprehensive understanding of the task at hand.
 
         RETURN a JSON object containing the structured breakdown of tasks, subtasks, and their associated questions.
 
-        DO NOT confuse tasks with questions. Tasks should outline 'what' needs to be done, while questions should clarify 'how' the current system operates, focusing on understanding rather than modifying.
+        DO NOT confuse tasks with questions. Tasks should outline 'what' needs to be done, while questions should unearth the 'why' and 'how' that are essential for addressing the task effectively, even for someone new to the codebase.
 
 "#
     );

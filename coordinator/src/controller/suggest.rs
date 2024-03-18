@@ -32,7 +32,7 @@ pub async fn handle_suggest_wrapper(
     }
 }
 
-async fn handle_suggest_core(request: SuggestRequest) -> Result<Vec<TaskList>, anyhow::Error> {
+async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow::Error> {
     let generated_questions = match get_generated_questions(
         request.user_query.clone(),
         request.repo_name.clone(),
@@ -77,9 +77,9 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<Vec<TaskList>, a
 async fn get_generated_questions(
     user_query: String,
     repo_name: String,
-) -> Result<Vec<TaskList>, anyhow::Error> {
+) -> Result<TaskList, anyhow::Error> {
     let generate_questions_url = format!("{}/task-list", CONFIG.code_understanding_url);
-    let generated_questions = service_caller::<GenerateQuestionRequest, Vec<TaskList>>(
+    let generated_questions = service_caller::<GenerateQuestionRequest, TaskList>(
         generate_questions_url,
         Method::POST,
         Some(GenerateQuestionRequest {

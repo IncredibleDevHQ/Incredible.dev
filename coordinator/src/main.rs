@@ -56,8 +56,9 @@ impl Configuration {
 static CONFIG: Lazy<Configuration> = Lazy::new(|| Configuration::load_from_env());
 
 // write a function test if the dependency services are up and running
-fn health_check(url: &str) -> bool {
-    let response = reqwest::blocking::get(url);
+async fn health_check(url: &str) -> bool {
+    // do async request and await for the response
+    let response = reqwest::get(url).await;
     response.is_ok()
 }
 
@@ -71,10 +72,10 @@ async fn main() -> Result<()> {
     let code_search_url = &CONFIG.code_search_url;
     let code_understanding_url = &CONFIG.code_understanding_url;
  
-    if !health_check(code_search_url) {
+    if !health_check(code_search_url).await {
         panic!("Code search service is not available, please run the code search service first");
     }
-    if !health_check(code_understanding_url) {
+    if !health_check(code_understanding_url).await {
         panic!("Code understanding service is not available, please run the code understanding service first");
     }
 
