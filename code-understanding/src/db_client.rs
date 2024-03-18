@@ -6,7 +6,7 @@ use crate::helpers::trigrams::trigrams;
 use crate::search;
 use common::hasher::generate_quikwit_index_name;
 use compact_str::CompactString;
-use log::{error, info};
+use log::{error, debug, info};
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
@@ -61,7 +61,7 @@ impl DbConnect {
                 http_client,
             }),
             Err(err) => {
-                println!("Failed to initialize semantic search: {}", err);
+                error!("Failed to initialize semantic search: {}", err);
                 Err(err.into())
             }
         }
@@ -85,8 +85,6 @@ impl DbConnect {
             .collect::<HashSet<_>>() // Removes duplicates
             .into_iter()
             .collect::<Vec<_>>();
-        //println!("Quick wit paths: {:?}", paths);
-        //println!("search_query: {}", search_query);
 
         Ok(response_array)
     }
@@ -267,11 +265,9 @@ impl DbConnect {
 
         // Iterate over counts and populate file_documents
         for hit in hits {
-            // println!("hit: {:?}\n", hit.clone());
             let result = self
                 .search_with_async(index_name, search_field, hit.clone().into())
                 .await;
-            //println!("res: {:?}\n", result);
             for res in result.unwrap() {
                 // Check if the key exists in the HashMap
                 if let Some(entry) = counts.get_mut(&res.clone()) {

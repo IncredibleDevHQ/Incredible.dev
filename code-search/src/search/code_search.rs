@@ -1,22 +1,20 @@
 use log::debug;
 use std::sync::Arc;
 
+extern crate common;
+
 use crate::db::DbConnect;
 use crate::graph::scope_graph::SymbolLocations;
-use crate::graph::symbol_ops;
-use crate::models::CodeChunk;
+use common::models::CodeChunk;
 use crate::parser::literal::Literal;
 use crate::search::payload::{CodeExtractMeta, PathExtractMeta, SymbolPayload};
 use crate::search::ranking::rank_symbol_payloads;
-use crate::utilities::util::get_line_number;
 use crate::AppState;
 
 use anyhow::{anyhow, Error, Result};
-use ort::environment;
 use serde::{Deserialize, Serialize};
 
 use super::quikwit::get_file_from_quickwit;
-use md5::compute;
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct ExtractedContent {
