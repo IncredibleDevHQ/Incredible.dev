@@ -235,68 +235,21 @@ println!("hello world!");
     }
 }
 
-pub fn question_generator_prompt(issue_desc: &str, repo_name: &str) -> String {
-    let question_generator_prompt = format!(
-        r#"#####
-
-        You are a Tool  that take issue description for developer task and extract query out of to do semantic search on codebase to find relevant codes to change.
-            
-        Your job is to perform the following tasks:
-        - Read the issue description and generate multiple query but should hold same meaning, but potentially using different keywords or phrasing.
-        - If the issue description is something like \"As soon as I click on all repos, prompt guide or any button - history gets opened even if i have closed it. every action like new chat, etc gets the history opened. It should not do so\" or related  transform it to  \"["What causes the history to open when clicking on buttons?", "Why does every action trigger the history to open?", "How to prevent the history from opening with each action?"]\"
-        - DO NOT CHANGE MEANING OF THE QUERY
-        - RETURN ARRAY CONTAINING THREE Generated QUERIES 
-
-
-        
-
-        ----Example start----
-        
-        issue description- '''Current problem - In the application preview mode, the Built with ToolJet badge does not have any indication that it won't be shown once the user upgrades their plan. This is confusing to the user, that is trying to remove the badge and also does not give them an idea of the benefits of upgrading.
-        '''
-        repo_name- '''Tooljet/tooljet'''
-
-    
-
-        Respone from LLM -["What alterations can be made to the Built with ToolJet badge in the application preview mode to indicate that it will no longer be displayed after a user upgrades their plan?",
-        "How might we adjust the Built with ToolJet badge in the preview mode to clearly demonstrate to users that it can be removed upon upgrading their plan?",
-        "What modifications are required for the Built with ToolJet badge to inform users that upgrading their plan will enable them to remove the badge from the application preview mode?"
-        ]
-
-        ----Example end----
-
-
-        issue description- '''{issue_desc}'''
-        repo name- '''{repo_name}'''
-
-        Above given example is for only understanding the way you have to response to the issue description.
-        Do not return response of given example
-        
-        GIVE ONLY ARRAY  containing  updated queries.
-
-        DO NOT give queries in number, like 1. \"How are conversation routes implemented?\" 2. \"What is the implementation process for conversation routes?\" 3. \"Can you explain the implementation of conversation routes?\"
-        Do not return issue description in your response.
-
-"#
-    );
-    question_generator_prompt
-}
-
 pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> String {
     let question_concept_generator_prompt = format!(
         r#"#####
 
-        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Alongside each task and subtask, you will generate questions aimed at understanding the current codebase. These questions should be insightful, focusing on the existing codebase's structure and behavior without directly addressing the specific changes to be made.
+        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Alongside each task and subtask, you will generate questions aimed at understanding the current codebase. These questions should be clear, direct, and use the full names of services or components without resorting to acronyms or shorthand notations.
 
         Your job is to perform the following tasks:
         - Generate 1 to 5 main tasks based on the issue description, focusing on the necessary code modifications.
         - For each main task, define 1 to 5 subtasks that elaborate on the specific actions required.
-        - For each subtask, create 1 to 4 questions that delve into the existing codebase's structure and behavior. These questions should be direct, specific, and clearly reference the components they inquire about, avoiding vague terminology like "same," "this," or "that."
+        - For each subtask, create 1 to 4 questions that delve into the existing codebase's structure and behavior. Ensure these questions use full names and avoid abbreviations, integrating similar lines of inquiry into concise, comprehensive questions.
 
         When referring to APIs or other components:
-        - Always use specific and descriptive names, and ensure that questions about these components explicitly name them instead of using indirect references. For instance, instead of asking "What APIs are currently available within the same service?" ask "What APIs are currently available within the Coordinator Service?"
+        - Always use the full and specific names of APIs or components in the questions. Avoid using acronyms, abbreviations, or shorthand notations to ensure clarity and avoid ambiguity.
 
-        - Ensure that the questions avoid phrases that directly inquire about the modifications needed, such as "what modifications are required" or "what changes are needed". Instead, focus the questions on understanding the current system's functionality, interactions, and structure.
+        - Focus questions on understanding the current system's functionality, interactions, and structure. Ensure that the language used is precise and unambiguous, emphasizing comprehension over alteration.
 
         ----Example start----
         
@@ -310,10 +263,9 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
               "task": "Enhance the Service A API to integrate with the Data Processing API for improved efficiency",
               "subtasks": [
                 {{
-                  "subtask": "Analyze the current interaction between Service A API and the Data Processing API",
+                  "subtask": "Analyze the current interaction between the Service A API and the Data Processing API",
                   "questions": [
-                    "How does Service A API currently interact with the Data Processing API?",
-                    "What data structures are used in the communication between Service A API and the Data Processing API?"
+                    "How does the Service A API currently interact with the Data Processing API and what data structures are used in this communication?"
                   ]
                 }}
               ]
@@ -326,7 +278,7 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
         issue description- '''{issue_desc}'''
         repo_name- '''{repo_name}'''
 
-        Ensure that the tasks and subtasks explicitly outline the modification actions required. The questions should deepen understanding of the current codebase, focusing on its existing structures and behaviors, without suggesting direct actions.
+        Ensure that the tasks and subtasks explicitly outline the modification actions required. The questions should deepen understanding of the current codebase, focusing on its existing structures and behaviors, while being clear, concise, and using full names.
 
         RETURN a JSON object containing the structured breakdown of tasks, subtasks, and their associated questions.
 
