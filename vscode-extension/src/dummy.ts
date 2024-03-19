@@ -7,8 +7,8 @@ export const initalPanelState: PanelState = {
       id: "conv1",
       header: {
         title: "Conversation Title",
-        isTitleMessage: true,
-        codicon: "chat",
+        isTitleMessage: false,
+        codicon: "magnet",
       },
       content: {
         type: "messageExchange",
@@ -31,13 +31,14 @@ export const initalPanelState: PanelState = {
           responsePlaceholder: "Type your response...",
         },
       },
+      createdAt: Date.now() - 1002,
     },
     {
       id: "conv2",
       header: {
         title: "Instruction Refinement",
-        isTitleMessage: false,
-        codicon: "settings",
+        isTitleMessage: true,
+        codicon: "table",
       },
       content: {
         type: "messageExchange",
@@ -56,6 +57,7 @@ export const initalPanelState: PanelState = {
           responsePlaceholder: "Type your response...",
         },
       },
+      createdAt: Date.now() - 1000,
     },
   ],
   selectedConversationId: "conv1",
