@@ -1,4 +1,4 @@
-import { createContext } from "react";
+import { createContext, useState } from "react";
 import DeferredPromise from "promise-deferred";
 import { v4 as uuid } from "uuid";
 import {
@@ -9,11 +9,15 @@ import {
   ViewApiResponse,
   ViewEvents,
 } from "../viewApi";
+import { PanelState } from "../schema/PanelState";
+import { initalPanelState } from "../dummy";
 
 export type WebviewContextValue = {
   callApi: CallAPI;
   addListener: AddRemoveListener;
   removeListener: AddRemoveListener;
+  panelState: PanelState;
+  setPanelState: React.Dispatch<React.SetStateAction<PanelState>>;
 };
 
 export type WebviewApi = ReturnType<typeof acquireVsCodeApi>;
@@ -28,12 +32,10 @@ type AddRemoveListener = <K extends keyof ViewEvents>(
 ) => void;
 
 export const webviewContextValue = (
-  postMessage: (message: unknown) => void
-): {
-  callApi: CallAPI;
-  addListener: AddRemoveListener;
-  removeListener: AddRemoveListener;
-} => {
+  postMessage: (message: unknown) => void,
+  initialPanelState: PanelState
+): WebviewContextValue => {
+  const [panelState, setPanelState] = useState<PanelState>(initialPanelState);
   const pendingRequests: Record<string, DeferredPromise.Deferred<unknown>> = {};
   const listeners: Record<string, Set<(...args: unknown[]) => void>> = {};
 
@@ -78,7 +80,7 @@ export const webviewContextValue = (
     listeners[key].delete(cb as (...args: unknown[]) => void);
   };
 
-  return { callApi, addListener, removeListener };
+  return { callApi, addListener, removeListener, panelState, setPanelState };
 };
 
 export const WebviewContext = createContext<WebviewContextValue>(
@@ -92,9 +94,13 @@ export const WithWebviewContext = ({
   vscodeApi: WebviewApi;
   children: React.ReactNode;
 }) => {
+  const [panelState, setPanelState] = useState<PanelState>(initalPanelState);
+
+  const value = webviewContextValue(vscodeApi.postMessage, panelState);
+  value.panelState = panelState;
+  value.setPanelState = setPanelState;
+
   return (
-    <WebviewContext.Provider value={webviewContextValue(vscodeApi.postMessage)}>
-      {children}
-    </WebviewContext.Provider>
+    <WebviewContext.Provider value={value}>{children}</WebviewContext.Provider>
   );
 };
