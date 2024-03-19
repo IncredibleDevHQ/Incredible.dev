@@ -73,6 +73,7 @@ export const conversationSchema = zod.object({
     messageExchangeContentSchema,
     instructionRefinementContentSchema,
   ]),
+  createdAt: zod.number(),
 });
 
 export type Conversation = zod.infer<typeof conversationSchema>;

@@ -11,6 +11,7 @@ import {
 } from "./viewApi";
 import fs from "node:fs/promises";
 
+// This is sort of the gateway to interact with native VS Code APIs n atuff.
 export const activate = async (ctx: vscode.ExtensionContext) => {
   const connectedViews: Partial<Record<ViewKey, vscode.WebviewView>> = {};
 
@@ -93,6 +94,7 @@ export const activate = async (ctx: vscode.ExtensionContext) => {
 
   registerAndConnectView("exampleViewA");
   registerAndConnectView("exampleViewB");
+  registerAndConnectView("chatConversation");
 };
 
 export const deactivate = () => {
