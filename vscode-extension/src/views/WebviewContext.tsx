@@ -1,4 +1,4 @@
-import { createContext, useState } from "react";
+import { createContext, useEffect, useState } from "react";
 import DeferredPromise from "promise-deferred";
 import { v4 as uuid } from "uuid";
 import {
@@ -95,6 +95,10 @@ export const WithWebviewContext = ({
   children: React.ReactNode;
 }) => {
   const [panelState, setPanelState] = useState<PanelState>(initalPanelState);
+
+  useEffect(() => {
+    console.log("panelState updated:", panelState);
+  }, [panelState]);
 
   const value = webviewContextValue(vscodeApi.postMessage, panelState);
   value.panelState = panelState;
