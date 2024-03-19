@@ -11,6 +11,7 @@ const template = (params: {
   srcUri: string;
   publicPath: string;
   cssUri: string;
+  codiconsCssUri: string;
   title: string;
   nonce: string;
 }) => `
@@ -22,6 +23,7 @@ const template = (params: {
     <title>${params.title}</title>
     <meta http-equiv="Content-Security-Policy" content="${params.csp}" />
     <link href="${params.cssUri}" rel="stylesheet" />
+    <link href="${params.codiconsCssUri}" rel="stylesheet" />
   </head>
 
   <body>
@@ -81,6 +83,9 @@ const setViewHtml = <V extends ViewKey>(
   const cssUri = isProduction
     ? uri("media", "style.css")
     : `${DEV_SERVER_HOST}/media/style.css`;
+  const codiconsCssUri = isProduction
+    ? uri("media", "codicon.css")
+    : `${DEV_SERVER_HOST}/media/codicon.css`;
 
   const csp = (
     isProduction
@@ -105,6 +110,7 @@ const setViewHtml = <V extends ViewKey>(
     srcUri,
     publicPath,
     cssUri,
+    codiconsCssUri,
     view: viewId,
     nonce,
   });
