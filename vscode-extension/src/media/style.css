@@ -1,0 +1,11 @@
+.chat-input {
+  display: grid;
+  margin-top: 20px;
+  margin: var(--rubberduck-container-padding);
+
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 5px;
+  padding: 5px;
+
+  background-color: var(--vscode-sideBar-background);
+}
