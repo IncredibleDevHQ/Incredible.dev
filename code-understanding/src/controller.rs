@@ -16,6 +16,8 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use warp::http::StatusCode;
 
+use log::error;
+
 pub async fn handle_retrieve_code(
     req: CodeUnderstandRequest,
     app_state: Arc<AppState>,
@@ -89,8 +91,11 @@ pub async fn handle_retrieve_code(
 
     // if there is an error in the action, return the error.
     if action_result.is_err() {
+        let err_msg = action_result.err().unwrap().to_string();
+        // log the error 
+        error!("Error in the step function: {}", err_msg);
         return Ok(warp::reply::with_status(
-            warp::reply::json(&format!("Error: {}", action_result.err().unwrap())),
+            warp::reply::json(&format!("Error: {}", err_msg)),
             StatusCode::INTERNAL_SERVER_ERROR,
         ));
     }

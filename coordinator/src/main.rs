@@ -5,6 +5,7 @@ use once_cell::sync::Lazy;
 mod controller;
 mod models;
 mod routes;
+mod task_graph;
 
 use core::result::Result::Ok;
 use std::env;
@@ -22,7 +23,6 @@ pub struct Configuration {
     openai_model: String,
 }
 
-/// Okay so,
 /// First we get the user query into the system
 /// Then we call the qiestion generator for the question coming in
 /// Then we get answers for those questions
@@ -56,12 +56,29 @@ impl Configuration {
 
 static CONFIG: Lazy<Configuration> = Lazy::new(|| Configuration::load_from_env());
 
+// write a function test if the dependency services are up and running
+async fn health_check(url: &str) -> bool {
+    // do async request and await for the response
+    let response = reqwest::get(url).await;
+    response.is_ok()
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
     dotenv::dotenv().ok();
 
     info!("Loaded configuration: {:?}", *CONFIG);
+    // health check code search url and code understanding url
+    let code_search_url = &CONFIG.code_search_url;
+    let code_understanding_url = &CONFIG.code_understanding_url;
+ 
+    if !health_check(code_search_url).await {
+        panic!("Code search service is not available, please run the code search service first");
+    }
+    if !health_check(code_understanding_url).await {
+        panic!("Code understanding service is not available, please run the code understanding service first");
+    }
 
     let coordinator_routes = routes::coordinator();
     warp::serve(coordinator_routes)
