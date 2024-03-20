@@ -3,14 +3,14 @@ import { createRoot } from "react-dom/client";
 import { WebviewApi, WithWebviewContext } from "./WebviewContext";
 import { ExampleViewA } from "./ExampleViewA";
 import { ExampleViewB } from "./ExampleViewB";
-import { ChatConversation } from "./ChatConversation";
 import { PanelState } from "../schema/PanelState";
 import { initalPanelState } from "../dummy";
+import { AppRouter } from "./AppRouter";
 
 export const Views = {
   exampleViewA: ExampleViewA,
   exampleViewB: ExampleViewB,
-  chatConversation: ChatConversation,
+  appRouter: AppRouter,
 } as const;
 
 export type ViewKey = keyof typeof Views;
@@ -18,11 +18,11 @@ export type ViewKey = keyof typeof Views;
 interface ViewProps {
   exampleViewA?: {};
   exampleViewB?: {};
-  chatConversation?: { panelState: PanelState };
+  appRouter?: { panelState: PanelState };
 }
 
 const initialProps: ViewProps = {
-  chatConversation: {
+  appRouter: {
     panelState: initalPanelState,
   },
 };

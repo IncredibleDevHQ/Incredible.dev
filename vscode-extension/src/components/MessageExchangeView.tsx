@@ -1,5 +1,5 @@
 import { MessageExchangeContent } from "../schema/Conversation";
-import React, { useState } from "react";
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { ChatInput } from "./ChatInput";
 import { ErrorMessage } from "./ErrorMessage";
