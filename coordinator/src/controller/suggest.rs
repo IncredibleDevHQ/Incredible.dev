@@ -59,8 +59,12 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
     tracker.update_roots_child_status(ChildTaskStatus::Done);
     // extend the graph with tasks, subtasks, and questions in the task list
     tracker.extend_graph_with_tasklist(&generated_questions);
-    debug!("Generated questions: {:?}", generated_questions);
 
+    let questions_with_ids = tracker.get_questions_with_ids();
+    // iter and print 
+    for question_id in questions_with_ids.iter() {
+        debug!("Question-id {}", question_id);
+    }
     // let answers_to_questions =
     //     match get_code_understandings(request.repo_name.clone(), generated_questions).await {
     //         Ok(answers) => answers,
