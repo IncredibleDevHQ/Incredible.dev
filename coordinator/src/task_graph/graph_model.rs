@@ -78,3 +78,10 @@ pub struct QuestionWithId {
     pub id: usize,
     pub text: String,
 }
+
+// implement Display for QuestionWithId
+impl std::fmt::Display for QuestionWithId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Question {}: {}", self.id, self.text)
+    }
+}
