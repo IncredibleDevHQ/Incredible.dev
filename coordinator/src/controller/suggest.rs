@@ -2,6 +2,7 @@ use anyhow::Result;
 use futures::future::join_all;
 use std::{collections::HashMap, convert::Infallible};
 use crate::task_graph::graph_model::{TrackProcess, ChildTaskStatus};
+use tokio::{fs::File, io::AsyncWriteExt};
 
 use common::{
     models::{CodeContextRequest, CodeUnderstandRequest, GenerateQuestionRequest, TaskList},
@@ -33,7 +34,7 @@ pub async fn handle_suggest_wrapper(
     }
 }
 
-async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow::Error> {
+async fn handle_suggest_core(request: SuggestRequest) -> Result<Vec<CodeUnderstanding>, anyhow::Error> {
     // initialize the new tracker with task graph
     let mut tracker = TrackProcess::new(&request.repo_name, &request.user_query);
 
@@ -55,6 +56,10 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
         }
     };
 
+    // write the generated questions into a file as a json data
+    let mut file = File::create("generated_questions.txt").await?;
+    file.write_all(serde_json::to_string(&generated_questions)?.as_bytes()).await?;
+
     // update the root status to completed
     tracker.update_roots_child_status(ChildTaskStatus::Done);
     // extend the graph with tasks, subtasks, and questions in the task list
@@ -66,11 +71,11 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
         debug!("Question-id {}", question_id);
     }
 
-    let two_questions: Vec<String> = questions_with_ids.iter().take(2).map(|x| x.text.clone()).collect();
+    let questions: Vec<String> = questions_with_ids.iter().map(|x| x.text.clone()).collect();
 
 
-    let answers_to_questions =
-        match get_code_understandings(request.repo_name.clone(), two_questions).await {
+    let answers_to_questions: Vec<CodeUnderstanding> =
+        match get_code_understandings(request.repo_name.clone(), questions).await {
             Ok(answers) => answers,
             Err(e) => {
                 log::error!("Failed to get answers to questions: {}", e);
@@ -78,6 +83,10 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
             }
         };
 
+    // write answers to questions into a file as a json data
+    let mut file = File::create("answers_to_questions.txt").await?;
+    file.write_all(serde_json::to_string(&answers_to_questions)?.as_bytes()).await?;
+    
     // iterate and print the answers 
     for answer in answers_to_questions.iter() {
         debug!("Answer: \n{}", answer);
@@ -96,7 +105,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
     // //     }
     // // };
 
-    Ok(generated_questions)
+    Ok(answers_to_questions)
 }
 
 async fn get_generated_questions(
