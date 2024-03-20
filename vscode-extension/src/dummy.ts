@@ -69,4 +69,7 @@ export const initalPanelState: PanelState = {
         "Unable to connect to the server. Please check your internet connection and try again.",
     },
   },
+  settings: {
+    view: "login",
+  }
 };
