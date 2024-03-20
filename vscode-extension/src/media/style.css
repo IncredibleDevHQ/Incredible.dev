@@ -185,6 +185,7 @@ body {
   margin-right: 5px;
 }
 
+.start-ingestion,
 .start-chat,
 .enter-api-key {
   padding: var(--rubberduck-container-padding);
@@ -491,18 +492,17 @@ span.error-retry:hover {
 /* Styles for Login Screen */
 .login-screen {
   display: flex;
-  justify-content: center; /* Center horizontally */
-  align-items: center; /* Center vertically */
-  /* min-height: 100vh;  */
+  justify-content: center;
+  align-items: center;
 }
 
 .login-component > button {
-  background-color: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
 }
 
 .login-component > button:hover {
-  background-color: var(--vscode-button-hoverBackground);
+  background-color: var(--vscode-button-secondaryHoverBackground);
 }
 
 .login-component {
@@ -536,4 +536,45 @@ span.error-retry:hover {
 
 .login-component > input:disabled {
   color: var(--vscode-disabledForeground);
+}
+
+/* Styles for ingestion screen */
+.ingestion-screen {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.start-ingestion > button {
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+
+.start-ingestion > button:hover {
+  background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.ingestion-component {
+  display: grid;
+  margin-top: 20px;
+  margin: var(--rubberduck-container-padding);
+
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 5px;
+  padding: 5px;
+
+  background-color: var(--vscode-sideBar-background);
+  width: 400px;
+}
+
+.ingestion-progress {
+  margin-left: var(--rubberduck-container-padding);
+  margin-right: var(--rubberduck-container-padding);
+  color: var(--vscode-editor-foreground);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ingestion-progress > div {
+  padding: var(--input-padding-vertical) var(--input-padding-horizontal);
 }
