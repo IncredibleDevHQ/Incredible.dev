@@ -36,7 +36,7 @@ impl TrackProcess {
                         .fold(subtask_node, |subtask_node_acc, question| {
                             // Add each question as a node and connect it to the current subtask node.
                             let question_node =
-                                self.graph.add_node(Node::Question(question.clone()));
+                                self.graph.add_node(Node::Question(question.clone(), ChildTaskStatus::default()));
                             self.graph
                                 .add_edge(subtask_node_acc, question_node, Edge::Question);
 
