@@ -72,3 +72,9 @@ impl Default for ChildTaskStatus {
         ChildTaskStatus::NotStarted
     }
 }
+
+// Define a struct to hold questions along with their IDs.
+pub struct QuestionWithId {
+    pub id: usize,
+    pub text: String,
+}

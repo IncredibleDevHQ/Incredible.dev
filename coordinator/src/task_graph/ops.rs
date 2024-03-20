@@ -1,4 +1,4 @@
-use crate::task_graph::graph_model::{Edge, Node, TrackProcess, ChildTaskStatus};
+use crate::task_graph::graph_model::{ChildTaskStatus, Edge, Node, QuestionWithId, TrackProcess};
 
 extern crate common;
 use common::models::TaskList;
@@ -36,9 +36,13 @@ impl TrackProcess {
                         .fold(subtask_node, |subtask_node_acc, question| {
                             self.question_counter += 1;
                             let question_id = self.question_counter;
-        
+
                             // Create a question node with the ID and the default status.
-                            let question_node = self.graph.add_node(Node::Question(question_id, question.clone(), ChildTaskStatus::default()));
+                            let question_node = self.graph.add_node(Node::Question(
+                                question_id,
+                                question.clone(),
+                                ChildTaskStatus::default(),
+                            ));
                             self.graph
                                 .add_edge(subtask_node_acc, question_node, Edge::Question);
 
@@ -53,7 +57,7 @@ impl TrackProcess {
     }
 
     /// Updates the status of the root node in the graph.
-    // the status is used to track of the processing of its child nodes 
+    // the status is used to track of the processing of its child nodes
     // in this the child elements are tasks, subtasks and questions
     /// # Arguments
     ///
@@ -62,7 +66,29 @@ impl TrackProcess {
         // Match against the root node to extract its current state and update it.
         if let Some(Node::RootIssue(desc, uuid, _)) = self.graph.node_weight_mut(self.root_node) {
             // Update the status of the root node.
-            *self.graph.node_weight_mut(self.root_node).unwrap() = Node::RootIssue(desc.clone(), *uuid, new_status);
+            *self.graph.node_weight_mut(self.root_node).unwrap() =
+                Node::RootIssue(desc.clone(), *uuid, new_status);
         }
+    }
+
+    /// Collects all questions from the graph and returns them as `QuestionWithId`.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `QuestionWithId` instances.
+    pub fn get_questions_with_ids(&self) -> Vec<QuestionWithId> {
+        self.graph
+            .node_weights()
+            .filter_map(|node| {
+                if let Node::Question(id, text, _) = node {
+                    Some(QuestionWithId {
+                        id: *id,
+                        text: text.clone(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
