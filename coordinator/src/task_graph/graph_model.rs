@@ -5,6 +5,27 @@ use serde::{Serialize, Deserialize};
 extern crate common;
 use common::models::TaskList;
 
+struct TrackProcess {
+    graph: DiGraph<Node, Edge>,
+    root_node: NodeIndex,
+    uuid: Uuid,
+}
+
+impl TrackProcess {
+    fn new(root_issue: &str) -> Self {
+        let mut graph = DiGraph::<Node, Edge>::new();
+        let uuid = Uuid::new_v4();
+        let root_node_index = graph.add_node(Node::RootIssue(root_issue.to_string(), uuid, ChildTaskStatus::NotStarted));
+
+        TrackProcess {
+            graph,
+            root_node: root_node_index,
+            uuid,
+        }
+    }
+}
+
+
 #[derive(Debug)]
 enum Node {
     RootIssue(String, Uuid, ChildTaskStatus),
