@@ -46,7 +46,7 @@ pub enum Node {
     RootIssue(String, Uuid, ChildTaskStatus),  // Represents the initial issue or task with a status and UUID.
     Task(String),                              // Represents a discrete task derived from the root issue.
     Subtask(String),                           // Represents a subtask under a specific task.
-    Question(String),                          // Represents a question related to a specific subtask.
+    Question(String, ChildTaskStatus),                       // Represents a question related to a specific subtask.
 }
 
 /// Defines the types of edges to represent relationships between nodes in the task tracking graph.
@@ -63,4 +63,10 @@ pub enum ChildTaskStatus {
     NotStarted,  // Indicates that the task or subtask has not yet been started.
     InProgress,  // Indicates that the task or subtask is currently in progress.
     Done,        // Indicates that the task or subtask has been completed.
+}
+
+impl Default for ChildTaskStatus {
+    fn default() -> Self {
+        ChildTaskStatus::NotStarted
+    }
 }
