@@ -1,6 +1,7 @@
 use anyhow::Result;
 use futures::future::join_all;
 use std::{collections::HashMap, convert::Infallible};
+use crate::task_graph::graph_model::TrackProcess;
 
 use common::{
     models::{CodeContextRequest, CodeUnderstandRequest, GenerateQuestionRequest, TaskList},
@@ -33,6 +34,10 @@ pub async fn handle_suggest_wrapper(
 }
 
 async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow::Error> {
+    // initialize the new tracker with task graph
+    let mut tracker = TrackProcess::new(&request.repo_name, &request.user_query);
+
+    // get the generated questions from the code understanding service
     let generated_questions = match get_generated_questions(
         request.user_query.clone(),
         request.repo_name.clone(),
@@ -46,6 +51,8 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
         }
     };
 
+    // extend the graph with tasks, subtasks, and questions in the task list
+    tracker.extend_graph_with_tasklist(&generated_questions);
     debug!("Generated questions: {:?}", generated_questions);
 
     // let answers_to_questions =
