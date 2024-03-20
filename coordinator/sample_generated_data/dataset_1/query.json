@@ -1,4 +1,4 @@
 {
-    "user_query": "I want to modify the API inside coordinator service, make it call the code-understanding service API, and then for each question returned, I would like to call another API from the code-understanding service to obtain answers",
-    "repo_name": "nezuko-ai"
-  }
+  "user_query": "I want to modify the API inside coordinator service, make it call the code-understanding service API, and then for each question returned, I would like to call another API from the code-understanding service to obtain answers",
+  "repo_name": "nezuko-ai"
+}
