@@ -487,3 +487,53 @@ span.error-retry:hover {
 .action-panel {
   margin-left: auto;
 }
+
+/* Styles for Login Screen */
+.login-screen {
+  display: flex;
+  justify-content: center; /* Center horizontally */
+  align-items: center; /* Center vertically */
+  /* min-height: 100vh;  */
+}
+
+.login-component > button {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.login-component > button:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.login-component {
+  display: grid;
+  margin-top: 20px;
+  margin: var(--rubberduck-container-padding);
+
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 5px;
+  padding: 5px;
+
+  background-color: var(--vscode-sideBar-background);
+  width: 400px;
+}
+
+.login-component > input {
+  display: block;
+  width: 100%;
+  border: none;
+  background-color: var(--vscode-sideBar-background);
+  color: var(--vscode-input-foreground);
+  margin: var(--input-margin-vertical) var(--input-margin-horizontal);
+  padding: var(--input-padding-vertical) var(--input-padding-horizontal);
+
+  font: inherit;
+}
+
+.login-component > input:focus {
+  outline: none;
+}
+
+.login-component > input:disabled {
+  color: var(--vscode-disabledForeground);
+}
