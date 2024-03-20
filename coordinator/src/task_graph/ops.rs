@@ -34,9 +34,11 @@ impl TrackProcess {
                         .questions
                         .iter()
                         .fold(subtask_node, |subtask_node_acc, question| {
-                            // Add each question as a node and connect it to the current subtask node.
-                            let question_node =
-                                self.graph.add_node(Node::Question(question.clone(), ChildTaskStatus::default()));
+                            self.question_counter += 1;
+                            let question_id = self.question_counter;
+        
+                            // Create a question node with the ID and the default status.
+                            let question_node = self.graph.add_node(Node::Question(question_id, question.clone(), ChildTaskStatus::default()));
                             self.graph
                                 .add_edge(subtask_node_acc, question_node, Edge::Question);
 
@@ -63,6 +65,4 @@ impl TrackProcess {
             *self.graph.node_weight_mut(self.root_node).unwrap() = Node::RootIssue(desc.clone(), *uuid, new_status);
         }
     }
-
-
 }
