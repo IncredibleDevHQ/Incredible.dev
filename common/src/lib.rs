@@ -36,6 +36,24 @@ pub struct CodeUnderstanding {
     pub answer: String,
 }
 
+impl fmt::Display for CodeUnderstanding {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Question: {}\nAnswer: {}\n", self.question, self.answer)?;
+        for (i, context) in self.context.iter().enumerate() {
+            write!(f, "Context {}:\n", i + 1)?;
+            write!(f, "\tPath: {}\n", context.path)?;
+            write!(f, "\tRepository: {}\n", context.repo)?;
+            if let Some(branch) = &context.branch {
+                write!(f, "\tBranch: {}\n", branch)?;
+            }
+            write!(f, "\tHidden: {}\n", context.hidden)?;
+            write!(f, "\tRanges: {:?}\n", context.ranges)?;
+        }
+        Ok(())
+    }
+}
+
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct CodeUnderstandings {
     pub repo: String,

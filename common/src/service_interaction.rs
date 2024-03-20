@@ -123,7 +123,7 @@ pub async fn service_caller<A: Serialize, B: DeserializeOwned>(
         | StatusCode::BAD_GATEWAY
         | StatusCode::SERVICE_UNAVAILABLE
         | StatusCode::GATEWAY_TIMEOUT => {
-            let error_message = format!("Error: {}", response.status());
+            let error_message = format!("Error: Response status: {}, Error Message: {}", response.status(), response.text().await?);
             log::error!("{}", error_message);
             Err(anyhow!(error_message))
         }

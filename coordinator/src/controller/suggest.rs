@@ -1,15 +1,18 @@
 use anyhow::Result;
 use futures::future::join_all;
 use std::{collections::HashMap, convert::Infallible};
+use crate::task_graph::graph_model::{TrackProcess, ChildTaskStatus};
+use tokio::{fs::File, io::AsyncWriteExt};
 
 use common::{
-    models::{CodeContextRequest, CodeUnderstandRequest, GenerateQuestionRequest},
+    models::{CodeContextRequest, CodeUnderstandRequest, GenerateQuestionRequest, TaskList},
     service_interaction::service_caller,
     CodeUnderstanding, CodeUnderstandings,
 };
 use reqwest::{Method, StatusCode};
 
 use crate::{models::SuggestRequest, CONFIG};
+use log::debug;
 
 pub async fn handle_suggest_wrapper(
     request: SuggestRequest,
@@ -31,7 +34,15 @@ pub async fn handle_suggest_wrapper(
     }
 }
 
-async fn handle_suggest_core(request: SuggestRequest) -> Result<CodeUnderstandings, anyhow::Error> {
+async fn handle_suggest_core(request: SuggestRequest) -> Result<Vec<CodeUnderstanding>, anyhow::Error> {
+    // initialize the new tracker with task graph
+    let mut tracker = TrackProcess::new(&request.repo_name, &request.user_query);
+
+    // update root status to in progress
+    // the status is used to track of the processing of its child nodes 
+    // in this the child elelments are tasks, subtasks and questions
+    tracker.update_roots_child_status(ChildTaskStatus::InProgress);
+    // get the generated questions from the code understanding service
     let generated_questions = match get_generated_questions(
         request.user_query.clone(),
         request.repo_name.clone(),
@@ -45,8 +56,26 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<CodeUnderstandin
         }
     };
 
-    let answers_to_questions =
-        match get_code_understandings(request.repo_name.clone(), generated_questions).await {
+    // write the generated questions into a file as a json data
+    let mut file = File::create("generated_questions.txt").await?;
+    file.write_all(serde_json::to_string(&generated_questions)?.as_bytes()).await?;
+
+    // update the root status to completed
+    tracker.update_roots_child_status(ChildTaskStatus::Done);
+    // extend the graph with tasks, subtasks, and questions in the task list
+    tracker.extend_graph_with_tasklist(&generated_questions);
+
+    let questions_with_ids = tracker.get_questions_with_ids();
+    // iter and print 
+    for question_id in questions_with_ids.iter() {
+        debug!("Question-id {}", question_id);
+    }
+
+    let questions: Vec<String> = questions_with_ids.iter().map(|x| x.text.clone()).collect();
+
+
+    let answers_to_questions: Vec<CodeUnderstanding> =
+        match get_code_understandings(request.repo_name.clone(), questions).await {
             Ok(answers) => answers,
             Err(e) => {
                 log::error!("Failed to get answers to questions: {}", e);
@@ -54,29 +83,37 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<CodeUnderstandin
             }
         };
 
-    let code_context_request = CodeUnderstandings {
-        repo: request.repo_name.clone(),
-        issue_description: request.user_query.clone(),
-        qna: answers_to_questions.clone(),
-    };
-    // TODO: Uncomment this once the context generator is implemented
-    // let code_contexts = match get_code_context(code_context_request).await {
-    //     Ok(contexts) => contexts,
-    //     Err(e) => {
-    //         log::error!("Failed to get code contexts: {}", e);
-    //         return Err(e);
-    //     }
+    // write answers to questions into a file as a json data
+    let mut file = File::create("answers_to_questions.txt").await?;
+    file.write_all(serde_json::to_string(&answers_to_questions)?.as_bytes()).await?;
+    
+    // iterate and print the answers 
+    for answer in answers_to_questions.iter() {
+        debug!("Answer: \n{}", answer);
+    }
+    // let code_context_request = CodeUnderstandings {
+    //     repo: request.repo_name.clone(),
+    //     issue_description: request.user_query.clone(),
+    //     qna: answers_to_questions.clone(),
     // };
+    // // TODO: Uncomment this once the context generator is implemented
+    // // let code_contexts = match get_code_context(code_context_request).await {
+    // //     Ok(contexts) => contexts,
+    // //     Err(e) => {
+    // //         log::error!("Failed to get code contexts: {}", e);
+    // //         return Err(e);
+    // //     }
+    // // };
 
-    Ok(code_context_request)
+    Ok(answers_to_questions)
 }
 
 async fn get_generated_questions(
     user_query: String,
     repo_name: String,
-) -> Result<Vec<String>, anyhow::Error> {
-    let generate_questions_url = format!("{}/question-list", CONFIG.code_understanding_url);
-    let generated_questions = service_caller::<GenerateQuestionRequest, Vec<String>>(
+) -> Result<TaskList, anyhow::Error> {
+    let generate_questions_url = format!("{}/task-list", CONFIG.code_understanding_url);
+    let generated_questions = service_caller::<GenerateQuestionRequest, TaskList>(
         generate_questions_url,
         Method::POST,
         Some(GenerateQuestionRequest {
@@ -121,7 +158,7 @@ async fn get_code_understandings(
         .filter_map(|result| match result {
             Ok(understandings) => Some(understandings),
             Err(e) => {
-                log::error!("Failed to process question: {}", e);
+                log::error!("Failed to process question: {}", e.to_string());
                 None
             }
         })

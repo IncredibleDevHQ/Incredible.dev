@@ -235,65 +235,20 @@ println!("hello world!");
     }
 }
 
-pub fn question_generator_prompt(issue_desc: &str, repo_name: &str) -> String {
-    let question_generator_prompt = format!(
-        r#"#####
-
-        You are a Tool  that take issue description for developer task and extract query out of to do semantic search on codebase to find relevant codes to change.
-            
-        Your job is to perform the following tasks:
-        - Read the issue description and generate multiple query but should hold same meaning, but potentially using different keywords or phrasing.
-        - If the issue description is something like \"As soon as I click on all repos, prompt guide or any button - history gets opened even if i have closed it. every action like new chat, etc gets the history opened. It should not do so\" or related  transform it to  \"["What causes the history to open when clicking on buttons?", "Why does every action trigger the history to open?", "How to prevent the history from opening with each action?"]\"
-        - DO NOT CHANGE MEANING OF THE QUERY
-        - RETURN ARRAY CONTAINING THREE Generated QUERIES 
-
-
-        
-
-        ----Example start----
-        
-        issue description- '''Current problem - In the application preview mode, the Built with ToolJet badge does not have any indication that it won't be shown once the user upgrades their plan. This is confusing to the user, that is trying to remove the badge and also does not give them an idea of the benefits of upgrading.
-        '''
-        repo_name- '''Tooljet/tooljet'''
-
-    
-
-        Respone from LLM -["What alterations can be made to the Built with ToolJet badge in the application preview mode to indicate that it will no longer be displayed after a user upgrades their plan?",
-        "How might we adjust the Built with ToolJet badge in the preview mode to clearly demonstrate to users that it can be removed upon upgrading their plan?",
-        "What modifications are required for the Built with ToolJet badge to inform users that upgrading their plan will enable them to remove the badge from the application preview mode?"
-        ]
-
-        ----Example end----
-
-
-        issue description- '''{issue_desc}'''
-        repo name- '''{repo_name}'''
-
-        Above given example is for only understanding the way you have to response to the issue description.
-        Do not return response of given example
-        
-        GIVE ONLY ARRAY  containing  updated queries.
-
-        DO NOT give queries in number, like 1. \"How are conversation routes implemented?\" 2. \"What is the implementation process for conversation routes?\" 3. \"Can you explain the implementation of conversation routes?\"
-        Do not return issue description in your response.
-
-"#
-    );
-    question_generator_prompt
-}
-
 pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> String {
     let question_concept_generator_prompt = format!(
         r#"#####
 
-        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Alongside each task and subtask, you will generate questions aimed at understanding the current codebase. These questions should provide insight without suggesting direct actions or changes.
+        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Generate questions that pinpoint the critical knowledge a new developer must acquire to tackle the issue effectively. Each question should uncover information that is essential for understanding and addressing the task, ensuring that without the knowledge gained from these questions, the developer would not have sufficient insight to proceed.
 
         Your job is to perform the following tasks:
-        - Define clear, actionable tasks and subtasks based on the issue description, focusing on the necessary code modifications.
-        - For each task and subtask, generate questions that delve into the existing codebase's structure and behavior. Ensure these questions are direct, specific, and avoid vague references.
+        - Generate 1 to 5 main tasks based on the issue description, focusing on necessary code modifications.
+        - For each main task, define 1 to 5 subtasks that elaborate on the specific actions required.
+        - For each subtask, create 1 to 4 questions that are fundamental for a new developer to understand and engage with the existing codebase effectively. These questions should be crucial, with their answers providing the foundational knowledge required to solve the task.
 
-        When referring to APIs or other components:
-        - Always use specific and descriptive names. Never use generic terms like "other API." Instead, clarify the API's purpose or function. For instance, if the API is responsible for processing questions, refer to it as "the question-processing API" rather than "the other API."
+        When framing questions:
+        - Ensure each question seeks information that is vital for the new developer to solve the task. The absence of this information should significantly hinder progress on the task.
+        - Phrase questions clearly and directly, targeting the core aspects that need to be understood. Avoid any assumptions about the system's current state or the developer's prior knowledge.
 
         ----Example start----
         
@@ -307,17 +262,9 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
               "task": "Enhance the Service A API to integrate with the Data Processing API for improved efficiency",
               "subtasks": [
                 {{
-                  "subtask": "Analyze the current interaction between Service A API and the Data Processing API",
+                  "subtask": "Determine the necessity and structure of interaction between the Service A API and the Data Processing API",
                   "questions": [
-                    "How does Service A API currently interact with the Data Processing API?",
-                    "What data structures are used in the communication between Service A API and the Data Processing API?"
-                  ]
-                }},
-                {{
-                  "subtask": "Identify the enhancements needed for Service A API to optimize its interaction with the Data Processing API",
-                  "questions": [
-                    "What specific enhancements are required in Service A API to improve its efficiency with the Data Processing API?",
-                    "How can Service A API better handle the data exchange with the Data Processing API to improve processing speed?"
+                    "Is there a current interaction between the Service A API and the Data Processing API? If so, what is its nature and structure?"
                   ]
                 }}
               ]
@@ -330,11 +277,11 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
         issue description- '''{issue_desc}'''
         repo_name- '''{repo_name}'''
 
-        Ensure that the tasks and subtasks explicitly outline the modification actions required, and the questions deepen understanding of the current codebase, focusing on its existing structures and behaviors. Always use specific and descriptive names for APIs and avoid generic references.
+        Ensure that the tasks and subtasks explicitly outline the modification actions required. The questions should reveal indispensable knowledge for the new developer, focusing on gaining a comprehensive understanding of the task at hand.
 
         RETURN a JSON object containing the structured breakdown of tasks, subtasks, and their associated questions.
 
-        DO NOT confuse tasks with questions. Tasks should outline 'what' needs to be done, while questions should clarify 'how' the current system operates, without suggesting direct actions.
+        DO NOT confuse tasks with questions. Tasks should outline 'what' needs to be done, while questions should unearth the 'why' and 'how' that are essential for addressing the task effectively, even for someone new to the codebase.
 
 "#
     );
