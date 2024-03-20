@@ -5,6 +5,7 @@ use once_cell::sync::Lazy;
 mod controller;
 mod models;
 mod routes;
+mod task_graph;
 
 use core::result::Result::Ok;
 use std::env;
