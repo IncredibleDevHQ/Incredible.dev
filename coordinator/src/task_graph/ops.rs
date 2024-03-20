@@ -1,4 +1,4 @@
-use crate::task_graph::graph_model::{Edge, Node, TrackProcess};
+use crate::task_graph::graph_model::{Edge, Node, TrackProcess, ChildTaskStatus};
 
 extern crate common;
 use common::models::TaskList;
@@ -49,4 +49,20 @@ impl TrackProcess {
                 });
         });
     }
+
+    /// Updates the status of the root node in the graph.
+    // the status is used to track of the processing of its child nodes 
+    // in this the child elements are tasks, subtasks and questions
+    /// # Arguments
+    ///
+    /// * `new_status` - The new status to set for the root issue node.
+    pub fn update_roots_child_status(&mut self, new_status: ChildTaskStatus) {
+        // Match against the root node to extract its current state and update it.
+        if let Some(Node::RootIssue(desc, uuid, _)) = self.graph.node_weight_mut(self.root_node) {
+            // Update the status of the root node.
+            *self.graph.node_weight_mut(self.root_node).unwrap() = Node::RootIssue(desc.clone(), *uuid, new_status);
+        }
+    }
+
+
 }

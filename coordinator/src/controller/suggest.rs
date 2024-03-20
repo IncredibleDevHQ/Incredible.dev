@@ -1,7 +1,7 @@
 use anyhow::Result;
 use futures::future::join_all;
 use std::{collections::HashMap, convert::Infallible};
-use crate::task_graph::graph_model::TrackProcess;
+use crate::task_graph::graph_model::{TrackProcess, ChildTaskStatus};
 
 use common::{
     models::{CodeContextRequest, CodeUnderstandRequest, GenerateQuestionRequest, TaskList},
@@ -37,6 +37,10 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
     // initialize the new tracker with task graph
     let mut tracker = TrackProcess::new(&request.repo_name, &request.user_query);
 
+    // update root status to in progress
+    // the status is used to track of the processing of its child nodes 
+    // in this the child elelments are tasks, subtasks and questions
+    tracker.update_roots_child_status(ChildTaskStatus::InProgress);
     // get the generated questions from the code understanding service
     let generated_questions = match get_generated_questions(
         request.user_query.clone(),
@@ -51,6 +55,8 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
         }
     };
 
+    // update the root status to completed
+    tracker.update_roots_child_status(ChildTaskStatus::Done);
     // extend the graph with tasks, subtasks, and questions in the task list
     tracker.extend_graph_with_tasklist(&generated_questions);
     debug!("Generated questions: {:?}", generated_questions);
