@@ -65,14 +65,18 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
     for question_id in questions_with_ids.iter() {
         debug!("Question-id {}", question_id);
     }
-    // let answers_to_questions =
-    //     match get_code_understandings(request.repo_name.clone(), generated_questions).await {
-    //         Ok(answers) => answers,
-    //         Err(e) => {
-    //             log::error!("Failed to get answers to questions: {}", e);
-    //             return Err(e);
-    //         }
-    //     };
+
+    let two_questions: Vec<String> = questions_with_ids.iter().take(2).map(|x| x.text.clone()).collect();
+
+
+    let answers_to_questions =
+        match get_code_understandings(request.repo_name.clone(), two_questions).await {
+            Ok(answers) => answers,
+            Err(e) => {
+                log::error!("Failed to get answers to questions: {}", e);
+                return Err(e);
+            }
+        };
 
     // let code_context_request = CodeUnderstandings {
     //     repo: request.repo_name.clone(),
