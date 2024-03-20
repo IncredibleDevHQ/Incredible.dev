@@ -94,7 +94,7 @@ export const activate = async (ctx: vscode.ExtensionContext) => {
 
   registerAndConnectView("exampleViewA");
   registerAndConnectView("exampleViewB");
-  registerAndConnectView("chatConversation");
+  registerAndConnectView("appRouter");
 };
 
 export const deactivate = () => {
