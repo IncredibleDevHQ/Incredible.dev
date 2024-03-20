@@ -12,6 +12,7 @@ pub struct TrackProcess {
     pub graph: DiGraph<Node, Edge>,  // The directed graph holding the nodes (tasks, subtasks, questions) and edges.
     pub root_node: NodeIndex,        // Index of the root node in the graph, representing the primary issue or task.
     pub uuid: Uuid,                  // Unique identifier for the root node (and implicitly, the tracking process).
+    pub question_counter: usize,     // Counter to keep track of the number of questions generated.
 }
 
 impl TrackProcess {
@@ -36,6 +37,7 @@ impl TrackProcess {
             graph,
             root_node: root_node_index,
             uuid,
+            question_counter: 0,  // Initialize the counter to zero.
         }
     }
 }
@@ -46,7 +48,7 @@ pub enum Node {
     RootIssue(String, Uuid, ChildTaskStatus),  // Represents the initial issue or task with a status and UUID.
     Task(String),                              // Represents a discrete task derived from the root issue.
     Subtask(String),                           // Represents a subtask under a specific task.
-    Question(String, ChildTaskStatus),                       // Represents a question related to a specific subtask.
+    Question(usize, String, ChildTaskStatus),                       // Represents a question related to a specific subtask.
 }
 
 /// Defines the types of edges to represent relationships between nodes in the task tracking graph.
