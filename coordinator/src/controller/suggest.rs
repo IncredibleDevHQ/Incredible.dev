@@ -78,6 +78,10 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
             }
         };
 
+    // iterate and print the answers 
+    for answer in answers_to_questions.iter() {
+        debug!("Answer: \n{}", answer);
+    }
     // let code_context_request = CodeUnderstandings {
     //     repo: request.repo_name.clone(),
     //     issue_description: request.user_query.clone(),
@@ -145,7 +149,7 @@ async fn get_code_understandings(
         .filter_map(|result| match result {
             Ok(understandings) => Some(understandings),
             Err(e) => {
-                log::error!("Failed to process question: {}", e);
+                log::error!("Failed to process question: {}", e.to_string());
                 None
             }
         })
