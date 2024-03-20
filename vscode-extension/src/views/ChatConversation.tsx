@@ -42,13 +42,11 @@ export const ChatConversation: React.FC = () => {
     return <StartChatButton onClick={handleCreateNewConversation} />;
   }
 
-  if (panelState.type !== "chat") {
-    throw new Error(
-      `Invalid panel state '${panelState.type}' (expected 'chat')`
-    );
+  if (!panelState.chat) {
+    throw new Error(`Invalid panel state '${panelState}' (expected 'chat')`);
   }
 
-  if (!panelState.hasOpenAIApiKey) {
+  if (!panelState.chat.hasOpenAIApiKey) {
     return (
       <div className="enter-api-key">
         <button onClick={() => sendMessage({ type: "enterOpenAIApiKey" })}>
@@ -65,64 +63,68 @@ export const ChatConversation: React.FC = () => {
     );
   }
 
-  if (panelState.conversations.length === 0) {
+  if (panelState.chat.conversations.length === 0) {
     return <StartChatButton onClick={handleCreateNewConversation} />;
   }
 
   return (
     <div>
       <StartChatButton onClick={handleCreateNewConversation} />
-      {panelState.conversations.map((conversation) =>
-        panelState.selectedConversationId === conversation.id ? (
-          <ExpandedConversationView
-            key={conversation.id}
-            conversation={conversation}
-            onSendMessage={(message: string) =>
-              handleOnClickReply(conversation.id, message)
-            }
-            onClickRetry={() =>
-              sendMessage({
-                type: "retry",
-                data: { id: conversation.id },
-              })
-            }
-            onClickDismissError={() =>
-              sendMessage({
-                type: "dismissError",
-                data: { id: conversation.id },
-              })
-            }
-            onClickDelete={() =>
-              sendMessage({
-                type: "deleteConversation",
-                data: { id: conversation.id },
-              })
-            }
-            onClickExport={() => {
-              sendMessage({
-                type: "exportConversation",
-                data: { id: conversation.id },
-              });
-            }}
-            onClickInsertPrompt={
-              panelState.surfacePromptForOpenAIPlus
-                ? () => {
-                    sendMessage({
-                      type: "insertPromptIntoEditor",
-                      data: { id: conversation.id },
-                    });
-                  }
-                : undefined
-            }
-          />
-        ) : (
-          <CollapsedConversationView
-            key={conversation.id}
-            conversation={conversation}
-            onClick={() => handleclickCollapsedConversation(conversation.id)}
-          />
-        )
-      )}
+      {panelState.chat?.conversations.length > 0
+        ? panelState.chat.conversations.map((conversation) =>
+            panelState.chat?.selectedConversationId === conversation.id ? (
+              <ExpandedConversationView
+                key={conversation.id}
+                conversation={conversation}
+                onSendMessage={(message: string) =>
+                  handleOnClickReply(conversation.id, message)
+                }
+                onClickRetry={() =>
+                  sendMessage({
+                    type: "retry",
+                    data: { id: conversation.id },
+                  })
+                }
+                onClickDismissError={() =>
+                  sendMessage({
+                    type: "dismissError",
+                    data: { id: conversation.id },
+                  })
+                }
+                onClickDelete={() =>
+                  sendMessage({
+                    type: "deleteConversation",
+                    data: { id: conversation.id },
+                  })
+                }
+                onClickExport={() => {
+                  sendMessage({
+                    type: "exportConversation",
+                    data: { id: conversation.id },
+                  });
+                }}
+                onClickInsertPrompt={
+                  panelState.chat?.surfacePromptForOpenAIPlus
+                    ? () => {
+                        sendMessage({
+                          type: "insertPromptIntoEditor",
+                          data: { id: conversation.id },
+                        });
+                      }
+                    : undefined
+                }
+              />
+            ) : (
+              <CollapsedConversationView
+                key={conversation.id}
+                conversation={conversation}
+                onClick={() =>
+                  handleclickCollapsedConversation(conversation.id)
+                }
+              />
+            )
+          )
+        : null}
     </div>
   );
 };
