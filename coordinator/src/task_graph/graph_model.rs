@@ -3,7 +3,8 @@ use uuid::Uuid;
 use serde::{Serialize, Deserialize};
 
 extern crate common;
-use common::models::TaskList;
+use common::models::{TaskList};
+use common::CodeContext;
 
 /// Represents the process of tracking tasks, subtasks, and questions within a directed graph.
 /// Each instance of `TrackProcess` maintains its own graph, root node, and unique identifier (UUID).
@@ -49,6 +50,8 @@ pub enum Node {
     Task(String),                              // Represents a discrete task derived from the root issue.
     Subtask(String),                           // Represents a subtask under a specific task.
     Question(usize, String, ChildTaskStatus),                       // Represents a question related to a specific subtask.
+    Answer(String),          // Represents an answer to a question.
+    CodeContext(CodeContext),  // Represents a code context associated with an answer.
 }
 
 /// Defines the types of edges to represent relationships between nodes in the task tracking graph.
@@ -57,6 +60,8 @@ pub enum Edge {
     Task,        // An edge from a root issue or task to a specific task.
     Subtask,     // An edge from a task to a specific subtask.
     Question,    // An edge from a subtask to a question about that subtask.
+    Answer,         // Connects a question to its answer.
+    CodeContext,    // Connects an answer to its code context.
 }
 
 /// Represents the possible statuses of the root issue's child elements (tasks, subtasks).
