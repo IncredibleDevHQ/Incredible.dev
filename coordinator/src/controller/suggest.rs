@@ -1,7 +1,10 @@
+use crate::task_graph::graph_model::{ChildTaskStatus, TrackProcess};
+use crate::task_graph::read_file_data::{
+    read_code_understanding_from_file, read_task_list_from_file,
+};
 use anyhow::Result;
 use futures::future::join_all;
 use std::{collections::HashMap, convert::Infallible};
-use crate::task_graph::graph_model::{TrackProcess, ChildTaskStatus};
 use tokio::{fs::File, io::AsyncWriteExt};
 
 use common::{
@@ -34,60 +37,75 @@ pub async fn handle_suggest_wrapper(
     }
 }
 
-async fn handle_suggest_core(request: SuggestRequest) -> Result<Vec<CodeUnderstanding>, anyhow::Error> {
+async fn handle_suggest_core(
+    request: SuggestRequest,
+) -> Result<Vec<CodeUnderstanding>, anyhow::Error> {
     // initialize the new tracker with task graph
     let mut tracker = TrackProcess::new(&request.repo_name, &request.user_query);
 
     // update root status to in progress
-    // the status is used to track of the processing of its child nodes 
+    // the status is used to track of the processing of its child nodes
     // in this the child elelments are tasks, subtasks and questions
     tracker.update_roots_child_status(ChildTaskStatus::InProgress);
     // get the generated questions from the code understanding service
-    let generated_questions = match get_generated_questions(
-        request.user_query.clone(),
-        request.repo_name.clone(),
-    )
-    .await
-    {
-        Ok(questions) => questions,
-        Err(e) => {
-            log::error!("Failed to generate questions: {}", e);
-            return Err(e);
-        }
+    // call only if DATA_MODE env CONFIG is API
+    let generated_questions: TaskList = if CONFIG.data_mode == "API" {
+        let generated_questions =
+            match get_generated_questions(request.user_query.clone(), request.repo_name.clone())
+                .await
+            {
+                Ok(questions) => questions,
+                Err(e) => {
+                    log::error!("Failed to generate questions: {}", e);
+                    return Err(e);
+                }
+            };
+
+        // write the generated questions into a file as a json data
+        let mut file = File::create("generated_questions.txt").await?;
+        file.write_all(serde_json::to_string(&generated_questions)?.as_bytes())
+            .await?;
+        generated_questions
+    } else {
+        // read from the file using the read_task_list_from_file function
+        let generated_questions = read_task_list_from_file("/Users/karthicrao/Documents/GitHub/nezuko/coordinator/sample_generated_data/dataset_1/generated_questions.json").await?;
+        generated_questions
     };
-
-    // write the generated questions into a file as a json data
-    let mut file = File::create("generated_questions.txt").await?;
-    file.write_all(serde_json::to_string(&generated_questions)?.as_bytes()).await?;
-
     // update the root status to completed
     tracker.update_roots_child_status(ChildTaskStatus::Done);
     // extend the graph with tasks, subtasks, and questions in the task list
     tracker.extend_graph_with_tasklist(&generated_questions);
 
     let questions_with_ids = tracker.get_questions_with_ids();
-    // iter and print 
+    // iter and print
     for question_id in questions_with_ids.iter() {
         debug!("Question-id {}", question_id);
     }
 
     let questions: Vec<String> = questions_with_ids.iter().map(|x| x.text.clone()).collect();
 
+    // call the API only if the data mode is API
+    let answers_to_questions = if CONFIG.data_mode == "API" {
+        let answers_to_questions: Vec<CodeUnderstanding> =
+            match get_code_understandings(request.repo_name.clone(), questions).await {
+                Ok(answers) => answers,
+                Err(e) => {
+                    log::error!("Failed to get answers to questions: {}", e);
+                    return Err(e);
+                }
+            };
 
-    let answers_to_questions: Vec<CodeUnderstanding> =
-        match get_code_understandings(request.repo_name.clone(), questions).await {
-            Ok(answers) => answers,
-            Err(e) => {
-                log::error!("Failed to get answers to questions: {}", e);
-                return Err(e);
-            }
-        };
-
-    // write answers to questions into a file as a json data
-    let mut file = File::create("answers_to_questions.txt").await?;
-    file.write_all(serde_json::to_string(&answers_to_questions)?.as_bytes()).await?;
-    
-    // iterate and print the answers 
+        // write answers to questions into a file as a json data
+        let mut file = File::create("/Users/karthicrao/Documents/GitHub/nezuko/coordinator/sample_generated_data/dataset_1/generated_questions.json").await?;
+        file.write_all(serde_json::to_string(&answers_to_questions)?.as_bytes())
+            .await?;
+        answers_to_questions
+    } else {
+        // read from the file using the read_task_list_from_file function
+        let answers_to_questions = read_code_understanding_from_file("/Users/karthicrao/Documents/GitHub/nezuko/coordinator/sample_generated_data/dataset_1/answers_to_questions.json").await?;
+        answers_to_questions
+    };
+    // iterate and print the answers
     for answer in answers_to_questions.iter() {
         debug!("Answer: \n{}", answer);
     }

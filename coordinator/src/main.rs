@@ -14,6 +14,7 @@ use std::env;
 #[derive(Debug, Clone)]
 pub struct Configuration {
     environment: String,
+    data_mode: String,
     code_search_url: String,
     context_generator_url: String,
     code_understanding_url: String,
@@ -36,6 +37,7 @@ impl Configuration {
         dotenv::from_filename(env_file).ok();
         Self {
             environment: env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()),
+            data_mode: env::var("DATA_MODE").unwrap_or_else(|_| "local".to_string()),
             code_search_url: env::var("CODE_SEARCH_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string()),
             context_generator_url: env::var("CONTEXT_GENERATOR_URL")
@@ -72,12 +74,22 @@ async fn main() -> Result<()> {
     // health check code search url and code understanding url
     let code_search_url = &CONFIG.code_search_url;
     let code_understanding_url = &CONFIG.code_understanding_url;
- 
-    if !health_check(code_search_url).await {
-        panic!("Code search service is not available, please run the code search service first");
-    }
-    if !health_check(code_understanding_url).await {
-        panic!("Code understanding service is not available, please run the code understanding service first");
+    
+   
+    // call health only if the config data_mode is set to API
+    if CONFIG.data_mode == "API" {
+        info!("DATA MODE IS API, checking whether dependent services are up");
+        if !health_check(code_search_url).await {
+            panic!(
+                "Code search service is not available, please run the code search service first"
+            );
+        }
+        if !health_check(code_understanding_url).await {
+            panic!("Code understanding service is not available, please run the code understanding service first");
+        }
+        info!("All dependent services are up!");
+    } else {
+        info!("DATA MODE is file, skipping health check");
     }
 
     let coordinator_routes = routes::coordinator();

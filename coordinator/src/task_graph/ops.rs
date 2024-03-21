@@ -1,7 +1,7 @@
 use crate::task_graph::graph_model::{ChildTaskStatus, Edge, Node, QuestionWithId, TrackProcess};
 
 extern crate common;
-use common::models::{TaskList};
+use common::models::TaskList;
 use common::CodeUnderstanding;
 
 impl TrackProcess {
@@ -95,25 +95,33 @@ impl TrackProcess {
 
     pub fn extend_graph_with_answers(&mut self, answers: Vec<(usize, CodeUnderstanding)>) {
         answers.iter().for_each(|(question_id, understanding)| {
-            // Find the corresponding question node for the given question_id.
-            self.graph
+            // Find the corresponding question node for the given question_id and update its status to Done.
+            if let Some(question_node) = self
+                .graph
                 .node_indices()
                 .find(|&n| matches!(self.graph[n], Node::Question(id, _, _) if id == *question_id))
-                .map(|question_node| {
-                    // Create a node for the answer and connect it to the question node.
-                    let answer_node = self
-                        .graph
-                        .add_node(Node::Answer(understanding.answer.clone()));
-                    self.graph
-                        .add_edge(question_node, answer_node, Edge::Answer);
+            {
+                // Update the question node's status to Done.
+                if let Some(Node::Question(_, _, status)) =
+                    self.graph.node_weight_mut(question_node)
+                {
+                    *status = ChildTaskStatus::Done;
+                }
 
-                    // Iterate over each CodeContext within the understanding to create and connect nodes.
-                    understanding.context.iter().for_each(|context| {
-                        let context_node = self.graph.add_node(Node::CodeContext(context.clone()));
-                        self.graph
-                            .add_edge(answer_node, context_node, Edge::CodeContext);
-                    });
+                // Create a node for the answer and connect it to the question node.
+                let answer_node = self
+                    .graph
+                    .add_node(Node::Answer(understanding.answer.clone()));
+                self.graph
+                    .add_edge(question_node, answer_node, Edge::Answer);
+
+                // Iterate over each CodeContext within the understanding to create and connect nodes.
+                understanding.context.iter().for_each(|context| {
+                    let context_node = self.graph.add_node(Node::CodeContext(context.clone()));
+                    self.graph
+                        .add_edge(answer_node, context_node, Edge::CodeContext);
                 });
+            }
         });
     }
 }
