@@ -4,6 +4,7 @@ use std::{collections::HashMap, convert::Infallible};
 use crate::task_graph::graph_model::{TrackProcess, ChildTaskStatus};
 use tokio::{fs::File, io::AsyncWriteExt};
 
+
 use common::{
     models::{CodeContextRequest, CodeUnderstandRequest, GenerateQuestionRequest, TaskList},
     service_interaction::service_caller,
@@ -59,6 +60,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<Vec<CodeUndersta
     // write the generated questions into a file as a json data
     let mut file = File::create("generated_questions.txt").await?;
     file.write_all(serde_json::to_string(&generated_questions)?.as_bytes()).await?;
+
 
     // update the root status to completed
     tracker.update_roots_child_status(ChildTaskStatus::Done);
