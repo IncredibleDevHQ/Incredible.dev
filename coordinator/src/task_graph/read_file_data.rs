@@ -1,16 +1,17 @@
 use tokio::fs::File;
+use anyhow::{Result, Error};
 use common::CodeUnderstanding;
 use tokio::io::AsyncReadExt;
 use std::path::Path;
-use common::TaskList;
+use common::models::TaskList;
 
 
 // Define an asynchronous function to read and deserialize the JSON data.
-pub async fn read_code_understanding_from_file<P: AsRef<Path>>(path: P) -> std::io::Result<CodeUnderstanding> {
+pub async fn read_code_understanding_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<CodeUnderstanding>> {
     let mut file = File::open(path).await?;
     let mut data = String::new();
     file.read_to_string(&mut data).await?;
-    let code_understanding: CodeUnderstanding = serde_json::from_str(&data)?;
+    let code_understanding: Vec<CodeUnderstanding> = serde_json::from_str(&data)?;
     Ok(code_understanding)
 }
 
