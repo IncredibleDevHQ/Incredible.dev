@@ -255,13 +255,35 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
 
         To a junior developer, this is vague because it doesn't specify what 'improve' means. Does it refer to performance tuning, adding new features, or fixing existing bugs? Without this information, they wouldn't know where to begin.
 
+        Response from LLM:
+        {{
+            "tasks": [],
+            "ask_user": "Can you provide more specific details on how you would like to improve the coordinator service API? Are there specific performance issues, additional features needed, or bugs that need to be addressed?"
+        }}
+
         Example 2:
         issue description- "Debug the API."
         repo_name- "api-debugging-project"
 
         This lacks detail on what the debugging entails. Are there known issues to address, or is the task to find potential unknown problems? A junior developer would need more context to approach this task effectively.
 
-        The tool should ask clarifying questions through the 'ask_user' field in such scenarios to provide junior developers with a clear direction.
+        Response from LLM:
+        {{
+            "tasks": [],
+            "ask_user": "Could you specify what aspects of the API should be debugged? Are we looking for known issues, performance optimizations, or general stability checks? Any particular endpoints or functionalities that require attention?"
+        }}
+
+        Example 3:
+        issue description- "Check the API for errors."
+        repo_name- "api-error-checking-project"
+
+        This description is too general and doesn't provide enough context. What type of errors are to be checked? Are there any recent changes or areas where errors are suspected?
+
+        Response from LLM:
+        {{
+            "tasks": [],
+            "ask_user": "Please clarify what type of errors we should focus on in the API. Are there specific modules, endpoints, or recent updates we should concentrate on? Should we also look into error logging or monitoring systems for any unusual activity?"
+        }}
 
         ----Example for a well-defined issue description----
 
