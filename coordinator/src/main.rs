@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
     
    
     // call health only if the config data_mode is set to API
-    if CONFIG.data_mode == "API" {
+    if CONFIG.data_mode == "api" {
         info!("DATA MODE IS API, checking whether dependent services are up");
         if !health_check(code_search_url).await {
             panic!(
