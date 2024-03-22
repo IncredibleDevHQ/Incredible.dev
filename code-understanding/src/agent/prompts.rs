@@ -239,21 +239,20 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
     let question_concept_generator_prompt = format!(
         r#"#####
 
-        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Generate questions that pinpoint the critical knowledge a new developer must acquire to tackle the issue effectively. Each question should uncover information that is essential for understanding and addressing the task, ensuring that without the knowledge gained from these questions, the developer would not have sufficient insight to proceed.
+        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Alongside each task and subtask, you will generate questions aimed at understanding the current codebase. These questions should be insightful, focusing on the existing codebase's structure and behavior without directly addressing the specific changes to be made.
 
         Your job is to perform the following tasks:
-        - Generate 1 to 5 main tasks based on the issue description, focusing on necessary code modifications.
+        - Generate 1 to 5 main tasks based on the issue description, focusing on the necessary code modifications.
         - For each main task, define 1 to 5 subtasks that elaborate on the specific actions required.
-        - For each subtask, create 1 to 4 questions that are fundamental for a new developer to understand and engage with the existing codebase effectively. These questions should be crucial, with their answers providing the foundational knowledge required to solve the task.
+        - For each subtask, create 1 to 4 questions that delve into the existing codebase's structure and behavior, ensuring these questions are direct, specific, and clearly reference the components they inquire about, avoiding vague terminology.
 
-        When framing questions:
-        - Ensure each question seeks information that is vital for the new developer to solve the task. The absence of this information should significantly hinder progress on the task.
-        - Phrase questions clearly and directly, targeting the core aspects that need to be understood. Avoid any assumptions about the system's current state or the developer's prior knowledge.
+        When referring to APIs or other components:
+        - Always use specific and descriptive names. Never use generic terms like "other API." Instead, clarify the API's purpose or function, describing it in a way that reflects its role in the system.
 
-        ----Example start----
-        
-        issue description- '''Enhance the communication between services in our application to improve data processing efficiency.'''
-        repo_name- '''service-communication-enhancement'''
+        ----Example of a well-defined issue description and corresponding tasks----
+
+        issue description- "Enhance the Service A API to integrate with the Data Processing API for improved efficiency."
+        repo_name- "service-communication-enhancement"
 
         Response from LLM:
         {{
@@ -262,26 +261,38 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
               "task": "Enhance the Service A API to integrate with the Data Processing API for improved efficiency",
               "subtasks": [
                 {{
-                  "subtask": "Determine the necessity and structure of interaction between the Service A API and the Data Processing API",
+                  "subtask": "Analyze the current interaction between Service A API and the Data Processing API",
                   "questions": [
-                    "Is there a current interaction between the Service A API and the Data Processing API? If so, what is its nature and structure?"
+                    "How does Service A API currently interact with the Data Processing API?",
+                    "What data structures are used in the communication between Service A API and the Data Processing API?"
                   ]
                 }}
               ]
             }}
-          ]
+          ],
+          "ask_user": ""
         }}
 
-        ----Example end----
+        ----Example of a vague issue description requiring further clarification----
+
+        issue description- "Improve the API efficiency."
+        repo_name- "efficient-api-upgrade"
+
+        Given this vague issue description, the tool cannot generate specific tasks since it lacks details on what aspects of the API need improvement and how. Therefore, the response format would be:
+
+        {{
+          "tasks": [],
+          "ask_user": "Please specify which aspects of the API need to be improved for efficiency. Are there specific endpoints that require optimization, or is there a general performance enhancement needed across all API functionalities?"
+        }}
+
+        Ensure that the tasks and subtasks explicitly outline the modification actions required. The questions should provide deep insights into the current codebase, focusing on its existing structures and behaviors, without suggesting direct actions.
+
+        RETURN a JSON object containing the structured breakdown of tasks, subtasks, and an 'ask_user' field for further clarifications if necessary.
 
         issue description- '''{issue_desc}'''
         repo_name- '''{repo_name}'''
 
-        Ensure that the tasks and subtasks explicitly outline the modification actions required. The questions should reveal indispensable knowledge for the new developer, focusing on gaining a comprehensive understanding of the task at hand.
-
-        RETURN a JSON object containing the structured breakdown of tasks, subtasks, and their associated questions.
-
-        DO NOT confuse tasks with questions. Tasks should outline 'what' needs to be done, while questions should unearth the 'why' and 'how' that are essential for addressing the task effectively, even for someone new to the codebase.
+        DO NOT confuse tasks with questions. Tasks should outline 'what' needs to be done, while questions should clarify 'how' the current system operates, focusing on understanding rather than modifying.
 
 "#
     );
