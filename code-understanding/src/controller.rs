@@ -5,7 +5,8 @@ use crate::config::Config;
 use crate::AppState;
 use agent::llm_gateway;
 use common::models::{CodeUnderstandRequest, GenerateQuestionRequest};
-use common::{models::TaskList, CodeUnderstanding};
+use common::{models::TaskListResponse, CodeUnderstanding};
+use serde::ser::Error;
 use std::time::Duration;
 
 use crate::agent::agent::Action;
@@ -173,7 +174,7 @@ pub async fn generate_task_list(
 
     log::debug!("Choices: {}", choices_str);
 
-    let response_task_list: Result<TaskList, _> = serde_json::from_str(&choices_str);
+    let response_task_list: Result<TaskListResponse, serde_json::Error> = serde_json::from_str(&choices_str);
 
     let response_task_list = match response_task_list {
         Ok(task_list) => task_list,
@@ -186,7 +187,7 @@ pub async fn generate_task_list(
         }
     };
 
-    log::debug!("{}", response_task_list);
+    log::debug!("{:?}", response_task_list);
 
     Ok(warp::reply::with_status(
         warp::reply::json(&response_task_list),
