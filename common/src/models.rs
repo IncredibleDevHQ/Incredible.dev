@@ -1,7 +1,7 @@
-use std::ops::Range;
-use serde::{Serialize, Deserialize};
 use crate::CodeUnderstandings;
+use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt;
+use std::ops::Range;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct GenerateQuestionRequest {
@@ -53,13 +53,51 @@ pub struct CodeContextRequest {
     pub qna_context: CodeUnderstandings,
 }
 
-
-// types for parsing the breakdown of task into subtasks and their corresponding questions 
+// types for parsing the breakdown of task into subtasks and their corresponding questions
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TaskList {
+    // serde ignore if it is empty
     pub tasks: Vec<Task>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TaskListResponse {
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "empty_array_as_none"
+    )]
+    pub tasks: Option<Vec<Task>>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "empty_string_as_none"
+    )]
+    pub ask_user: Option<String>,
+}
+
+fn empty_array_as_none<'de, D, T>(deserializer: D) -> Result<Option<Vec<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    let vec = Vec::<T>::deserialize(deserializer)?;
+    if vec.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(vec))
+    }
+}
+
+fn empty_string_as_none<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    if s.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(s))
+    }
+}
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Task {
     pub task: String,
@@ -71,7 +109,6 @@ pub struct Subtask {
     pub subtask: String,
     pub questions: Vec<String>,
 }
-
 
 impl fmt::Display for TaskList {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

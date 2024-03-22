@@ -1,6 +1,6 @@
 use tokio::fs::File;
 use anyhow::{Result, Error};
-use common::CodeUnderstanding;
+use common::{models::TaskListResponse, CodeUnderstanding};
 use tokio::io::AsyncReadExt;
 use std::path::Path;
 use common::models::TaskList;
@@ -16,10 +16,10 @@ pub async fn read_code_understanding_from_file<P: AsRef<Path>>(path: P) -> Resul
     Ok(code_understanding)
 }
 
-pub async fn read_task_list_from_file<P: AsRef<Path>>(path: P) -> std::io::Result<TaskList> {
+pub async fn read_task_list_from_file<P: AsRef<Path>>(path: P) -> Result<TaskListResponse> {
     let mut file = File::open(path).await?;
     let mut data = String::new();
     file.read_to_string(&mut data).await?;
-    let task_list: TaskList = serde_json::from_str(&data)?;
+    let task_list: TaskListResponse = serde_json::from_str(&data)?;
     Ok(task_list)
 }
