@@ -1,7 +1,7 @@
-use std::ops::Range;
-use serde::{Serialize, Deserialize};
 use crate::CodeUnderstandings;
+use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt;
+use std::ops::Range;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct GenerateQuestionRequest {
@@ -53,25 +53,58 @@ pub struct CodeContextRequest {
     pub qna_context: CodeUnderstandings,
 }
 
-
-// types for parsing the breakdown of task into subtasks and their corresponding questions 
-#[derive(Serialize, Deserialize, Debug)]
+// types for parsing the breakdown of task into subtasks and their corresponding questions
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TaskList {
     pub tasks: Vec<Task>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TaskListResponse {
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "empty_task_list_as_none"
+    )]
+    pub tasks: Option<TaskList>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "empty_string_as_none"
+    )]
+    pub ask_user: Option<String>,
+}
+
+fn empty_task_list_as_none<'de, D>(deserializer: D) -> Result<Option<TaskList>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt = Option::deserialize(deserializer)?;
+    let task_list = opt.map(|tasks: Vec<Task>| TaskList { tasks });
+    Ok(if task_list.as_ref().map_or(false, |tl| tl.tasks.is_empty()) {
+        None
+    } else {
+        task_list
+    })
+}
+fn empty_string_as_none<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt = Option::deserialize(deserializer)?;
+    // Explicitly specify that `s` is of type `&String`.
+    Ok(if opt.as_ref().map_or(false, |s: &String| s.is_empty()) { None } else { opt })
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Task {
     pub task: String,
     pub subtasks: Vec<Subtask>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Subtask {
     pub subtask: String,
     pub questions: Vec<String>,
 }
-
 
 impl fmt::Display for TaskList {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
