@@ -51,7 +51,7 @@ async fn handle_suggest_core(
     tracker.update_roots_child_status(ChildTaskStatus::InProgress);
     // get the generated questions from the code understanding service
     // call only if DATA_MODE env CONFIG is API
-    let generated_questions: TaskList = if CONFIG.data_mode == "API" {
+    let generated_questions: TaskList = if CONFIG.data_mode == "api" {
         let generated_questions =
             match get_generated_questions(request.user_query.clone(), request.repo_name.clone())
                 .await
@@ -70,8 +70,17 @@ async fn handle_suggest_core(
         generated_questions
     } else {
         // read from the file using the read_task_list_from_file function
-        let generated_questions = read_task_list_from_file("/Users/karthicrao/Documents/GitHub/nezuko/coordinator/sample_generated_data/dataset_1/generated_questions.json").await?;
-        generated_questions
+        // send meaningful error message if the file is not found
+        let generated_questions = read_task_list_from_file("/Users/karthicrao/Documents/GitHub/nezuko/coordinator/sample_generated_data/dataset_1/generated_questions.json").await;
+        match generated_questions {
+            Ok(questions) => questions,
+            Err(e) => {
+                let err_msg = format!("Failed to read generated questions from file: Check if the path for generated questions and format is correct. Error: {}", e);
+                error!("{}", err_msg);
+                return Err(anyhow::anyhow!(err_msg));
+            }
+        }
+        
     };
     // update the root status to completed
     tracker.update_roots_child_status(ChildTaskStatus::Done);
@@ -85,7 +94,7 @@ async fn handle_suggest_core(
     }
 
     // Call the API only if the data mode is API
-    let answers_to_questions: Result<Vec<QuestionWithAnswer>> = if CONFIG.data_mode == "API" {
+    let answers_to_questions: Result<Vec<QuestionWithAnswer>> = if CONFIG.data_mode == "api" {
         // Retrieve the answers, which are now wrapped in a Vec of Results
         let results = get_code_understandings(request.repo_name.clone(), &questions_with_ids).await;
 
@@ -116,7 +125,15 @@ async fn handle_suggest_core(
         }
     } else {
         // Assuming read_code_understanding_from_file is adjusted to return Vec<Result<QuestionWithAnswer, Error>>
-        read_code_understanding_from_file("answers_to_questions.json").await
+        let code_understand_fie_read_result = read_code_understanding_from_file("answers_to_questions.json").await;
+        match code_understand_fie_read_result {
+            Ok(answers) => Ok(answers),
+            Err(e) => {
+                let err_msg = format!("Failed to read code understanding from file: Check if the path for code understanding and format is correct. Error: {}", e);
+                error!("{}", err_msg);
+                return Err(anyhow::anyhow!(err_msg));
+            }
+        }
     };
 
     // if there is error return the error the caller
