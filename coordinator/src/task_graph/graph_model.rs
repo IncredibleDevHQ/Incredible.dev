@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 
 extern crate common;
 use common::models::{TaskList};
-use common::CodeContext;
+use common::{CodeContext, CodeUnderstanding};
 
 /// Represents the process of tracking tasks, subtasks, and questions within a directed graph.
 /// Each instance of `TrackProcess` maintains its own graph, root node, and unique identifier (UUID).
@@ -79,10 +79,20 @@ impl Default for ChildTaskStatus {
 }
 
 // Define a struct to hold questions along with their IDs.
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct QuestionWithId {
     pub id: usize,
     pub text: String,
 }
+
+// Type to keep the question, their IDs along with answers in the form of CodeUnderstanding type 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct QuestionWithAnswer {
+    pub question_id: usize,
+    pub question: String,
+    pub answer: CodeUnderstanding,
+}
+
 
 // implement Display for QuestionWithId
 impl std::fmt::Display for QuestionWithId {

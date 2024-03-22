@@ -1,8 +1,10 @@
-use crate::task_graph::graph_model::{ChildTaskStatus, TrackProcess};
+use crate::task_graph::graph_model::{
+    ChildTaskStatus, QuestionWithAnswer, QuestionWithId, TrackProcess,
+};
 use crate::task_graph::read_file_data::{
     read_code_understanding_from_file, read_task_list_from_file,
 };
-use anyhow::Result;
+use anyhow::{Error, Result};
 use futures::future::join_all;
 use std::{collections::HashMap, convert::Infallible};
 use tokio::{fs::File, io::AsyncWriteExt};
@@ -15,7 +17,7 @@ use common::{
 use reqwest::{Method, StatusCode};
 
 use crate::{models::SuggestRequest, CONFIG};
-use log::debug;
+use log::{debug, error};
 
 pub async fn handle_suggest_wrapper(
     request: SuggestRequest,
@@ -39,7 +41,7 @@ pub async fn handle_suggest_wrapper(
 
 async fn handle_suggest_core(
     request: SuggestRequest,
-) -> Result<Vec<CodeUnderstanding>, anyhow::Error> {
+) -> Result<Vec<QuestionWithAnswer>, anyhow::Error> {
     // initialize the new tracker with task graph
     let mut tracker = TrackProcess::new(&request.repo_name, &request.user_query);
 
@@ -82,33 +84,51 @@ async fn handle_suggest_core(
         debug!("Question-id {}", question_id);
     }
 
-    let questions: Vec<String> = questions_with_ids.iter().map(|x| x.text.clone()).collect();
+    // Call the API only if the data mode is API
+    let answers_to_questions: Result<Vec<QuestionWithAnswer>> = if CONFIG.data_mode == "API" {
+        // Retrieve the answers, which are now wrapped in a Vec of Results
+        let results = get_code_understandings(request.repo_name.clone(), &questions_with_ids).await;
 
-    // call the API only if the data mode is API
-    let answers_to_questions = if CONFIG.data_mode == "API" {
-        let answers_to_questions: Vec<CodeUnderstanding> =
-            match get_code_understandings(request.repo_name.clone(), questions).await {
-                Ok(answers) => answers,
+        let result = results.into_iter().try_fold(
+            (Vec::new(), None::<anyhow::Error>),
+            |(mut answers, _), result| match result {
+                Ok(answer) => {
+                    answers.push(answer);
+                    Ok((answers, None))  // Correctly return a Result wrapping the accumulator tuple.
+                },
                 Err(e) => {
-                    log::error!("Failed to get answers to questions: {}", e);
-                    return Err(e);
-                }
-            };
-
-        // write answers to questions into a file as a json data
-        let mut file = File::create("/Users/karthicrao/Documents/GitHub/nezuko/coordinator/sample_generated_data/dataset_1/generated_questions.json").await?;
-        file.write_all(serde_json::to_string(&answers_to_questions)?.as_bytes())
-            .await?;
-        answers_to_questions
+                    error!("Failed to get answers to questions: {}", e);
+                    Err(e)  // Directly propagate the error.
+                },
+            },
+        );
+        match result {
+            Ok((answers, _)) => {
+                // If try_fold completed without encountering an error, answers would be populated.
+                let mut file = File::create("generated_questions.json").await?;
+                file.write_all(serde_json::to_string(&answers)?.as_bytes()).await?;
+                Ok(answers)
+            },
+            Err(e) => {
+                // If an error was encountered, it will be returned here.
+                Err(e)
+            },
+        }
     } else {
-        // read from the file using the read_task_list_from_file function
-        let answers_to_questions = read_code_understanding_from_file("/Users/karthicrao/Documents/GitHub/nezuko/coordinator/sample_generated_data/dataset_1/answers_to_questions.json").await?;
-        answers_to_questions
+        // Assuming read_code_understanding_from_file is adjusted to return Vec<Result<QuestionWithAnswer, Error>>
+        read_code_understanding_from_file("answers_to_questions.json").await
     };
-    // iterate and print the answers
-    for answer in answers_to_questions.iter() {
-        debug!("Answer: \n{}", answer);
+
+    // if there is error return the error the caller
+    if answers_to_questions.is_err() {
+        return answers_to_questions;
     }
+
+    // unwrap, iterate and print the answers
+    for answer in answers_to_questions.as_ref().unwrap().iter() {
+        debug!("Answer: {:?}", answer);
+    }
+
     // let code_context_request = CodeUnderstandings {
     //     repo: request.repo_name.clone(),
     //     issue_description: request.user_query.clone(),
@@ -123,7 +143,7 @@ async fn handle_suggest_core(
     // //     }
     // // };
 
-    Ok(answers_to_questions)
+    answers_to_questions
 }
 
 async fn get_generated_questions(
@@ -145,44 +165,69 @@ async fn get_generated_questions(
     Ok(generated_questions)
 }
 
+/// Asynchronously retrieves code understandings for a set of questions.
+///
+/// This function makes concurrent service calls to retrieve code understandings based on
+/// provided questions and their associated IDs. It constructs a `QuestionWithAnswer` for
+/// each successful response and captures any errors encountered during the process.
+///
+/// # Arguments
+/// * `repo_name` - The name of the repository for which the code understanding is being retrieved.
+/// * `generated_questions` - A vector of `QuestionWithIds` containing the questions and their IDs.
+///
+/// # Returns
+/// A vector of `Result<QuestionWithAnswer, Error>` where each entry corresponds to the outcome
+/// (success or failure) of retrieving a code understanding for each question.
 async fn get_code_understandings(
     repo_name: String,
-    generated_questions: Vec<String>,
-) -> Result<Vec<CodeUnderstanding>, anyhow::Error> {
+    generated_questions: &Vec<QuestionWithId>,
+) -> Vec<Result<QuestionWithAnswer, Error>> {
+    // Construct the URL for the code understanding service.
     let code_understanding_url = format!("{}/retrieve-code", CONFIG.code_understanding_url);
+
+    // Map each question to a future that represents an asynchronous service call
+    // to retrieve the code understanding.
     let futures_answers_for_questions: Vec<_> = generated_questions
         .iter()
-        .map(|question| {
+        .map(|question_with_id| {
+            // Clone the URL and repository name for each service call.
             let url = code_understanding_url.clone();
+            let repo_name = repo_name.clone();
+
+            // Construct the query parameters for the service call.
             let mut query_params = HashMap::new();
-            query_params.insert("query".to_string(), question.clone());
-            query_params.insert("repo".to_string(), repo_name.clone());
+            query_params.insert("query".to_string(), question_with_id.text.clone());
+            query_params.insert("repo".to_string(), repo_name);
+
+            // Define an asynchronous block that makes the service call, processes the response,
+            // and constructs a `QuestionWithAnswer` object.
             async move {
-                service_caller::<CodeUnderstandRequest, CodeUnderstanding>(
-                    url,
-                    Method::GET,
-                    None,
-                    Some(query_params),
-                )
-                .await
+                // Perform the service call.
+                let response: Result<CodeUnderstanding, Error> =
+                    service_caller::<CodeUnderstandRequest, CodeUnderstanding>(
+                        url,
+                        Method::GET,
+                        None,
+                        Some(query_params),
+                    )
+                    .await;
+
+                // Convert the service response to a `QuestionWithAnswer`.
+                // In case of success, wrap the resulting `QuestionWithAnswer` in `Ok`.
+                // In case of an error, convert the error to `anyhow::Error` using `map_err`.
+                response
+                    .map(|answer| QuestionWithAnswer {
+                        question_id: question_with_id.id,
+                        question: question_with_id.text.clone(),
+                        answer,
+                    })
+                    .map_err(anyhow::Error::from)
             }
         })
         .collect();
 
-    let answers_for_questions = join_all(futures_answers_for_questions).await;
-
-    let successful_responses = answers_for_questions
-        .into_iter()
-        .filter_map(|result| match result {
-            Ok(understandings) => Some(understandings),
-            Err(e) => {
-                log::error!("Failed to process question: {}", e.to_string());
-                None
-            }
-        })
-        .collect();
-
-    Ok(successful_responses)
+    // Await all futures to complete and collect their results.
+    join_all(futures_answers_for_questions).await
 }
 
 // TODO: Remove unused warning suppressor once the context generator is implemented
