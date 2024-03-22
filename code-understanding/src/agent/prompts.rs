@@ -241,15 +241,29 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
 
         You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Alongside each task and subtask, you will generate questions aimed at understanding the current codebase. These questions should be insightful, focusing on the existing codebase's structure and behavior without directly addressing the specific changes to be made.
 
-        Your job is to perform the following tasks:
-        - Generate 1 to 5 main tasks based on the issue description, focusing on the necessary code modifications.
-        - For each main task, define 1 to 5 subtasks that elaborate on the specific actions required.
-        - For each subtask, create 1 to 4 questions that delve into the existing codebase's structure and behavior, ensuring these questions are direct, specific, and clearly reference the components they inquire about, avoiding vague terminology.
+        Before generating tasks and subtasks, introspect whether a junior developer would have enough information to understand what problem or issue needs to be solved based on the provided issue description. The clarity and specificity of the issue description are crucial for creating actionable and understandable tasks.
 
-        When referring to APIs or other components:
-        - Always use specific and descriptive names. Never use generic terms like "other API." Instead, clarify the API's purpose or function, describing it in a way that reflects its role in the system.
+        - Generate 1 to 5 main tasks based on the issue description, ensuring each task is detailed, clear, and actionable. Avoid vagueness to enable a junior engineer to proceed with the tasks without the need for further guidance. For example, instead of creating a task like 'Improve the API,' specify what improvements are needed by stating, 'Update the GET endpoint in the API to handle error status codes more effectively.'
 
-        ----Example of a well-defined issue description and corresponding tasks----
+        - If the issue description is vague or lacks specific details, making it challenging for a junior developer to grasp the required actions, do not generate tasks. Instead, populate the 'ask_user' field to request more detailed information that would clarify the task requirements. Remember, if 'ask_user' is populated, the 'tasks' array must remain empty to avoid presenting conflicting instructions.
+
+        ----Examples of vague issue descriptions from a junior developer's perspective----
+
+        Example 1:
+        issue description- "Improve the coordinator service API."
+        repo_name- "service-improvement-project"
+
+        To a junior developer, this is vague because it doesn't specify what 'improve' means. Does it refer to performance tuning, adding new features, or fixing existing bugs? Without this information, they wouldn't know where to begin.
+
+        Example 2:
+        issue description- "Debug the API."
+        repo_name- "api-debugging-project"
+
+        This lacks detail on what the debugging entails. Are there known issues to address, or is the task to find potential unknown problems? A junior developer would need more context to approach this task effectively.
+
+        The tool should ask clarifying questions through the 'ask_user' field in such scenarios to provide junior developers with a clear direction.
+
+        ----Example for a well-defined issue description----
 
         issue description- "Enhance the Service A API to integrate with the Data Processing API for improved efficiency."
         repo_name- "service-communication-enhancement"
@@ -273,28 +287,29 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
           "ask_user": ""
         }}
 
-        ----Example of a vague issue description requiring further clarification----
+        Your job is to perform the following tasks:
+        - Generate 1 to 5 main tasks based on the issue description, ensuring each task is detailed, clear, and actionable. Avoid creating vague tasks like 'Improve the API,' which do not provide enough information for a junior engineer to act upon. Instead, detail what specific improvements are needed, as in 'Update the GET endpoint in the API to handle error status codes more effectively.'
+        - For each main task, define 1 to 5 subtasks that provide specific steps and actions required.
+        - For each subtask, create 1 to 4 questions that delve into the codebase's existing structure and behavior, relevant to the task at hand.
 
-        issue description- "Improve the API efficiency."
-        repo_name- "efficient-api-upgrade"
+        When referring to APIs or other components, always use specific and descriptive names. Never use generic terms like "other API." Instead, clarify the API's purpose or function, describing it in a way that reflects its role in the system.
 
-        Given this vague issue description, the tool cannot generate specific tasks since it lacks details on what aspects of the API need improvement and how. Therefore, the response format would be:
+        RETURN a JSON object containing the structured breakdown of tasks, subtasks, and an 'ask_user' field for further clarifications if necessary. The 'ask_user' field should only be populated if more information is needed, and in such cases, the 'tasks' array should remain empty. This ensures clarity and prevents any confusion about the tool's requests for additional information.
 
-        {{
-          "tasks": [],
-          "ask_user": "Please specify which aspects of the API need to be improved for efficiency. Are there specific endpoints that require optimization, or is there a general performance enhancement needed across all API functionalities?"
-        }}
+        Ensure that the tasks and subtasks explicitly outline the modification actions required. The questions should aid in providing a deep understanding of the current codebase, focusing on its existing structures and behaviors, without suggesting direct actions.
 
-        Ensure that the tasks and subtasks explicitly outline the modification actions required. The questions should provide deep insights into the current codebase, focusing on its existing structures and behaviors, without suggesting direct actions.
-
-        RETURN a JSON object containing the structured breakdown of tasks, subtasks, and an 'ask_user' field for further clarifications if necessary.
+        IMPORTANT: If 'ask_user' is populated to clarify the issue, the 'tasks' array must be empty to maintain clear communication and avoid conflicting instructions. This ensures that the tool does not generate tasks based on assumptions or incomplete information. This measure is crucial in ensuring that a junior developer is not misguided by incomplete or ambiguous tasks which could lead to confusion or ineffective problem-solving.
 
         issue description- '''{issue_desc}'''
         repo_name- '''{repo_name}'''
 
-        DO NOT confuse tasks with questions. Tasks should outline 'what' needs to be done, while questions should clarify 'how' the current system operates, focusing on understanding rather than modifying.
+        DO NOT confuse tasks with questions. Tasks should clearly outline 'what' needs to be done, providing enough detail for a junior engineer to understand and execute the tasks without further clarifications. The 'ask_user' prompt is vital for obtaining the necessary clarity and should be used whenever the issue description lacks the specificity needed for task generation.
+
+        Always ensure that the tasks generated are actionable, clear, and provide sufficient context and detail for a junior developer to effectively address the issue without requiring additional information or guidance.
 
 "#
     );
+
     question_concept_generator_prompt
 }
+
