@@ -10,7 +10,7 @@ use std::{collections::HashMap, convert::Infallible};
 use tokio::{fs::File, io::AsyncWriteExt};
 
 use common::{
-    models::{CodeContextRequest, CodeUnderstandRequest, GenerateQuestionRequest, TaskList},
+    models::{CodeContextRequest, CodeUnderstandRequest, GenerateQuestionRequest, TaskListResponse},
     service_interaction::service_caller,
     CodeUnderstanding, CodeUnderstandings,
 };
@@ -51,7 +51,7 @@ async fn handle_suggest_core(
     tracker.update_roots_child_status(ChildTaskStatus::InProgress);
     // get the generated questions from the code understanding service
     // call only if DATA_MODE env CONFIG is API
-    let generated_questions: TaskList = if CONFIG.data_mode == "api" {
+    let generated_questions: TaskListResponse = if CONFIG.data_mode == "api" {
         let generated_questions =
             match get_generated_questions(request.user_query.clone(), request.repo_name.clone())
                 .await
@@ -71,7 +71,7 @@ async fn handle_suggest_core(
     } else {
         // read from the file using the read_task_list_from_file function
         // send meaningful error message if the file is not found
-        let generated_questions = read_task_list_from_file("/Users/karthicrao/Documents/GitHub/nezuko/coordinator/sample_generated_data/dataset_1/generated_questions.json").await;
+        let generated_questions: Result<TaskListResponse, Error> = read_task_list_from_file("/Users/karthicrao/Documents/GitHub/nezuko/coordinator/sample_generated_data/dataset_1/generated_questions.json").await;
         match generated_questions {
             Ok(questions) => questions,
             Err(e) => {
@@ -166,9 +166,9 @@ async fn handle_suggest_core(
 async fn get_generated_questions(
     user_query: String,
     repo_name: String,
-) -> Result<TaskList, anyhow::Error> {
+) -> Result<TaskListResponse, anyhow::Error> {
     let generate_questions_url = format!("{}/task-list", CONFIG.code_understanding_url);
-    let generated_questions = service_caller::<GenerateQuestionRequest, TaskList>(
+    let generated_questions = service_caller::<GenerateQuestionRequest, TaskListResponse>(
         generate_questions_url,
         Method::POST,
         Some(GenerateQuestionRequest {
