@@ -54,19 +54,18 @@ pub struct CodeContextRequest {
 }
 
 // types for parsing the breakdown of task into subtasks and their corresponding questions
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TaskList {
-    // serde ignore if it is empty
     pub tasks: Vec<Task>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TaskListResponse {
     #[serde(
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "empty_array_as_none"
+        deserialize_with = "empty_task_list_as_none"
     )]
-    pub tasks: Option<Vec<Task>>,
+    pub tasks: Option<TaskList>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         deserialize_with = "empty_string_as_none"
@@ -74,37 +73,34 @@ pub struct TaskListResponse {
     pub ask_user: Option<String>,
 }
 
-fn empty_array_as_none<'de, D, T>(deserializer: D) -> Result<Option<Vec<T>>, D::Error>
+fn empty_task_list_as_none<'de, D>(deserializer: D) -> Result<Option<TaskList>, D::Error>
 where
     D: Deserializer<'de>,
-    T: Deserialize<'de>,
 {
-    let vec = Vec::<T>::deserialize(deserializer)?;
-    if vec.is_empty() {
-        Ok(None)
+    let opt = Option::deserialize(deserializer)?;
+    let task_list = opt.map(|tasks: Vec<Task>| TaskList { tasks });
+    Ok(if task_list.as_ref().map_or(false, |tl| tl.tasks.is_empty()) {
+        None
     } else {
-        Ok(Some(vec))
-    }
+        task_list
+    })
 }
-
 fn empty_string_as_none<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let s = String::deserialize(deserializer)?;
-    if s.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(s))
-    }
+    let opt = Option::deserialize(deserializer)?;
+    // Explicitly specify that `s` is of type `&String`.
+    Ok(if opt.as_ref().map_or(false, |s: &String| s.is_empty()) { None } else { opt })
 }
-#[derive(Serialize, Deserialize, Debug)]
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Task {
     pub task: String,
     pub subtasks: Vec<Subtask>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Subtask {
     pub subtask: String,
     pub questions: Vec<String>,

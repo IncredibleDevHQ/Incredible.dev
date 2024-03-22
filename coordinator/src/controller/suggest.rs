@@ -5,7 +5,9 @@ use crate::task_graph::read_file_data::{
     read_code_understanding_from_file, read_task_list_from_file,
 };
 use anyhow::{Error, Result};
+use common::models::Task;
 use futures::future::join_all;
+use serde::Serialize;
 use std::{collections::HashMap, convert::Infallible};
 use tokio::{fs::File, io::AsyncWriteExt};
 
@@ -16,8 +18,8 @@ use common::{
 };
 use reqwest::{Method, StatusCode};
 
-use crate::{models::SuggestRequest, CONFIG};
-use log::{debug, error};
+use crate::{models::{SuggestRequest, SuggestResponse}, CONFIG};
+use log::{debug, error, info};
 
 pub async fn handle_suggest_wrapper(
     request: SuggestRequest,
@@ -41,14 +43,14 @@ pub async fn handle_suggest_wrapper(
 
 async fn handle_suggest_core(
     request: SuggestRequest,
-) -> Result<Vec<QuestionWithAnswer>, anyhow::Error> {
+) -> Result<impl Serialize, anyhow::Error> {
     // initialize the new tracker with task graph
     let mut tracker = TrackProcess::new(&request.repo_name, &request.user_query);
 
-    // update root status to in progress
-    // the status is used to track of the processing of its child nodes
-    // in this the child elelments are tasks, subtasks and questions
+    // update the root status to in progress
     tracker.update_roots_child_status(ChildTaskStatus::InProgress);
+    // the status is used to track of the processing of its child nodes
+    // in this the child elements are tasks, subtasks and questions
     // get the generated questions from the code understanding service
     // call only if DATA_MODE env CONFIG is API
     let generated_questions: TaskListResponse = if CONFIG.data_mode == "api" {
@@ -62,11 +64,22 @@ async fn handle_suggest_core(
                     return Err(e);
                 }
             };
-
-        // write the generated questions into a file as a json data
-        let mut file = File::create("generated_questions.txt").await?;
-        file.write_all(serde_json::to_string(&generated_questions)?.as_bytes())
-            .await?;
+        // write to file only if generated_questions.tasks is not None
+        if !generated_questions.tasks.is_none() {
+            // task is generated successfully, write it to file
+            info!("Tasks are generated successfully and writing to file.");
+            let mut file = File::create("generated_questions.json").await?;
+            file.write_all(serde_json::to_string(&generated_questions)?.as_bytes())
+                .await?;
+        } else {
+            info!("No tasks are generated.");
+            // No tasks generated because LLM wants more clarification because of vagueness of the issue description from user query 
+            return Ok(SuggestResponse {
+                ask_user: generated_questions.ask_user,
+                tasks: generated_questions.tasks,
+                questions_with_answers: None,
+            })
+        }
         generated_questions
     } else {
         // read from the file using the read_task_list_from_file function
@@ -82,10 +95,11 @@ async fn handle_suggest_core(
         }
         
     };
+
     // update the root status to completed
     tracker.update_roots_child_status(ChildTaskStatus::Done);
     // extend the graph with tasks, subtasks, and questions in the task list
-    tracker.extend_graph_with_tasklist(&generated_questions);
+    tracker.extend_graph_with_tasklist(&generated_questions.tasks.as_ref().unwrap());
 
     let questions_with_ids = tracker.get_questions_with_ids();
     // iter and print
@@ -138,7 +152,7 @@ async fn handle_suggest_core(
 
     // if there is error return the error the caller
     if answers_to_questions.is_err() {
-        return answers_to_questions;
+        return Err(answers_to_questions.err().unwrap());
     }
 
     // unwrap, iterate and print the answers
@@ -160,7 +174,11 @@ async fn handle_suggest_core(
     // //     }
     // // };
 
-    answers_to_questions
+    Ok(SuggestResponse {
+        questions_with_answers: Some(answers_to_questions.unwrap()),
+        ask_user: generated_questions.ask_user,
+        tasks: generated_questions.tasks,
+    })
 }
 
 async fn get_generated_questions(
