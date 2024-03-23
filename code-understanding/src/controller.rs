@@ -3,7 +3,6 @@ use crate::agent::agent::ANSWER_MODEL;
 use crate::agent::prompts;
 use crate::config::Config;
 use crate::AppState;
-use agent::llm_gateway;
 use common::models::{CodeUnderstandRequest, GenerateQuestionRequest};
 use common::{models::TaskListResponse, CodeUnderstanding};
 use serde::ser::Error;
@@ -18,6 +17,8 @@ use std::sync::Arc;
 use warp::http::StatusCode;
 
 use log::error;
+extern crate common;
+use common::llm_gateway;
 
 pub async fn handle_retrieve_code(
     req: CodeUnderstandRequest,
