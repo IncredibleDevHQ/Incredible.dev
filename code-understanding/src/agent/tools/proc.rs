@@ -1,5 +1,4 @@
 use crate::agent::agent::Agent;
-use crate::agent::llm_gateway;
 use anyhow::{anyhow, Context, Result};
 use futures::{stream, StreamExt};
 use tiktoken_rs::CoreBPE;
@@ -9,6 +8,9 @@ use crate::agent::{
     exchange::{CodeChunk, SearchStep, Update},
     prompts,
 };
+
+extern crate common;
+use common::llm_gateway;
 
 impl Agent {
     #[instrument(skip(self))]
