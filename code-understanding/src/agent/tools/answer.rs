@@ -1,6 +1,4 @@
 use std::{collections::HashMap, mem, ops::Range};
-
-use crate::agent::llm_gateway;
 use anyhow::{anyhow, Context, Result};
 use common::CodeContext;
 use futures::StreamExt;
@@ -14,6 +12,9 @@ use crate::agent::{
 
 use crate::agent::agent::Agent;
 use crate::agent::agent::ANSWER_MODEL;
+
+extern crate common;
+use common::llm_gateway;
 
 impl Agent {
     #[instrument(skip(self))]

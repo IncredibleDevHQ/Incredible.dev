@@ -4,10 +4,11 @@ use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::agent::llm_gateway::{self, api::FunctionCall};
 use crate::AppState;
 use anyhow::{anyhow, Context, Result};
 
+extern crate common;
+use common::llm_gateway::{self, api::FunctionCall};
 // Types of repo
 #[derive(Serialize, Deserialize, Hash, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
