@@ -26,6 +26,8 @@ use crate::{
 };
 use log::{debug, error, info};
 
+pub const ANSWER_MODEL: &str = "gpt-4-0613";
+
 pub async fn handle_suggest_wrapper(
     request: SuggestRequest,
 ) -> Result<impl warp::Reply, Infallible> {
@@ -240,7 +242,13 @@ async fn get_generated_questions(
     let response_task_list: Result<TaskListResponse, serde_json::Error> =
         serde_json::from_str(&choices_str);
 
-    Ok(response_task_list)
+    match response_task_list {
+        Ok(task_list) => Ok(task_list),
+        Err(e) => {
+            error!("Failed to parse response from the gateway: {}", e);
+            Err(anyhow::anyhow!("Failed to parse response from the gateway: {}", e))
+        }
+    }
 }
 
 /// Asynchronously retrieves code understandings for a set of questions.

@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 extern crate common;
-use common::models::TaskList;
 use common::{CodeContext, CodeUnderstanding};
 
 /// Represents the process of tracking tasks, subtasks, and questions within a directed graph.
