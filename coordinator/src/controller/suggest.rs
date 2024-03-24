@@ -12,13 +12,19 @@ use std::{collections::HashMap, convert::Infallible};
 use tokio::{fs::File, io::AsyncWriteExt};
 
 use common::{
-    models::{CodeContextRequest, CodeUnderstandRequest, GenerateQuestionRequest, TaskListResponse},
+    models::{
+        CodeContextRequest, CodeUnderstandRequest, GenerateQuestionRequest, TaskListResponse,
+    },
     service_interaction::service_caller,
     CodeUnderstanding, CodeUnderstandings,
 };
+use common::llm_gateway;
 use reqwest::{Method, StatusCode};
 
-use crate::{models::{SuggestRequest, SuggestResponse}, CONFIG};
+use crate::{
+    models::{SuggestRequest, SuggestResponse},
+    CONFIG,
+};
 use log::{debug, error, info};
 
 pub async fn handle_suggest_wrapper(
@@ -41,12 +47,14 @@ pub async fn handle_suggest_wrapper(
     }
 }
 
-async fn handle_suggest_core(
-    request: SuggestRequest,
-) -> Result<impl Serialize, anyhow::Error> {
-    // if the request.uuid exists, load the conversation from the conversations API 
-    
+async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, anyhow::Error> {
+    // if the request.uuid exists, load the conversation from the conversations API
+
     let convo_id = request.id;
+    match convo_id {
+        Some(id) => info!("Conversation ID: {}", id),
+        None => info!("No conversation ID provided, New conversation initiated."),
+    }
     // initialize the new tracker with task graph
     let mut tracker = TrackProcessV1::new(&request.repo_name, &request.user_query);
 
@@ -77,12 +85,16 @@ async fn handle_suggest_core(
                 .await?;
         } else {
             info!("No tasks are generated.");
-            // No tasks generated because LLM wants more clarification because of vagueness of the issue description from user query 
+
+            if generated_questions.ask_user.is_none() {
+                error!("No tasks or either ask_user is generated. The LLM is not supposed to behave this way, test the API response from the code understanding service for query: {}, repo: {}", request.user_query, request.repo_name);
+            }
+            // No tasks generated because LLM wants more clarification because of vagueness of the issue description from user query
             return Ok(SuggestResponse {
                 ask_user: generated_questions.ask_user,
                 tasks: generated_questions.tasks,
                 questions_with_answers: None,
-            })
+            });
         }
         generated_questions
     } else {
@@ -97,7 +109,6 @@ async fn handle_suggest_core(
                 return Err(anyhow::anyhow!(err_msg));
             }
         }
-        
     };
 
     // update the root status to completed
@@ -121,29 +132,31 @@ async fn handle_suggest_core(
             |(mut answers, _), result| match result {
                 Ok(answer) => {
                     answers.push(answer);
-                    Ok((answers, None))  // Correctly return a Result wrapping the accumulator tuple.
-                },
+                    Ok((answers, None)) // Correctly return a Result wrapping the accumulator tuple.
+                }
                 Err(e) => {
                     error!("Failed to get answers to questions: {}", e);
-                    Err(e)  // Directly propagate the error.
-                },
+                    Err(e) // Directly propagate the error.
+                }
             },
         );
         match result {
             Ok((answers, _)) => {
                 // If try_fold completed without encountering an error, answers would be populated.
                 let mut file = File::create("generated_questions.json").await?;
-                file.write_all(serde_json::to_string(&answers)?.as_bytes()).await?;
+                file.write_all(serde_json::to_string(&answers)?.as_bytes())
+                    .await?;
                 Ok(answers)
-            },
+            }
             Err(e) => {
                 // If an error was encountered, it will be returned here.
                 Err(e)
-            },
+            }
         }
     } else {
         // Assuming read_code_understanding_from_file is adjusted to return Vec<Result<QuestionWithAnswer, Error>>
-        let code_understand_fie_read_result = read_code_understanding_from_file("answers_to_questions.json").await;
+        let code_understand_fie_read_result =
+            read_code_understanding_from_file("answers_to_questions.json").await;
         match code_understand_fie_read_result {
             Ok(answers) => Ok(answers),
             Err(e) => {
@@ -189,19 +202,46 @@ async fn get_generated_questions(
     user_query: String,
     repo_name: String,
 ) -> Result<TaskListResponse, anyhow::Error> {
-    let generate_questions_url = format!("{}/task-list", CONFIG.code_understanding_url);
-    let generated_questions = service_caller::<GenerateQuestionRequest, TaskListResponse>(
-        generate_questions_url,
-        Method::POST,
-        Some(GenerateQuestionRequest {
-            issue_desc: user_query,
-            repo_name: repo_name,
-        }),
-        None,
-    )
-    .await?;
+    // intialize new llm gateway.
+    let llm_gateway = llm_gateway::Client::new(&CONFIG.openai_url)
+        .temperature(0.0)
+        .bearer(CONFIG.openai_api_key.clone())
+        .model(&CONFIG.openai_api_key.clone());
 
-    Ok(generated_questions)
+    let system_prompt: String = prompts::question_concept_generator_prompt(&user_query, &repo_name);
+    let system_message = llm_gateway::api::Message::system(&system_prompt);
+    let messages = Some(system_message).into_iter().collect::<Vec<_>>();
+
+    let response = match llm_gateway
+        .clone()
+        .model(ANSWER_MODEL)
+        .chat(&messages, None)
+        .await
+    {
+        Ok(response) => Some(response),
+        Err(_) => None,
+    };
+    let final_response = match response {
+        Some(response) => response,
+        None => {
+            log::error!("Error: Unable to fetch response from the gateway");
+            // Return error as API response
+            return Err(anyhow::anyhow!("Unable to fetch response from the gateway"));
+        }
+    };
+
+    let choices_str = final_response.choices[0]
+        .message
+        .content
+        .clone()
+        .unwrap_or_else(|| "".to_string());
+
+    log::debug!("Choices: {}", choices_str);
+
+    let response_task_list: Result<TaskListResponse, serde_json::Error> =
+        serde_json::from_str(&choices_str);
+
+    Ok(response_task_list)
 }
 
 /// Asynchronously retrieves code understandings for a set of questions.

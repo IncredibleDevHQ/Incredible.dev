@@ -30,7 +30,7 @@ impl TrackProcessV1 {
         let mut graph = DiGraph::<NodeV1, EdgeV1>::new(); // Create a new, empty directed graph.
         let uuid = Uuid::new_v4(); // Generate a new UUID for the root node.
         let root_node_index = graph.add_node(NodeV1::Conversation(
-            MessageSource::System,
+            MessageSource::User,
             Message::system(root_issue),
             uuid,
             ChildTaskStatus::default(),
