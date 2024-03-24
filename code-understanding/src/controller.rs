@@ -1,11 +1,6 @@
-use crate::agent;
-use crate::agent::agent::ANSWER_MODEL;
-use crate::agent::prompts;
-use crate::config::Config;
 use crate::AppState;
-use common::models::{CodeUnderstandRequest, GenerateQuestionRequest};
-use common::{models::TaskListResponse, CodeUnderstanding};
-use serde::ser::Error;
+use common::models::CodeUnderstandRequest;
+use common::CodeUnderstanding;
 use std::time::Duration;
 
 use crate::agent::agent::Action;
@@ -94,7 +89,7 @@ pub async fn handle_retrieve_code(
     // if there is an error in the action, return the error.
     if action_result.is_err() {
         let err_msg = action_result.err().unwrap().to_string();
-        // log the error 
+        // log the error
         error!("Error in the step function: {}", err_msg);
         return Ok(warp::reply::with_status(
             warp::reply::json(&format!("Error: {}", err_msg)),

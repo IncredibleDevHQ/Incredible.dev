@@ -4,13 +4,9 @@ use futures::{stream, StreamExt};
 use tiktoken_rs::CoreBPE;
 use tracing::{debug, instrument};
 
-use crate::agent::{
-    exchange::{CodeChunk, SearchStep, Update},
-    prompts,
-};
+use crate::agent::exchange::{CodeChunk, SearchStep, Update};
 
-extern crate common;
-use common::llm_gateway;
+use common::{llm_gateway, prompts};
 
 impl Agent {
     #[instrument(skip(self))]

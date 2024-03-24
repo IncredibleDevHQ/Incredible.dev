@@ -7,8 +7,10 @@ use std::time::Duration;
 use crate::AppState;
 use anyhow::{anyhow, Context, Result};
 
-extern crate common;
-use common::llm_gateway::{self, api::FunctionCall};
+use common::{llm_gateway::{self, api::FunctionCall}, prompts};
+use crate::agent::exchange::{Exchange, SearchStep, Update};
+
+use crate::agent::transform;
 // Types of repo
 #[derive(Serialize, Deserialize, Hash, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
@@ -52,10 +54,6 @@ pub struct FileDocument {
     pub lang: Option<String>,
 }
 
-use crate::agent::exchange::{Exchange, SearchStep, Update};
-
-use crate::agent::prompts;
-use crate::agent::transform;
 
 /// A collection of modules that each add methods to `Agent`.
 ///

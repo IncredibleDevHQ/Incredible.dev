@@ -5,7 +5,6 @@ use crate::task_graph::read_file_data::{
     read_code_understanding_from_file, read_task_list_from_file,
 };
 use anyhow::{Error, Result};
-use common::models::Task;
 use futures::future::join_all;
 use serde::Serialize;
 use std::{collections::HashMap, convert::Infallible};
@@ -18,7 +17,7 @@ use common::{
     service_interaction::service_caller,
     CodeUnderstanding, CodeUnderstandings,
 };
-use common::llm_gateway;
+use common::{llm_gateway, prompts}; 
 use reqwest::{Method, StatusCode};
 
 use crate::{

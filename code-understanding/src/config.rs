@@ -1,5 +1,3 @@
-use anyhow::{Context, Error};
-
 #[derive(Clone, Debug)]
 pub struct Config {
     pub semantic_url: String,
