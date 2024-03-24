@@ -3,6 +3,7 @@ use crate::task_graph::graph_model::{ChildTaskStatus, EdgeV1, NodeV1, QuestionWi
 extern crate common;
 use common::models::TaskList;
 use common::CodeUnderstanding;
+use common::llm_gateway::api::MessageSource;
 
 impl TrackProcessV1 {
     /// Extends the graph with the structure defined in a TaskList.
@@ -29,14 +30,16 @@ impl TrackProcessV1 {
                     self.graph
                         .add_edge(task_node_acc, subtask_node, EdgeV1::Subtask);
 
+                    // Initialize a counter to assign unique IDs to questions.
+                    let mut question_counter = 0;
                     // Use fold again to iterate over questions for the current subtask.
                     // Here, the subtask node (subtask_node_acc) is the accumulator.
                     subtask
                         .questions
                         .iter()
                         .fold(subtask_node, |subtask_node_acc, question| {
-                            self.question_counter += 1;
-                            let question_id = self.question_counter;
+                            question_counter +=  1;
+                            let question_id = question_counter;
 
                             // Create a question node with the ID and the default status.
                             let question_node = self.graph.add_node(NodeV1::Question(
@@ -65,10 +68,10 @@ impl TrackProcessV1 {
     /// * `new_status` - The new status to set for the root issue node.
     pub fn update_roots_child_status(&mut self, new_status: ChildTaskStatus) {
         // Match against the root node to extract its current state and update it.
-        if let Some(NodeV1::RootIssue(desc, uuid, _)) = self.graph.node_weight_mut(self.root_node) {
+        if let Some(NodeV1::Conversation(_, desc, uuid, _)) = self.graph.node_weight(self.root_node) {
             // Update the status of the root node.
             *self.graph.node_weight_mut(self.root_node).unwrap() =
-                NodeV1::RootIssue(desc.clone(), *uuid, new_status);
+                NodeV1::Conversation(MessageSource::System, desc.clone(), *uuid, new_status);
         }
     }
 
