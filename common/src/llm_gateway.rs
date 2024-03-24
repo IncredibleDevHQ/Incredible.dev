@@ -86,6 +86,12 @@ pub mod api {
     }
 
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+    pub enum MessageSource {
+        User,
+        Assistant,
+        System,
+    }
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
     pub struct Messages {
         pub messages: Vec<Message>,
     }
