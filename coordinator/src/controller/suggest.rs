@@ -1,5 +1,5 @@
 use crate::task_graph::graph_model::{
-    ChildTaskStatus, QuestionWithAnswer, QuestionWithId, TrackProcess,
+    ChildTaskStatus, QuestionWithAnswer, QuestionWithId, TrackProcessV1,
 };
 use crate::task_graph::read_file_data::{
     read_code_understanding_from_file, read_task_list_from_file,
@@ -44,9 +44,13 @@ pub async fn handle_suggest_wrapper(
 async fn handle_suggest_core(
     request: SuggestRequest,
 ) -> Result<impl Serialize, anyhow::Error> {
+    // if the request.uuid exists, load the conversation from the conversations API 
+    
+    let convo_id = request.id;
     // initialize the new tracker with task graph
-    let mut tracker = TrackProcess::new(&request.repo_name, &request.user_query);
+    let mut tracker = TrackProcessV1::new(&request.repo_name, &request.user_query);
 
+    let task_id = tracker.uuid;
     // update the root status to in progress
     tracker.update_roots_child_status(ChildTaskStatus::InProgress);
     // the status is used to track of the processing of its child nodes
