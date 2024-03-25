@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 common = { path = "../common" }
-
+redis = "0.23.0"
 anyhow = "1.0.71"
 dotenv = "0.15.0"
 log = "0.4.21"

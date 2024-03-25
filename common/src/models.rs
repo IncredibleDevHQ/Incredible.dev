@@ -1,13 +1,8 @@
+use crate::llm_gateway::api::Message;
 use crate::CodeUnderstandings;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
 use std::fmt;
 use std::ops::Range;
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-pub struct GenerateQuestionRequest {
-    pub issue_desc: String,
-    pub repo_name: String,
-}
 
 /// Represents a code chunk
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -72,6 +67,13 @@ pub struct TaskListResponse {
     )]
     pub ask_user: Option<String>,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TaskListResponseWithMessage {
+   pub task_list_response: TaskListResponse,
+   pub messages: Vec<Message>,
+}
+
 
 fn empty_task_list_as_none<'de, D>(deserializer: D) -> Result<Option<TaskList>, D::Error>
 where

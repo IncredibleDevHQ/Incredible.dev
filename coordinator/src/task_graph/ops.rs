@@ -1,8 +1,10 @@
 use crate::task_graph::graph_model::{EdgeV1, NodeV1, QuestionWithId, TrackProcessV1};
-
+use crate::task_graph::redis::{save_task_process_to_redis, load_task_process_from_redis};
 use common::llm_gateway::api::{Message, MessageSource};
 use common::models::TaskListResponse;
 use common::CodeUnderstanding;
+use log::error;
+use anyhow::Result;
 
 impl TrackProcessV1 {
     /// Processes the suggestion response by integrating tasks, subtasks, and questions into the graph.
@@ -19,7 +21,7 @@ impl TrackProcessV1 {
         suggest_response: TaskListResponse,
         system_message: Message,
         assistant_message: Message,
-    ) -> bool {
+    ) -> Result<bool> {
         // Add the system message node connected to the root, representing the system's input or context setup.
         let system_message_node = self.graph.add_node(NodeV1::Conversation(
             MessageSource::System,
@@ -72,9 +74,23 @@ impl TrackProcessV1 {
                 });
             });
 
-            return true;
+
+            // save the graph in redis
+            let redis_result = save_task_process_to_redis(self);
+            if redis_result.is_err() {
+                error!("Failed to save task process with tasks to Redis: {:?}", redis_result.err().unwrap());
+                return Err(redis_result.err().unwrap());
+            }
+            return Ok(true);
         }
-        false
+        // save the graph in redis
+        let redis_result = save_task_process_to_redis(self);
+        if redis_result.is_err() {
+            error!("Failed to save task process with ask_user to Redis: {:?}", redis_result.err().unwrap());
+            return Err(redis_result.err().unwrap());
+        }
+
+        Ok(false)
     }
 
     /// Collects all questions from the graph and returns them as `QuestionWithId`.
