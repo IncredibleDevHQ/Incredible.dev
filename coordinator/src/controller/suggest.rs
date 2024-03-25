@@ -1,11 +1,15 @@
-use log::{debug, error, info};
 use anyhow::{Error, Result};
 use futures::future::join_all;
+use log::{debug, error, info};
+use reqwest::{Method, StatusCode};
 use serde::Serialize;
 use std::{collections::HashMap, convert::Infallible};
 use tokio::{fs::File, io::AsyncWriteExt};
-use reqwest::{Method, StatusCode};
 
+use crate::task_graph::graph_model::{QuestionWithAnswer, QuestionWithId, TrackProcessV1};
+use crate::task_graph::read_file_data::{
+    read_code_understanding_from_file, read_task_list_from_file,
+};
 use common::{llm_gateway, prompts};
 use common::{
     models::{
@@ -13,10 +17,6 @@ use common::{
     },
     service_interaction::service_caller,
     CodeUnderstanding, CodeUnderstandings,
-};
-use crate::task_graph::graph_model::{QuestionWithAnswer, QuestionWithId, TrackProcessV1};
-use crate::task_graph::read_file_data::{
-    read_code_understanding_from_file, read_task_list_from_file,
 };
 
 use crate::{
@@ -51,19 +51,34 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
     // if the request.uuid exists, load the conversation from the conversations API
     let convo_id = request.id;
     if convo_id.is_some() {
-        info!("Conversation ID exists, loading the conversation from Redis: {}", convo_id.unwrap());
+        info!(
+            "Conversation ID exists, loading the conversation from Redis: {}",
+            convo_id.unwrap()
+        );
         // load the conversation from the redis
         let mut tracker = load_task_process_from_redis(convo_id.unwrap()).await;
         // return error if there is error loading the conversation
         if tracker.is_err() {
-            error!("Failed to load the conversation from Redis: {}", tracker.err().unwrap());
+            error!(
+                "Failed to load the conversation from Redis: {}",
+                tracker.err().unwrap()
+            );
             return Err(tracker.err().unwrap());
         }
-        let mut tracker_graph = tracker.as_mut().unwrap();
+        let mut tracker_graph: TrackProcessV1 = tracker.as_mut().unwrap();
+        // find the last conversation state and get the last conversation node ID from the conversation graph
+        let last_conversation_node_id = tracker_graph.last_conversation_state();
+        // return error if there the last conversation state is none
+        if last_conversation_node_id.is_none() {
+            error!("Failed to find the last conversation state from the conversation graph, initiate a new conversation");
+            return Err(anyhow::anyhow!("Failed to find the last conversation state from the conversation graph, initiate a new conversation"));
+        }
+        // switch to the state of the last conversation and continue from there 
+        
     } else {
         info!("No conversation ID provided, New conversation initiated.")
     }
-   
+
     // initialize the new tracker with task graph
     let mut tracker = TrackProcessV1::new(&request.repo_name, &request.user_query);
 
