@@ -1,12 +1,10 @@
-use crate::task_graph::graph_model::{QuestionWithAnswer, QuestionWithId, TrackProcessV1};
-use crate::task_graph::read_file_data::{
-    read_code_understanding_from_file, read_task_list_from_file,
-};
+use log::{debug, error, info};
 use anyhow::{Error, Result};
 use futures::future::join_all;
 use serde::Serialize;
 use std::{collections::HashMap, convert::Infallible};
 use tokio::{fs::File, io::AsyncWriteExt};
+use reqwest::{Method, StatusCode};
 
 use common::{llm_gateway, prompts};
 use common::{
@@ -16,14 +14,17 @@ use common::{
     service_interaction::service_caller,
     CodeUnderstanding, CodeUnderstandings,
 };
-use reqwest::{Method, StatusCode};
+use crate::task_graph::graph_model::{QuestionWithAnswer, QuestionWithId, TrackProcessV1};
+use crate::task_graph::read_file_data::{
+    read_code_understanding_from_file, read_task_list_from_file,
+};
 
 use crate::{
     models::{SuggestRequest, SuggestResponse},
     CONFIG,
 };
-use log::{debug, error, info};
 
+use crate::task_graph::redis::{load_task_process_from_redis, save_task_process_to_redis};
 pub const ANSWER_MODEL: &str = "gpt-4-0613";
 
 pub async fn handle_suggest_wrapper(
@@ -48,12 +49,21 @@ pub async fn handle_suggest_wrapper(
 
 async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, anyhow::Error> {
     // if the request.uuid exists, load the conversation from the conversations API
-
     let convo_id = request.id;
-    match convo_id {
-        Some(id) => info!("Conversation ID: {}", id),
-        None => info!("No conversation ID provided, New conversation initiated."),
+    if convo_id.is_some() {
+        info!("Conversation ID exists, loading the conversation from Redis: {}", convo_id.unwrap());
+        // load the conversation from the redis
+        let mut tracker = load_task_process_from_redis(convo_id.unwrap()).await;
+        // return error if there is error loading the conversation
+        if tracker.is_err() {
+            error!("Failed to load the conversation from Redis: {}", tracker.err().unwrap());
+            return Err(tracker.err().unwrap());
+        }
+        let mut tracker_graph = tracker.as_mut().unwrap();
+    } else {
+        info!("No conversation ID provided, New conversation initiated.")
     }
+   
     // initialize the new tracker with task graph
     let mut tracker = TrackProcessV1::new(&request.repo_name, &request.user_query);
 
@@ -94,15 +104,15 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
     // add the generated questions to the graph
     // if the questions are not present, return the ask_user message
     // the function also saves the graph to the redis
-    let does_task_exist = tracker.extend_graph_with_tasklist(
-        generated_questions.clone(),
-        messages[0],
-        messages[1],
-    );
+    let does_task_exist =
+        tracker.extend_graph_with_tasklist(generated_questions.clone(), messages[0], messages[1]);
 
     // return error if Result is Err
     if does_task_exist.is_err() {
-        error!("Failed to extend graph with tasklist: {}", does_task_exist.err().unwrap());
+        error!(
+            "Failed to extend graph with tasklist: {}",
+            does_task_exist.err().unwrap()
+        );
         return Err(does_task_exist.err().unwrap());
     }
 
@@ -115,7 +125,6 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
             tasks: generated_questions.tasks,
         });
     }
-
 
     let questions_with_ids = tracker.get_questions_with_ids();
     // iter and print

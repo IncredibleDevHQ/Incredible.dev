@@ -17,10 +17,10 @@ pub fn save_task_process_to_redis(
 
 /// Reads and deserializes a TaskProcessV1 instance from Redis by UUID.
 pub fn load_task_process_from_redis(
-    conn: &mut redis::Connection,
     uuid: Uuid,
 ) -> Result<TrackProcessV1> {
     let key = format!("taskprocess:{}", uuid);
+    let mut conn = establish_redis_connection()?;
     let value: String = conn.get(&key)?;
     let task_process: TrackProcessV1 = serde_json::from_str(&value)?;
     Ok(task_process)
