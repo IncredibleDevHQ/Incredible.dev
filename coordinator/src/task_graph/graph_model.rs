@@ -32,7 +32,6 @@ impl TrackProcessV1 {
             MessageSource::User,
             Message::system(root_issue),
             uuid,
-            ChildTaskStatus::default(),
         ));
 
         // Return the new `TrackProcess` instance containing the graph, root node index, and UUID.
@@ -53,11 +52,10 @@ pub enum NodeV1 {
     // Message is a struct that contains the message text in the json form with which we send conversation history to the LLM
     // Uuid is the unique identifier for the duration of the entire conversation
     // this is to help identify the first conversation in the conversation history.
-    // ChildTaskStatus is the status is used to mark the downstream processing of the conversation.
-    Conversation(MessageSource, Message, Uuid, ChildTaskStatus), // Represents a conversation node with a message source.
+    Conversation(MessageSource, Message, Uuid ), // Represents a conversation node with a message source.
     Task(String),    // Represents a discrete task derived from the root issue.
     Subtask(String), // Represents a subtask under a specific task.
-    Question(usize, String, ChildTaskStatus), // Represents a question related to a specific subtask.
+    Question(usize, String ), // Represents a question related to a specific subtask.
     Answer(String),                           // Represents an answer to a question.
     CodeContext(CodeContext), // Represents a code context associated with an answer.
 }
@@ -74,20 +72,6 @@ pub enum EdgeV1 {
     Question,    // An edge from a subtask to a question about that subtask.
     Answer,      // Connects a question to its answer.
     CodeContext, // Connects an answer to its code context.
-}
-
-/// Represents the possible statuses of the root issue's child elements (tasks, subtasks).
-#[derive(Debug)]
-pub enum ChildTaskStatus {
-    NotStarted, // Indicates that the task or subtask has not yet been started.
-    InProgress, // Indicates that the task or subtask is currently in progress.
-    Done,       // Indicates that the task or subtask has been completed.
-}
-
-impl Default for ChildTaskStatus {
-    fn default() -> Self {
-        ChildTaskStatus::NotStarted
-    }
 }
 
 // Define a struct to hold questions along with their IDs.
