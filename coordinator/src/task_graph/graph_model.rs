@@ -7,7 +7,8 @@ extern crate common;
 use common::{CodeContext, CodeUnderstanding};
 
 /// Represents the process of tracking tasks, subtasks, and questions within a directed graph.
-/// Each instance of `TrackProcess` maintains its own graph, root node, and unique identifier (UUID).
+/// Each instance of `TrackProcess` maintains its own graph, root node, and unique identifier (UUID)
+#[derive(Serialize, Deserialize, Debug)]
 pub struct TrackProcessV1 {
     pub repo: String,
     pub graph: DiGraph<NodeV1, EdgeV1>, // The directed graph holding the nodes (tasks, subtasks, questions) and edges.
@@ -45,23 +46,23 @@ impl TrackProcessV1 {
 }
 
 /// Defines the types of nodes that can exist within the task tracking graph.
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum NodeV1 {
     // Represents a conversation node with a message source.
     // Message source is a enum that represents either an assistant, system or user message.
     // Message is a struct that contains the message text in the json form with which we send conversation history to the LLM
     // Uuid is the unique identifier for the duration of the entire conversation
     // this is to help identify the first conversation in the conversation history.
-    Conversation(MessageSource, Message, Uuid ), // Represents a conversation node with a message source.
-    Task(String),    // Represents a discrete task derived from the root issue.
-    Subtask(String), // Represents a subtask under a specific task.
-    Question(usize, String ), // Represents a question related to a specific subtask.
-    Answer(String),                           // Represents an answer to a question.
+    Conversation(MessageSource, Message, Uuid), // Represents a conversation node with a message source.
+    Task(String),             // Represents a discrete task derived from the root issue.
+    Subtask(String),          // Represents a subtask under a specific task.
+    Question(usize, String),  // Represents a question related to a specific subtask.
+    Answer(String),           // Represents an answer to a question.
     CodeContext(CodeContext), // Represents a code context associated with an answer.
 }
 
 /// Defines the types of edges to represent relationships between nodes in the task tracking graph.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum EdgeV1 {
     // This edge connects one Conversation node to the next Conversation node as the chat progresses.
     NextConversation,

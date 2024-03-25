@@ -78,6 +78,9 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
         generated_questions_with_llm_messages
     );
 
+    // the response contains the generated questions and the messages
+    // the messages contain the system prompt which was used to generate the questions
+    // also the response of the assistant for the prompt used to generate questions.
     let generated_questions = generated_questions_with_llm_messages.task_list_response;
     let messages = generated_questions_with_llm_messages.messages;
 
@@ -88,15 +91,23 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
                  request.user_query, request.repo_name));
     }
 
-    
+    // add the generated questions to the graph
+    // if the questions are not present, return the ask_user message
+    // the function also saves the graph to the redis
     let does_task_exist = tracker.extend_graph_with_tasklist(
         generated_questions.clone(),
         messages[0],
         messages[1],
     );
 
+    // return error if Result is Err
+    if does_task_exist.is_err() {
+        error!("Failed to extend graph with tasklist: {}", does_task_exist.err().unwrap());
+        return Err(does_task_exist.err().unwrap());
+    }
+
     // if task does not exist, return the ask_user message
-    if !does_task_exist {
+    if !does_task_exist.unwrap() {
         info!("No tasks found in the response, returning the ask_user message");
         return Ok(SuggestResponse {
             questions_with_answers: None,
@@ -105,7 +116,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
         });
     }
 
-    
+
     let questions_with_ids = tracker.get_questions_with_ids();
     // iter and print
     for question_id in questions_with_ids.iter() {

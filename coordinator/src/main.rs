@@ -21,8 +21,7 @@ pub struct Configuration {
     code_modifier_url: String,
     openai_url: String,
     openai_api_key: String,
-    openai_model: String,
-}
+    openai_model: String,}
 
 /// First we get the user query into the system
 /// Then we call the qiestion generator for the question coming in
