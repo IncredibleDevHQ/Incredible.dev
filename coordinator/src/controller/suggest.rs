@@ -51,7 +51,7 @@ pub async fn handle_suggest_wrapper(
 async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, anyhow::Error> {
     // if the request.uuid exists, load the conversation from the conversations API
     let convo_id = request.id;
-    if convo_id.is_some() {
+    let (tracker, node_id) = if convo_id.is_some() {
         info!(
             "Conversation ID exists, loading the conversation from Redis: {}",
             convo_id.unwrap()
@@ -68,22 +68,24 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
         }
         let mut tracker_graph: TrackProcessV1 = tracker.as_mut().unwrap();
         // find the last conversation state and get the last conversation node ID from the conversation graph
-        let last_conversation_node_id = tracker_graph.last_conversation_processing_stage();
-        // return error if there the last conversation state is none
-        if last_conversation_node_id.is_none() {
+        let (last_processing_stage, node_id) = tracker_graph.last_conversation_processing_stage();
+        // return error if there the last conversation state is unknown or the node id is none
+        if (last_processing_stage == ConversationProcessingStage::Unknown) || node_id.is_none() {
             error!("Failed to find the last conversation state from the conversation graph, initiate a new conversation");
             return Err(anyhow::anyhow!("Failed to find the last conversation state from the conversation graph, initiate a new conversation"));
         }
-        // switch to the state of the last conversation and continue from there 
 
+        let last_conversation_node_id = node_id.unwrap();
+        (tracker_graph, last_conversation_node_id)
     } else {
-        info!("No conversation ID provided, New conversation initiated.")
-    }
+        info!("No conversation ID provided, New conversation initiated.");
+        // create a new tracker
 
-    // initialize the new tracker with task graph
-    let mut tracker = TrackProcessV1::new(&request.repo_name, &request.user_query);
+        let mut tracker = TrackProcessV1::new(&request.repo_name, &request.user_query);
+        // return tracker and the new conversation node ID
+        let node_id = tracker.uuid;
+    };
 
-    let task_id = tracker.uuid;
 
     // get the generated questions from the LLM or the file based on the data modes
     let generated_questions_with_llm_messages = match get_generated_questions(
@@ -165,13 +167,14 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
             }
         },
     );
+
     match result {
         Ok((answers, _)) => {
             // If try_fold completed without encountering an error, answers would be populated.
             let mut file = File::create("generated_questions.json").await?;
             file.write_all(serde_json::to_string(&answers)?.as_bytes())
                 .await?;
-            Ok(answers)
+            Ok(answers)                                      
         }
         Err(e) => {
             // If an error was encountered, it will be returned here.
