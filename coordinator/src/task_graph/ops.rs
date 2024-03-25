@@ -1,78 +1,80 @@
-use crate::task_graph::graph_model::{ChildTaskStatus, EdgeV1, NodeV1, QuestionWithId, TrackProcessV1};
+use crate::task_graph::graph_model::{EdgeV1, NodeV1, QuestionWithId, TrackProcessV1};
 
-extern crate common;
-use common::models::TaskList;
+use common::llm_gateway::api::{Message, MessageSource};
+use common::models::TaskListResponse;
 use common::CodeUnderstanding;
-use common::llm_gateway::api::MessageSource;
 
 impl TrackProcessV1 {
-    /// Extends the graph with the structure defined in a TaskList.
+    /// Processes the suggestion response by integrating tasks, subtasks, and questions into the graph.
     ///
     /// # Arguments
     ///
-    /// * `task_list` - A reference to a TaskList containing the tasks, subtasks, and questions
-    ///   that will be added to the graph.
-    pub fn extend_graph_with_tasklist(&mut self, task_list: &TaskList) {
-        // Iterate over each task in the task list.
-        task_list.tasks.iter().for_each(|task| {
-            // Add each task as a node in the graph and connect it to the root node.
-            let task_node = self.graph.add_node(NodeV1::Task(task.task.clone()));
-            self.graph.add_edge(self.root_node, task_node, EdgeV1::Task);
+    /// * `suggest_response` - The response from the suggestion API containing tasks or message asking users for further information.
+    /// * `system_message` - The system message, typically a prompt or an informational message.
+    /// * `assistant_message` - The assistant's response, which could be an action item or further query.
+    /// # Returns 
+    /// a bool indicating if tasks are available in the suggest_response
+    pub fn extend_graph_with_tasklist(
+        &mut self,
+        suggest_response: TaskListResponse,
+        system_message: Message,
+        assistant_message: Message,
+    ) -> bool {
+        // Add the system message node connected to the root, representing the system's input or context setup.
+        let system_message_node = self.graph.add_node(NodeV1::Conversation(
+            MessageSource::System,
+            system_message,
+            self.uuid,
+        ));
+        self.graph.add_edge(
+            self.root_node,
+            system_message_node,
+            EdgeV1::NextConversation,
+        );
 
-            // Use fold to iterate over subtasks, creating nodes and edges, and connecting them to the task node.
-            // The task node (task_node_acc) acts as an accumulator that carries forward the node to which
-            // subtasks should be connected.
-            task.subtasks
-                .iter()
-                .fold(task_node, |task_node_acc, subtask| {
-                    // Add each subtask as a node and connect it to the current task node.
-                    let subtask_node = self.graph.add_node(NodeV1::Subtask(subtask.subtask.clone()));
+        // Add the assistant message node and connect it to the system message node, representing the assistant's reply.
+        let assistant_message_node = self.graph.add_node(NodeV1::Conversation(
+            MessageSource::Assistant,
+            assistant_message,
+            self.uuid,
+        ));
+        self.graph.add_edge(
+            system_message_node,
+            assistant_message_node,
+            EdgeV1::NextConversation,
+        );
+
+        // If tasks are available in the suggest_response, process them.
+        if let Some(tasks) = suggest_response.tasks {
+            // Initialize a counter for unique question IDs within this context.
+            let mut question_id_counter = 0;
+
+            // Iterate over tasks and integrate them along with their subtasks and questions into the graph.
+            tasks.tasks.into_iter().for_each(|task| {
+                let task_node = self.graph.add_node(NodeV1::Task(task.task));
+                self.graph
+                    .add_edge(assistant_message_node, task_node, EdgeV1::Process);
+
+                task.subtasks.into_iter().for_each(|subtask| {
+                    let subtask_node = self.graph.add_node(NodeV1::Subtask(subtask.subtask));
                     self.graph
-                        .add_edge(task_node_acc, subtask_node, EdgeV1::Subtask);
+                        .add_edge(task_node, subtask_node, EdgeV1::Subtask);
 
-                    // Initialize a counter to assign unique IDs to questions.
-                    let mut question_counter = 0;
-                    // Use fold again to iterate over questions for the current subtask.
-                    // Here, the subtask node (subtask_node_acc) is the accumulator.
-                    subtask
-                        .questions
-                        .iter()
-                        .fold(subtask_node, |subtask_node_acc, question| {
-                            question_counter +=  1;
-                            let question_id = question_counter;
-
-                            // Create a question node with the ID and the default status.
-                            let question_node = self.graph.add_node(NodeV1::Question(
-                                question_id,
-                                question.clone(),
-                                ChildTaskStatus::default(),
-                            ));
-                            self.graph
-                                .add_edge(subtask_node_acc, question_node, EdgeV1::Question);
-
-                            // Return the subtask node accumulator to continue adding questions to the correct subtask.
-                            subtask_node_acc
-                        });
-
-                    // Return the task node accumulator to continue adding subtasks to the correct task.
-                    task_node_acc
+                    subtask.questions.into_iter().for_each(|question| {
+                        let question_node = self.graph.add_node(NodeV1::Question(
+                            question_id_counter, // Use the counter as the question ID.
+                            question,
+                        ));
+                        self.graph
+                            .add_edge(subtask_node, question_node, EdgeV1::Question);
+                        question_id_counter += 1; // Increment the counter for the next question.
+                    });
                 });
-        });
-    }
+            });
 
-    /// Updates the status of the root node in the graph.
-    // the status is used to track of the processing of its child nodes
-    // in this the child elements are tasks, subtasks and questions
-    /// # Arguments
-    ///
-    /// * `new_status` - The new status to set for the root issue node.
-    pub fn update_roots_child_status(&mut self, new_status: ChildTaskStatus) {
-        // Match against the root node to extract its current state and update it.
-        if let Some(NodeV1::Conversation(_, desc, uuid, _)) = self.graph.node_weight(self.root_node) {
-            // Update the status of the root node.
-            *self.graph.node_weight_mut(self.root_node).unwrap() =
-                NodeV1::Conversation(MessageSource::System, desc.clone(), *uuid, new_status);
+            return true;
         }
+        false
     }
 
     /// Collects all questions from the graph and returns them as `QuestionWithId`.
@@ -84,7 +86,7 @@ impl TrackProcessV1 {
         self.graph
             .node_weights()
             .filter_map(|node| {
-                if let NodeV1::Question(id, text, _) = node {
+                if let NodeV1::Question(id, text) = node {
                     Some(QuestionWithId {
                         id: *id,
                         text: text.clone(),
@@ -102,15 +104,8 @@ impl TrackProcessV1 {
             if let Some(question_node) = self
                 .graph
                 .node_indices()
-                .find(|&n| matches!(self.graph[n], NodeV1::Question(id, _, _) if id == *question_id))
+                .find(|&n| matches!(self.graph[n], NodeV1::Question(id, _) if id == *question_id))
             {
-                // Update the question node's status to Done.
-                if let Some(NodeV1::Question(_, _, status)) =
-                    self.graph.node_weight_mut(question_node)
-                {
-                    *status = ChildTaskStatus::Done;
-                }
-
                 // Create a node for the answer and connect it to the question node.
                 let answer_node = self
                     .graph
