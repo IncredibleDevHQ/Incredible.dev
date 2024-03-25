@@ -1,10 +1,10 @@
 use crate::task_graph::graph_model::{EdgeV1, NodeV1, QuestionWithId, TrackProcessV1};
-use crate::task_graph::redis::{save_task_process_to_redis, load_task_process_from_redis};
+use crate::task_graph::redis::{load_task_process_from_redis, save_task_process_to_redis};
+use anyhow::Result;
 use common::llm_gateway::api::{Message, MessageSource};
 use common::models::TaskListResponse;
 use common::CodeUnderstanding;
 use log::error;
-use anyhow::Result;
 
 impl TrackProcessV1 {
     /// Processes the suggestion response by integrating tasks, subtasks, and questions into the graph.
@@ -14,8 +14,39 @@ impl TrackProcessV1 {
     /// * `suggest_response` - The response from the suggestion API containing tasks or message asking users for further information.
     /// * `system_message` - The system message, typically a prompt or an informational message.
     /// * `assistant_message` - The assistant's response, which could be an action item or further query.
-    /// # Returns 
+    /// # Returns
     /// a bool indicating if tasks are available in the suggest_response
+    ///
+    /// here's how the graph looks like
+    /// Root Node: Conversation (Root)
+    // │
+    // ├── NextConversation Edge
+    // │   │
+    // │   └── Conversation Node: System (System message)
+    // │       │
+    // │       ├── NextConversation Edge
+    // │       │   │
+    // │       │   └── Conversation Node: Assistant (Assistant message)
+    // │       │       │
+    // │       │       └── Process Edge (only if tasks are present)
+    // │       │           │
+    // │       │           └── Task Node
+    // │       │               │
+    // │       │               ├── Subtask Edge
+    // │       │               │   │
+    // │       │               │   └── Subtask Node
+    // │       │               │       │
+    // │       │               │       └── Question Edge
+    // │       │               │           │
+    // │       │               │           └── Question Node
+    // │       │               │               │ (Future implementation might connect to Answer and CodeContext Nodes)
+    // │       │               │
+    // │       │               └── (Additional Subtask Nodes and their Question Nodes as needed)
+    // │       │
+    // │       └── (Additional Task Nodes and their Subtask/Question structures as needed)
+    // │
+    // └── (Future Conversation Nodes connected via NextConversation Edges as the chat progresses)
+
     pub fn extend_graph_with_tasklist(
         &mut self,
         suggest_response: TaskListResponse,
@@ -74,11 +105,13 @@ impl TrackProcessV1 {
                 });
             });
 
-
             // save the graph in redis
             let redis_result = save_task_process_to_redis(self);
             if redis_result.is_err() {
-                error!("Failed to save task process with tasks to Redis: {:?}", redis_result.err().unwrap());
+                error!(
+                    "Failed to save task process with tasks to Redis: {:?}",
+                    redis_result.err().unwrap()
+                );
                 return Err(redis_result.err().unwrap());
             }
             return Ok(true);
@@ -86,7 +119,10 @@ impl TrackProcessV1 {
         // save the graph in redis
         let redis_result = save_task_process_to_redis(self);
         if redis_result.is_err() {
-            error!("Failed to save task process with ask_user to Redis: {:?}", redis_result.err().unwrap());
+            error!(
+                "Failed to save task process with ask_user to Redis: {:?}",
+                redis_result.err().unwrap()
+            );
             return Err(redis_result.err().unwrap());
         }
 
