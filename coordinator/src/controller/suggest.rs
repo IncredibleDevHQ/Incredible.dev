@@ -51,13 +51,13 @@ pub async fn handle_suggest_wrapper(
 async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, anyhow::Error> {
     // if the request.uuid exists, load the conversation from the conversations API
     let convo_id = request.id;
-    let trackers = if convo_id.is_some() {
+    let tracker = if convo_id.is_some() {
         info!(
             "Conversation ID exists, loading the conversation from Redis: {}",
             convo_id.unwrap()
         );
         // load the conversation from the redis
-        let mut tracker = load_task_process_from_redis(&convo_id.unwrap());
+        let tracker = load_task_process_from_redis(&convo_id.unwrap());
         // return error if there is error loading the conversation
         if tracker.is_err() {
             error!(
@@ -66,25 +66,36 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
             );
             return Err(tracker.err().unwrap());
         }
-        let mut tracker_graph: &mut TrackProcessV1 = tracker.as_mut().unwrap();
-        // find the last conversation state and get the last conversation node ID from the conversation graph
-        let (last_processing_stage, node_id) = tracker_graph.last_conversation_processing_stage();
-        // return error if there the last conversation state is unknown or the node id is none
-        if (last_processing_stage == ConversationProcessingStage::Unknown) || node_id.is_none() {
-            error!("Failed to find the last conversation state from the conversation graph, initiate a new conversation");
-            return Err(anyhow::anyhow!("Failed to find the last conversation state from the conversation graph, initiate a new conversation"));
-        }
-
-        let last_conversation_node_id = node_id.unwrap();
-         tracker_graph
+        tracker.unwrap()
     } else {
         info!("No conversation ID provided, New conversation initiated.");
         // create a new tracker
-
-        &mut TrackProcessV1::new(&request.repo_name)
-        // return tracker and the new conversation node ID
+        TrackProcessV1::new(&request.repo_name)
     };
-
+    // get the state of the conversation
+    let (state, node_index) = tracker.last_conversation_processing_stage();
+    
+    match state {
+        ConversationProcessingStage::OnlyRootNodeExists => {
+            info!("Only root node exists, no conversation has happened yet.");
+        }
+        ConversationProcessingStage::GraphNotInitialized => {
+            info!("Graph not initialized, initializing the graph.");
+            tracker.initialize_graph();
+        }
+        ConversationProcessingStage::TasksAndQuestionsGenerated => {
+            info!("Tasks and questions are generated, awaiting user input.");
+        }
+        ConversationProcessingStage::AwaitingUserInput => {
+            info!("Awaiting user input, continuing the conversation.");
+        }
+        ConversationProcessingStage::Unknown => {
+            info!("Unknown state, continuing the conversation.");
+        }
+        ConversationProcessingStage::AnswersGenerated => {
+            info!("Answers are generated, awaiting user input.");
+        }
+    }
     // get the generated questions from the LLM or the file based on the data modes
     let generated_questions_with_llm_messages = match get_generated_questions(
         request.user_query.clone(),

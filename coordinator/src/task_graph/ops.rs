@@ -60,7 +60,6 @@ impl TrackProcessV1 {
     /// │
     /// └── (The graph continues to expand with more nodes and edges as the conversation and task processing evolve)
     /// ```
-
     pub fn extend_graph_with_conversation_and_tasklist(
         &mut self,
         conversation_chain: ConversationChain,
