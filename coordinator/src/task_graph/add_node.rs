@@ -55,7 +55,7 @@ impl TrackProcessV1 {
             .ok_or(NodeError::InvalidNodeId)?;
 
         // Add the new node and connect it.
-        let new_node_id = graph.add_node(node);
+        let new_node_id = graph.add_node(node.clone());
         graph.add_edge(parent_node_id, new_node_id, edge);
 
         // Update the last added node and timestamps.
@@ -88,7 +88,7 @@ impl TrackProcessV1 {
         // create new uuid for the conversation node
         let new_conversation_id = Uuid::new_v4();
         // Create the conversation node.
-        let node = NodeV1::Conversation(source, message, new_conversation_id);
+        let node = NodeV1::Conversation(source, message, new_conversation_id.to_string());
 
         // Use the updated add_and_connect_node method to add and connect the conversation node.
         self.add_and_connect_node(parent_node_id, node, EdgeV1::NextConversation)
