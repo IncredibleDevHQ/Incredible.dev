@@ -1,6 +1,6 @@
-use log::debug;
 use crate::task_graph::graph_model::EdgeV1;
 use crate::task_graph::graph_model::{NodeV1, TrackProcessV1};
+use log::debug;
 use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
 use petgraph::visit::{Dfs, IntoNodeReferences, Visitable};
@@ -10,9 +10,11 @@ use petgraph::Graph;
 #[derive(Debug, PartialEq)]
 pub enum ConversationProcessingStage {
     AwaitingUserInput,
-    QuestionsGenerated, // Implies that tasks are also generated as they are coupled.
-    AnswersGenerated,   // Indicates that answers to the generated questions are available.
-    Unknown,            // State cannot be determined or does not fit the other categories.
+    TasksAndQuestionsGenerated, // Indicates that tasks and questions are generated.
+    AnswersGenerated,           // Indicates that answers to the generated questions are available.
+    GraphNotInitialized,
+    OnlyRootNodeExists,
+    Unknown, // State cannot be determined or does not fit the other categories.
 }
 
 impl TrackProcessV1 {
@@ -23,52 +25,50 @@ impl TrackProcessV1 {
     }
 
     /// Determines the processing stage of the last conversation in the graph.
-    /// We never persist the graph in the Redis just with a Root node. 
+    /// We never persist the graph in the Redis just with a Root node.
     /// Hence we make an assumption that the last conversation node is available.
+    /// Determines the processing stage of the last conversation in the graph.
     pub fn last_conversation_processing_stage(
         &self,
     ) -> (ConversationProcessingStage, Option<NodeIndex>) {
-        // Check if the graph is initialized.
-        if let Some(ref graph) = self.graph {
-            // Proceed if the graph is present and the last conversation node is known.
-            if let Some(last_conversation_node_id) = self.last_added_conversation_node {
-                // Check for the existence of a 'Process' edge from the last conversation node.
-                let process_edge_exists = graph
-                    .edges_directed(last_conversation_node_id, petgraph::Direction::Outgoing)
-                    .any(|edge| matches!(edge.weight(), EdgeV1::Process));
-
-                if process_edge_exists {
-                    // Determine the processing stage based on the presence of 'Question' and 'Answer' edges.
-                    let has_questions = graph
-                        .edges_directed(last_conversation_node_id, petgraph::Direction::Outgoing)
-                        .any(|e| matches!(e.weight(), EdgeV1::Question));
-                    let has_answers = graph
-                        .edges_directed(last_conversation_node_id, petgraph::Direction::Outgoing)
-                        .any(|e| matches!(e.weight(), EdgeV1::Answer));
-
-                    let processing_stage = match (has_questions, has_answers) {
-                        (true, false) => ConversationProcessingStage::QuestionsGenerated,
-                        (true, true) => ConversationProcessingStage::AnswersGenerated,
-                        _ => ConversationProcessingStage::Unknown,
-                    };
-
-                    return (processing_stage, Some(last_conversation_node_id));
+        match &self.graph {
+            Some(graph) => {
+                // Check if only the root node exists.
+                if graph.node_count() == 1 {
+                    return (
+                        ConversationProcessingStage::OnlyRootNodeExists,
+                        self.root_node,
+                    );
                 }
 
-                // If no Process edge is found, the conversation awaits user input.
-                debug!("No 'Process' edge found from the last conversation node. Awaiting user response");
-                (
-                    ConversationProcessingStage::AwaitingUserInput,
-                    Some(last_conversation_node_id),
-                )
-            } else {
-                // If there's no last conversation node, the stage is unknown.
-                (ConversationProcessingStage::Unknown, None)
+                // Proceed if there are more nodes beyond the root.
+                if let Some(last_conversation_node_id) = self.last_added_conversation_node {
+                    // Check for the existence of a 'Process' edge to a Task node from the last conversation node.
+                    let process_to_task_edge_exists = graph
+                        .edges_directed(last_conversation_node_id, petgraph::Direction::Outgoing)
+                        .any(|edge| {
+                            matches!(edge.weight(), EdgeV1::Process)
+                                && matches!(graph.node_weight(edge.target()), Some(NodeV1::Task(_)))
+                        });
+
+                    let processing_stage = if process_to_task_edge_exists {
+                        // If there's a Process edge to a Task node, we know tasks and associated questions were generated.
+                        ConversationProcessingStage::TasksAndQuestionsGenerated
+                    } else {
+                        // If no Process edge to a Task node is found, we're awaiting user input or further actions.
+                        ConversationProcessingStage::AwaitingUserInput
+                    };
+
+                    (processing_stage, Some(last_conversation_node_id))
+                } else {
+                    // If there's no last conversation node ID available, the stage is unknown.
+                    (ConversationProcessingStage::Unknown, None)
+                }
             }
-        } else {
-            // Log that the graph is not initialized and return default values.
-            debug!("Graph is not initialized. Unable to determine the last conversation processing stage.");
-            (ConversationProcessingStage::Unknown, None)
+            None => {
+                // If the graph is not initialized, return the appropriate stage.
+                (ConversationProcessingStage::GraphNotInitialized, None)
+            }
         }
     }
 }
