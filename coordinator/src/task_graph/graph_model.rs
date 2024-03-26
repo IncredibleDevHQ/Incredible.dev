@@ -38,7 +38,7 @@ impl TrackProcessV1 {
     pub fn initialize_graph(&mut self) {
         if self.graph.is_none() {
             let mut new_graph = DiGraph::new();
-            let root_node = new_graph.add_node(NodeV1::Root(Uuid::new_v4()));
+            let root_node = new_graph.add_node(NodeV1::Root(Uuid::new_v4().to_string()));
             self.graph = Some(new_graph);
             self.root_node = Some(root_node);
             self.time_created = SystemTime::now();
@@ -46,13 +46,13 @@ impl TrackProcessV1 {
         }
     }
     /// Retrieves the UUID of the root node.
-    pub fn get_root_node_uuid(&self) -> Option<Uuid> {
+    pub fn get_root_node_uuid(&self) -> Option<String> {
         // Check if the graph and root node are initialized.
         if let Some(ref graph) = self.graph {
             if let Some(root_node) = self.root_node {
                 // Get the root node's weight and extract the UUID if it's a Root node.
                 if let Some(NodeV1::Root(uuid)) = graph.node_weight(root_node) {
-                    return Some(*uuid);
+                    return Some(uuid.to_string());
                 }
             }
         }
@@ -63,10 +63,10 @@ impl TrackProcessV1 {
 }
 
 /// Defines the types of nodes that can exist within the task tracking graph.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub enum NodeV1 {
-    Root(Uuid), // Root node with a UUID to uniquely identify the conversation or session.
-    Conversation(MessageSource, Message, Uuid), // Represents a conversation node with a message source.
+    Root(String), // Root node with a UUID to uniquely identify the conversation or session.
+    Conversation(MessageSource, Message, String), // Represents a conversation node with a message source.
     Task(String),             // Represents a discrete task derived from the root issue.
     Subtask(String),          // Represents a subtask under a specific task.
     Question(usize, String),  // Represents a question related to a specific subtask.
