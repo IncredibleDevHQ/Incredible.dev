@@ -95,6 +95,13 @@ pub enum EdgeV1 {
     CodeContext, // Connects an answer to its code context.
 }
 
+#[derive(Debug, Clone)]
+pub struct ConversationChain {
+    pub user_message: Message,
+    pub system_message: Message,
+    pub assistant_message: Message,
+}
+
 // Define a struct to hold questions along with their IDs.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct QuestionWithId {

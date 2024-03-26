@@ -102,4 +102,23 @@ impl TrackProcessV1 {
     pub fn add_assistant_conversation(&mut self, message: Message) -> Result<&mut Self, NodeError> {
         self.add_and_connect_conversation_node(message, MessageSource::Assistant)
     }
+
+    // Helper methods for adding task, subtask, and question nodes.
+    pub fn add_task_node(&mut self, task_description: String) -> Result<NodeIndex, NodeError> {
+        let task_node = self.graph.as_mut().unwrap().add_node(NodeV1::Task(task_description));
+        self.graph.as_mut().unwrap().add_edge(self.last_added_conversation_node.ok_or(NodeError::MissingLastUpdatedNode)?, task_node, EdgeV1::Process);
+        Ok(task_node)
+    }
+
+    pub fn add_subtask_node(&mut self, subtask_description: String, parent_node: NodeIndex) -> Result<NodeIndex, NodeError> {
+        let subtask_node = self.graph.as_mut().unwrap().add_node(NodeV1::Subtask(subtask_description));
+        self.graph.as_mut().unwrap().add_edge(parent_node, subtask_node, EdgeV1::Subtask);
+        Ok(subtask_node)
+    }
+
+    pub fn add_question_node(&mut self, question_content: String, parent_node: NodeIndex) -> Result<NodeIndex, NodeError> {
+        let question_node = self.graph.as_mut().unwrap().add_node(NodeV1::Question(0, question_content));  // Assume question ID handling is done elsewhere or refactor to include it.
+        self.graph.as_mut().unwrap().add_edge(parent_node, question_node, EdgeV1::Question);
+        Ok(question_node)
+    }
 }
