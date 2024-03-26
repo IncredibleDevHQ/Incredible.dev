@@ -16,6 +16,7 @@ pub enum NodeError {
     InvalidNodeId,
     InvalidParentNode,
     MissingLastUpdatedNode,
+    RedisSaveError,
 }
 
 impl fmt::Display for NodeError {
@@ -26,6 +27,7 @@ impl fmt::Display for NodeError {
             NodeError::InvalidNodeId => write!(f, "Invalid node ID provided."),
             NodeError::InvalidParentNode => write!(f, "Parent node is not a conversation node."),
             NodeError::MissingLastUpdatedNode => write!(f, "No last updated node found."),
+            NodeError::RedisSaveError => write!(f, "Error saving the task process to Redis."),
         }
     }
 }
