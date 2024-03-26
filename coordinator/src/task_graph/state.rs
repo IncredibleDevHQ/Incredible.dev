@@ -4,7 +4,7 @@ use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
 
 /// Enum representing the various stages following the last conversation.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ConversationProcessingStage {
     AwaitingUserInput,
     QuestionsGenerated, // Implies that tasks are also generated as they are coupled.

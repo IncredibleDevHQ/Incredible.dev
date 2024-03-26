@@ -12,6 +12,7 @@ use common::{CodeContext, CodeUnderstanding};
 pub struct TrackProcessV1 {
     pub repo: String,
     pub graph: DiGraph<NodeV1, EdgeV1>, // The directed graph holding the nodes (tasks, subtasks, questions) and edges.
+    pub last_added_node: Option<NodeIndex>,
     pub root_node: NodeIndex, // Index of the root node in the graph, representing the primary issue or task.
     pub uuid: Uuid, // Unique identifier for the root node (and implicitly, the tracking process).
 }
@@ -39,6 +40,7 @@ impl TrackProcessV1 {
         TrackProcessV1 {
             repo: repo.to_string(),
             graph,
+            last_added_node: Some(root_node_index),
             root_node: root_node_index,
             uuid,
         }
@@ -59,6 +61,13 @@ pub enum NodeV1 {
     Question(usize, String),  // Represents a question related to a specific subtask.
     Answer(String),           // Represents an answer to a question.
     CodeContext(CodeContext), // Represents a code context associated with an answer.
+}
+
+impl NodeV1 {
+    /// Checks if the node is a conversation node.
+    pub fn is_conversation(&self) -> bool {
+        matches!(self, NodeV1::Conversation(..))
+    }
 }
 
 /// Defines the types of edges to represent relationships between nodes in the task tracking graph.

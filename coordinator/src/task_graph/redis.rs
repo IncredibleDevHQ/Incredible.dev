@@ -17,7 +17,7 @@ pub fn save_task_process_to_redis(
 
 /// Reads and deserializes a TaskProcessV1 instance from Redis by UUID.
 pub fn load_task_process_from_redis(
-    uuid: Uuid,
+    uuid: &str,
 ) -> Result<TrackProcessV1> {
     let key = format!("taskprocess:{}", uuid);
     let mut conn = establish_redis_connection()?;

@@ -57,7 +57,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
             convo_id.unwrap()
         );
         // load the conversation from the redis
-        let mut tracker = load_task_process_from_redis(convo_id.unwrap()).await;
+        let mut tracker = load_task_process_from_redis(&convo_id.unwrap());
         // return error if there is error loading the conversation
         if tracker.is_err() {
             error!(
@@ -66,7 +66,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
             );
             return Err(tracker.err().unwrap());
         }
-        let mut tracker_graph: TrackProcessV1 = tracker.as_mut().unwrap();
+        let mut tracker_graph: &mut TrackProcessV1 = tracker.as_mut().unwrap();
         // find the last conversation state and get the last conversation node ID from the conversation graph
         let (last_processing_stage, node_id) = tracker_graph.last_conversation_processing_stage();
         // return error if there the last conversation state is unknown or the node id is none
