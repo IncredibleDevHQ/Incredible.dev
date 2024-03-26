@@ -12,6 +12,7 @@ use petgraph::graph::NodeIndex;
 #[derive(Debug)]
 pub enum NodeError {
     MissingGraph,
+    RootNodeNotFound,
     NodeNotFound(String),
     InvalidNodeId,
     InvalidParentNode,
@@ -23,6 +24,7 @@ impl fmt::Display for NodeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             NodeError::MissingGraph => write!(f, "Graph is missing. Initialize the graph first."),
+            NodeError::RootNodeNotFound => write!(f, "Root node not found."),
             NodeError::NodeNotFound(ref message) => write!(f, "{}", message),
             NodeError::InvalidNodeId => write!(f, "Invalid node ID provided."),
             NodeError::InvalidParentNode => write!(f, "Parent node is not a conversation node."),

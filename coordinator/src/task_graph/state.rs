@@ -5,6 +5,9 @@ use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
 use petgraph::visit::{Dfs, IntoNodeReferences, Visitable};
 use petgraph::Graph;
+use crate::task_graph::add_node::NodeError;
+
+use common::models::{Subtask, Task, TaskList, TaskListResponse};
 
 /// Enum representing the various stages following the last conversation.
 #[derive(Debug, PartialEq)]
@@ -70,6 +73,63 @@ impl TrackProcessV1 {
                 (ConversationProcessingStage::GraphNotInitialized, None)
             }
         }
+    }
+
+    /// Extracts tasks, subtasks, and questions from the graph and constructs a `TaskListResponse`.
+    pub fn extract_task_list_response(&self) -> Result<TaskListResponse, NodeError> {
+        // Check if the graph is initialized.
+        let graph = self.graph.as_ref().ok_or(NodeError::MissingGraph)?;
+
+        // Ensure the root node exists.
+        let root_node = self.root_node.ok_or(NodeError::RootNodeNotFound)?;
+
+        let mut tasks = Vec::new();
+
+        // Iterate through all nodes that are direct children of the root and are Task nodes.
+        for task_edge in graph.edges_directed(root_node, petgraph::Direction::Outgoing) {
+            if let Some(NodeV1::Task(task_description)) = graph.node_weight(task_edge.target()) {
+                let mut subtasks = Vec::new();
+
+                // For each Task node, find its Subtask nodes.
+                for subtask_edge in
+                    graph.edges_directed(task_edge.target(), petgraph::Direction::Outgoing)
+                {
+                    if let Some(NodeV1::Subtask(subtask_description)) =
+                        graph.node_weight(subtask_edge.target())
+                    {
+                        let mut questions = Vec::new();
+
+                        // For each Subtask node, find its Question nodes.
+                        for question_edge in graph
+                            .edges_directed(subtask_edge.target(), petgraph::Direction::Outgoing)
+                        {
+                            if let Some(NodeV1::Question(_, question)) =
+                                graph.node_weight(question_edge.target())
+                            {
+                                questions.push(question.clone());
+                            }
+                        }
+
+                        let subtask = Subtask {
+                            subtask: subtask_description.clone(),
+                            questions,
+                        };
+                        subtasks.push(subtask);
+                    }
+                }
+
+                let task = Task {
+                    task: task_description.clone(),
+                    subtasks,
+                };
+                tasks.push(task);
+            }
+        }
+
+        Ok(TaskListResponse {
+            tasks: Some(TaskList { tasks }),
+            ask_user: None,
+        })
     }
 }
 
