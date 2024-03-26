@@ -1,6 +1,7 @@
 use common::llm_gateway::api::{Message, MessageSource};
 use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 use uuid::Uuid;
 
 extern crate common;
@@ -11,38 +12,40 @@ use common::{CodeContext, CodeUnderstanding};
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TrackProcessV1 {
     pub repo: String,
-    pub graph: DiGraph<NodeV1, EdgeV1>, // The directed graph holding the nodes (tasks, subtasks, questions) and edges.
+    pub graph: Option<DiGraph<NodeV1, EdgeV1>>,
+    pub root_node: Option<NodeIndex>,
     pub last_added_node: Option<NodeIndex>,
-    pub root_node: NodeIndex, // Index of the root node in the graph, representing the primary issue or task.
-    pub uuid: Uuid, // Unique identifier for the root node (and implicitly, the tracking process).
+    pub last_added_conversation_node: Option<NodeIndex>,
+    pub time_created: SystemTime,
+    pub last_updated: SystemTime,
 }
 
-impl TrackProcessV1 {
-    /// Constructs a new `TrackProcess` with a specified root issue.
-    ///
-    /// # Arguments
-    ///
-    /// * `root_issue` - A string slice representing the description of the root issue or main task.
-    ///
-    /// # Returns
-    ///
-    /// A new `TrackProcess` instance with the root node initialized and added to its graph.
-    pub fn new(repo: &str, root_issue: &str) -> Self {
-        let mut graph = DiGraph::<NodeV1, EdgeV1>::new(); // Create a new, empty directed graph.
-        let uuid = Uuid::new_v4(); // Generate a new UUID for the root node.
-        let root_node_index = graph.add_node(NodeV1::Conversation(
-            MessageSource::User,
-            Message::system(root_issue),
-            uuid,
-        ));
 
-        // Return the new `TrackProcess` instance containing the graph, root node index, and UUID.
-        TrackProcessV1 {
+impl TrackProcessV1 {
+    /// Constructs a new `TrackProcessV1` instance.
+    pub fn new(repo: &str) -> Self {
+        Self {
             repo: repo.to_string(),
-            graph,
-            last_added_node: Some(root_node_index),
-            root_node: root_node_index,
-            uuid,
+            graph: None,
+            root_node: None,
+            last_added_node: None,
+            last_added_conversation_node: None,
+            time_created: SystemTime::now(),
+            last_updated: SystemTime::now(),
+        }
+    }
+    
+    /// Initializes the graph and root node if they do not exist.
+    pub fn initialize_graph(&mut self) {
+        if self.graph.is_none() {
+            let mut graph = DiGraph::new();
+            let root_uuid = Uuid::new_v4();
+            let root_node = graph.add_node(NodeV1::Root(root_uuid));
+            self.graph = Some(graph);
+            self.root_node = Some(root_node);
+            self.last_added_node = Some(root_node);
+            // Update the last added conversation node to root initially.
+            self.last_added_conversation_node = Some(root_node);
         }
     }
 }
@@ -50,11 +53,7 @@ impl TrackProcessV1 {
 /// Defines the types of nodes that can exist within the task tracking graph.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum NodeV1 {
-    // Represents a conversation node with a message source.
-    // Message source is a enum that represents either an assistant, system or user message.
-    // Message is a struct that contains the message text in the json form with which we send conversation history to the LLM
-    // Uuid is the unique identifier for the duration of the entire conversation
-    // this is to help identify the first conversation in the conversation history.
+    Root(Uuid), // Root node with a UUID to uniquely identify the conversation or session.
     Conversation(MessageSource, Message, Uuid), // Represents a conversation node with a message source.
     Task(String),             // Represents a discrete task derived from the root issue.
     Subtask(String),          // Represents a subtask under a specific task.
