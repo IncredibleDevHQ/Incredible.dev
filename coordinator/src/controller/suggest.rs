@@ -51,7 +51,7 @@ pub async fn handle_suggest_wrapper(
 async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, anyhow::Error> {
     // if the request.uuid exists, load the conversation from the conversations API
     let convo_id = request.id;
-    let (tracker, node_id) = if convo_id.is_some() {
+    let trackers = if convo_id.is_some() {
         info!(
             "Conversation ID exists, loading the conversation from Redis: {}",
             convo_id.unwrap()
@@ -76,16 +76,14 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
         }
 
         let last_conversation_node_id = node_id.unwrap();
-        (tracker_graph, last_conversation_node_id)
+         tracker_graph
     } else {
         info!("No conversation ID provided, New conversation initiated.");
         // create a new tracker
 
-        let mut tracker = TrackProcessV1::new(&request.repo_name, &request.user_query);
+        &mut TrackProcessV1::new(&request.repo_name)
         // return tracker and the new conversation node ID
-        let node_id = tracker.uuid;
     };
-
 
     // get the generated questions from the LLM or the file based on the data modes
     let generated_questions_with_llm_messages = match get_generated_questions(
@@ -125,23 +123,25 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
     let does_task_exist =
         tracker.extend_graph_with_tasklist(generated_questions.clone(), messages[0], messages[1]);
 
-    // return error if Result is Err
-    if does_task_exist.is_err() {
-        error!(
-            "Failed to extend graph with tasklist: {}",
-            does_task_exist.err().unwrap()
-        );
-        return Err(does_task_exist.err().unwrap());
-    }
-
-    // if task does not exist, return the ask_user message
-    if !does_task_exist.unwrap() {
-        info!("No tasks found in the response, returning the ask_user message");
-        return Ok(SuggestResponse {
-            questions_with_answers: None,
-            ask_user: generated_questions.ask_user,
-            tasks: generated_questions.tasks,
-        });
+    match does_task_exist {
+        Ok(true) => {
+            // If tasks exist, you'd typically continue processing.
+            // Placeholder for further processing if tasks exist.
+        }
+        Ok(false) => {
+            // If the result is Ok but false, return the ask_user message.
+            info!("No tasks found in the response, returning the ask_user message");
+            return Ok(SuggestResponse {
+                questions_with_answers: None,
+                ask_user: generated_questions.ask_user,
+                tasks: generated_questions.tasks,
+            });
+        }
+        Err(e) => {
+            // If there's an error determining if the task exists, log and return the error.
+            error!("Failed to extend graph with tasklist: {:?}", e);
+            return Err(e);
+        }
     }
 
     let questions_with_ids = tracker.get_questions_with_ids();
@@ -174,7 +174,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
             let mut file = File::create("generated_questions.json").await?;
             file.write_all(serde_json::to_string(&answers)?.as_bytes())
                 .await?;
-            Ok(answers)                                      
+            Ok(answers)
         }
         Err(e) => {
             // If an error was encountered, it will be returned here.
