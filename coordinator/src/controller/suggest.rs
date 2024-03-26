@@ -75,9 +75,12 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
     // get the state of the conversation
     let (state, node_index) = tracker.last_conversation_processing_stage();
     
+    
     match state {
         ConversationProcessingStage::OnlyRootNodeExists => {
-            info!("Only root node exists, no conversation has happened yet.");
+            error!("Only root node exists, no conversation has happened yet. Invalid state, create new conversation");
+            return Err(anyhow::anyhow!("Only root node exists, no conversation has happened yet. Invalid state, create new conversation"));
+
         }
         ConversationProcessingStage::GraphNotInitialized => {
             info!("Graph not initialized, initializing the graph.");
@@ -85,6 +88,9 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
         }
         ConversationProcessingStage::TasksAndQuestionsGenerated => {
             info!("Tasks and questions are generated, awaiting user input.");
+            // return the tasks, subtasks and questions.
+            let task_list_response = tracker.extract_task_list_response();
+
         }
         ConversationProcessingStage::AwaitingUserInput => {
             info!("Awaiting user input, continuing the conversation.");
@@ -97,7 +103,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
         }
     }
     // get the generated questions from the LLM or the file based on the data modes
-    let generated_questions_with_llm_messages = match get_generated_questions(
+    let generated_questions_with_llm_messages: TaskListResponseWithMessage = match get_generated_questions(
         request.user_query.clone(),
         request.repo_name.clone(),
     )
