@@ -1,130 +1,118 @@
-use crate::task_graph::graph_model::{EdgeV1, NodeV1, QuestionWithId, TrackProcessV1};
+use crate::task_graph::graph_model::{
+    ConversationChain, EdgeV1, NodeV1, QuestionWithId, TrackProcessV1,
+};
+use crate::task_graph::add_node::NodeError;
 use crate::task_graph::redis::{load_task_process_from_redis, save_task_process_to_redis};
 use anyhow::Result;
 use common::llm_gateway::api::{Message, MessageSource};
-use common::models::TaskListResponse;
+use common::models::TaskList;
 use common::CodeUnderstanding;
 use log::error;
 use petgraph::graph::NodeIndex;
-
+use std::time::SystemTime;
 
 impl TrackProcessV1 {
-    /// Processes the suggestion response by integrating tasks, subtasks, and questions into the graph.
-    ///
-    /// # Arguments
-    ///
-    /// * `suggest_response` - The response from the suggestion API containing tasks or message asking users for further information.
-    /// * `system_message` - The system message, typically a prompt or an informational message.
-    /// * `assistant_message` - The assistant's response, which could be an action item or further query.
-    /// # Returns
-    /// a bool indicating if tasks are available in the suggest_response
-    ///
-    /// here's how the graph looks like
-    /// Root Node: Conversation (Root)
-    // │
-    // ├── NextConversation Edge
-    // │   │
-    // │   └── Conversation Node: System (System message)
-    // │       │
-    // │       ├── NextConversation Edge
-    // │       │   │
-    // │       │   └── Conversation Node: Assistant (Assistant message)
-    // │       │       │
-    // │       │       └── Process Edge (only if tasks are present)
-    // │       │           │
-    // │       │           └── Task Node
-    // │       │               │
-    // │       │               ├── Subtask Edge
-    // │       │               │   │
-    // │       │               │   └── Subtask Node
-    // │       │               │       │
-    // │       │               │       └── Question Edge
-    // │       │               │           │
-    // │       │               │           └── Question Node
-    // │       │               │               │ (Future implementation might connect to Answer and CodeContext Nodes)
-    // │       │               │
-    // │       │               └── (Additional Subtask Nodes and their Question Nodes as needed)
-    // │       │
-    // │       └── (Additional Task Nodes and their Subtask/Question structures as needed)
-    // │
-    // └── (Future Conversation Nodes connected via NextConversation Edges as the chat progresses)
-    
-    pub fn extend_graph_with_tasklist(
+    /// Extends the graph with a chain of conversation nodes followed by task-related nodes if a task list is provided.
+///
+/// # Arguments
+///
+/// * `conversation_chain` - A struct containing the user, system, and assistant messages to be added as conversation nodes in sequence.
+/// * `task_list` - An optional `TaskList` containing tasks, subtasks, and questions to be integrated into the graph following the conversation nodes.
+///
+/// # Returns
+/// * `&mut Self` - A mutable reference to the instance for chaining further method calls.
+/// * `NodeError` - An error if the operation fails, such as when an invalid node ID is encountered.
+///
+/// # Graph Structure
+/// Here's how the graph looks after processing the conversation chain and optional task list:
+/// ```
+/// Root Node: Conversation (Root)
+/// │
+/// ├── NextConversation Edge
+/// │   │
+/// │   └── Conversation Node: User (User message)
+/// │       │
+/// │       ├── NextConversation Edge
+/// │       │   │
+/// │       │   └── Conversation Node: System (System message)
+/// │       │       │
+/// │       │       ├── NextConversation Edge
+/// │       │       │   │
+/// │       │       │   └── Conversation Node: Assistant (Assistant message)
+/// │       │       │       │
+/// │       │       │       └── Process Edge (only if a task list is present)
+/// │       │       │           │
+/// │       │       │           └── Task Node (First task from the task list)
+/// │       │       │               │
+/// │       │       │               ├── Subtask Edge
+/// │       │       │               │   │
+/// │       │       │               │   └── Subtask Node (First subtask of the task)
+/// │       │       │               │       │
+/// │       │       │               │       └── Question Edge
+/// │       │       │               │           │
+/// │       │       │               │           └── Question Node (First question of the subtask)
+/// │       │       │               │
+/// │       │       │               └── (Additional Subtask and Question Nodes as needed)
+/// │       │       │
+/// │       │       └── (Additional Task Nodes and their structures as needed)
+/// │       │
+/// │       └── (Additional Conversation Nodes for ongoing dialogue)
+/// │
+/// └── (The graph continues to expand with more nodes and edges as the conversation and task processing evolve)
+/// ```
+
+    pub fn extend_graph_with_conversation_and_tasklist(
         &mut self,
-        suggest_response: TaskListResponse,
-        system_message: Message,
-        assistant_message: Message,
-        base_node_id: Option<NodeIndex>, // Add this parameter to accept an optional base node ID.
-    ) -> Result<bool> {
-        // Determine the base node for attaching the system and assistant messages.
-        let base_node = base_node_id
-            .and_then(|node_id| {
-                // Validate if the provided node ID is a conversation node.
-                match self.graph.node_weight(node_id) {
-                    Some(NodeV1::Conversation(..)) => Some(node_id),
-                    _ => None,
-                }
-            })
-            .unwrap_or(self.root_node);
-    
-        // Add the system message node connected to the base node.
-        let system_message_node = self.graph.add_node(NodeV1::Conversation(
-            MessageSource::System,
-            system_message,
-            self.uuid,
-        ));
-        self.graph.add_edge(base_node, system_message_node, EdgeV1::NextConversation);
-    
-        // Add the assistant message node and connect it to the system message node.
-        let assistant_message_node = self.graph.add_node(NodeV1::Conversation(
-            MessageSource::Assistant,
-            assistant_message,
-            self.uuid,
-        ));
-        self.graph.add_edge(
-            system_message_node,
-            assistant_message_node,
-            EdgeV1::NextConversation,
-        );
-    
-        // Process the tasks and subtasks if they are present.
-        if let Some(tasks) = suggest_response.tasks {
-            let mut question_id_counter = 0;
-            tasks.tasks.into_iter().for_each(|task| {
-                let task_node = self.graph.add_node(NodeV1::Task(task.task));
-                self.graph.add_edge(assistant_message_node, task_node, EdgeV1::Process);
-    
-                task.subtasks.into_iter().for_each(|subtask| {
-                    let subtask_node = self.graph.add_node(NodeV1::Subtask(subtask.subtask));
-                    self.graph.add_edge(task_node, subtask_node, EdgeV1::Subtask);
-    
-                    subtask.questions.into_iter().for_each(|question| {
-                        let question_node = self.graph.add_node(NodeV1::Question(
-                            question_id_counter,
-                            question,
-                        ));
-                        self.graph.add_edge(subtask_node, question_node, EdgeV1::Question);
-                        question_id_counter += 1;
-                    });
-                });
-            });
-    
-            // Save the graph in Redis.
-            let redis_result = save_task_process_to_redis(self);
-            if redis_result.is_err() {
-                error!(
-                    "Failed to save task process with tasks to Redis: {:?}",
-                    redis_result.err().unwrap()
-                );
-                return Err(redis_result.err().unwrap());
-            }
-            return Ok(true);
+        conversation_chain: ConversationChain,
+        task_list: Option<TaskList>,
+    ) -> Result<&mut Self, NodeError> {
+        // Initialize the graph and root node if they don't exist.
+        if self.graph.is_none() {
+            self.initialize_graph();
         }
-    
-        // If no tasks were processed, indicate that with a return value.
-        Ok(false)
+
+        // Add the user, system, and assistant messages as conversation nodes, chaining each to the last.
+        self.add_user_conversation(conversation_chain.user_message)?
+            .add_system_conversation(conversation_chain.system_message)?
+            .add_assistant_conversation(conversation_chain.assistant_message)?;
+
+        // If a task list is provided, integrate it into the graph.
+        if let Some(tasks) = task_list {
+            self.integrate_tasks(tasks)?;
+        }
+
+        // Update the last_updated timestamp to the current time.
+        self.last_updated = SystemTime::now();
+
+        Ok(self)
     }
-    
+
+    fn integrate_tasks(&mut self, tasks: TaskList) -> Result<&mut Self, NodeError> {
+        // Ensure we're starting from the assistant message node.
+        let start_node = self
+            .last_added_conversation_node
+            .ok_or(NodeError::MissingLastUpdatedNode)?;
+
+        // Use flat_map to process each task, its subtasks, and questions in a flattened iterator.
+        tasks
+            .tasks
+            .into_iter()
+            .flat_map(|task| {
+                let task_node = self.add_task_node(task.task)?;
+
+                task.subtasks.into_iter().flat_map(move |subtask| {
+                    let subtask_node = self.add_subtask_node(subtask.subtask, task_node)?;
+
+                    subtask
+                        .questions
+                        .into_iter()
+                        .map(move |question| self.add_question_node(question, subtask_node))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(self)
+    }
 
     /// Collects all questions from the graph and returns them as `QuestionWithId`.
     ///
