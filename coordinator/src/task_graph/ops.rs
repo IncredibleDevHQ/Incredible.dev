@@ -5,6 +5,8 @@ use common::llm_gateway::api::{Message, MessageSource};
 use common::models::TaskListResponse;
 use common::CodeUnderstanding;
 use log::error;
+use petgraph::graph::NodeIndex;
+
 
 impl TrackProcessV1 {
     /// Processes the suggestion response by integrating tasks, subtasks, and questions into the graph.
@@ -52,20 +54,28 @@ impl TrackProcessV1 {
         suggest_response: TaskListResponse,
         system_message: Message,
         assistant_message: Message,
+        base_node_id: Option<NodeIndex>, // Add this parameter to accept an optional base node ID.
     ) -> Result<bool> {
-        // Add the system message node connected to the root, representing the system's input or context setup.
+        // Determine the base node for attaching the system and assistant messages.
+        let base_node = base_node_id
+            .and_then(|node_id| {
+                // Validate if the provided node ID is a conversation node.
+                match self.graph.node_weight(node_id) {
+                    Some(NodeV1::Conversation(..)) => Some(node_id),
+                    _ => None,
+                }
+            })
+            .unwrap_or(self.root_node);
+    
+        // Add the system message node connected to the base node.
         let system_message_node = self.graph.add_node(NodeV1::Conversation(
             MessageSource::System,
             system_message,
             self.uuid,
         ));
-        self.graph.add_edge(
-            self.root_node,
-            system_message_node,
-            EdgeV1::NextConversation,
-        );
-
-        // Add the assistant message node and connect it to the system message node, representing the assistant's reply.
+        self.graph.add_edge(base_node, system_message_node, EdgeV1::NextConversation);
+    
+        // Add the assistant message node and connect it to the system message node.
         let assistant_message_node = self.graph.add_node(NodeV1::Conversation(
             MessageSource::Assistant,
             assistant_message,
@@ -76,36 +86,30 @@ impl TrackProcessV1 {
             assistant_message_node,
             EdgeV1::NextConversation,
         );
-
-        // If tasks are available in the suggest_response, process them.
+    
+        // Process the tasks and subtasks if they are present.
         if let Some(tasks) = suggest_response.tasks {
-            // Initialize a counter for unique question IDs within this context.
             let mut question_id_counter = 0;
-
-            // Iterate over tasks and integrate them along with their subtasks and questions into the graph.
             tasks.tasks.into_iter().for_each(|task| {
                 let task_node = self.graph.add_node(NodeV1::Task(task.task));
-                self.graph
-                    .add_edge(assistant_message_node, task_node, EdgeV1::Process);
-
+                self.graph.add_edge(assistant_message_node, task_node, EdgeV1::Process);
+    
                 task.subtasks.into_iter().for_each(|subtask| {
                     let subtask_node = self.graph.add_node(NodeV1::Subtask(subtask.subtask));
-                    self.graph
-                        .add_edge(task_node, subtask_node, EdgeV1::Subtask);
-
+                    self.graph.add_edge(task_node, subtask_node, EdgeV1::Subtask);
+    
                     subtask.questions.into_iter().for_each(|question| {
                         let question_node = self.graph.add_node(NodeV1::Question(
-                            question_id_counter, // Use the counter as the question ID.
+                            question_id_counter,
                             question,
                         ));
-                        self.graph
-                            .add_edge(subtask_node, question_node, EdgeV1::Question);
-                        question_id_counter += 1; // Increment the counter for the next question.
+                        self.graph.add_edge(subtask_node, question_node, EdgeV1::Question);
+                        question_id_counter += 1;
                     });
                 });
             });
-
-            // save the graph in redis
+    
+            // Save the graph in Redis.
             let redis_result = save_task_process_to_redis(self);
             if redis_result.is_err() {
                 error!(
@@ -116,18 +120,11 @@ impl TrackProcessV1 {
             }
             return Ok(true);
         }
-        // save the graph in redis
-        let redis_result = save_task_process_to_redis(self);
-        if redis_result.is_err() {
-            error!(
-                "Failed to save task process with ask_user to Redis: {:?}",
-                redis_result.err().unwrap()
-            );
-            return Err(redis_result.err().unwrap());
-        }
-
+    
+        // If no tasks were processed, indicate that with a return value.
         Ok(false)
     }
+    
 
     /// Collects all questions from the graph and returns them as `QuestionWithId`.
     ///
