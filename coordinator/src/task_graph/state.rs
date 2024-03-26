@@ -1,3 +1,4 @@
+use log::debug;
 use crate::task_graph::graph_model::EdgeV1;
 use crate::task_graph::graph_model::{NodeV1, TrackProcessV1};
 use petgraph::graph::NodeIndex;
@@ -14,72 +15,58 @@ pub enum ConversationProcessingStage {
 
 impl TrackProcessV1 {
     /// Finds the node ID of the last conversation node in the graph.
-    /// This helps in understanding the last interaction point in the conversation history.
+    /// Returns the node ID of the last conversation node.
     pub fn last_conversation_node_id(&self) -> Option<NodeIndex> {
-        // Iterate in reverse through all nodes to find the latest conversation node.
-        self.graph.node_indices().rev().find_map(|node_index| {
-            match self.graph.node_weight(node_index) {
-                // Return the node index if it's a conversation node.
-                Some(NodeV1::Conversation(..)) => Some(node_index),
-                // Continue the search if it's not a conversation node.
-                _ => None,
-            }
-        })
+        self.last_added_conversation_node
     }
 
     /// Determines the processing stage of the last conversation in the graph.
-    /// This function is crucial for identifying the state of the conversation to decide the subsequent actions.
+    /// We never persist the graph in the Redis just with a Root node. 
+    /// Hence we make an assumption that the last conversation node is available.
     pub fn last_conversation_processing_stage(
         &self,
     ) -> (ConversationProcessingStage, Option<NodeIndex>) {
-        let last_conversation_node_id = self.last_conversation_node_id();
+        // Check if the graph is initialized.
+        if let Some(ref graph) = self.graph {
+            // Proceed if the graph is present and the last conversation node is known.
+            if let Some(last_conversation_node_id) = self.last_added_conversation_node {
+                // Check for the existence of a 'Process' edge from the last conversation node.
+                let process_edge_exists = graph
+                    .edges_directed(last_conversation_node_id, petgraph::Direction::Outgoing)
+                    .any(|edge| matches!(edge.weight(), EdgeV1::Process));
 
-        // Determine the conversation processing stage based on the last conversation node.
-        let processing_stage =
-            last_conversation_node_id.map_or(ConversationProcessingStage::Unknown, |node_id| {
-                // Retrieve the outgoing edges of the last conversation node.
-                // We're particularly interested in finding a 'Process' edge which indicates progression in the task processing.
-                let process_edge = self
-                    .graph
-                    .edges_directed(node_id, petgraph::Direction::Outgoing)
-                    .find(|edge| matches!(edge.weight(), EdgeV1::Process));
+                if process_edge_exists {
+                    // Determine the processing stage based on the presence of 'Question' and 'Answer' edges.
+                    let has_questions = graph
+                        .edges_directed(last_conversation_node_id, petgraph::Direction::Outgoing)
+                        .any(|e| matches!(e.weight(), EdgeV1::Question));
+                    let has_answers = graph
+                        .edges_directed(last_conversation_node_id, petgraph::Direction::Outgoing)
+                        .any(|e| matches!(e.weight(), EdgeV1::Answer));
 
-                match process_edge {
-                    Some(edge) => {
-                        // Identify the type of node the Process edge is pointing to.
-                        // This helps in understanding what stage the conversation is at: task generation, question generation, or answer processing.
-                        match self.graph.node_weight(edge.target()) {
-                            Some(NodeV1::Task(_)) | Some(NodeV1::Question(_, _)) => {
-                                // Evaluate if there are connected Question or Answer nodes to ascertain the processing stage further.
-                                let has_questions = self
-                                    .graph
-                                    .edges_directed(edge.target(), petgraph::Direction::Outgoing)
-                                    .any(|e| matches!(e.weight(), EdgeV1::Question));
-                                let has_answers = self
-                                    .graph
-                                    .edges_directed(edge.target(), petgraph::Direction::Outgoing)
-                                    .any(|e| matches!(e.weight(), EdgeV1::Answer));
+                    let processing_stage = match (has_questions, has_answers) {
+                        (true, false) => ConversationProcessingStage::QuestionsGenerated,
+                        (true, true) => ConversationProcessingStage::AnswersGenerated,
+                        _ => ConversationProcessingStage::Unknown,
+                    };
 
-                                // Determine the processing stage based on the presence of question and answer nodes.
-                                match (has_questions, has_answers) {
-                                    (true, false) => {
-                                        ConversationProcessingStage::QuestionsGenerated
-                                    }
-                                    (true, true) => ConversationProcessingStage::AnswersGenerated,
-                                    _ => ConversationProcessingStage::Unknown,
-                                }
-                            }
-                            _ => ConversationProcessingStage::Unknown,
-                        }
-                    }
-                    None => {
-                        // If there's no Process edge, it implies we are awaiting further user input.
-                        ConversationProcessingStage::AwaitingUserInput
-                    }
+                    return (processing_stage, Some(last_conversation_node_id));
                 }
-            });
 
-        // Return both the processing stage and the last conversation node ID to provide a complete context of the conversation's current state.
-        (processing_stage, last_conversation_node_id)
+                // If no Process edge is found, the conversation awaits user input.
+                debug!("No 'Process' edge found from the last conversation node. Awaiting user response");
+                (
+                    ConversationProcessingStage::AwaitingUserInput,
+                    Some(last_conversation_node_id),
+                )
+            } else {
+                // If there's no last conversation node, the stage is unknown.
+                (ConversationProcessingStage::Unknown, None)
+            }
+        } else {
+            // Log that the graph is not initialized and return default values.
+            debug!("Graph is not initialized. Unable to determine the last conversation processing stage.");
+            (ConversationProcessingStage::Unknown, None)
+        }
     }
 }

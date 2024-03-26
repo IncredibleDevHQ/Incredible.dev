@@ -34,17 +34,32 @@ impl TrackProcessV1 {
         }
     }
 
-   // Initializes the graph and root node if they haven't been already.
-   pub fn initialize_graph(&mut self) {
-    if self.graph.is_none() {
-        let mut new_graph = DiGraph::new();
-        let root_node = new_graph.add_node(NodeV1::Root(Uuid::new_v4()));
-        self.graph = Some(new_graph);
-        self.root_node = Some(root_node);
-        self.time_created = SystemTime::now();
-        self.last_updated = self.time_created;
+    // Initializes the graph and root node if they haven't been already.
+    pub fn initialize_graph(&mut self) {
+        if self.graph.is_none() {
+            let mut new_graph = DiGraph::new();
+            let root_node = new_graph.add_node(NodeV1::Root(Uuid::new_v4()));
+            self.graph = Some(new_graph);
+            self.root_node = Some(root_node);
+            self.time_created = SystemTime::now();
+            self.last_updated = self.time_created;
+        }
     }
-}
+    /// Retrieves the UUID of the root node.
+    pub fn get_root_node_uuid(&self) -> Option<Uuid> {
+        // Check if the graph and root node are initialized.
+        if let Some(ref graph) = self.graph {
+            if let Some(root_node) = self.root_node {
+                // Get the root node's weight and extract the UUID if it's a Root node.
+                if let Some(NodeV1::Root(uuid)) = graph.node_weight(root_node) {
+                    return Some(*uuid);
+                }
+            }
+        }
+
+        // Return None if the graph is not initialized or the root node is not of type Root.
+        None
+    }
 }
 
 /// Defines the types of nodes that can exist within the task tracking graph.

@@ -90,19 +90,6 @@ impl TrackProcessV1 {
         self.add_and_connect_node(parent_node_id, node, EdgeV1::NextConversation)
     }
 
-    // This method adds a node and connects it to the last updated node.
-    pub fn add_and_connect_to_last_updated_node(
-        &mut self,
-        node: NodeV1,
-        edge: EdgeV1,
-    ) -> Result<&mut Self, NodeError> {
-        let parent_node_id = self
-            .last_added_node
-            .ok_or_else(|| NodeError::MissingLastUpdatedNode)?;
-
-        self.add_and_connect_node(parent_node_id, node, edge)
-    }
-
     // Refactor these methods to leverage add_and_connect_conversation_node for better reuse.
     pub fn add_user_conversation(&mut self, message: Message) -> Result<&mut Self, NodeError> {
         self.add_and_connect_conversation_node(message, MessageSource::User)
