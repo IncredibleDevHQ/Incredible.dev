@@ -1,4 +1,3 @@
-use std::fmt;
 use crate::task_graph::graph_model::{EdgeV1, NodeV1, QuestionWithId, TrackProcessV1};
 use crate::task_graph::redis::{load_task_process_from_redis, save_task_process_to_redis};
 use anyhow::Result;
@@ -6,20 +5,6 @@ use common::llm_gateway::api::{Message, MessageSource};
 use common::models::TaskListResponse;
 use common::CodeUnderstanding;
 use log::error;
-use petgraph::graph::NodeIndex;
-
-#[derive(Debug)]
-pub enum NodeError {
-    NodeNotFound(String),
-}
-
-impl fmt::Display for NodeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            NodeError::NodeNotFound(ref message) => write!(f, "{}", message),
-        }
-    }
-}
 
 impl TrackProcessV1 {
     /// Processes the suggestion response by integrating tasks, subtasks, and questions into the graph.
@@ -188,22 +173,5 @@ impl TrackProcessV1 {
                 });
             }
         });
-    }
-
-    pub fn add_and_connect_node(
-        &mut self,
-        node_id: NodeIndex,
-        new_node_value: NodeV1,
-        connecting_edge: EdgeV1,
-    ) -> Result<NodeIndex, NodeError> {
-        if self.graph.node_weight(node_id).is_none() {
-            let error_message = format!("No node found with the specified NodeIndex: {:?}", node_id);
-            error!("{}", error_message);
-            return Err(NodeError::NodeNotFound(error_message));
-        }
-
-        let new_node_id = self.graph.add_node(new_node_value);
-        self.graph.add_edge(node_id, new_node_id, connecting_edge);
-        Ok(new_node_id)
     }
 }
