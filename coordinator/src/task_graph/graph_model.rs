@@ -20,7 +20,6 @@ pub struct TrackProcessV1 {
     pub last_updated: SystemTime,
 }
 
-
 impl TrackProcessV1 {
     /// Constructs a new `TrackProcessV1` instance.
     pub fn new(repo: &str) -> Self {
@@ -34,20 +33,18 @@ impl TrackProcessV1 {
             last_updated: SystemTime::now(),
         }
     }
-    
-    /// Initializes the graph and root node if they do not exist.
-    pub fn initialize_graph(&mut self) {
-        if self.graph.is_none() {
-            let mut graph = DiGraph::new();
-            let root_uuid = Uuid::new_v4();
-            let root_node = graph.add_node(NodeV1::Root(root_uuid));
-            self.graph = Some(graph);
-            self.root_node = Some(root_node);
-            self.last_added_node = Some(root_node);
-            // Update the last added conversation node to root initially.
-            self.last_added_conversation_node = Some(root_node);
-        }
+
+   // Initializes the graph and root node if they haven't been already.
+   pub fn initialize_graph(&mut self) {
+    if self.graph.is_none() {
+        let mut new_graph = DiGraph::new();
+        let root_node = new_graph.add_node(NodeV1::Root(Uuid::new_v4()));
+        self.graph = Some(new_graph);
+        self.root_node = Some(root_node);
+        self.time_created = SystemTime::now();
+        self.last_updated = self.time_created;
     }
+}
 }
 
 /// Defines the types of nodes that can exist within the task tracking graph.
