@@ -94,9 +94,13 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<impl Serialize, 
         }
         ConversationProcessingStage::AwaitingUserInput => {
             info!("Awaiting user input, continuing the conversation.");
+            let messages = tracker.collect_conversation_messages();
         }
         ConversationProcessingStage::Unknown => {
-            info!("Unknown state, continuing the conversation.");
+            // return error
+            let err_msg = "Unknown graph state, aborting the conversation.";
+            error!("{}", err_msg);
+            return Err(anyhow::anyhow!("{}", err_msg));
         }
         ConversationProcessingStage::AnswersGenerated => {
             info!("Answers are generated, awaiting user input.");
