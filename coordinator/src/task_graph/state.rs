@@ -3,6 +3,8 @@ use crate::task_graph::graph_model::EdgeV1;
 use crate::task_graph::graph_model::{NodeV1, TrackProcessV1};
 use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
+use petgraph::visit::{Dfs, IntoNodeReferences, Visitable};
+use petgraph::Graph;
 
 /// Enum representing the various stages following the last conversation.
 #[derive(Debug, PartialEq)]
@@ -67,6 +69,36 @@ impl TrackProcessV1 {
             // Log that the graph is not initialized and return default values.
             debug!("Graph is not initialized. Unable to determine the last conversation processing stage.");
             (ConversationProcessingStage::Unknown, None)
+        }
+    }
+}
+
+/// Prints the graph hierarchy starting from the root node.
+pub fn print_graph_hierarchy<N, E>(graph: &Graph<N, E>)
+where
+    N: std::fmt::Debug,
+    E: std::fmt::Debug,
+{
+    // Initialize depth-first search (DFS) to traverse the graph.
+    let mut dfs = Dfs::new(&graph, graph.node_indices().next().unwrap());
+
+    while let Some(node_id) = dfs.next(&graph) {
+        // The depth here is used to indent the output for hierarchy visualization.
+        let depth = dfs.stack.len();
+        let indent = " ".repeat(depth * 4); // Indent based on depth.
+
+        if let Some(node) = graph.node_weight(node_id) {
+            println!("{}{:?} (Node ID: {:?})", indent, node, node_id);
+        }
+
+        // Print edges and connected nodes.
+        for edge in graph.edges(node_id) {
+            println!(
+                "{}--> Edge: {:?}, connects to Node ID: {:?}",
+                " ".repeat((depth + 1) * 4),
+                edge.weight(),
+                edge.target()
+            );
         }
     }
 }
