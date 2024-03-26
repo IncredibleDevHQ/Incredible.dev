@@ -11,7 +11,7 @@ use petgraph::graph::NodeIndex;
 
 #[derive(Debug)]
 pub enum NodeError {
-    MissingGraph,
+    GraphNotInitialized,
     RootNodeNotFound,
     NodeNotFound(String),
     InvalidNodeId,
@@ -23,7 +23,7 @@ pub enum NodeError {
 impl fmt::Display for NodeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            NodeError::MissingGraph => write!(f, "Graph is missing. Initialize the graph first."),
+            NodeError::GraphNotInitialized => write!(f, "Graph is missing. Initialize the graph first."),
             NodeError::RootNodeNotFound => write!(f, "Root node not found."),
             NodeError::NodeNotFound(ref message) => write!(f, "{}", message),
             NodeError::InvalidNodeId => write!(f, "Invalid node ID provided."),
@@ -47,7 +47,7 @@ impl TrackProcessV1 {
         self.initialize_graph();
 
         // Confirm the graph is initialized.
-        let graph = self.graph.as_mut().ok_or(NodeError::MissingGraph)?;
+        let graph = self.graph.as_mut().ok_or(NodeError::GraphNotInitialized)?;
 
         // Validate the parent node.
         graph

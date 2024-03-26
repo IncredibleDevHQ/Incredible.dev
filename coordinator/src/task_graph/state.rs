@@ -1,11 +1,12 @@
+use crate::task_graph::add_node::NodeError;
 use crate::task_graph::graph_model::EdgeV1;
 use crate::task_graph::graph_model::{NodeV1, TrackProcessV1};
+use common::llm_gateway::api::{MessageSource, Messages, Message};
 use log::debug;
 use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
 use petgraph::visit::{Dfs, IntoNodeReferences, Visitable};
 use petgraph::Graph;
-use crate::task_graph::add_node::NodeError;
 
 use common::models::{Subtask, Task, TaskList, TaskListResponse};
 
@@ -78,7 +79,7 @@ impl TrackProcessV1 {
     /// Extracts tasks, subtasks, and questions from the graph and constructs a `TaskListResponse`.
     pub fn extract_task_list_response(&self) -> Result<TaskListResponse, NodeError> {
         // Check if the graph is initialized.
-        let graph = self.graph.as_ref().ok_or(NodeError::MissingGraph)?;
+        let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
 
         // Ensure the root node exists.
         let root_node = self.root_node.ok_or(NodeError::RootNodeNotFound)?;
@@ -130,6 +131,39 @@ impl TrackProcessV1 {
             tasks: Some(TaskList { tasks }),
             ask_user: None,
         })
+    }
+
+    // collects the history of conversations in the form of Messages, which is the
+    // desired format for the response to the user.
+    pub fn collect_conversation_messages(&self) -> Result<Messages, NodeError> {
+        // Verify that the graph is initialized and the root node exists.
+        let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
+        let root_node = self.root_node.ok_or(NodeError::RootNodeNotFound)?;
+
+        let mut messages = Vec::new();
+
+        for node_index in graph.node_indices() {
+            if let Some(NodeV1::Conversation(source, message, _)) = graph.node_weight(node_index) {
+                let role = match source {
+                    MessageSource::User => "user",
+                    MessageSource::Assistant => "assistant",
+                    MessageSource::System => "system",
+                };
+
+                // Depending on the message variant, extract the content.
+                let message_content = match message {
+                    Message::PlainText { content, .. } => content,
+                    //Message::FunctionReturn { content, .. } => content,
+                    // Here, it's treated as an empty string or you can choose to skip adding to messages.
+                    _ => "",
+                };
+
+                let message = Message::new_text(role, message_content);
+                messages.push(message);
+            }
+        }
+
+        Ok(Messages { messages })
     }
 }
 
