@@ -1,11 +1,6 @@
-use crate::agent;
-use crate::agent::agent::ANSWER_MODEL;
-use crate::agent::prompts;
-use crate::config::Config;
 use crate::AppState;
-use common::models::{CodeUnderstandRequest, GenerateQuestionRequest};
-use common::{models::TaskListResponse, CodeUnderstanding};
-use serde::ser::Error;
+use common::models::CodeUnderstandRequest;
+use common::CodeUnderstanding;
 use std::time::Duration;
 
 use crate::agent::agent::Action;
@@ -94,7 +89,7 @@ pub async fn handle_retrieve_code(
     // if there is an error in the action, return the error.
     if action_result.is_err() {
         let err_msg = action_result.err().unwrap().to_string();
-        // log the error 
+        // log the error
         error!("Error in the step function: {}", err_msg);
         return Ok(warp::reply::with_status(
             warp::reply::json(&format!("Error: {}", err_msg)),
@@ -122,76 +117,6 @@ pub async fn handle_retrieve_code(
             answer: final_answer.clone(),
             context: final_context.clone(),
         }),
-        StatusCode::OK,
-    ))
-}
-
-pub async fn generate_task_list(
-    req: GenerateQuestionRequest,
-    app_state: Arc<AppState>,
-) -> Result<impl warp::Reply, Infallible> {
-    // info!("Query: {}, Repo: {}", req.issue_desc, req.repo);
-
-    let configuration = Config::new().unwrap();
-
-    let issue_desc = req.issue_desc;
-    let repo_name = req.repo_name;
-    // intialize new llm gateway.
-    let llm_gateway = llm_gateway::Client::new(&configuration.openai_url)
-        .temperature(0.0)
-        .bearer(configuration.openai_key.clone())
-        .model(&configuration.openai_model.clone());
-
-    let system_prompt: String = prompts::question_concept_generator_prompt(&issue_desc, &repo_name);
-    let system_message = llm_gateway::api::Message::system(&system_prompt);
-    let messages = Some(system_message).into_iter().collect::<Vec<_>>();
-
-    let response = match llm_gateway
-        .clone()
-        .model(ANSWER_MODEL)
-        .chat(&messages, None)
-        .await
-    {
-        Ok(response) => Some(response),
-        Err(_) => None,
-    };
-    let final_response = match response {
-        Some(response) => response,
-        None => {
-            log::error!("Error: Unable to fetch response from the gateway");
-            // Return error as API response
-            return Ok(warp::reply::with_status(
-                warp::reply::json(&format!("Error: Unable to fetch response from the gateway")),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            ));
-        }
-    };
-
-    let choices_str = final_response.choices[0]
-        .message
-        .content
-        .clone()
-        .unwrap_or_else(|| "".to_string());
-
-    log::debug!("Choices: {}", choices_str);
-
-    let response_task_list: Result<TaskListResponse, serde_json::Error> = serde_json::from_str(&choices_str);
-
-    let response_task_list = match response_task_list {
-        Ok(task_list) => task_list,
-        Err(e) => {
-            log::error!("Failed to parse choices: {}", e);
-            return Ok(warp::reply::with_status(
-                warp::reply::json(&"Error: Failed to parse choices".to_string()),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            ));
-        }
-    };
-
-    log::debug!("{:?}", response_task_list);
-
-    Ok(warp::reply::with_status(
-        warp::reply::json(&response_task_list),
         StatusCode::OK,
     ))
 }
