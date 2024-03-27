@@ -1,20 +1,18 @@
 use std::{collections::HashMap, mem, ops::Range};
 use anyhow::{anyhow, Context, Result};
-use common::CodeContext;
+use common::{CodeContext, llm_gateway, prompts};
 use futures::StreamExt;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tracing::{debug, info, instrument, trace};
 
 use crate::agent::{
     exchange::{CodeChunk, FocusedChunk, Update},
-    prompts, transform,
+    transform,
 };
 
 use crate::agent::agent::Agent;
 use crate::agent::agent::ANSWER_MODEL;
 
-extern crate common;
-use common::llm_gateway;
 
 impl Agent {
     #[instrument(skip(self))]

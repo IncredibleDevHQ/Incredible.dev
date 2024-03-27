@@ -329,6 +329,7 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
 
         Always ensure that the tasks generated are actionable, clear, and provide sufficient context and detail for a junior developer to effectively address the issue without requiring additional information or guidance.
 
+        Ignore the word "Response from LLM:" in the output, it is only used to give instruction, and return a valid json response.  
 "#
     );
 

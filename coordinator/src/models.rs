@@ -5,6 +5,7 @@ use crate::task_graph::graph_model::QuestionWithAnswer;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SuggestRequest {
+    pub id: Option<String>, 
     pub user_query: String,
     pub repo_name: String,
 }

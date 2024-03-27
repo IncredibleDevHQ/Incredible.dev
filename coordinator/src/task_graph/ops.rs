@@ -1,127 +1,177 @@
-use crate::task_graph::graph_model::{ChildTaskStatus, Edge, Node, QuestionWithId, TrackProcess};
-
-extern crate common;
+use crate::task_graph::add_node::NodeError;
+use crate::task_graph::graph_model::{
+    ConversationChain, EdgeV1, NodeV1, QuestionWithId, TrackProcessV1,
+};
+use crate::task_graph::redis::{load_task_process_from_redis, save_task_process_to_redis};
+use anyhow::Result;
+use common::llm_gateway::api::{Message, MessageSource};
 use common::models::TaskList;
 use common::CodeUnderstanding;
+use log::{error, info};
+use petgraph::graph::NodeIndex;
+use std::time::SystemTime;
 
-impl TrackProcess {
-    /// Extends the graph with the structure defined in a TaskList.
+// type to represent the next step in the controller.
+#[derive(Debug, PartialEq)]
+pub enum NextControllerStep {
+    GetTasks,
+    GetAnswers,
+    Done,
+}
+
+impl TrackProcessV1 {
+    /// Extends the graph with a chain of conversation nodes followed by task-related nodes if a task list is provided.
     ///
     /// # Arguments
     ///
-    /// * `task_list` - A reference to a TaskList containing the tasks, subtasks, and questions
-    ///   that will be added to the graph.
-    pub fn extend_graph_with_tasklist(&mut self, task_list: &TaskList) {
-        // Iterate over each task in the task list.
-        task_list.tasks.iter().for_each(|task| {
-            // Add each task as a node in the graph and connect it to the root node.
-            let task_node = self.graph.add_node(Node::Task(task.task.clone()));
-            self.graph.add_edge(self.root_node, task_node, Edge::Task);
-
-            // Use fold to iterate over subtasks, creating nodes and edges, and connecting them to the task node.
-            // The task node (task_node_acc) acts as an accumulator that carries forward the node to which
-            // subtasks should be connected.
-            task.subtasks
-                .iter()
-                .fold(task_node, |task_node_acc, subtask| {
-                    // Add each subtask as a node and connect it to the current task node.
-                    let subtask_node = self.graph.add_node(Node::Subtask(subtask.subtask.clone()));
-                    self.graph
-                        .add_edge(task_node_acc, subtask_node, Edge::Subtask);
-
-                    // Use fold again to iterate over questions for the current subtask.
-                    // Here, the subtask node (subtask_node_acc) is the accumulator.
-                    subtask
-                        .questions
-                        .iter()
-                        .fold(subtask_node, |subtask_node_acc, question| {
-                            self.question_counter += 1;
-                            let question_id = self.question_counter;
-
-                            // Create a question node with the ID and the default status.
-                            let question_node = self.graph.add_node(Node::Question(
-                                question_id,
-                                question.clone(),
-                                ChildTaskStatus::default(),
-                            ));
-                            self.graph
-                                .add_edge(subtask_node_acc, question_node, Edge::Question);
-
-                            // Return the subtask node accumulator to continue adding questions to the correct subtask.
-                            subtask_node_acc
-                        });
-
-                    // Return the task node accumulator to continue adding subtasks to the correct task.
-                    task_node_acc
-                });
-        });
-    }
-
-    /// Updates the status of the root node in the graph.
-    // the status is used to track of the processing of its child nodes
-    // in this the child elements are tasks, subtasks and questions
-    /// # Arguments
-    ///
-    /// * `new_status` - The new status to set for the root issue node.
-    pub fn update_roots_child_status(&mut self, new_status: ChildTaskStatus) {
-        // Match against the root node to extract its current state and update it.
-        if let Some(Node::RootIssue(desc, uuid, _)) = self.graph.node_weight_mut(self.root_node) {
-            // Update the status of the root node.
-            *self.graph.node_weight_mut(self.root_node).unwrap() =
-                Node::RootIssue(desc.clone(), *uuid, new_status);
-        }
-    }
-
-    /// Collects all questions from the graph and returns them as `QuestionWithId`.
+    /// * `conversation_chain` - A struct containing the user, system, and assistant messages to be added as conversation nodes in sequence.
+    /// * `task_list` - An optional `TaskList` containing tasks, subtasks, and questions to be integrated into the graph following the conversation nodes.
     ///
     /// # Returns
+    /// * `&mut Self` - A mutable reference to the instance for chaining further method calls.
+    /// * `NodeError` - An error if the operation fails, such as when an invalid node ID is encountered.
     ///
-    /// A vector of `QuestionWithId` instances.
-    pub fn get_questions_with_ids(&self) -> Vec<QuestionWithId> {
-        self.graph
-            .node_weights()
-            .filter_map(|node| {
-                if let Node::Question(id, text, _) = node {
-                    Some(QuestionWithId {
-                        id: *id,
-                        text: text.clone(),
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect()
+    /// # Graph Structure
+    /// Here's how the graph looks after processing the conversation chain and optional task list:
+    /// ```
+    /// Root Node: Conversation (Root)
+    /// │
+    /// ├── NextConversation Edge
+    /// │   │
+    /// │   └── Conversation Node: User (User message)
+    /// │       │
+    /// │       ├── NextConversation Edge
+    /// │       │   │
+    /// │       │   └── Conversation Node: System (System message)
+    /// │       │       │
+    /// │       │       ├── NextConversation Edge
+    /// │       │       │   │
+    /// │       │       │   └── Conversation Node: Assistant (Assistant message)
+    /// │       │       │       │
+    /// │       │       │       └── Process Edge (only if a task list is present)
+    /// │       │       │           │
+    /// │       │       │           └── Task Node (First task from the task list)
+    /// │       │       │               │
+    /// │       │       │               ├── Subtask Edge
+    /// │       │       │               │   │
+    /// │       │       │               │   └── Subtask Node (First subtask of the task)
+    /// │       │       │               │       │
+    /// │       │       │               │       └── Question Edge
+    /// │       │       │               │           │
+    /// │       │       │               │           └── Question Node (First question of the subtask)
+    /// │       │       │               │
+    /// │       │       │               └── (Additional Subtask and Question Nodes as needed)
+    /// │       │       │
+    /// │       │       └── (Additional Task Nodes and their structures as needed)
+    /// │       │
+    /// │       └── (Additional Conversation Nodes for ongoing dialogue)
+    /// │
+    /// └── (The graph continues to expand with more nodes and edges as the conversation and task processing evolve)
+    /// ```
+    pub fn extend_graph_with_conversation_and_tasklist(
+        &mut self,
+        conversation_chain: ConversationChain,
+        task_list: Option<TaskList>,
+    ) -> Result<&mut Self, NodeError> {
+        // Initialize the graph and root node if they don't exist.
+        if self.graph.is_none() {
+            self.initialize_graph();
+        }
+
+        // Add the user, system, and assistant messages as conversation nodes, chaining each to the last.
+        self.add_user_conversation(conversation_chain.user_message)?
+            .add_system_conversation(conversation_chain.system_message)?
+            .add_assistant_conversation(conversation_chain.assistant_message)?;
+
+        // If a task list is provided, integrate it into the graph.
+        if let Some(tasks) = task_list {
+            self.integrate_tasks(tasks)?;
+        }
+
+        // Update the last_updated timestamp to the current time.
+        self.last_updated = SystemTime::now();
+
+        // save the task process to redis
+        if let Err(e) = save_task_process_to_redis(self) {
+            error!("Failed to save task process to Redis: {:?}", e);
+            // return error if saving to redis fails
+            return Err(NodeError::RedisSaveError);
+        }
+        info!("Task process saved to Redis after extending graph with conversation and task list");
+        Ok(self)
     }
 
-    pub fn extend_graph_with_answers(&mut self, answers: Vec<(usize, CodeUnderstanding)>) {
-        answers.iter().for_each(|(question_id, understanding)| {
-            // Find the corresponding question node for the given question_id and update its status to Done.
-            if let Some(question_node) = self
-                .graph
-                .node_indices()
-                .find(|&n| matches!(self.graph[n], Node::Question(id, _, _) if id == *question_id))
-            {
-                // Update the question node's status to Done.
-                if let Some(Node::Question(_, _, status)) =
-                    self.graph.node_weight_mut(question_node)
-                {
-                    *status = ChildTaskStatus::Done;
-                }
-
-                // Create a node for the answer and connect it to the question node.
-                let answer_node = self
-                    .graph
-                    .add_node(Node::Answer(understanding.answer.clone()));
-                self.graph
-                    .add_edge(question_node, answer_node, Edge::Answer);
-
-                // Iterate over each CodeContext within the understanding to create and connect nodes.
-                understanding.context.iter().for_each(|context| {
-                    let context_node = self.graph.add_node(Node::CodeContext(context.clone()));
-                    self.graph
-                        .add_edge(answer_node, context_node, Edge::CodeContext);
-                });
-            }
-        });
+    pub fn integrate_tasks(&mut self, task_list: TaskList) -> Result<&mut Self, NodeError> {
+        // Ensure we have the last conversation node available to attach the task nodes.
+        let start_node = self
+            .last_added_conversation_node
+            .ok_or(NodeError::MissingLastUpdatedNode)?;
+    
+        // Check if the task list is present; if not, skip processing.
+        if let Some(tasks) = task_list.tasks {
+            // Iterate through each task in the task list.
+            tasks.into_iter().try_for_each(|task| {
+                // Add a task node and iterate through its subtasks.
+                self.add_task_node(task.task).and_then(|task_node| {
+                    task.subtasks.into_iter().try_for_each(|subtask| {
+                        // Add a subtask node and iterate through its questions.
+                        self.add_subtask_node(subtask.subtask, task_node).and_then(|subtask_node| {
+                            subtask.questions.into_iter().try_for_each(|question| {
+                                // Add a question node for each question in the subtask.
+                                self.add_question_node(question, subtask_node).map(|_| ())
+                            })
+                        }).map(|_| ())
+                    }).map(|_| ())
+                }).map(|_| ())
+            })?;
+        }
+        // Return self to enable method chaining.
+        Ok(self)
     }
+    
+    // /// Collects all questions from the graph and returns them as `QuestionWithId`.
+    // ///
+    // /// # Returns
+    // ///
+    // /// A vector of `QuestionWithId` instances.
+    // pub fn get_questions_with_ids(&self) -> Vec<QuestionWithId> {
+    //     self.graph
+    //         .node_weights()
+    //         .filter_map(|node| {
+    //             if let NodeV1::Question(id, text) = node {
+    //                 Some(QuestionWithId {
+    //                     id: *id,
+    //                     text: text.clone(),
+    //                 })
+    //             } else {
+    //                 None
+    //             }
+    //         })
+    //         .collect()
+    // }
+
+    // pub fn extend_graph_with_answers(&mut self, answers: Vec<(usize, CodeUnderstanding)>) {
+    //     answers.iter().for_each(|(question_id, understanding)| {
+    //         // Find the corresponding question node for the given question_id and update its status to Done.
+    //         if let Some(question_node) = self
+    //             .graph
+    //             .node_indices()
+    //             .find(|&n| matches!(self.graph[n], NodeV1::Question(id, _) if id == *question_id))
+    //         {
+    //             // Create a node for the answer and connect it to the question node.
+    //             let answer_node = self
+    //                 .graph
+    //                 .add_node(NodeV1::Answer(understanding.answer.clone()));
+    //             self.graph
+    //                 .add_edge(question_node, answer_node, EdgeV1::Answer);
+
+    //             // Iterate over each CodeContext within the understanding to create and connect nodes.
+    //             understanding.context.iter().for_each(|context| {
+    //                 let context_node = self.graph.add_node(NodeV1::CodeContext(context.clone()));
+    //                 self.graph
+    //                     .add_edge(answer_node, context_node, EdgeV1::CodeContext);
+    //             });
+    //         }
+    //     });
+    // }
 }
