@@ -86,8 +86,6 @@ impl NodeV1 {
 pub enum EdgeV1 {
     // This edge connects one Conversation node to the next Conversation node as the chat progresses.
     NextConversation,
-    // Process edge connects a Conversation node to the nodes representing the tasks, subtasks, and questions, and other downstream processing data.
-    Process,
     Task,        // An edge from a root issue or task to a specific task.
     Subtask,     // An edge from a task to a specific subtask.
     Question,    // An edge from a subtask to a question about that subtask.

@@ -288,7 +288,6 @@ impl Client {
     pub fn bearer(mut self, bearer: String) -> Self {
         self.bearer_token = Some(bearer.clone());
 
-        println!("bearer token: {:?}", bearer);
         self
     }
 
@@ -326,7 +325,6 @@ impl Client {
         // set content type application/json
         builder = builder.header("Content-Type", "application/json");
         if let Some(bearer) = &self.bearer_token {
-            println!("Setting up bearer token");
             builder = builder.bearer_auth(bearer);
         }
 

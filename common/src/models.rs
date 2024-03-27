@@ -48,52 +48,36 @@ pub struct CodeContextRequest {
     pub qna_context: CodeUnderstandings,
 }
 
-// types for parsing the breakdown of task into subtasks and their corresponding questions
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TaskList {
-    pub tasks: Vec<Task>,
+    #[serde(skip_serializing_if = "is_empty_task_vec")]
+    pub tasks: Option<Vec<Task>>,
+
+    // Use a custom function for checking empty or None String
+    #[serde(skip_serializing_if = "is_none_or_empty")]
+    pub ask_user: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct TaskListResponse {
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "empty_task_list_as_none"
-    )]
-    pub tasks: Option<TaskList>,
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "empty_string_as_none"
-    )]
-    pub ask_user: Option<String>,
+// Custom function to check if the task vector is empty
+fn is_empty_task_vec(vec: &Option<Vec<Task>>) -> bool {
+    match vec {
+        Some(v) => v.is_empty(),
+        None => true,
+    }
+}
+
+// Custom function to check if the string is empty or None
+fn is_none_or_empty(str: &Option<String>) -> bool {
+    match str {
+        Some(s) => s.is_empty(),
+        None => true,
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TaskListResponseWithMessage {
-   pub task_list_response: TaskListResponse,
-   pub messages: Vec<Message>,
-}
-
-
-fn empty_task_list_as_none<'de, D>(deserializer: D) -> Result<Option<TaskList>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let opt = Option::deserialize(deserializer)?;
-    let task_list = opt.map(|tasks: Vec<Task>| TaskList { tasks });
-    Ok(if task_list.as_ref().map_or(false, |tl| tl.tasks.is_empty()) {
-        None
-    } else {
-        task_list
-    })
-}
-fn empty_string_as_none<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let opt = Option::deserialize(deserializer)?;
-    // Explicitly specify that `s` is of type `&String`.
-    Ok(if opt.as_ref().map_or(false, |s: &String| s.is_empty()) { None } else { opt })
+    pub task_list: TaskList,
+    pub messages: Vec<Message>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -111,7 +95,7 @@ pub struct Subtask {
 impl fmt::Display for TaskList {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for (i, task) in self.tasks.iter().enumerate() {
-            writeln!(f, "Task {}: {}", i + 1, task)?;
+            writeln!(f, "Task {:?}: {:?}", i + 1, task)?;
         }
         Ok(())
     }

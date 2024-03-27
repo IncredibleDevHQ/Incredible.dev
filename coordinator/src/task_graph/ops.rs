@@ -12,6 +12,7 @@ use petgraph::graph::NodeIndex;
 use std::time::SystemTime;
 
 // type to represent the next step in the controller.
+#[derive(Debug, PartialEq)]
 pub enum NextControllerStep {
     GetTasks,
     GetAnswers,
@@ -100,41 +101,34 @@ impl TrackProcessV1 {
         Ok(self)
     }
 
-    pub fn integrate_tasks(&mut self, tasks: TaskList) -> Result<&mut Self, NodeError> {
+    pub fn integrate_tasks(&mut self, task_list: TaskList) -> Result<&mut Self, NodeError> {
         // Ensure we have the last conversation node available to attach the task nodes.
-        // If it's not available, return an error indicating the missing node.
         let start_node = self
             .last_added_conversation_node
             .ok_or(NodeError::MissingLastUpdatedNode)?;
     
-        // Iterate through each task in the task list.
-        // The try_for_each method will stop and return the first encountered error.
-        tasks.tasks.into_iter().try_for_each(|task| {
-            // Attempt to add a task node. If successful, it returns the node index of the new task node.
-            // If there's an error (e.g., graph not initialized), it will propagate the error.
-            self.add_task_node(task.task).and_then(|task_node| {
-                // For each task, iterate through its subtasks.
-                // For each subtask, attempt to add a subtask node connected to the current task node.
-                task.subtasks.into_iter().try_for_each(|subtask| {
-                    self.add_subtask_node(subtask.subtask, task_node).and_then(|subtask_node| {
-                        // For each subtask, iterate through its questions.
-                        // For each question, attempt to add a question node connected to the current subtask node.
-                        // Convert the success result (NodeIndex) to () as try_for_each expects a Result<(), E>.
-                        subtask.questions.into_iter().try_for_each(|question| {
-                            self.add_question_node(question, subtask_node).map(|_| ())
-                        })
-                    })
-                // Convert the success result (NodeIndex from adding subtask node) to () for try_for_each.
+        // Check if the task list is present; if not, skip processing.
+        if let Some(tasks) = task_list.tasks {
+            // Iterate through each task in the task list.
+            tasks.into_iter().try_for_each(|task| {
+                // Add a task node and iterate through its subtasks.
+                self.add_task_node(task.task).and_then(|task_node| {
+                    task.subtasks.into_iter().try_for_each(|subtask| {
+                        // Add a subtask node and iterate through its questions.
+                        self.add_subtask_node(subtask.subtask, task_node).and_then(|subtask_node| {
+                            subtask.questions.into_iter().try_for_each(|question| {
+                                // Add a question node for each question in the subtask.
+                                self.add_question_node(question, subtask_node).map(|_| ())
+                            })
+                        }).map(|_| ())
+                    }).map(|_| ())
                 }).map(|_| ())
-            // Convert the success result (NodeIndex from adding task node) to () for try_for_each.
-            }).map(|_| ())
-        })?;
-    
-        // If all iterations complete successfully, return self for potential further chaining.
+            })?;
+        }
+        // Return self to enable method chaining.
         Ok(self)
     }
     
-
     // /// Collects all questions from the graph and returns them as `QuestionWithId`.
     // ///
     // /// # Returns
