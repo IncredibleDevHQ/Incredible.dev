@@ -11,10 +11,6 @@ use crate::task_graph::graph_model::{
     ConversationChain, QuestionWithAnswer, QuestionWithId, TrackProcessV1,
 };
 use crate::task_graph::ops::NextControllerStep;
-use crate::task_graph::read_file_data::{
-    read_code_understanding_from_file, read_task_list_from_file,
-};
-
 use crate::task_graph::state::ConversationProcessingStage;
 use common::{llm_gateway, prompts};
 use common::{
@@ -262,11 +258,6 @@ async fn get_generated_questions(
     repo_name: String,
 ) -> Result<TaskListResponseWithMessage, anyhow::Error> {
     // intialize new llm gateway.
-
-    // if data mode is file, read the data from the file
-    if CONFIG.data_mode == "file" {
-        return read_task_list_from_file("task_list.json".to_string()).await;
-    }
 
     // otherwise call the llm gateway to generate the questions
     let llm_gateway = llm_gateway::Client::new(&CONFIG.openai_url)
