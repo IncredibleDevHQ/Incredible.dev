@@ -1,5 +1,5 @@
 use anyhow::Result;
-use log::info;
+use log::{info, error};
 use once_cell::sync::Lazy;
 
 mod controller;
@@ -19,6 +19,7 @@ pub struct Configuration {
     context_generator_url: String,
     code_understanding_url: String,
     code_modifier_url: String,
+    redis_url: String,
     openai_url: String,
     openai_api_key: String,
     openai_model: String,}
@@ -45,6 +46,7 @@ impl Configuration {
                 .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string()),
             code_modifier_url: env::var("CODE_MODIFIER_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string()),
+            redis_url: env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string()),
             openai_url: env::var("OPENAI_URL")
                 .unwrap_or_else(|_| "https://api.openai.com".to_string()),
             openai_api_key: env::var("OPENAI_API_KEY")
@@ -90,6 +92,11 @@ async fn main() -> Result<()> {
     } else {
         info!("DATA MODE is file, skipping health check");
     }
+    // test redis connection 
+    let conn = task_graph::redis::establish_redis_connection().map_err(|e| {
+        error!("Failed to establish Redis connection: {:?}", e);
+        panic!("Failed to establish Redis connection: {:?}", e);
+    });
 
     let coordinator_routes = routes::coordinator();
     warp::serve(coordinator_routes)

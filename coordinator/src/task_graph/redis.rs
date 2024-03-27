@@ -1,6 +1,6 @@
-use log::{debug, info};
-use crate::task_graph::graph_model::TrackProcessV1;
+use crate::{task_graph::graph_model::TrackProcessV1, CONFIG};
 use anyhow::Result;
+use log::{debug, info};
 use redis::Commands;
 use serde_json;
 
@@ -35,10 +35,9 @@ pub fn load_task_process_from_redis(uuid: &str) -> Result<TrackProcessV1> {
     Ok(task_process)
 }
 
-fn establish_redis_connection() -> redis::RedisResult<redis::Connection> {
+pub fn establish_redis_connection() -> redis::RedisResult<redis::Connection> {
     // Specify the Redis URL
-    let redis_url = "redis://127.0.0.1:6379/";
-
+    let redis_url = CONFIG.redis_url.as_str();
     // Attempt to establish a connection
     let client = redis::Client::open(redis_url)?;
     let mut conn = client.get_connection()?;
@@ -48,7 +47,7 @@ fn establish_redis_connection() -> redis::RedisResult<redis::Connection> {
     let test_value: String = conn.get("test_key")?;
     assert_eq!(test_value, "test_value");
 
-    println!("Connected to Redis successfully!");
+    info!("Connected to Redis successfully!");
 
     Ok(conn)
 }
