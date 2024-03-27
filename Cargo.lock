@@ -2111,13 +2111,14 @@ checksum = "bfa799dd5ed20a7e349f3b4639aa80d74549c81716d9ec4f994c9b5815598306"
 
 [[package]]
 name = "ingestion"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "bincode 1.3.3",
  "blake3",
  "clap 3.2.25",
  "dirs 5.0.1",
+ "dotenv",
  "env_logger 0.10.2",
  "expect-test",
  "futures",
@@ -2160,6 +2161,7 @@ dependencies = [
  "tree-sitter-stack-graphs-python",
  "tree-sitter-typescript",
  "uuid",
+ "warp",
 ]
 
 [[package]]
