@@ -1,5 +1,5 @@
 use anyhow::Result;
-use log::{info, error};
+use log::{error, info};
 use once_cell::sync::Lazy;
 
 mod controller;
@@ -22,7 +22,8 @@ pub struct Configuration {
     redis_url: String,
     openai_url: String,
     openai_api_key: String,
-    openai_model: String,}
+    openai_model: String,
+}
 
 /// First we get the user query into the system
 /// Then we call the qiestion generator for the question coming in
@@ -46,7 +47,8 @@ impl Configuration {
                 .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string()),
             code_modifier_url: env::var("CODE_MODIFIER_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string()),
-            redis_url: env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string()),
+            redis_url: env::var("REDIS_URL")
+                .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string()),
             openai_url: env::var("OPENAI_URL")
                 .unwrap_or_else(|_| "https://api.openai.com".to_string()),
             openai_api_key: env::var("OPENAI_API_KEY")
@@ -75,26 +77,20 @@ async fn main() -> Result<()> {
     // health check code search url and code understanding url
     let code_search_url = &CONFIG.code_search_url;
     let code_understanding_url = &CONFIG.code_understanding_url;
-    
-   
+
     // call health only if the config data_mode is set to API
-    if CONFIG.data_mode == "api" {
-        info!("DATA MODE IS API, checking whether dependent services are up");
-        if !health_check(code_search_url).await {
-            panic!(
-                "Code search service is not available, please run the code search service first"
-            );
-        }
-        if !health_check(code_understanding_url).await {
-            panic!("Code understanding service is not available, please run the code understanding service first");
-        }
-        info!("All dependent services are up!");
-    } else {
-        info!("DATA MODE is file, skipping health check");
+    info!("DATA MODE IS API, checking whether dependent services are up");
+    if !health_check(code_search_url).await {
+        panic!("Code search service is not available, please run the code search service first");
     }
-    // test redis connection 
+    if !health_check(code_understanding_url).await {
+        panic!("Code understanding service is not available, please run the code understanding service first");
+    }
+    info!("All dependent services are up!");
+
+    // test redis connection
     let conn = task_graph::redis::establish_redis_connection().map_err(|e| {
-        error!("Failed to establish Redis connection: {:?}", e);
+        error!("Failed to establish Redis connection, check if Redis is running and is accessible: {:?}", e);
         panic!("Failed to establish Redis connection: {:?}", e);
     });
 
