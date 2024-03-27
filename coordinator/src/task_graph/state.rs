@@ -1,14 +1,16 @@
 use crate::task_graph::add_node::NodeError;
 use crate::task_graph::graph_model::EdgeV1;
 use crate::task_graph::graph_model::{NodeV1, TrackProcessV1};
-use common::llm_gateway::api::{MessageSource, Messages, Message};
+use common::llm_gateway::api::{Message, MessageSource, Messages};
 use log::debug;
+use petgraph::graph::DiGraph;
 use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
 use petgraph::visit::{Dfs, IntoNodeReferences, Visitable};
 use petgraph::Graph;
 
-use common::models::{Subtask, Task, TaskList, TaskListResponse};
+use common::models::{Subtask, Task, TaskList };
+use serde::de;
 
 /// Enum representing the various stages following the last conversation.
 #[derive(Debug, PartialEq)]
@@ -51,7 +53,7 @@ impl TrackProcessV1 {
                     let process_to_task_edge_exists = graph
                         .edges_directed(last_conversation_node_id, petgraph::Direction::Outgoing)
                         .any(|edge| {
-                            matches!(edge.weight(), EdgeV1::Process)
+                            matches!(edge.weight(), EdgeV1::Task)
                                 && matches!(graph.node_weight(edge.target()), Some(NodeV1::Task(_)))
                         });
 
@@ -76,62 +78,115 @@ impl TrackProcessV1 {
         }
     }
 
-    /// Extracts tasks, subtasks, and questions from the graph and constructs a `TaskListResponse`.
-    pub fn extract_task_list_response(&self) -> Result<TaskListResponse, NodeError> {
-        // Check if the graph is initialized.
-        let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
-
-        // Ensure the root node exists.
-        let root_node = self.root_node.ok_or(NodeError::RootNodeNotFound)?;
-
-        let mut tasks = Vec::new();
-
-        // Iterate through all nodes that are direct children of the root and are Task nodes.
-        for task_edge in graph.edges_directed(root_node, petgraph::Direction::Outgoing) {
-            if let Some(NodeV1::Task(task_description)) = graph.node_weight(task_edge.target()) {
-                let mut subtasks = Vec::new();
-
-                // For each Task node, find its Subtask nodes.
-                for subtask_edge in
-                    graph.edges_directed(task_edge.target(), petgraph::Direction::Outgoing)
+    /// Extracts a `TaskListResponse` by traversing the graph from the root node and collecting tasks.
+    // Helper function to extract questions for a given subtask node.
+    fn extract_questions(
+        &self,
+        subtask_node: NodeIndex,
+        graph: &DiGraph<NodeV1, EdgeV1>,
+    ) -> Vec<String> {
+        graph
+            .edges_directed(subtask_node, petgraph::Direction::Outgoing)
+            .filter_map(|question_edge| {
+                if let Some(NodeV1::Question(_, question)) =
+                    graph.node_weight(question_edge.target())
                 {
-                    if let Some(NodeV1::Subtask(subtask_description)) =
-                        graph.node_weight(subtask_edge.target())
-                    {
-                        let mut questions = Vec::new();
-
-                        // For each Subtask node, find its Question nodes.
-                        for question_edge in graph
-                            .edges_directed(subtask_edge.target(), petgraph::Direction::Outgoing)
-                        {
-                            if let Some(NodeV1::Question(_, question)) =
-                                graph.node_weight(question_edge.target())
-                            {
-                                questions.push(question.clone());
-                            }
-                        }
-
-                        let subtask = Subtask {
-                            subtask: subtask_description.clone(),
-                            questions,
-                        };
-                        subtasks.push(subtask);
-                    }
+                    Some(question.clone())
+                } else {
+                    None
                 }
+            })
+            .collect()
+    }
 
-                let task = Task {
-                    task: task_description.clone(),
-                    subtasks,
-                };
-                tasks.push(task);
+    // Helper function to extract subtasks for a given task node.
+    fn extract_subtasks(
+        &self,
+        task_node: NodeIndex,
+        graph: &DiGraph<NodeV1, EdgeV1>,
+    ) -> Vec<Subtask> {
+        graph
+            .edges_directed(task_node, petgraph::Direction::Outgoing)
+            .filter_map(|subtask_edge| {
+                if let Some(NodeV1::Subtask(subtask_description)) =
+                    graph.node_weight(subtask_edge.target())
+                {
+                    let questions = self.extract_questions(subtask_edge.target(), graph);
+                    Some(Subtask {
+                        subtask: subtask_description.clone(),
+                        questions,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    // Extracts the task list response from the graph.
+    // iterate from the root node to find the first conversation node with outgoing Task edges.
+    // then collect all Task edges to find the tasks, then the subtasks for each task, and the nested questions.
+    pub fn extract_task_list_response(&self) -> Result<TaskList, NodeError> {
+        // Ensure the graph and root node are initialized.
+        let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
+        let mut current_node = self.root_node.ok_or(NodeError::RootNodeNotFound)?;
+
+        // Traverse the graph to find the first conversation node with outgoing Task edges.
+        while graph
+            .edges_directed(current_node, petgraph::Direction::Outgoing)
+            .any(|edge| !matches!(edge.weight(), EdgeV1::Task))
+        {
+            if let Some(next_node) = graph
+                .edges_directed(current_node, petgraph::Direction::Outgoing)
+                .find_map(|edge| {
+                    if matches!(edge.weight(), EdgeV1::NextConversation) {
+                        Some(edge.target())
+                    } else {
+                        None
+                    }
+                })
+            {
+                current_node = next_node;
+            } else {
+                // If no further conversation nodes are found, break the loop.
+                break;
             }
         }
 
-        Ok(TaskListResponse {
-            tasks: Some(TaskList { tasks }),
-            ask_user: None,
+        // Collect all Task edges from the current conversation node.
+        let task_edges = graph
+            .edges_directed(current_node, petgraph::Direction::Outgoing)
+            .filter_map(|edge| {
+                if matches!(edge.weight(), EdgeV1::Task) {
+                    Some(edge.target())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        // Use the helper functions to construct the TaskListResponse.
+        let tasks = task_edges
+            .iter()
+            .filter_map(|&task_node| {
+                if let Some(NodeV1::Task(task_description)) = graph.node_weight(task_node) {
+                    let subtasks = self.extract_subtasks(task_node, graph);
+                    Some(Task {
+                        task: task_description.clone(),
+                        subtasks,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        Ok(TaskList {
+            tasks: Some(tasks),
+            ask_user: None, 
         })
     }
+    // Helper functions (extract_subtasks and extract_questions) remain the same as previously defined.
 
     // collects the history of conversations in the form of Messages, which is the
     // desired format for the response to the user.
