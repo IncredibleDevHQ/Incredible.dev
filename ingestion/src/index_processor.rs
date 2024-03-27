@@ -47,10 +47,6 @@ pub fn generate_quikwit_index_name(namespace: &str) -> String {
 }
 
 pub async fn process_entries(all_entries: Vec<FileFields>, repo_name: &str, quickwit_url: &str) {
-    // config path is $pwd/index-config.yaml
-    // let config_path = get_config_path().unwrap();
-    // let path = Path::new(&config_path);
-
     let config = include_str!("../index-config.yaml");
     let new_index_id = generate_quikwit_index_name(repo_name);
     info!(
@@ -61,56 +57,56 @@ pub async fn process_entries(all_entries: Vec<FileFields>, repo_name: &str, quic
         generate_index_schema::replace_index_id_in_yaml(config.to_string(), &new_index_id).unwrap();
 
     debug!("Sending first yaml to server...");
-    let response = send_yaml_to_server(&index_config, &quickwit_url, &new_index_id).await;
+    let response = send_yaml_to_server(&index_config, quickwit_url, &new_index_id).await;
     match response {
-        Ok(_) => {
-            info!("Successfully sent yaml to server");
-        }
-        Err(e) => {
-            error!("Failed to send yaml to server: {:?}", e);
-        }
+        Ok(_) => info!("Successfully sent yaml to server"),
+        Err(e) => error!("Failed to send yaml to server: {:?}", e),
     }
 
-    let entries = all_entries.clone();
-    let iter = entries.iter();
-    let chunks = iter.chunks(3);
-    let all_entries_stream = futures::stream::iter(&chunks);
+    let chunk_size = 3;
+    let mut futures = vec![];
+    let all_entries_clone = all_entries.clone();
 
-    // let all_entries_stream = futures::stream::iter(&entries.iter().chunks(3));
+    for chunk in all_entries_clone.chunks(chunk_size) {
+        let chunk = chunk.to_owned();
+        let quickwit_url = quickwit_url.to_string();
+        let new_index_id = new_index_id.clone();
+        let repo_name = repo_name.to_string();
 
-    all_entries_stream
-        .for_each_concurrent(Some(1), |chunk| async {
+        // Each chunk is processed in its own async block, ensuring thread safety
+        let handle = tokio::spawn(async move {
             let url = format!(
                 "{}/api/v1/{}/ingest?commit=force",
                 quickwit_url, new_index_id
             );
-
-            let json_data_vec: Result<Vec<String>, _> = chunk
-                .into_iter()
-                .map(|record| serde_json::to_string(record))
+            let json_data_vec: Vec<String> = chunk
+                .iter()
+                .map(|record| serde_json::to_string(record).unwrap())
                 .collect();
 
-            match json_data_vec {
-                Ok(data_vec) => {
-                    let batch_data = data_vec.join("\n");
-                    match send_content_to_server(&batch_data, &url).await {
-                        Ok(response) => {
-                            // Handle the response immediately if necessary.
-                            debug!("Successfully sent data: {:?}", response);
-                        }
-                        Err(e) => {
-                            error!("Repo ID: {}", repo_name);
-                            error!("Failed to send data to quickwit, ending process: {:?}", e);
-                            process::exit(1);
-                        }
-                    }
+            let batch_data = json_data_vec.join("\n");
+
+            match send_content_to_server(&batch_data, &url).await {
+                Ok(response) => {
+                    debug!("Successfully sent data: {:?}", response);
                 }
                 Err(e) => {
-                    error!("Error serializing data: {:?}", e);
+                    error!("Repo ID: {}", repo_name);
+                    error!("Failed to send data to quickwit, ending process: {:?}", e);
+                    // Consider how to handle errors in async context; using process::exit here might not be ideal.
                 }
             }
-        })
-        .await;
+        });
+        futures.push(handle);
+    }
+
+    // Await all futures to complete and handle their results.
+    for future in futures.into_iter() {
+        match future.await {
+            Ok(_) => debug!("Chunk processed successfully"),
+            Err(e) => error!("Error processing chunk: {:?}", e),
+        }
+    }
 }
 
 async fn send_yaml_to_server(
@@ -181,7 +177,7 @@ async fn send_yaml_to_server(
     Ok(())
 }
 
-async fn send_json_to_server(json_path: &str, url: &str) -> Result<(), Box<dyn Error>> {
+async fn send_json_to_server(json_path: &str, url: &str) -> Result<(), anyhow::Error> {
     debug!("Reading JSON file...");
 
     // Read the JSON file content

@@ -5,6 +5,7 @@ use std::ops::Range;
 use std::sync::Arc;
 extern crate tracing;
 
+use anyhow::anyhow;
 use tracing::{debug, error, trace, warn};
 mod chunking;
 mod text_range;
@@ -197,7 +198,7 @@ impl SemanticIndex {
         semantic_hash: &str,
         lang_str: &str,
         qdrant_client: &Option<QdrantClient>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), anyhow::Error> {
         // Tokenize
         let chunks = self.tokenize_chunk(
             buffer,
@@ -226,7 +227,7 @@ impl SemanticIndex {
         &mut self,
         symbol_meta_hash_map: &HashMap<SymbolKey, Vec<SymbolValue>>,
         qdrant_client: &Option<QdrantClient>,
-    ) -> Result<String, Box<dyn std::error::Error>> {
+    ) -> Result<String, anyhow::Error> {
         //let mut temp_payloads = Vec::new();
 
         debug!("Inside commiting symbol meta payload");
@@ -334,12 +335,12 @@ impl SemanticIndex {
                 client
                     .upsert_points_batch(&self.collection_name_symbols, new, None, 10)
                     .await
-                    .map_err(|_| Box::new(CommitError::QdrantError))?;
+                    .map_err(|_| anyhow!(CommitError::QdrantError))?;
             }
             debug!("finished committing symbol to qdrant");
         } else {
             // Handle the case where qdrant_client is None if necessary
-            return Err(Box::new(CommitError::NoQdrantClient));
+            return Err(anyhow!(CommitError::NoQdrantClient));
         }
 
         Ok("Completed".to_string())
@@ -353,7 +354,7 @@ impl SemanticIndex {
         semanticHash: &str,
         lang_str: &str,
         qdrant_client: &Option<QdrantClient>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), anyhow::Error> {
         let mut temp_payloads = Vec::new();
 
         let embedder = |c: &str| {
@@ -401,12 +402,12 @@ impl SemanticIndex {
                 client
                     .upsert_points_batch(&self.collection_name, new, None, 10)
                     .await
-                    .map_err(|_| Box::new(CommitError::QdrantError))?;
+                    .map_err(|_| anyhow!(CommitError::QdrantError))?;
             }
             debug!("finished committing to qdrant");
         } else {
             // Handle the case where qdrant_client is None if necessary
-            return Err(Box::new(CommitError::NoQdrantClient));
+            return Err(anyhow!(CommitError::NoQdrantClient));
         }
 
         Ok(())
