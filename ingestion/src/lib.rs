@@ -1,9 +1,11 @@
+use anyhow::anyhow;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use std::fmt;
+use std::{any, fmt};
 use tokio;
 
 use log::{debug, error, info};
@@ -126,13 +128,13 @@ impl fmt::Debug for FileType {
 }
 
 // Define a type alias 'Result<T>' for a Result with a dynamic Error type
-type Result<T> = std::result::Result<T, Box<dyn Error>>;
+type Result<T> = anyhow::Result<T, anyhow::Error>;
 
 // Repository struct represents a repository with a disk path.
 pub struct Repository {
     disk_path: PathBuf,
     repo_name: String,
-    git_repo: GitRepository,
+    git_repo: Arc<Mutex<GitRepository>>,
     file_entries: HashMap<String, EntryData>, // The file_entries HashMap
     repo_entries: Vec<RepoEntry>,             // The repo_entries Vec
     qdrant_client_code_chunk: Option<QdrantClient>,
@@ -229,6 +231,11 @@ impl From<git2::Error> for RepositoryError {
     }
 }
 
+struct GitContent {
+    path: String,
+    content: Vec<u8>,
+}
+
 impl Repository {
     pub fn collection_config(collection_name: String) -> CreateCollection {
         CreateCollection {
@@ -289,7 +296,7 @@ impl Repository {
                         Err(e) => {
                             error!("Error creating collection: {:?}", e);
                             if attempt == max_retries {
-                                return Err(Box::new(SemanticError::QdrantInitializationError));
+                                return Err(anyhow!(SemanticError::QdrantInitializationError));
                             }
                             tokio::time::sleep(Duration::from_secs(20)).await;
                         }
@@ -299,7 +306,7 @@ impl Repository {
                 Err(e) => {
                     error!("Error checking if collection exists: {:?}", e);
                     if attempt == max_retries {
-                        return Err(Box::new(SemanticError::QdrantInitializationError));
+                        return Err(anyhow!(SemanticError::QdrantInitializationError));
                     }
                     tokio::time::sleep(Duration::from_secs(30)).await;
                 }
@@ -311,24 +318,6 @@ impl Repository {
                 .create_field_index(collection_name, index, FieldType::Text, None, None)
                 .await?;
         }
-        /*
-                // At this point, all futures have succeeded and their results are in the `results` vector.
-                qdrant
-                    .create_field_index(COLLECTION_NAME, "repo_name", FieldType::Text, None, None)
-                    .await?;
-                qdrant
-                    .create_field_index(COLLECTION_NAME, "content_hash", FieldType::Text, None, None)
-                    .await?;
-                qdrant
-                    .create_field_index(
-                        COLLECTION_NAME,
-                        "relative_path",
-                        FieldType::Text,
-                        None,
-                        None,
-                    )
-                    .await?;
-        */
         Ok(qdrant)
     }
 
@@ -360,7 +349,7 @@ impl Repository {
         Ok(Self {
             disk_path,
             repo_name,
-            git_repo,
+            git_repo: Arc::new(Mutex::new(git_repo)),
             file_entries: HashMap::new(),
             repo_entries: Vec::new(),
             qdrant_client_code_chunk: qdrant_client_chunks,
@@ -372,6 +361,61 @@ impl Repository {
         })
     }
 
+    fn collect_git_entries(&mut self, branch: &str) -> Result<Vec<GitContent>> {
+        info!("Collecting git entries for branch: {}", branch);
+        let mut file_blobs: Vec<GitContent> = Vec::new();
+        let git_repo = self.git_repo.lock().unwrap();
+
+        let branch_ref_str = format!("refs/heads/{}", branch);
+        let head_ref = git_repo.find_reference(&branch_ref_str)?;
+        let head_commit = git_repo.find_commit(head_ref.target().unwrap())?;
+        let tree = head_commit.tree()?;
+
+        tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
+            if let Some(name) = entry.name() {
+                let path = format!("{}{}", root, name);
+
+                if !index_filter(&path) {
+                    debug!("Skipping file: {}", path);
+                    return git2::TreeWalkResult::Ok;
+                }
+
+                let file_type = match entry.kind().unwrap() {
+                    git2::ObjectType::Tree => FileType::Dir,
+                    git2::ObjectType::Blob => FileType::File,
+                    _ => FileType::Other,
+                };
+
+                let git_id = entry.id();
+
+                match file_type {
+                    FileType::Dir => {
+                        self.repo_entries.push(RepoEntry::Dir(CodeDir { path }));
+                    }
+                    FileType::File => {
+                        if let Ok(blob) = git_repo.find_blob(git_id) {
+                            let content_buffer = blob.content().to_vec();
+                            let path_buf = PathBuf::from(&path);
+
+                            file_blobs.push(GitContent {
+                                path: path.clone(),
+                                content: content_buffer,
+                            });
+                        }
+                    }
+                    FileType::Other => {
+                        self.repo_entries.push(RepoEntry::Other);
+                    }
+                }
+            }
+            git2::TreeWalkResult::Ok
+        })?;
+
+        info!("Git file entries: {}", file_blobs.len());
+
+        Ok(file_blobs)
+    }
+
     pub async fn traverse(
         &mut self,
         repo_name: &str,
@@ -380,6 +424,8 @@ impl Repository {
         collection_name_symbols: String,
         version: String,
     ) -> Result<()> {
+        info!("Traversing repo: {}", repo_name);
+
         //starting the logging time for processing the repo
         let start_processing = Instant::now();
 
@@ -387,11 +433,6 @@ impl Repository {
 
         // Create a Vec to store all the RepoEntry::File entries
         let mut all_entries: Vec<FileFields> = Vec::new();
-        // Find the reference to the specified branch
-        let branch_ref_str = format!("refs/heads/{}", &self.branch); // Construct the branch reference
-        let head_ref = self.git_repo.find_reference(&branch_ref_str)?;
-        let head_commit = self.git_repo.find_commit(head_ref.target().unwrap())?;
-        let tree = head_commit.tree()?;
 
         #[cfg(feature = "stack_graph")]
         // Suppoerted files for stack graph construction
@@ -400,227 +441,180 @@ impl Repository {
         // Walk through the tree, visiting each entry in a pre-order traversal
         let counter = 0;
 
-        // Before starting the Git tree walk
-        info!("Starting to walk through the tree");
-        // Walk through the given Git tree, using pre-order traversal.
-        tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
-            // If the entry has a name, get its path.
-            if let Some(name) = entry.name() {
-                let path = format!("{}{}", root, name);
+        let branch = self.branch.clone();
+        let file_blobs = self.collect_git_entries(&branch)?;
 
-                // If the file at the given path should not be indexed, skip it.
-                if !index_filter(&path) {
-                    debug!("Skipping file: {}", path);
-                    return git2::TreeWalkResult::Ok;
-                }
+        for file_blob in file_blobs {
+            let path = file_blob.path.clone();
+            let path_buf = PathBuf::from(&path);
+            let content_buffer: &[u8] = &file_blob.content;
 
-                // Determine the type of file (directory, regular file, or other).
-                let file_type = match entry.kind().unwrap() {
-                    ObjectType::Tree => FileType::Dir,
-                    ObjectType::Blob => FileType::File,
-                    _ => FileType::Other,
-                };
+            info!("Processing file path: {}", path);
 
-                // Retrieve the Git ID for the entry.
-                let git_id = entry.id();
-                let entry_data = EntryData { file_type, git_id };
+            // Skip the file if its size exceeds the maximum allowed file length.
+            if content_buffer.len() > MAX_FILE_LEN as usize {
+                info!("Skipping file due to size: {}", path);
+                continue;
+            }
 
-                // Store the file entry information into the `file_entries` HashMap.
-                self.file_entries.insert(path.clone(), entry_data);
+            // Convert the content of the blob into a UTF-8 string.
+            let mut buffer = std::str::from_utf8(content_buffer)
+                .unwrap_or("")
+                .to_string();
 
-                let path = format!("{}{}", root, name);
+            // Compute the relative path for the file.
+            let relative_path = PathBuf::from(&path)
+                .strip_prefix(&self.disk_path)
+                .map(ToOwned::to_owned)
+                .unwrap_or(PathBuf::from(&path));
 
-                // Match the object type of the entry.
-                let object_type = entry.kind().unwrap();
-                match object_type {
-                    // If it's a directory, push it to the `repo_entries` Vec.
-                    ObjectType::Tree => {
-                        self.repo_entries.push(RepoEntry::Dir(CodeDir { path }));
+            // Compute the semantic and tantivy hashes for the file. NOTE: "main" is hardcoded.
+            let (semantic_hash, tantivy_hash) =
+                compute_hashes(relative_path.clone(), &buffer, &self.branch);
+
+            // Detect the programming language of the file.
+            let language = util::detect_language(&path_buf, content_buffer.clone())
+                .map(|s| s.to_string())
+                .unwrap_or("Unknown".to_string());
+
+            print!("{}: {}", path, language);
+
+            // If the language is unsupported, skip the file.
+            if language == "Unknown" {
+                print!("Unsupported language: {}", language);
+                continue;
+            }
+
+            #[cfg(feature = "stack_graph")]
+            // Add supported files to the `supported_files` HashSet to build stack-graph representation of the files later.
+            if ["Java", "Python", "Typescript", "Javascript"].contains(&language.as_str()) {
+                match fs::canonicalize(std::path::Path::new(&disk_path.join(&path_buf))) {
+                    Ok(absolute_path) => {
+                        supported_files.insert(absolute_path);
                     }
-                    // If it's a regular file (blob in Git terms), process the file.
-                    ObjectType::Blob => {
-                        let blob = self.git_repo.find_blob(git_id).unwrap();
-                        let path_buf = PathBuf::from(&path);
-                        let content_buffer = blob.content();
-
-                        // Skip the file if its size exceeds the maximum allowed file length.
-                        if content_buffer.len() > MAX_FILE_LEN as usize {
-                            info!("Skipping file due to size: {}", path);
-                            return git2::TreeWalkResult::Ok;
-                        }
-
-                        // Convert the content of the blob into a UTF-8 string.
-                        let mut buffer = std::str::from_utf8(content_buffer)
-                            .unwrap_or("")
-                            .to_string();
-
-                        // Compute the relative path for the file.
-                        let relative_path = PathBuf::from(&path)
-                            .strip_prefix(&self.disk_path)
-                            .map(ToOwned::to_owned)
-                            .unwrap_or(PathBuf::from(&path));
-
-                        // Compute the semantic and tantivy hashes for the file. NOTE: "main" is hardcoded.
-                        let (semantic_hash, tantivy_hash) =
-                            compute_hashes(relative_path.clone(), &buffer, &self.branch);
-
-                        // Detect the programming language of the file.
-                        let language = util::detect_language(&path_buf, blob.content())
-                            .map(|s| s.to_string())
-                            .unwrap_or("Unknown".to_string());
-
-                        print!("{}: {}", path, language);
-
-                        // If the language is unsupported, skip the file.
-                        if language == "Unknown" {
-                            print!("Unsupported language: {}", language);
-                            return git2::TreeWalkResult::Ok;
-                        }
-
-                        #[cfg(feature = "stack_graph")]
-                        // Add supported files to the `supported_files` HashSet to build stack-graph representation of the files later.
-                        if ["Java", "Python", "Typescript", "Javascript"]
-                            .contains(&language.as_str())
-                        {
-                            match fs::canonicalize(std::path::Path::new(&disk_path.join(&path_buf)))
-                            {
-                                Ok(absolute_path) => {
-                                    supported_files.insert(absolute_path);
-                                }
-                                Err(e) => {
-                                    // Handle the error, e.g., by logging or ignoring
-                                    eprintln!(
-                                        "Error canonicalizing path {}: {}",
-                                        path_buf.display(),
-                                        e
-                                    );
-                                }
-                            }
-                        }
-
-                        // Build a syntax-aware representation of the file.
-                        let symbol_locations = {
-                            let scope_graph = CodeFileAST::build_ast(blob.content(), &language)
-                                .and_then(CodeFileAST::scope_graph);
-
-                            // Return the graph if it exists or return an empty representation.
-                            match scope_graph {
-                                Ok(graph) => SymbolLocations::TreeSitter(graph),
-                                Err(_err) => SymbolLocations::Empty,
-                            }
-                        };
-
-                        // Extract symbols from the syntax-aware representation.
-                        let symbols = symbol_locations
-                            .list()
-                            .iter()
-                            .map(|sym| buffer[sym.range.start.byte..sym.range.end.byte].to_owned())
-                            .collect::<HashSet<_>>()
-                            .into_iter()
-                            .collect::<Vec<_>>()
-                            .join("\n");
-
-                        // Collect and aggregate metadata for each symbol in the file.
-                        // This is to utilize the symbols during code search and perform ranking.
-                        self.symbol_meta_payload = symbol_locations
-                            .list_metadata(blob.content(), repo_name, &language, &path)
-                            .into_iter()
-                            .fold(self.symbol_meta_payload.clone(), |mut meta_map, meta| {
-                                let meta_key = SymbolKey {
-                                    symbol: meta.symbol_type.clone(),
-                                    repo_name: meta.repo_name.clone(),
-                                };
-
-                                let meta_value = SymbolValue {
-                                    symbol_type: meta.symbol.clone(),
-                                    language_id: meta.language_id.clone(),
-                                    relative_path: meta.relative_path.clone(),
-                                    start_byte: meta.range.start.byte.clone(),
-                                    end_byte: meta.range.end.byte.clone(),
-                                    is_global: meta.is_global.clone(),
-                                    node_kind: meta.node_kind.clone(),
-                                };
-
-                                meta_map
-                                    .entry(meta_key)
-                                    .or_insert_with(Vec::new)
-                                    .push(meta_value);
-
-                                meta_map
-                            });
-
-                        // debug!("Symbol Meta Payload: {:?}", self.symbol_meta_payload);
-
-                        // Ensure the content ends with a newline.
-                        if !buffer.ends_with('\n') {
-                            buffer += "\n";
-                        }
-
-                        // Compute line ending indices for the file.
-                        let line_end_indices = buffer
-                            .match_indices('\n')
-                            .flat_map(|(i, _)| u32::to_le_bytes(i as u32))
-                            .collect::<Vec<_>>();
-
-                        // Skip files that have too many lines.
-                        if line_end_indices.len() > MAX_LINE_COUNT as usize {
-                            return git2::TreeWalkResult::Ok;
-                        }
-
-                        let lines_avg = buffer.len() as f64 / buffer.lines().count() as f64;
-
-                        // Convert the path from PathBuf to &str and process further.
-                        if let Some(path_str) = path_buf.as_path().to_str() {
-                            // Create a struct to store various semantic data.
-                            self.semantic_payloads.push(SemanticPayload {
-                                path: path_str.to_string(),
-                                buffer: buffer.clone(),
-                                semantic_hash: semantic_hash.clone(),
-                                language: language.clone(),
-                            });
-                        } else {
-                            error!("Path is not valid UTF-8");
-                            return git2::TreeWalkResult::Ok;
-                        }
-
-                        // Create a struct to store various fields about the file.
-                        let file_fields = FileFields {
-                            repo_name: repo_name.to_string(),
-                            // use the disk path of the repo.
-                            repo_disk_path: disk_path.to_str().unwrap().to_owned()
-                                + repo_name.to_string().as_str(),
-                            repo_ref: String::new(),
-                            lang: language.clone(),
-                            relative_path: path.clone(),
-                            last_commit: String::new(),
-                            is_directory: false,
-                            avg_line_length: lines_avg,
-                            line_end_indices: line_end_indices.clone(),
-                            content: buffer.clone(),
-                            symbol_locations: bincode::serialize(&symbol_locations).unwrap(),
-                            unique_hash: tantivy_hash.clone(),
-                            symbols: symbols.clone(),
-                        };
-
-                        // Store the file data in the all_entries Vec.
-                        all_entries.push(file_fields.clone());
-
-                        // Add the processed file to the repo_entries Vec.
-                        self.repo_entries.push(RepoEntry::File(CodeFile {
-                            path,
-                            buffer,
-                            semantic_hash,
-                            tantivy_hash,
-                            language,
-                        }));
+                    Err(e) => {
+                        // Handle the error, e.g., by logging or ignoring
+                        eprintln!("Error canonicalizing path {}: {}", path_buf.display(), e);
                     }
-                    // If it's neither a directory nor a regular file, store it as "Other".
-                    _ => self.repo_entries.push(RepoEntry::Other),
                 }
             }
-            // Continue walking through the tree.
-            git2::TreeWalkResult::Ok
-        })?;
+
+            // Build a syntax-aware representation of the file.
+            let symbol_locations = {
+                let scope_graph = CodeFileAST::build_ast(content_buffer.clone(), &language)
+                    .and_then(CodeFileAST::scope_graph);
+
+                // Return the graph if it exists or return an empty representation.
+                match scope_graph {
+                    Ok(graph) => SymbolLocations::TreeSitter(graph),
+                    Err(_err) => SymbolLocations::Empty,
+                }
+            };
+
+            // Extract symbols from the syntax-aware representation.
+            let symbols = symbol_locations
+                .list()
+                .iter()
+                .map(|sym| buffer[sym.range.start.byte..sym.range.end.byte].to_owned())
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            // Collect and aggregate metadata for each symbol in the file.
+            // This is to utilize the symbols during code search and perform ranking.
+            self.symbol_meta_payload = symbol_locations
+                .list_metadata(content_buffer.clone(), repo_name, &language, &path)
+                .into_iter()
+                .fold(self.symbol_meta_payload.clone(), |mut meta_map, meta| {
+                    let meta_key = SymbolKey {
+                        symbol: meta.symbol_type.clone(),
+                        repo_name: meta.repo_name.clone(),
+                    };
+
+                    let meta_value = SymbolValue {
+                        symbol_type: meta.symbol.clone(),
+                        language_id: meta.language_id.clone(),
+                        relative_path: meta.relative_path.clone(),
+                        start_byte: meta.range.start.byte.clone(),
+                        end_byte: meta.range.end.byte.clone(),
+                        is_global: meta.is_global.clone(),
+                        node_kind: meta.node_kind.clone(),
+                    };
+
+                    meta_map
+                        .entry(meta_key)
+                        .or_insert_with(Vec::new)
+                        .push(meta_value);
+
+                    meta_map
+                });
+
+            // debug!("Symbol Meta Payload: {:?}", self.symbol_meta_payload);
+
+            // Ensure the content ends with a newline.
+            if !buffer.ends_with('\n') {
+                buffer += "\n";
+            }
+
+            // Compute line ending indices for the file.
+            let line_end_indices = buffer
+                .match_indices('\n')
+                .flat_map(|(i, _)| u32::to_le_bytes(i as u32))
+                .collect::<Vec<_>>();
+
+            // Skip files that have too many lines.
+            if line_end_indices.len() > MAX_LINE_COUNT as usize {
+                continue;
+            }
+
+            let lines_avg = buffer.len() as f64 / buffer.lines().count() as f64;
+
+            // Convert the path from PathBuf to &str and process further.
+            if let Some(path_str) = path_buf.as_path().to_str() {
+                // Create a struct to store various semantic data.
+                self.semantic_payloads.push(SemanticPayload {
+                    path: path_str.to_string(),
+                    buffer: buffer.clone(),
+                    semantic_hash: semantic_hash.clone(),
+                    language: language.clone(),
+                });
+            } else {
+                error!("Path is not valid UTF-8");
+                continue;
+            }
+
+            // Create a struct to store various fields about the file.
+            let file_fields = FileFields {
+                repo_name: repo_name.to_string(),
+                // use the disk path of the repo.
+                repo_disk_path: disk_path.to_str().unwrap().to_owned()
+                    + repo_name.to_string().as_str(),
+                repo_ref: String::new(),
+                lang: language.clone(),
+                relative_path: path.clone(),
+                last_commit: String::new(),
+                is_directory: false,
+                avg_line_length: lines_avg,
+                line_end_indices: line_end_indices.clone(),
+                content: buffer.clone(),
+                symbol_locations: bincode::serialize(&symbol_locations).unwrap(),
+                unique_hash: tantivy_hash.clone(),
+                symbols: symbols.clone(),
+            };
+
+            // Store the file data in the all_entries Vec.
+            all_entries.push(file_fields.clone());
+
+            // Add the processed file to the repo_entries Vec.
+            self.repo_entries.push(RepoEntry::File(CodeFile {
+                path,
+                buffer,
+                semantic_hash,
+                tantivy_hash,
+                language,
+            }));
+        }
 
         #[cfg(feature = "stack_graph")]
         // Creating the stack graph for the supported files
@@ -695,6 +689,7 @@ impl Indexer {
         branch: &str,
         version: &str,
     ) -> Result<()> {
+        info!("Indexing repository: {}", repo_name);
         // Create a new Repository instance using the `new` method.
         let mut repo = Repository::new(
             disk_path.clone(),
