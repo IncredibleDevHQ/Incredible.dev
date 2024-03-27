@@ -1,6 +1,6 @@
 [package]
 name = "ingestion"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2021"
 
 [features]
@@ -11,6 +11,7 @@ stack_graph = [
     "tree-sitter-stack-graphs/cli",
     "tree-sitter-stack-graphs-python/cli",
 ]
+cli = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -64,3 +65,5 @@ stack-graphs = { features = ["serde", "visualization", "storage"] }
 tree-sitter-stack-graphs = { features = ["cli"] }
 tree-sitter-stack-graphs-python = { features = ["cli"] }
 dirs = "5.0.1"
+dotenv = "0.15.0"
+warp = "0.3"
