@@ -711,6 +711,7 @@ dependencies = [
  "futures",
  "hashbrown 0.14.3",
  "lazy-regex",
+ "lazy_static",
  "log",
  "ndarray",
  "ort",
@@ -951,12 +952,14 @@ dependencies = [
  "futures",
  "log",
  "once_cell",
+ "petgraph",
  "reqwest",
  "reqwest-eventsource 0.4.0",
  "serde",
  "serde_json",
  "tokio",
  "tokio-stream",
+ "uuid",
  "warp",
 ]
 
