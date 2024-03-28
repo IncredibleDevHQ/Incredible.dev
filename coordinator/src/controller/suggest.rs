@@ -42,7 +42,7 @@ pub async fn handle_suggest_wrapper(
     }
 }
 
-async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow::Error> {
+async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse, anyhow::Error> {
     // if the request.uuid exists, load the conversation from the conversations API
     let convo_id = request.id;
     let mut tracker = if convo_id.is_some() {
@@ -180,9 +180,17 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
                 if let Some(err_result) = answer_err {
                     return Err(err_result.clone().unwrap_err());
                 } else {
-                    return Ok(task_list);
+                    let answers = questions_with_answers.into_iter().map(|x| x.unwrap()).collect::<Vec<_>>();
+                    return Ok(SuggestResponse {
+                        tasks: Some(tracker.get_current_tasks()?),
+                        questions_with_answers: Some(answers),
+                        ask_user: None,
+                    })
                 }
             }
+            // you start with this state because the previous conversation with the user ended 
+            // abruply since the user didn't provide enough context.
+            // So you regenerate tasks and questions to continue the conversation.
             ConversationProcessingStage::AwaitingUserInput => {
                 debug!("Awaiting user input, moving onto getting tasks/questions for the next objective round.");
                 state = ConversationProcessingStage::GenerateTasksAndQuestions;

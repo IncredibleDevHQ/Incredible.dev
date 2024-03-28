@@ -1,13 +1,13 @@
-use anyhow::Error;
 use crate::task_graph::add_node::NodeError;
 use crate::task_graph::graph_model::EdgeV1;
 use crate::task_graph::graph_model::{NodeV1, TrackProcessV1};
+use anyhow::Error;
 use common::llm_gateway::api::{Message, MessageSource, Messages};
 use log::debug;
 use petgraph::graph::{DiGraph, NodeIndex};
-use petgraph::Direction;
 use petgraph::visit::EdgeRef;
 use petgraph::visit::{Dfs, IntoNodeReferences, Visitable};
+use petgraph::Direction;
 
 use common::models::{Subtask, Task, TaskList};
 use serde::de;
@@ -23,7 +23,7 @@ pub enum ConversationProcessingStage {
     OnlyRootNodeExists,
     AllQuestionsAnswered, // tasks are generated and all questions are answered.
     QuestionsPartiallyAnswered, // s
-    Unknown, // State cannot be determined or does not fit the other categories.
+    Unknown,              // State cannot be determined or does not fit the other categories.
     ProcessingError,
     Done,
 }
@@ -95,7 +95,7 @@ impl TrackProcessV1 {
                         });
 
                     let processing_stage = if conversation_to_task_edge_exists {
-                        // If tasks exist, the systems state could be one of the three 
+                        // If tasks exist, the systems state could be one of the three
                         // 1. TasksAndQuestionsGenerated - Tasks and questions are generated, but answers are pending.
                         // 2. AllQuestionsAnswered - Tasks are generated and all questions are answered.
                         // 3. QuestionsPartiallyAnswered - Tasks are generated and some questions are answered., but some are pending.
@@ -128,8 +128,7 @@ impl TrackProcessV1 {
         graph
             .edges_directed(subtask_node, petgraph::Direction::Outgoing)
             .filter_map(|question_edge| {
-                if let Some(NodeV1::Question(question)) =
-                    graph.node_weight(question_edge.target())
+                if let Some(NodeV1::Question(question)) = graph.node_weight(question_edge.target())
                 {
                     Some(question.clone())
                 } else {
@@ -221,6 +220,62 @@ impl TrackProcessV1 {
             })
             .collect::<Vec<_>>();
 
+        Ok(TaskList {
+            tasks: Some(tasks),
+            ask_user: None,
+        })
+    }
+
+    // traverses the graph and find the current list of tasks.
+    pub fn get_current_tasks(&self) -> Result<TaskList, NodeError> {
+        // Ensure the graph is initialized
+        let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
+
+        // Initialize an empty vector to hold the tasks
+        let mut tasks = Vec::new();
+
+        // Directly iterate over all nodes and find Task nodes
+        for node_idx in graph.node_indices() {
+            if let NodeV1::Task(task_desc) = &graph[node_idx] {
+                // For each Task node, collect its Subtask and Question nodes
+                let subtasks = graph
+                    .edges_directed(node_idx, petgraph::Direction::Outgoing)
+                    .filter_map(|edge| {
+                        if let NodeV1::Subtask(subtask_desc) =
+                            graph.node_weight(edge.target()).unwrap()
+                        {
+                            // Collect all questions associated with the subtask
+                            let questions = graph
+                                .edges_directed(edge.target(), petgraph::Direction::Outgoing)
+                                .filter_map(|q_edge| {
+                                    if let NodeV1::Question(question) =
+                                        graph.node_weight(q_edge.target()).unwrap()
+                                    {
+                                        Some(question.clone())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect::<Vec<String>>();
+
+                            Some(Subtask {
+                                subtask: subtask_desc.clone(),
+                                questions,
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<Subtask>>();
+
+                tasks.push(Task {
+                    task: task_desc.clone(),
+                    subtasks,
+                });
+            }
+        }
+
+        // Return the TaskList
         Ok(TaskList {
             tasks: Some(tasks),
             ask_user: None,
