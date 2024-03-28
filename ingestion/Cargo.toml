@@ -67,3 +67,4 @@ tree-sitter-stack-graphs-python = { features = ["cli"] }
 dirs = "5.0.1"
 dotenv = "0.15.0"
 warp = "0.3"
+lazy_static = "1.4.0"
