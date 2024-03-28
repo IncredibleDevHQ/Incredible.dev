@@ -351,57 +351,57 @@ async fn generate_tasks_and_questions(
 /// # Returns
 /// A vector of `Result<QuestionWithAnswer, Error>` where each entry corresponds to the outcome
 /// (success or failure) of retrieving a code understanding for each question.
-async fn get_code_understandings(
-    repo_name: String,
-    generated_questions: &Vec<QuestionWithId>,
-) -> Vec<Result<QuestionWithAnswer, Error>> {
-    // Construct the URL for the code understanding service.
-    let code_understanding_url = format!("{}/retrieve-code", CONFIG.code_understanding_url);
+// async fn get_code_understandings(
+//     repo_name: String,
+//     generated_questions: &Vec<QuestionWithId>,
+// ) -> Vec<Result<QuestionWithAnswer, Error>> {
+//     // Construct the URL for the code understanding service.
+//     let code_understanding_url = format!("{}/retrieve-code", CONFIG.code_understanding_url);
 
-    // Map each question to a future that represents an asynchronous service call
-    // to retrieve the code understanding.
-    let futures_answers_for_questions: Vec<_> = generated_questions
-        .iter()
-        .map(|question_with_id| {
-            // Clone the URL and repository name for each service call.
-            let url = code_understanding_url.clone();
-            let repo_name = repo_name.clone();
+//     // Map each question to a future that represents an asynchronous service call
+//     // to retrieve the code understanding.
+//     let futures_answers_for_questions: Vec<_> = generated_questions
+//         .iter()
+//         .map(|question_with_id| {
+//             // Clone the URL and repository name for each service call.
+//             let url = code_understanding_url.clone();
+//             let repo_name = repo_name.clone();
 
-            // Construct the query parameters for the service call.
-            let mut query_params = HashMap::new();
-            query_params.insert("query".to_string(), question_with_id.text.clone());
-            query_params.insert("repo".to_string(), repo_name);
+//             // Construct the query parameters for the service call.
+//             let mut query_params = HashMap::new();
+//             query_params.insert("query".to_string(), question_with_id.text.clone());
+//             query_params.insert("repo".to_string(), repo_name);
 
-            // Define an asynchronous block that makes the service call, processes the response,
-            // and constructs a `QuestionWithAnswer` object.
-            async move {
-                // Perform the service call.
-                let response: Result<CodeUnderstanding, Error> =
-                    service_caller::<CodeUnderstandRequest, CodeUnderstanding>(
-                        url,
-                        Method::GET,
-                        None,
-                        Some(query_params),
-                    )
-                    .await;
+//             // Define an asynchronous block that makes the service call, processes the response,
+//             // and constructs a `QuestionWithAnswer` object.
+//             async move {
+//                 // Perform the service call.
+//                 let response: Result<CodeUnderstanding, Error> =
+//                     service_caller::<CodeUnderstandRequest, CodeUnderstanding>(
+//                         url,
+//                         Method::GET,
+//                         None,
+//                         Some(query_params),
+//                     )
+//                     .await;
 
-                // Convert the service response to a `QuestionWithAnswer`.
-                // In case of success, wrap the resulting `QuestionWithAnswer` in `Ok`.
-                // In case of an error, convert the error to `anyhow::Error` using `map_err`.
-                response
-                    .map(|answer| QuestionWithAnswer {
-                        question_id: question_with_id.id,
-                        question: question_with_id.text.clone(),
-                        answer,
-                    })
-                    .map_err(anyhow::Error::from)
-            }
-        })
-        .collect();
+//                 // Convert the service response to a `QuestionWithAnswer`.
+//                 // In case of success, wrap the resulting `QuestionWithAnswer` in `Ok`.
+//                 // In case of an error, convert the error to `anyhow::Error` using `map_err`.
+//                 response
+//                     .map(|answer| QuestionWithAnswer {
+//                         question_id: question_with_id.id,
+//                         question: question_with_id.text.clone(),
+//                         answer,
+//                     })
+//                     .map_err(anyhow::Error::from)
+//             }
+//         })
+//         .collect();
 
-    // Await all futures to complete and collect their results.
-    join_all(futures_answers_for_questions).await
-}
+//     // Await all futures to complete and collect their results.
+//     join_all(futures_answers_for_questions).await
+// }
 
 // TODO: Remove unused warning suppressor once the context generator is implemented
 #[allow(unused)]

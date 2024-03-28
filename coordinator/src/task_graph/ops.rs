@@ -102,53 +102,49 @@ impl TrackProcessV1 {
     }
 
     pub fn integrate_tasks(&mut self, task_list: TaskList) -> Result<&mut Self, NodeError> {
-        // Ensure we have the last conversation node available to attach the task nodes.
         let start_node = self
             .last_added_conversation_node
             .ok_or(NodeError::MissingLastUpdatedNode)?;
-    
-        // Check if the task list is present; if not, skip processing.
+        
         if let Some(tasks) = task_list.tasks {
-            // Iterate through each task in the task list.
             tasks.into_iter().try_for_each(|task| {
-                // Add a task node and iterate through its subtasks.
                 self.add_task_node(task.task).and_then(|task_node| {
                     task.subtasks.into_iter().try_for_each(|subtask| {
-                        // Add a subtask node and iterate through its questions.
                         self.add_subtask_node(subtask.subtask, task_node).and_then(|subtask_node| {
-                            subtask.questions.into_iter().try_for_each(|question| {
-                                // Add a question node for each question in the subtask.
-                                self.add_question_node(question, subtask_node).map(|_| ())
+                            subtask.questions.into_iter().try_for_each(|question_content| {
+                                self.add_question_node(question_content, subtask_node).map(|_| ())
                             })
                         }).map(|_| ())
                     }).map(|_| ())
                 }).map(|_| ())
             })?;
         }
-        // Return self to enable method chaining.
+    
         Ok(self)
     }
     
-    // /// Collects all questions from the graph and returns them as `QuestionWithId`.
-    // ///
-    // /// # Returns
-    // ///
-    // /// A vector of `QuestionWithId` instances.
-    // pub fn get_questions_with_ids(&self) -> Vec<QuestionWithId> {
-    //     self.graph
-    //         .node_weights()
-    //         .filter_map(|node| {
-    //             if let NodeV1::Question(id, text) = node {
-    //                 Some(QuestionWithId {
-    //                     id: *id,
-    //                     text: text.clone(),
-    //                 })
-    //             } else {
-    //                 None
-    //             }
-    //         })
-    //         .collect()
-    // }
+    
+    /// Collects all questions from the graph and returns them as `QuestionWithId`.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `QuestionWithId` instances.
+    pub fn get_questions_with_ids(&self) -> Vec<QuestionWithId> {
+        let graph = self.graph.as_ref().unwrap();
+        graph
+            .node_weights()
+            .filter_map(|node| {
+                if let NodeV1::Question(id, text) = node {
+                    Some(QuestionWithId {
+                        id: id.to_string(),
+                        text: text.clone(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 
     // pub fn extend_graph_with_answers(&mut self, answers: Vec<(usize, CodeUnderstanding)>) {
     //     answers.iter().for_each(|(question_id, understanding)| {
