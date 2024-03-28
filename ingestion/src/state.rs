@@ -4,9 +4,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-struct ProcessState {
-    progress: u32,
-    task_status: CodeIndexingTaskStatus,
+#[derive(Clone)]
+pub struct ProcessState {
+    pub repo_name: String,
+    pub repo_path: String,
+    pub progress: u32,
+    pub task_status: CodeIndexingTaskStatus,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -30,10 +33,25 @@ impl fmt::Display for CodeIndexingTaskStatus {
 
 // Define the global state structure
 // TODO: Eventually rework this to use crossbeam instead of lazy_static to better manage the progress
-// updates in concurrent enviroments.
+// updates in concurrent enviroments. Also look into storing these states in a database rather than in-memory.
 lazy_static! {
     static ref GLOBAL_STATE: Mutex<HashMap<String, Arc<Mutex<ProcessState>>>> =
         Mutex::new(HashMap::new());
+}
+
+// Function to queue a new process
+pub fn queue_process(process_id: &str, repo_name: &str, repo_path: &str) {
+    log::info!("Queueing process {} for repo {}", process_id, repo_name);
+    let mut global_state = GLOBAL_STATE.lock().unwrap();
+    global_state.insert(
+        process_id.to_string(),
+        Arc::new(Mutex::new(ProcessState {
+            repo_name: repo_name.to_string(),
+            repo_path: repo_path.to_string(),
+            progress: 0,
+            task_status: CodeIndexingTaskStatus::Queued,
+        })),
+    );
 }
 
 // Function to update a process state with progress and status
@@ -45,24 +63,25 @@ pub fn update_process_state(process_id: &str, progress: u32, task_status: CodeIn
         task_status
     );
     let mut global_state = GLOBAL_STATE.lock().unwrap();
-    let process_state = global_state
-        .entry(process_id.to_string())
-        .or_insert_with(|| {
-            Arc::new(Mutex::new(ProcessState {
-                progress: 0,
-                task_status: CodeIndexingTaskStatus::Queued,
-            }))
-        });
-    let mut state = process_state.lock().unwrap();
-    state.progress = progress;
-    state.task_status = task_status;
+    match global_state.get_mut(process_id) {
+        Some(state) => {
+            let mut state = state.lock().unwrap();
+            state.progress = progress;
+            state.task_status = task_status;
+        }
+        None => {
+            log::error!("Process {} not found in global state", process_id);
+        }
+    }
 }
 
 // Function to get the progress and status of a process
-pub fn get_process_state(process_id: &str) -> Option<(u32, CodeIndexingTaskStatus)> {
+pub fn get_process_state(process_id: &str) -> Option<ProcessState> {
     let global_state = GLOBAL_STATE.lock().unwrap();
-    global_state.get(process_id).map(|state| {
-        let state = state.lock().unwrap();
-        (state.progress, state.task_status.clone())
-    })
+    if let Some(state_arc) = global_state.get(process_id) {
+        let state = state_arc.lock().unwrap();
+        Some(state.clone())
+    } else {
+        None
+    }
 }

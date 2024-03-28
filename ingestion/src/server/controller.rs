@@ -1,5 +1,5 @@
 use super::models::{CodeIndexingRequest, CodeIndexingStatus};
-use ingestion::state::{update_process_state, CodeIndexingTaskStatus};
+use ingestion::state::{get_process_state, queue_process, CodeIndexingTaskStatus};
 use ingestion::{Config, Indexer};
 use std::{convert::Infallible, env, path::PathBuf};
 
@@ -64,7 +64,7 @@ async fn handle_code_index_core(
     );
 
     let task_id = uuid::Uuid::new_v4().to_string();
-    update_process_state(&task_id, 0, CodeIndexingTaskStatus::Queued);
+    queue_process(&task_id, &repo_name, &disk_path_str);
 
     // Clone `task_id` for use in the asynchronous block
     let task_id_for_async = task_id.clone();
@@ -89,6 +89,38 @@ async fn handle_code_index_core(
         repo_name: request.repo_name,
         repo_path: request.repo_path,
         task_id,
-        task_status: CodeIndexingTaskStatus::Running,
+        task_status: CodeIndexingTaskStatus::Queued,
     })
+}
+
+pub async fn handle_index_status_wrapper(task_id: String) -> Result<impl warp::Reply, Infallible> {
+    log::info!(
+        "Received code indexing status request for task_id: {}",
+        task_id
+    );
+
+    match handle_index_status_core(task_id).await {
+        Ok(status) => Ok(warp::reply::with_status(
+            warp::reply::json(&status),
+            warp::http::StatusCode::OK,
+        )),
+        Err(e) => Ok(warp::reply::with_status(
+            warp::reply::json(&e.to_string()),
+            warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+        )),
+    }
+}
+
+pub async fn handle_index_status_core(
+    task_id: String,
+) -> Result<CodeIndexingStatus, anyhow::Error> {
+    match get_process_state(&task_id) {
+        Some(state) => Ok(CodeIndexingStatus {
+            repo_name: state.repo_name.clone(),
+            repo_path: state.repo_path.clone(),
+            task_id: task_id.clone(),
+            task_status: state.task_status.clone(),
+        }),
+        None => return Err(anyhow::anyhow!("No task found for id {}", task_id)),
+    }
 }
