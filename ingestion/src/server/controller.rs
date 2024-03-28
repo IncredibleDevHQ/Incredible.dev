@@ -36,7 +36,7 @@ async fn handle_code_index_core(
     let repo_name = request.repo_name.clone();
     let disk_path_str = request.repo_path.clone();
     let qdrant_url = env::var("QDRANT_URL").unwrap();
-    let quickwit_url = env::var("QDRANT_URL").unwrap();
+    let quickwit_url = env::var("QUICKWIT_URL").unwrap();
     let qdrant_api_key = env::var("QDRANT_API_KEY").unwrap();
     let branch = request.branch.clone();
     let version = request.version.clone();

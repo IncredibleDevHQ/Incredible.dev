@@ -29,6 +29,8 @@ impl fmt::Display for CodeIndexingTaskStatus {
 }
 
 // Define the global state structure
+// TODO: Eventually rework this to use crossbeam instead of lazy_static to better manage the progress
+// updates in concurrent enviroments.
 lazy_static! {
     static ref GLOBAL_STATE: Mutex<HashMap<String, Arc<Mutex<ProcessState>>>> =
         Mutex::new(HashMap::new());
