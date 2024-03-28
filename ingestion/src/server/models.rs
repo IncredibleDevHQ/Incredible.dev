@@ -1,3 +1,4 @@
+use ingestion::state::CodeIndexingTaskStatus;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -30,12 +31,4 @@ pub struct CodeIndexingStatus {
     pub repo_path: String,
     pub task_id: String,
     pub task_status: CodeIndexingTaskStatus,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum CodeIndexingTaskStatus {
-    Queued,
-    Running,
-    Completed,
-    Failed,
 }
