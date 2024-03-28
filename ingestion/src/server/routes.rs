@@ -3,7 +3,7 @@ use warp::{self, http::Response, Filter};
 use super::{controller, models::CodeIndexingRequest};
 
 pub fn ingestion() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    home_route().or(start_indexing())
+    home_route().or(start_indexing()).or(status_route())
 }
 
 /// POST /index
@@ -15,6 +15,14 @@ fn start_indexing() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rej
                 .and(warp::body::json::<CodeIndexingRequest>()),
         )
         .and_then(controller::handle_code_index_wrapper)
+}
+
+// GET /status/:task_id
+fn status_route() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path("status")
+        .and(warp::get())
+        .and(warp::path::param::<String>())
+        .and_then(controller::handle_index_status_wrapper)
 }
 
 fn home_route() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
