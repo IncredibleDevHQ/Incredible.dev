@@ -69,7 +69,7 @@ pub enum NodeV1 {
     Conversation(MessageSource, Message, String), // Represents a conversation node with a message source.
     Task(String),             // Represents a discrete task derived from the root issue.
     Subtask(String),          // Represents a subtask under a specific task.
-    Question(usize, String),  // Represents a question related to a specific subtask.
+    Question(String),  // Represents a question related to a specific subtask. 
     Answer(String),           // Represents an answer to a question.
     CodeContext(CodeContext), // Represents a code context associated with an answer.
 }

@@ -1,26 +1,29 @@
+use serde::de;
 use crate::task_graph::add_node::NodeError;
 use crate::task_graph::graph_model::EdgeV1;
-use crate::task_graph::graph_model::{NodeV1, TrackProcessV1};
+use crate::task_graph::graph_model::{NodeV1, QuestionWithAnswer, TrackProcessV1};
+use anyhow::Error;
 use common::llm_gateway::api::{Message, MessageSource, Messages};
 use log::debug;
-use petgraph::graph::DiGraph;
-use petgraph::graph::NodeIndex;
+use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use petgraph::visit::{Dfs, IntoNodeReferences, Visitable};
-use petgraph::Graph;
+use petgraph::Direction;
 
-use common::models::{Subtask, Task, TaskList };
-use serde::de;
+use common::models::{Subtask, Task, TaskList};
+use common::CodeUnderstanding;
 
 /// Enum representing the various stages following the last conversation.
 #[derive(Debug, PartialEq)]
 pub enum ConversationProcessingStage {
     AwaitingUserInput,
-    TasksAndQuestionsGenerated, // Indicates that tasks and questions are generated.
-    AnswersGenerated,           // Indicates that answers to the generated questions are available.
+    GenerateTasksAndQuestions,
+    TasksAndQuestionsGenerated, // Indicates that tasks and questions are generated, but answers are pending.
     GraphNotInitialized,
     OnlyRootNodeExists,
-    Unknown, // State cannot be determined or does not fit the other categories.
+    AllQuestionsAnswered, // tasks are generated and all questions are answered.
+    QuestionsPartiallyAnswered, // s
+    Unknown,              // State cannot be determined or does not fit the other categories.
 }
 
 impl TrackProcessV1 {
@@ -28,6 +31,38 @@ impl TrackProcessV1 {
     /// Returns the node ID of the last conversation node.
     pub fn last_conversation_node_id(&self) -> Option<NodeIndex> {
         self.last_added_conversation_node
+    }
+
+    // Assuming you have a graph `graph` already populated
+    fn check_question_completion(&self) -> ConversationProcessingStage {
+        let graph = self.graph.as_ref().unwrap();
+        let question_nodes = graph
+            .node_indices()
+            .filter_map(|node_idx| match graph.node_weight(node_idx) {
+                Some(NodeV1::Question(..)) => Some(node_idx),
+                _ => None,
+            })
+            .collect::<Vec<NodeIndex>>();
+
+        let mut answered_questions = 0;
+
+        for question_node in &question_nodes {
+            let has_answer = graph
+                .edges_directed(*question_node, Direction::Outgoing)
+                .any(|edge| matches!(graph.node_weight(edge.target()), Some(NodeV1::Answer(..))));
+
+            if has_answer {
+                answered_questions += 1;
+            }
+        }
+
+        match answered_questions {
+            0 => ConversationProcessingStage::TasksAndQuestionsGenerated,
+            count if count == question_nodes.len() => {
+                ConversationProcessingStage::AllQuestionsAnswered
+            }
+            _ => ConversationProcessingStage::QuestionsPartiallyAnswered,
+        }
     }
 
     /// Determines the processing stage of the last conversation in the graph.
@@ -50,16 +85,19 @@ impl TrackProcessV1 {
                 // Proceed if there are more nodes beyond the root.
                 if let Some(last_conversation_node_id) = self.last_added_conversation_node {
                     // Check for the existence of a 'Process' edge to a Task node from the last conversation node.
-                    let process_to_task_edge_exists = graph
+                    let conversation_to_task_edge_exists = graph
                         .edges_directed(last_conversation_node_id, petgraph::Direction::Outgoing)
                         .any(|edge| {
                             matches!(edge.weight(), EdgeV1::Task)
                                 && matches!(graph.node_weight(edge.target()), Some(NodeV1::Task(_)))
                         });
 
-                    let processing_stage = if process_to_task_edge_exists {
-                        // If there's a Process edge to a Task node, we know tasks and associated questions were generated.
-                        ConversationProcessingStage::TasksAndQuestionsGenerated
+                    let processing_stage = if conversation_to_task_edge_exists {
+                        // If tasks exist, the systems state could be one of the three
+                        // 1. TasksAndQuestionsGenerated - Tasks and questions are generated, but answers are pending.
+                        // 2. AllQuestionsAnswered - Tasks are generated and all questions are answered.
+                        // 3. QuestionsPartiallyAnswered - Tasks are generated and some questions are answered., but some are pending.
+                        self.check_question_completion()
                     } else {
                         // If no Process edge to a Task node is found, we're awaiting user input or further actions.
                         ConversationProcessingStage::AwaitingUserInput
@@ -88,8 +126,7 @@ impl TrackProcessV1 {
         graph
             .edges_directed(subtask_node, petgraph::Direction::Outgoing)
             .filter_map(|question_edge| {
-                if let Some(NodeV1::Question(_, question)) =
-                    graph.node_weight(question_edge.target())
+                if let Some(NodeV1::Question(question)) = graph.node_weight(question_edge.target())
                 {
                     Some(question.clone())
                 } else {
@@ -183,10 +220,99 @@ impl TrackProcessV1 {
 
         Ok(TaskList {
             tasks: Some(tasks),
-            ask_user: None, 
+            ask_user: None,
         })
     }
-    // Helper functions (extract_subtasks and extract_questions) remain the same as previously defined.
+
+    // traverses the graph and find the current list of tasks.
+    pub fn get_current_tasks(&self) -> Result<TaskList, NodeError> {
+        // Ensure the graph is initialized
+        let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
+
+        // Initialize an empty vector to hold the tasks
+        let mut tasks = Vec::new();
+
+        // Directly iterate over all nodes and find Task nodes
+        for node_idx in graph.node_indices() {
+            if let NodeV1::Task(task_desc) = &graph[node_idx] {
+                // For each Task node, collect its Subtask and Question nodes
+                let subtasks = graph
+                    .edges_directed(node_idx, petgraph::Direction::Outgoing)
+                    .filter_map(|edge| {
+                        if let NodeV1::Subtask(subtask_desc) =
+                            graph.node_weight(edge.target()).unwrap()
+                        {
+                            // Collect all questions associated with the subtask
+                            let questions = graph
+                                .edges_directed(edge.target(), petgraph::Direction::Outgoing)
+                                .filter_map(|q_edge| {
+                                    if let NodeV1::Question(question) =
+                                        graph.node_weight(q_edge.target()).unwrap()
+                                    {
+                                        Some(question.clone())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect::<Vec<String>>();
+
+                            Some(Subtask {
+                                subtask: subtask_desc.clone(),
+                                questions,
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<Subtask>>();
+
+                tasks.push(Task {
+                    task: task_desc.clone(),
+                    subtasks,
+                });
+            }
+        }
+
+        // Return the TaskList
+        Ok(TaskList {
+            tasks: Some(tasks),
+            ask_user: None,
+        })
+    }
+
+    // Extracts the current list of tasks with questions and answers which are alreaady answered.
+    pub fn get_current_questions_with_answers(&self) -> Result<Vec<QuestionWithAnswer>, NodeError> {
+        let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
+
+        let mut questions_with_answers = Vec::new();
+
+        for node_idx in graph.node_indices() {
+            if let NodeV1::Question(question) = &graph[node_idx] {
+                // Attempt to find a connected Answer node
+                let answer_edge = graph.edges_directed(node_idx, petgraph::Direction::Outgoing)
+                    .find(|edge| matches!(edge.weight(), EdgeV1::Answer));
+
+                if let Some(edge) = answer_edge {
+                    if let NodeV1::Answer(answer_text) = &graph[edge.target()] {
+                        // Construct a QuestionWithAnswer object
+                        let question_with_answer = QuestionWithAnswer {
+                            question_id: node_idx.index(), // Using the node index as a unique identifier
+                            question: question.clone(),
+                            answer: CodeUnderstanding {
+                                // Assuming CodeUnderstanding is derived from the answer text; adjust accordingly.
+                                context: vec![], // Populate with the actual context
+                                question: question.clone(),
+                                answer: answer_text.clone(),
+                            },
+                        };
+                        questions_with_answers.push(question_with_answer);
+                    }
+                }
+            }
+        }
+
+        Ok(questions_with_answers)
+    }
 
     // collects the history of conversations in the form of Messages, which is the
     // desired format for the response to the user.
@@ -220,34 +346,37 @@ impl TrackProcessV1 {
 
         Ok(Messages { messages })
     }
-}
 
-/// Prints the graph hierarchy starting from the root node.
-pub fn print_graph_hierarchy<N, E>(graph: &Graph<N, E>)
-where
-    N: std::fmt::Debug,
-    E: std::fmt::Debug,
-{
-    // Initialize depth-first search (DFS) to traverse the graph.
-    let mut dfs = Dfs::new(&graph, graph.node_indices().next().unwrap());
-
-    while let Some(node_id) = dfs.next(&graph) {
-        // The depth here is used to indent the output for hierarchy visualization.
-        let depth = dfs.stack.len();
-        let indent = " ".repeat(depth * 4); // Indent based on depth.
-
-        if let Some(node) = graph.node_weight(node_id) {
-            println!("{}{:?} (Node ID: {:?})", indent, node, node_id);
+    // print the nodes and edges of the graph in a hierarchical manner.
+    pub fn print_graph_hierarchy(&self) {
+        // If the graph is not initialized, return early.
+        if self.graph.is_none() {
+            println!("Graph is not initialized. Cannot print the graph.");
+            return;
         }
 
-        // Print edges and connected nodes.
-        for edge in graph.edges(node_id) {
-            println!(
-                "{}--> Edge: {:?}, connects to Node ID: {:?}",
-                " ".repeat((depth + 1) * 4),
-                edge.weight(),
-                edge.target()
-            );
+        let graph = self.graph.as_ref().unwrap();
+        // Initialize depth-first search (DFS) to traverse the graph.
+        let mut dfs = Dfs::new(&graph, graph.node_indices().next().unwrap());
+
+        while let Some(node_id) = dfs.next(&graph) {
+            // The depth here is used to indent the output for hierarchy visualization.
+            let depth = dfs.stack.len();
+            let indent = " ".repeat(depth * 4); // Indent based on depth.
+
+            if let Some(node) = graph.node_weight(node_id) {
+                println!("{}{:?} (Node ID: {:?})", indent, node, node_id);
+            }
+
+            // Print edges and connected nodes.
+            for edge in graph.edges(node_id) {
+                println!(
+                    "{}--> Edge: {:?}, connects to Node ID: {:?}",
+                    " ".repeat((depth + 1) * 4),
+                    edge.weight(),
+                    edge.target()
+                );
+            }
         }
     }
 }

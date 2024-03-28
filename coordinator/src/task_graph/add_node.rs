@@ -7,7 +7,7 @@ use crate::task_graph::graph_model::TrackProcessV1;
 use crate::task_graph::graph_model::{EdgeV1, NodeV1};
 use anyhow::Result;
 use common::llm_gateway::api::{Message, MessageSource};
-use petgraph::graph::NodeIndex;
+use petgraph::graph::{Node, NodeIndex};
 
 #[derive(Debug)]
 pub enum NodeError {
@@ -17,6 +17,7 @@ pub enum NodeError {
     InvalidNodeId,
     InvalidParentNode,
     MissingLastUpdatedNode,
+    InvalidQuestionNode,
     RedisSaveError,
 }
 
@@ -29,6 +30,7 @@ impl fmt::Display for NodeError {
             NodeError::InvalidNodeId => write!(f, "Invalid node ID provided."),
             NodeError::InvalidParentNode => write!(f, "Parent node is not a conversation node."),
             NodeError::MissingLastUpdatedNode => write!(f, "No last updated node found."),
+            NodeError::InvalidQuestionNode => write!(f, "Invalid question node provided."),
             NodeError::RedisSaveError => write!(f, "Error saving the task process to Redis."),
         }
     }
@@ -120,9 +122,12 @@ impl TrackProcessV1 {
         Ok(subtask_node)
     }
 
-    pub fn add_question_node(&mut self, question_content: String, parent_node: NodeIndex) -> Result<NodeIndex, NodeError> {
-        let question_node = self.graph.as_mut().unwrap().add_node(NodeV1::Question(0, question_content));  // Assume question ID handling is done elsewhere or refactor to include it.
-        self.graph.as_mut().unwrap().add_edge(parent_node, question_node, EdgeV1::Question);
+    pub fn add_question_node(&mut self, question_content: String, subtask_node: NodeIndex) -> Result<NodeIndex, NodeError> {
+        let question_uuid = Uuid::new_v4();  // Generate a unique UUID for the question.
+        let graph = self.graph.as_mut().unwrap(); // Unwrap the graph for convenience
+        let question_node = graph.add_node(NodeV1::Question(question_content));
+        graph.add_edge(subtask_node, question_node, EdgeV1::Question);
         Ok(question_node)
     }
+    
 }

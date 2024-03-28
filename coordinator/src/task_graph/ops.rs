@@ -1,4 +1,5 @@
 use crate::task_graph::add_node::NodeError;
+use crate::task_graph::graph_model::QuestionWithAnswer;
 use crate::task_graph::graph_model::{
     ConversationChain, EdgeV1, NodeV1, QuestionWithId, TrackProcessV1,
 };
@@ -10,14 +11,6 @@ use common::CodeUnderstanding;
 use log::{error, info};
 use petgraph::graph::NodeIndex;
 use std::time::SystemTime;
-
-// type to represent the next step in the controller.
-#[derive(Debug, PartialEq)]
-pub enum NextControllerStep {
-    GetTasks,
-    GetAnswers,
-    Done,
-}
 
 impl TrackProcessV1 {
     /// Extends the graph with a chain of conversation nodes followed by task-related nodes if a task list is provided.
@@ -102,76 +95,118 @@ impl TrackProcessV1 {
     }
 
     pub fn integrate_tasks(&mut self, task_list: TaskList) -> Result<&mut Self, NodeError> {
-        // Ensure we have the last conversation node available to attach the task nodes.
         let start_node = self
             .last_added_conversation_node
             .ok_or(NodeError::MissingLastUpdatedNode)?;
-    
-        // Check if the task list is present; if not, skip processing.
+
         if let Some(tasks) = task_list.tasks {
-            // Iterate through each task in the task list.
             tasks.into_iter().try_for_each(|task| {
-                // Add a task node and iterate through its subtasks.
-                self.add_task_node(task.task).and_then(|task_node| {
-                    task.subtasks.into_iter().try_for_each(|subtask| {
-                        // Add a subtask node and iterate through its questions.
-                        self.add_subtask_node(subtask.subtask, task_node).and_then(|subtask_node| {
-                            subtask.questions.into_iter().try_for_each(|question| {
-                                // Add a question node for each question in the subtask.
-                                self.add_question_node(question, subtask_node).map(|_| ())
+                self.add_task_node(task.task)
+                    .and_then(|task_node| {
+                        task.subtasks
+                            .into_iter()
+                            .try_for_each(|subtask| {
+                                self.add_subtask_node(subtask.subtask, task_node)
+                                    .and_then(|subtask_node| {
+                                        subtask.questions.into_iter().try_for_each(
+                                            |question_content| {
+                                                self.add_question_node(
+                                                    question_content,
+                                                    subtask_node,
+                                                )
+                                                .map(|_| ())
+                                            },
+                                        )
+                                    })
+                                    .map(|_| ())
                             })
-                        }).map(|_| ())
-                    }).map(|_| ())
-                }).map(|_| ())
+                            .map(|_| ())
+                    })
+                    .map(|_| ())
             })?;
         }
-        // Return self to enable method chaining.
+
         Ok(self)
     }
-    
-    // /// Collects all questions from the graph and returns them as `QuestionWithId`.
-    // ///
-    // /// # Returns
-    // ///
-    // /// A vector of `QuestionWithId` instances.
-    // pub fn get_questions_with_ids(&self) -> Vec<QuestionWithId> {
-    //     self.graph
-    //         .node_weights()
-    //         .filter_map(|node| {
-    //             if let NodeV1::Question(id, text) = node {
-    //                 Some(QuestionWithId {
-    //                     id: *id,
-    //                     text: text.clone(),
-    //                 })
-    //             } else {
-    //                 None
-    //             }
-    //         })
-    //         .collect()
-    // }
 
-    // pub fn extend_graph_with_answers(&mut self, answers: Vec<(usize, CodeUnderstanding)>) {
-    //     answers.iter().for_each(|(question_id, understanding)| {
-    //         // Find the corresponding question node for the given question_id and update its status to Done.
-    //         if let Some(question_node) = self
-    //             .graph
-    //             .node_indices()
-    //             .find(|&n| matches!(self.graph[n], NodeV1::Question(id, _) if id == *question_id))
-    //         {
-    //             // Create a node for the answer and connect it to the question node.
-    //             let answer_node = self
-    //                 .graph
-    //                 .add_node(NodeV1::Answer(understanding.answer.clone()));
-    //             self.graph
-    //                 .add_edge(question_node, answer_node, EdgeV1::Answer);
+    /// Collects all questions from the graph and returns them as `QuestionWithId`.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `QuestionWithId` instances.
+    pub fn get_questions_with_ids(&self) -> Vec<QuestionWithId> {
+        self.graph.as_ref().map_or_else(Vec::new, |graph| {
+            graph
+                .node_indices()
+                .filter_map(|node_index| {
+                    if let Some(NodeV1::Question(text)) = graph.node_weight(node_index) {
+                        Some(QuestionWithId {
+                            id: node_index.index(),
+                            text: text.clone(),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+    }
 
-    //             // Iterate over each CodeContext within the understanding to create and connect nodes.
-    //             understanding.context.iter().for_each(|context| {
-    //                 let context_node = self.graph.add_node(NodeV1::CodeContext(context.clone()));
-    //                 self.graph
-    //                     .add_edge(answer_node, context_node, EdgeV1::CodeContext);
-    //             });
-    //         }
-    //     });
-    // }
+    /// Finds all questions without answers in the graph and returns them along with their NodeIndex.
+    pub fn get_unanswered_questions(&self) -> Result<Vec<QuestionWithId>, NodeError> {
+        let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
+        let mut unanswered_questions = Vec::new();
+
+        // Iterate over all nodes in the graph.
+        for node_index in graph.node_indices() {
+            // Check if the node is a Question node.
+            if let Some(NodeV1::Question(question)) = graph.node_weight(node_index) {
+                // Check if there's no outgoing edge to an Answer node.
+                let has_answer = graph
+                    .edges_directed(node_index, petgraph::Direction::Outgoing)
+                    .any(|edge| matches!(edge.weight(), EdgeV1::Answer));
+
+                // If there's no Answer node connected, add this question to the result.
+                if !has_answer {
+                    unanswered_questions.push(QuestionWithId {
+                        id: node_index.index(),
+                        text: question.clone(),
+                    });
+                }
+            }
+        }
+
+        Ok(unanswered_questions)
+    }
+
+    pub fn extend_graph_with_answers(
+        &mut self,
+        answers: &Vec<Result<QuestionWithAnswer>>,
+    ) -> Result<(), NodeError> {
+        // Check if the graph is initialized.
+        let graph = self.graph.as_mut().ok_or(NodeError::GraphNotInitialized)?;
+
+        // Iterate through the answers, skipping any that are errors.
+        for answer_result in answers {
+            if let Ok(answer) = answer_result {
+                // Use the NodeIndex from the answer to directly reference the question node.
+                let question_node_index = NodeIndex::new(answer.question_id);
+                // Ensure the node index points to a valid Question node.
+                if let Some(NodeV1::Question(_)) = graph.node_weight(question_node_index) {
+                    // Create an Answer node and connect it to the Question node.
+                    let answer_node = graph.add_node(NodeV1::Answer(answer.answer.answer.clone()));
+                    graph.add_edge(question_node_index, answer_node, EdgeV1::Answer);
+
+                    // Add each CodeContext from the answer as a node connected to the Answer node.
+                    for context in answer.answer.context.iter() {
+                        let context_node = graph.add_node(NodeV1::CodeContext(context.clone()));
+                        graph.add_edge(answer_node, context_node, EdgeV1::CodeContext);
+                    }
+                } else {
+                    return Err(NodeError::InvalidQuestionNode);
+                }
+            }
+        }
+        Ok(())
+    }
 }
