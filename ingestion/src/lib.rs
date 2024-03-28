@@ -750,7 +750,7 @@ impl Indexer {
         )
         .await?;
 
-        update_process_state(&task_id, 0, CodeIndexingTaskStatus::Completed);
+        update_process_state(&task_id, 100, CodeIndexingTaskStatus::Completed);
         Ok(())
     }
 
