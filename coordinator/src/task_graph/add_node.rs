@@ -7,7 +7,7 @@ use crate::task_graph::graph_model::TrackProcessV1;
 use crate::task_graph::graph_model::{EdgeV1, NodeV1};
 use anyhow::Result;
 use common::llm_gateway::api::{Message, MessageSource};
-use petgraph::graph::NodeIndex;
+use petgraph::graph::{Node, NodeIndex};
 
 #[derive(Debug)]
 pub enum NodeError {
@@ -17,6 +17,7 @@ pub enum NodeError {
     InvalidNodeId,
     InvalidParentNode,
     MissingLastUpdatedNode,
+    InvalidQuestionNode,
     RedisSaveError,
 }
 
@@ -29,6 +30,7 @@ impl fmt::Display for NodeError {
             NodeError::InvalidNodeId => write!(f, "Invalid node ID provided."),
             NodeError::InvalidParentNode => write!(f, "Parent node is not a conversation node."),
             NodeError::MissingLastUpdatedNode => write!(f, "No last updated node found."),
+            NodeError::InvalidQuestionNode => write!(f, "Invalid question node provided."),
             NodeError::RedisSaveError => write!(f, "Error saving the task process to Redis."),
         }
     }
