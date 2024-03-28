@@ -1,5 +1,5 @@
 use anyhow::{Error, Result};
-use common::llm_gateway::api::Message;
+use common::llm_gateway::api::{Message, Messages};
 use common::models::{
     CodeContextRequest, CodeUnderstandRequest, TaskList, TaskListResponseWithMessage,
 };
@@ -8,12 +8,12 @@ use log::{debug, error, info};
 use reqwest::{Method, StatusCode};
 use std::{collections::HashMap, convert::Infallible};
 
+use crate::models::SuggestResponse;
 use crate::task_graph::graph_model::{
     ConversationChain, QuestionWithAnswer, QuestionWithId, TrackProcessV1,
 };
-use crate::task_graph::ops::NextControllerStep;
 use crate::task_graph::redis::load_task_process_from_redis;
-use crate::task_graph::state::{print_graph_hierarchy, ConversationProcessingStage};
+use crate::task_graph::state::ConversationProcessingStage;
 use common::{llm_gateway, prompts};
 use common::{service_interaction::service_caller, CodeUnderstanding, CodeUnderstandings};
 
@@ -41,7 +41,7 @@ pub async fn handle_suggest_wrapper(
     }
 }
 
-async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow::Error> {
+async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse, anyhow::Error> {
     // if the request.uuid exists, load the conversation from the conversations API
     let convo_id = request.id;
     let mut tracker = if convo_id.is_some() {
@@ -68,203 +68,162 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
         TrackProcessV1::new(&request.repo_name)
     };
     // get the state of the conversation
-    let (state, node_index) = tracker.last_conversation_processing_stage();
+    let (mut state, node_index) = tracker.last_conversation_processing_stage();
 
-    let mut next_step = NextControllerStep::Done;
-    match state {
-        ConversationProcessingStage::OnlyRootNodeExists => {
-            error!("Only root node exists, no conversation has happened yet. Invalid state, create new conversation");
-            return Err(anyhow::anyhow!("Only root node exists, no conversation has happened yet. Invalid state, create new conversation"));
-        }
-        ConversationProcessingStage::GraphNotInitialized => {
-            info!("Graph not initialized, initializing the graph.");
-            tracker.initialize_graph();
-            next_step = NextControllerStep::GetTasks;
-        }
-        ConversationProcessingStage::TasksAndQuestionsGenerated => {
-            info!("Tasks and questions are generated, awaiting user input.");
-            // return the tasks, subtasks and questions.
-            let task_list = tracker.extract_task_list_response()?;
-            // print the graph
-            print_graph_hierarchy(&tracker.graph.unwrap());
-            return Ok(task_list);
-        }
-        ConversationProcessingStage::AwaitingUserInput => {
-            info!("Awaiting user input, continuing the conversation.");
-            let messages = tracker.collect_conversation_messages();
-            next_step = NextControllerStep::GetTasks;
-        }
-        ConversationProcessingStage::Unknown => {
-            // return error
-            let err_msg = "Unknown graph state, aborting the conversation.";
-            error!("{}", err_msg);
-            return Err(anyhow::anyhow!("{}", err_msg));
-        }
-        ConversationProcessingStage::AnswersGenerated => {
-            info!("Answers are generated, awaiting user input.");
-        }
-    }
+    loop {
+        match state {
+            ConversationProcessingStage::OnlyRootNodeExists => {
+                error!("Only root node exists, no conversation has happened yet. Invalid state, create new conversation");
+                return Err(anyhow::anyhow!("Only root node exists, no conversation has happened yet. Invalid state, create new conversation"));
+            }
+            ConversationProcessingStage::GraphNotInitialized => {
+                debug!("Graph not initialized, initializing the graph and setting the next state to GenerateTasksAndQuestions");
+                tracker.initialize_graph();
+                state = ConversationProcessingStage::GenerateTasksAndQuestions;
+            }
+            ConversationProcessingStage::GenerateTasksAndQuestions => {
+                // get the generated questions from the LLM or the file based on the data modes
+                let generated_questions_with_llm_messages: TaskListResponseWithMessage =
+                    generate_tasks_and_questions(
+                        request.user_query.clone(),
+                        request.repo_name.clone(),
+                    )
+                    .await?;
 
-    // get tasks and questions if the next step is GetTasks
-    if next_step == NextControllerStep::GetTasks {
-        // get the generated questions from the LLM or the file based on the data modes
-        let generated_questions_with_llm_messages: TaskListResponseWithMessage =
-            match get_generated_questions(request.user_query.clone(), request.repo_name.clone())
-                .await
-            {
-                Ok(questions) => questions,
-                Err(e) => {
-                    log::error!("Failed to generate questions: {}", e);
-                    return Err(e);
+                debug!(
+                    "Generated questions: {:?}",
+                    generated_questions_with_llm_messages
+                );
+
+                // the response contains the generated questions and the messages
+                // the messages contain the system prompt which was used to generate the questions
+                // also the response of the assistant for the prompt used to generate questions.
+                let generated_questions: TaskList = generated_questions_with_llm_messages.task_list;
+                let messages = generated_questions_with_llm_messages.messages;
+
+                if generated_questions.ask_user.is_none() && generated_questions.tasks.is_none() {
+                    let error_message = format!(
+                        "No tasks or either ask_user is generated. The LLM is not supposed to behave this way, test the API response from the code understanding service for query: {}, repo: {}",
+                        request.user_query, request.repo_name
+                    );
+                    error!("{}", error_message);
+                    return Err(anyhow::anyhow!(error_message));
                 }
-            };
 
-        debug!(
-            "Generated questions: {:?}",
-            generated_questions_with_llm_messages
-        );
+                let user_system_assistant_conversation = ConversationChain {
+                    user_message: Message::user(&request.user_query),
+                    system_message: messages[0].clone(),
+                    assistant_message: messages[1].clone(),
+                };
+                // add the generated questions to the graph
+                // if the questions are not present, return the ask_user message
+                // the function also saves the graph to the redis
+                // Note: this mutates the state of graph inside task process
+                tracker.extend_graph_with_conversation_and_tasklist(
+                    user_system_assistant_conversation,
+                    Some(TaskList {
+                        tasks: generated_questions.tasks.clone(),
+                        ask_user: None,
+                    }),
+                )?;
 
-        // the response contains the generated questions and the messages
-        // the messages contain the system prompt which was used to generate the questions
-        // also the response of the assistant for the prompt used to generate questions.
-        let generated_questions: TaskList = generated_questions_with_llm_messages.task_list;
-        let messages = generated_questions_with_llm_messages.messages;
-
-        if generated_questions.ask_user.is_none() && generated_questions.tasks.is_none() {
-            error!("No tasks or either ask_user is generated. The LLM is not supposed to behave this way, test the API response from the code understanding service for query: {}, repo: {}",
-                 request.user_query, request.repo_name);
-            return Err(anyhow::anyhow!("No tasks or either ask_user is generated. The LLM is not supposed to behave this way, test the API response from the code understanding service for query: {}, repo: {}",
-                 request.user_query, request.repo_name));
+                // when you ask LLM to generate tasks, subtasks and questions, it might not generate it
+                // when the user hasen't provided enough context.
+                // for instance, if user asks something like "help me with my api",
+                // the LLM might respond with a generic response with some detail like "Can you provide more context? What specifically do you need help with regarding your API?"
+                // In this case the the systems state in the graph would transition to AwaitingUserInput
+                // if you don't stop here and dry to fetch answer again, the state machine will loop forever.
+                // Instead you return and provide more opporunity for user to provide input.
+                (state, _) = tracker.last_conversation_processing_stage();
+                if state == ConversationProcessingStage::AwaitingUserInput {
+                    debug!("Tasks and Questions not generated, awaiting more user input, returning ask_user state.");
+                    // return TaskList
+                    return Ok(SuggestResponse {
+                        tasks: None,
+                        ask_user: generated_questions.ask_user.clone(),
+                        questions_with_answers: None,
+                    });
+                }
+                // the tasks and questions are successfullly generated, move to find answers for the questions.
+                debug!("Tasks and Questions generated successfully, moving onto finding answers for the generated questions.");
+                state = ConversationProcessingStage::TasksAndQuestionsGenerated;
+            }
+            ConversationProcessingStage::TasksAndQuestionsGenerated => {
+                debug!("Tasks and questions are generated, moving onto finding answers for the questions.");
+                // return the tasks, subtasks and questions.
+                let task_list = tracker.get_unanswered_questions()?;
+                debug!(
+                    "Unanswered questions fetched from task_graph: {:?}",
+                    task_list
+                );
+                // print the graph
+                //tracker.print_graph_hierarchy();
+                let questions_with_answers = get_codebase_answers_for_questions(
+                    request.repo_name.clone(),
+                    &task_list.clone(),
+                )
+                .await;
+                // update the graph with answers
+                // Note: this mutates the state of graph inside task process
+                tracker.extend_graph_with_answers(&questions_with_answers)?;
+                // find if any of the Result in Vec has error, if so just return the error
+                // the reason to do this is to avoid the state machine getting into an infinite loop.
+                // Imagine a scenario where there were some unanswered questions,
+                // we don't want the system to continue further until they succeed.
+                // So we update the task graph even if there some successfull answers, and return error
+                // even if there was one unsuccessful answer.
+                // the client can retry, and the next time the system will contine from where it left off
+                // to retry fetching answer only for the unanswered questions.
+                let answer_err = questions_with_answers.iter().find(|x| x.is_err());
+                if let Some(err_result) = answer_err {
+                    return Err(anyhow::anyhow!(err_result.as_ref().unwrap_err().to_string()));
+                } else {
+                    let answers = questions_with_answers
+                        .into_iter()
+                        .map(|x| x.unwrap())
+                        .collect::<Vec<_>>();
+                    return Ok(SuggestResponse {
+                        tasks: Some(tracker.get_current_tasks()?),
+                        questions_with_answers: Some(answers),
+                        ask_user: None,
+                    });
+                }
+            }
+            // you start with this state because the previous conversation with the user ended
+            // abruply since the user didn't provide enough context.
+            // So you regenerate tasks and questions to continue the conversation.
+            ConversationProcessingStage::AwaitingUserInput => {
+                debug!("Awaiting user input, moving onto getting tasks/questions for the next objective round.");
+                state = ConversationProcessingStage::GenerateTasksAndQuestions;
+                //tracker.print_graph_hierarchy();
+            }
+            ConversationProcessingStage::Unknown => {
+                // return error
+                let err_msg = "Unknown graph state, aborting the conversation.";
+                error!("{}", err_msg);
+                return Err(anyhow::anyhow!("{}", err_msg));
+            }
+            ConversationProcessingStage::AllQuestionsAnswered => {
+                debug!("All questions are answered, nothing left to do, returning the result from the task graph");
+                return Ok(SuggestResponse {
+                    tasks: Some(tracker.get_current_tasks()?),
+                    questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
+                    ask_user: None,
+                });
+            }
+            ConversationProcessingStage::QuestionsPartiallyAnswered => {
+                debug!("Some Questions are unanswered, continuing to find answers.");
+                state = ConversationProcessingStage::TasksAndQuestionsGenerated;
+            }
         }
-
-        let user_system_assistant_conversation = ConversationChain {
-            user_message: Message::user(&request.user_query),
-            system_message: messages[0].clone(),
-            assistant_message: messages[1].clone(),
-        };
-        // add the generated questions to the graph
-        // if the questions are not present, return the ask_user message
-        // the function also saves the graph to the redis
-        let extend_graph_result = tracker.extend_graph_with_conversation_and_tasklist(
-            user_system_assistant_conversation,
-            Some(TaskList {
-                tasks: generated_questions.tasks.clone(),
-                ask_user: None,
-            }),
-        );
-
-        // map_err , return the error if there is error
-        if extend_graph_result.is_err() {
-            let err_msg = format!(
-                "Failed to extend graph with tasklist: {:?}",
-                extend_graph_result.err().unwrap()
-            );
-            error!("{}", err_msg);
-            return Err(anyhow::anyhow!("{}", err_msg));
-        }
-
-        Ok(generated_questions)
-    } else {
-        // return error
-        let err_msg = "Invalid state, aborting the conversation.";
-        error!("{}", err_msg);
-        Err(anyhow::anyhow!("{}", err_msg))
     }
-    // match does_task_exist {
-    //     Ok(true) => {
-    //         // If tasks exist, you'd typically continue processing.
-    //         // Placeholder for further processing if tasks exist.
-    //     }
-    //     Ok(false) => {
-    //         // If the result is Ok but false, return the ask_user message.
-    //         info!("No tasks found in the response, returning the ask_user message");
-    //         return Ok(SuggestResponse {
-    //             questions_with_answers: None,
-    //             ask_user: generated_questions.ask_user,
-    //             tasks: generated_questions.tasks,
-    //         });
-    //     }
-    //     Err(e) => {
-    //         // If there's an error determining if the task exists, log and return the error.
-    //         error!("Failed to extend graph with tasklist: {:?}", e);
-    //         return Err(e);
-    //     }
-    // }
-
-    // let questions_with_ids = tracker.get_questions_with_ids();
-    // // iter and print
-    // for question_id in questions_with_ids.iter() {
-    //     debug!("Question-id {}", question_id);
-    // }
-
-    // // Call the API only if the data mode is API
-    // // Retrieve the answers, which are now wrapped in a Vec of Results
-    // let results = get_code_understandings(request.repo_name.clone(), &questions_with_ids).await;
-
-    // let result = results.into_iter().try_fold(
-    //     (Vec::new(), None::<anyhow::Error>),
-    //     |(mut answers, _), result| match result {
-    //         Ok(answer) => {
-    //             answers.push(answer);
-    //             Ok((answers, None)) // Correctly return a Result wrapping the accumulator tuple.
-    //         }
-    //         Err(e) => {
-    //             error!("Failed to get answers to questions: {}", e);
-    //             Err(e) // Directly propagate the error.
-    //         }
-    //     },
-    // );
-
-    // match result {
-    //     Ok((answers, _)) => {
-    //         // If try_fold completed without encountering an error, answers would be populated.
-    //         let mut file = File::create("generated_questions.json").await?;
-    //         file.write_all(serde_json::to_string(&answers)?.as_bytes())
-    //             .await?;
-    //         Ok(answers)
-    //     }
-    //     Err(e) => {
-    //         // If an error was encountered, it will be returned here.
-    //         Err(e)
-    //     }
-    // }
-
-    // // if there is error return the error the caller
-    // if answers_to_questions.is_err() {
-    //     return Err(answers_to_questions.err().unwrap());
-    // }
-
-    // // unwrap, iterate and print the answers
-    // for answer in answers_to_questions.as_ref().unwrap().iter() {
-    //     debug!("Answer: {:?}", answer);
-    // }
-
-    // // let code_context_request = CodeUnderstandings {
-    // //     repo: request.repo_name.clone(),
-    // //     issue_description: request.user_query.clone(),
-    // //     qna: answers_to_questions.clone(),
-    // // };
-    // // // TODO: Uncomment this once the context generator is implemented
-    // // // let code_contexts = match get_code_context(code_context_request).await {
-    // // //     Ok(contexts) => contexts,
-    // // //     Err(e) => {
-    // // //         log::error!("Failed to get code contexts: {}", e);
-    // // //         return Err(e);
-    // // //     }
-    // // // };
-
-    // Ok(SuggestResponse {
-    //     questions_with_answers: Some(answers_to_questions.unwrap()),
-    //     ask_user: generated_questions.ask_user,
-    //     tasks: generated_questions.tasks,
-    // })
 }
 
-async fn get_generated_questions(
+async fn generate_tasks_and_questions(
     user_query: String,
     repo_name: String,
 ) -> Result<TaskListResponseWithMessage, anyhow::Error> {
-    // intialize new llm gateway.
+    // initialize new llm gateway.
 
     // otherwise call the llm gateway to generate the questions
     let llm_gateway = llm_gateway::Client::new(&CONFIG.openai_url)
@@ -274,7 +233,10 @@ async fn get_generated_questions(
 
     let system_prompt: String = prompts::question_concept_generator_prompt(&user_query, &repo_name);
     let system_message = llm_gateway::api::Message::system(&system_prompt);
-    let mut messages = Some(system_message).into_iter().collect::<Vec<_>>();
+    // append the system message to the message history
+    let mut messages = Some(system_message.clone()).into_iter().collect::<Vec<_>>();
+
+    // append the system message to the message history
 
     let response = match llm_gateway
         .clone()
@@ -304,14 +266,14 @@ async fn get_generated_questions(
     let assistant_message = llm_gateway::api::Message::assistant(&choices_str);
     messages.push(assistant_message);
 
-    log::debug!("Choices: {}", choices_str);
+    //log::debug!("Choices: {}", choices_str);
 
     let response_task_list: Result<TaskList, serde_json::Error> =
         serde_json::from_str(&choices_str);
 
     match response_task_list {
         Ok(task_list) => {
-            log::debug!("Task list: {:?}", task_list);
+            //log::debug!("Task list: {:?}", task_list);
             Ok(TaskListResponseWithMessage {
                 task_list: task_list,
                 messages,
@@ -340,7 +302,7 @@ async fn get_generated_questions(
 /// # Returns
 /// A vector of `Result<QuestionWithAnswer, Error>` where each entry corresponds to the outcome
 /// (success or failure) of retrieving a code understanding for each question.
-async fn get_code_understandings(
+async fn get_codebase_answers_for_questions(
     repo_name: String,
     generated_questions: &Vec<QuestionWithId>,
 ) -> Vec<Result<QuestionWithAnswer, Error>> {
