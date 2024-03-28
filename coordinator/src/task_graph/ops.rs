@@ -181,7 +181,7 @@ impl TrackProcessV1 {
 
     pub fn extend_graph_with_answers(
         &mut self,
-        answers: Vec<Result<QuestionWithAnswer>>,
+        answers: &Vec<Result<QuestionWithAnswer>>,
     ) -> Result<(), NodeError> {
         // Check if the graph is initialized.
         let graph = self.graph.as_mut().ok_or(NodeError::GraphNotInitialized)?;

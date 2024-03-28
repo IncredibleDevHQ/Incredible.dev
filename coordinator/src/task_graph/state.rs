@@ -1,6 +1,7 @@
+use serde::de;
 use crate::task_graph::add_node::NodeError;
 use crate::task_graph::graph_model::EdgeV1;
-use crate::task_graph::graph_model::{NodeV1, TrackProcessV1};
+use crate::task_graph::graph_model::{NodeV1, QuestionWithAnswer, TrackProcessV1};
 use anyhow::Error;
 use common::llm_gateway::api::{Message, MessageSource, Messages};
 use log::debug;
@@ -10,7 +11,7 @@ use petgraph::visit::{Dfs, IntoNodeReferences, Visitable};
 use petgraph::Direction;
 
 use common::models::{Subtask, Task, TaskList};
-use serde::de;
+use common::CodeUnderstanding;
 
 /// Enum representing the various stages following the last conversation.
 #[derive(Debug, PartialEq)]
@@ -18,14 +19,11 @@ pub enum ConversationProcessingStage {
     AwaitingUserInput,
     GenerateTasksAndQuestions,
     TasksAndQuestionsGenerated, // Indicates that tasks and questions are generated, but answers are pending.
-    AnswersGenerated,           // Indicates that answers to the generated questions are available.
     GraphNotInitialized,
     OnlyRootNodeExists,
     AllQuestionsAnswered, // tasks are generated and all questions are answered.
     QuestionsPartiallyAnswered, // s
     Unknown,              // State cannot be determined or does not fit the other categories.
-    ProcessingError,
-    Done,
 }
 
 impl TrackProcessV1 {
@@ -281,7 +279,40 @@ impl TrackProcessV1 {
             ask_user: None,
         })
     }
-    // Helper functions (extract_subtasks and extract_questions) remain the same as previously defined.
+
+    // Extracts the current list of tasks with questions and answers which are alreaady answered.
+    pub fn get_current_questions_with_answers(&self) -> Result<Vec<QuestionWithAnswer>, NodeError> {
+        let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
+
+        let mut questions_with_answers = Vec::new();
+
+        for node_idx in graph.node_indices() {
+            if let NodeV1::Question(question) = &graph[node_idx] {
+                // Attempt to find a connected Answer node
+                let answer_edge = graph.edges_directed(node_idx, petgraph::Direction::Outgoing)
+                    .find(|edge| matches!(edge.weight(), EdgeV1::Answer));
+
+                if let Some(edge) = answer_edge {
+                    if let NodeV1::Answer(answer_text) = &graph[edge.target()] {
+                        // Construct a QuestionWithAnswer object
+                        let question_with_answer = QuestionWithAnswer {
+                            question_id: node_idx.index(), // Using the node index as a unique identifier
+                            question: question.clone(),
+                            answer: CodeUnderstanding {
+                                // Assuming CodeUnderstanding is derived from the answer text; adjust accordingly.
+                                context: vec![], // Populate with the actual context
+                                question: question.clone(),
+                                answer: answer_text.clone(),
+                            },
+                        };
+                        questions_with_answers.push(question_with_answer);
+                    }
+                }
+            }
+        }
+
+        Ok(questions_with_answers)
+    }
 
     // collects the history of conversations in the form of Messages, which is the
     // desired format for the response to the user.
