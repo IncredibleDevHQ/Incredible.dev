@@ -160,6 +160,33 @@ impl TrackProcessV1 {
         })
     }
 
+    /// Finds all questions without answers in the graph and returns them along with their NodeIndex.
+    pub fn get_unanswered_questions(&self) -> Result<Vec<QuestionWithId>, NodeError> {
+        let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
+        let mut unanswered_questions = Vec::new();
+
+        // Iterate over all nodes in the graph.
+        for node_index in graph.node_indices() {
+            // Check if the node is a Question node.
+            if let Some(NodeV1::Question(question)) = graph.node_weight(node_index) {
+                // Check if there's no outgoing edge to an Answer node.
+                let has_answer = graph
+                    .edges_directed(node_index, petgraph::Direction::Outgoing)
+                    .any(|edge| matches!(edge.weight(), EdgeV1::Answer));
+
+                // If there's no Answer node connected, add this question to the result.
+                if !has_answer {
+                    unanswered_questions.push(QuestionWithId {
+                        id: node_index.index(),
+                        text: question.clone(),
+                    });
+                }
+            }
+        }
+
+        Ok(unanswered_questions)
+    }
+
     pub fn extend_graph_with_answers(
         &mut self,
         answers: Vec<Result<QuestionWithAnswer>>,
@@ -172,7 +199,6 @@ impl TrackProcessV1 {
             if let Ok(answer) = answer_result {
                 // Use the NodeIndex from the answer to directly reference the question node.
                 let question_node_index = NodeIndex::new(answer.question_id);
-
                 // Ensure the node index points to a valid Question node.
                 if let Some(NodeV1::Question(_)) = graph.node_weight(question_node_index) {
                     // Create an Answer node and connect it to the Question node.
