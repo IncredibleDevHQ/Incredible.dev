@@ -1,4 +1,5 @@
 use crate::task_graph::add_node::NodeError;
+use crate::task_graph::graph_model::QuestionWithAnswer;
 use crate::task_graph::graph_model::{
     ConversationChain, EdgeV1, NodeV1, QuestionWithId, TrackProcessV1,
 };
@@ -159,28 +160,35 @@ impl TrackProcessV1 {
         })
     }
 
-    // pub fn extend_graph_with_answers(&mut self, answers: Vec<(usize, CodeUnderstanding)>) {
-    //     answers.iter().for_each(|(question_id, understanding)| {
-    //         // Find the corresponding question node for the given question_id and update its status to Done.
-    //         if let Some(question_node) = self
-    //             .graph
-    //             .node_indices()
-    //             .find(|&n| matches!(self.graph[n], NodeV1::Question(id, _) if id == *question_id))
-    //         {
-    //             // Create a node for the answer and connect it to the question node.
-    //             let answer_node = self
-    //                 .graph
-    //                 .add_node(NodeV1::Answer(understanding.answer.clone()));
-    //             self.graph
-    //                 .add_edge(question_node, answer_node, EdgeV1::Answer);
+    pub fn extend_graph_with_answers(
+        &mut self,
+        answers: Vec<Result<QuestionWithAnswer>>,
+    ) -> Result<(), NodeError> {
+        // Check if the graph is initialized.
+        let graph = self.graph.as_mut().ok_or(NodeError::GraphNotInitialized)?;
 
-    //             // Iterate over each CodeContext within the understanding to create and connect nodes.
-    //             understanding.context.iter().for_each(|context| {
-    //                 let context_node = self.graph.add_node(NodeV1::CodeContext(context.clone()));
-    //                 self.graph
-    //                     .add_edge(answer_node, context_node, EdgeV1::CodeContext);
-    //             });
-    //         }
-    //     });
-    // }
+        // Iterate through the answers, skipping any that are errors.
+        for answer_result in answers {
+            if let Ok(answer) = answer_result {
+                // Use the NodeIndex from the answer to directly reference the question node.
+                let question_node_index = NodeIndex::new(answer.question_id);
+
+                // Ensure the node index points to a valid Question node.
+                if let Some(NodeV1::Question(_)) = graph.node_weight(question_node_index) {
+                    // Create an Answer node and connect it to the Question node.
+                    let answer_node = graph.add_node(NodeV1::Answer(answer.answer.answer.clone()));
+                    graph.add_edge(question_node_index, answer_node, EdgeV1::Answer);
+
+                    // Add each CodeContext from the answer as a node connected to the Answer node.
+                    for context in answer.answer.context.iter() {
+                        let context_node = graph.add_node(NodeV1::CodeContext(context.clone()));
+                        graph.add_edge(answer_node, context_node, EdgeV1::CodeContext);
+                    }
+                } else {
+                    return Err(NodeError::InvalidQuestionNode);
+                }
+            }
+        }
+        Ok(())
+    }
 }
