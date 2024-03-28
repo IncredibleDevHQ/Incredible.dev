@@ -1,30 +1,33 @@
 use super::models::{CodeIndexingRequest, CodeIndexingStatus};
-use crate::server::models::CodeIndexingTaskStatus;
+use ingestion::state::{update_process_state, CodeIndexingTaskStatus};
 use ingestion::{Config, Indexer};
-use reqwest::StatusCode;
 use std::{convert::Infallible, env, path::PathBuf};
 
 pub async fn handle_code_index_wrapper(
     request: CodeIndexingRequest,
 ) -> Result<impl warp::Reply, Infallible> {
-    // Clone data necessary for the background task
-    let bg_request = request.clone();
+    log::info!("Received code indexing request: {:?}", request);
 
-    // Spawn a background task without awaiting its result
-    tokio::spawn(async move {
-        match handle_code_index_core(bg_request).await {
-            Ok(_) => log::info!("Background task completed successfully"),
-            Err(e) => log::error!("Background task failed: {}", e),
+    match handle_code_index_core(request).await {
+        Ok(status) => Ok(warp::reply::with_status(
+            warp::reply::json(&status),
+            warp::http::StatusCode::OK,
+        )),
+        Err(e) => {
+            log::error!("Background task failed: {}", e);
+            Ok(warp::reply::with_status(
+                warp::reply::json(&e.to_string()),
+                warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+            ))
         }
-    });
-
-    // Immediately respond to the HTTP request
-    Ok(warp::reply::with_status(
-        warp::reply::json(&"Task started"),
-        StatusCode::ACCEPTED,
-    ))
+    }
 }
 
+// TODO: Currently the underlying lib.rs functions don't do error propagation.
+// Rather it just logs and moves on, in the essence it doesn't fail the indexing jobs.
+// We need to refactor the underlying functions to handle the errors properly between
+// ignorable and non-ignorable errors. So the task will never be in a failed state but
+// in a completed state although the data might be corrupt.
 async fn handle_code_index_core(
     request: CodeIndexingRequest,
 ) -> Result<CodeIndexingStatus, anyhow::Error> {
@@ -49,8 +52,6 @@ async fn handle_code_index_core(
     // Instantiate an Indexer.
     let indexer = Indexer;
 
-    // Create a disk path pointing to a valid Git repository.
-    // let _ = tokio::task::spawn_blocking(move || {
     let disk_path = PathBuf::from(disk_path_str.clone());
     let config = Config::new(
         repo_name.to_string(),
@@ -62,19 +63,32 @@ async fn handle_code_index_core(
         version.to_string(),
     );
 
+    let task_id = uuid::Uuid::new_v4().to_string();
+    update_process_state(&task_id, 0, CodeIndexingTaskStatus::Queued);
+
+    // Clone `task_id` for use in the asynchronous block
+    let task_id_for_async = task_id.clone();
+
     // Use the indexer to index the repository, passing the disk path.
-    let _ = indexer
-        .index_repository(disk_path, repo_name.to_string(), config, &branch, &version)
-        .await;
-    // })
-    // .await?;
+    tokio::spawn(async move {
+        let _ = indexer
+            .index_repository(
+                disk_path,
+                repo_name.to_string(),
+                config,
+                &branch,
+                &version,
+                task_id_for_async,
+            )
+            .await;
+    });
 
     log::info!("Code indexing completed successfully");
 
     Ok(CodeIndexingStatus {
         repo_name: request.repo_name,
         repo_path: request.repo_path,
-        task_id: "1234567890".to_string(),
+        task_id,
         task_status: CodeIndexingTaskStatus::Running,
     })
 }
