@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{App, Arg};
+use ingestion::state::{update_process_state, CodeIndexingTaskStatus};
 use ingestion::{Config, Indexer};
 use log::info;
 
@@ -93,8 +94,18 @@ pub async fn execute() {
         version.to_string(),
     );
 
+    let task_id = uuid::Uuid::new_v4().to_string();
+    update_process_state(&task_id, 0, CodeIndexingTaskStatus::Queued);
+
     // Use the indexer to index the repository, passing the disk path.
     let _ = indexer
-        .index_repository(disk_path, repo_name.to_string(), config, branch, version)
+        .index_repository(
+            disk_path,
+            repo_name.to_string(),
+            config,
+            branch,
+            version,
+            task_id,
+        )
         .await;
 }
