@@ -69,7 +69,7 @@ pub enum NodeV1 {
     Conversation(MessageSource, Message, String), // Represents a conversation node with a message source.
     Task(String),             // Represents a discrete task derived from the root issue.
     Subtask(String),          // Represents a subtask under a specific task.
-    Question(String, String),  // Represents a question related to a specific subtask. First String is a UUId, second is the question text.
+    Question(String),  // Represents a question related to a specific subtask. 
     Answer(String),           // Represents an answer to a question.
     CodeContext(CodeContext), // Represents a code context associated with an answer.
 }
@@ -103,7 +103,7 @@ pub struct ConversationChain {
 // Define a struct to hold questions along with their IDs.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct QuestionWithId {
-    pub id: String,
+    pub id: usize,
     pub text: String,
 }
 

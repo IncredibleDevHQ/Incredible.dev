@@ -105,45 +105,58 @@ impl TrackProcessV1 {
         let start_node = self
             .last_added_conversation_node
             .ok_or(NodeError::MissingLastUpdatedNode)?;
-        
+
         if let Some(tasks) = task_list.tasks {
             tasks.into_iter().try_for_each(|task| {
-                self.add_task_node(task.task).and_then(|task_node| {
-                    task.subtasks.into_iter().try_for_each(|subtask| {
-                        self.add_subtask_node(subtask.subtask, task_node).and_then(|subtask_node| {
-                            subtask.questions.into_iter().try_for_each(|question_content| {
-                                self.add_question_node(question_content, subtask_node).map(|_| ())
+                self.add_task_node(task.task)
+                    .and_then(|task_node| {
+                        task.subtasks
+                            .into_iter()
+                            .try_for_each(|subtask| {
+                                self.add_subtask_node(subtask.subtask, task_node)
+                                    .and_then(|subtask_node| {
+                                        subtask.questions.into_iter().try_for_each(
+                                            |question_content| {
+                                                self.add_question_node(
+                                                    question_content,
+                                                    subtask_node,
+                                                )
+                                                .map(|_| ())
+                                            },
+                                        )
+                                    })
+                                    .map(|_| ())
                             })
-                        }).map(|_| ())
-                    }).map(|_| ())
-                }).map(|_| ())
+                            .map(|_| ())
+                    })
+                    .map(|_| ())
             })?;
         }
-    
+
         Ok(self)
     }
-    
-    
+
     /// Collects all questions from the graph and returns them as `QuestionWithId`.
     ///
     /// # Returns
     ///
     /// A vector of `QuestionWithId` instances.
     pub fn get_questions_with_ids(&self) -> Vec<QuestionWithId> {
-        let graph = self.graph.as_ref().unwrap();
-        graph
-            .node_weights()
-            .filter_map(|node| {
-                if let NodeV1::Question(id, text) = node {
-                    Some(QuestionWithId {
-                        id: id.to_string(),
-                        text: text.clone(),
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect()
+        self.graph.as_ref().map_or_else(Vec::new, |graph| {
+            graph
+                .node_indices()
+                .filter_map(|node_index| {
+                    if let Some(NodeV1::Question(text)) = graph.node_weight(node_index) {
+                        Some(QuestionWithId {
+                            id: node_index.index(),
+                            text: text.clone(),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
     }
 
     // pub fn extend_graph_with_answers(&mut self, answers: Vec<(usize, CodeUnderstanding)>) {

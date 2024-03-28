@@ -123,7 +123,7 @@ impl TrackProcessV1 {
     pub fn add_question_node(&mut self, question_content: String, subtask_node: NodeIndex) -> Result<NodeIndex, NodeError> {
         let question_uuid = Uuid::new_v4();  // Generate a unique UUID for the question.
         let graph = self.graph.as_mut().unwrap(); // Unwrap the graph for convenience
-        let question_node = graph.add_node(NodeV1::Question(question_uuid.to_string(), question_content));
+        let question_node = graph.add_node(NodeV1::Question(question_content));
         graph.add_edge(subtask_node, question_node, EdgeV1::Question);
         Ok(question_node)
     }
