@@ -124,7 +124,7 @@ impl TrackProcessV1 {
         graph
             .edges_directed(subtask_node, petgraph::Direction::Outgoing)
             .filter_map(|question_edge| {
-                if let Some(NodeV1::Question(_, question)) =
+                if let Some(NodeV1::Question(question)) =
                     graph.node_weight(question_edge.target())
                 {
                     Some(question.clone())
