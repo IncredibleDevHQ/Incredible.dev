@@ -12,14 +12,6 @@ use log::{error, info};
 use petgraph::graph::NodeIndex;
 use std::time::SystemTime;
 
-// type to represent the next step in the controller.
-#[derive(Debug, PartialEq)]
-pub enum NextControllerStep {
-    GetTasks,
-    GetAnswers,
-    Done,
-}
-
 impl TrackProcessV1 {
     /// Extends the graph with a chain of conversation nodes followed by task-related nodes if a task list is provided.
     ///

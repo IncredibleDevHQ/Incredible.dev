@@ -8,6 +8,7 @@ use log::{debug, error, info};
 use reqwest::{Method, StatusCode};
 use std::{collections::HashMap, convert::Infallible};
 
+use crate::models::SuggestResponse;
 use crate::task_graph::graph_model::{
     ConversationChain, QuestionWithAnswer, QuestionWithId, TrackProcessV1,
 };
@@ -68,57 +69,160 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
         TrackProcessV1::new(&request.repo_name)
     };
     // get the state of the conversation
-    let (state, node_index) = tracker.last_conversation_processing_stage();
+    let (mut state, node_index) = tracker.last_conversation_processing_stage();
 
-    let mut next_step = NextControllerStep::Done;
-    match state {
-        ConversationProcessingStage::OnlyRootNodeExists => {
-            error!("Only root node exists, no conversation has happened yet. Invalid state, create new conversation");
-            return Err(anyhow::anyhow!("Only root node exists, no conversation has happened yet. Invalid state, create new conversation"));
-        }
-        ConversationProcessingStage::GraphNotInitialized => {
-            info!("Graph not initialized, initializing the graph.");
-            tracker.initialize_graph();
-            next_step = NextControllerStep::GetTasks;
-        }
-        ConversationProcessingStage::TasksAndQuestionsGenerated => {
-            info!("Tasks and questions are generated, awaiting user input.");
-            // return the tasks, subtasks and questions.
-            let task_list = tracker.extract_task_list_response()?;
-            // print the graph
-            tracker.print_graph_hierarchy();
-            return Ok(task_list);
-        }
-        ConversationProcessingStage::AwaitingUserInput => {
-            info!("Awaiting user input, continuing the conversation.");
-            tracker.print_graph_hierarchy();
-            next_step = NextControllerStep::GetTasks;
-        }
-        ConversationProcessingStage::Unknown => {
-            // return error
-            let err_msg = "Unknown graph state, aborting the conversation.";
-            error!("{}", err_msg);
-            return Err(anyhow::anyhow!("{}", err_msg));
-        }
-        ConversationProcessingStage::AnswersGenerated => {
-            info!("Answers are generated, awaiting user input.");
-        }
-        ConversationProcessingStage::AllQuestionsAnswered => {
-            info!("All questions are answered, awaiting user input.");
-        }
-        ConversationProcessingStage::QuestionsPartiallyAnswered => {
-            info!("All tasks are completed, awaiting user input.");
+    let mut err: Option<anyhow::Error> = None;
+    let mut suggest_response = SuggestResponse {
+        questions_with_answers: None,
+        ask_user: Some(String::new()),
+        tasks: vec![],
+    };
+
+    while state != ConversationProcessingStage::Done
+        || state != ConversationProcessingStage::ProcessingError
+    {
+        match state {
+            ConversationProcessingStage::OnlyRootNodeExists => {
+                error!("Only root node exists, no conversation has happened yet. Invalid state, create new conversation");
+                return Err(anyhow::anyhow!("Only root node exists, no conversation has happened yet. Invalid state, create new conversation"));
+            }
+            ConversationProcessingStage::GraphNotInitialized => {
+                debug!("Graph not initialized, initializing the graph and setting the next state to GenerateTasksAndQuestions");
+                tracker.initialize_graph();
+                state = ConversationProcessingStage::GenerateTasksAndQuestions;
+            }
+            ConversationProcessingStage::GenerateTasksAndQuestions => {
+                // get the generated questions from the LLM or the file based on the data modes
+                let generated_questions_with_llm_messages: TaskListResponseWithMessage =
+                    generate_tasks_and_questions(
+                        request.user_query.clone(),
+                        request.repo_name.clone(),
+                    )
+                    .await?;
+
+                debug!(
+                    "Generated questions: {:?}",
+                    generated_questions_with_llm_messages
+                );
+
+                // the response contains the generated questions and the messages
+                // the messages contain the system prompt which was used to generate the questions
+                // also the response of the assistant for the prompt used to generate questions.
+                let generated_questions: TaskList = generated_questions_with_llm_messages.task_list;
+                let messages = generated_questions_with_llm_messages.messages;
+
+                if generated_questions.ask_user.is_none() && generated_questions.tasks.is_none() {
+                    let error_message = format!(
+                        "No tasks or either ask_user is generated. The LLM is not supposed to behave this way, test the API response from the code understanding service for query: {}, repo: {}",
+                        request.user_query, request.repo_name
+                    );
+                    error!("{}", error_message);
+                    return Err(anyhow::anyhow!(error_message));
+                }
+
+                let user_system_assistant_conversation = ConversationChain {
+                    user_message: Message::user(&request.user_query),
+                    system_message: messages[0].clone(),
+                    assistant_message: messages[1].clone(),
+                };
+                // add the generated questions to the graph
+                // if the questions are not present, return the ask_user message
+                // the function also saves the graph to the redis
+                // Note: this mutates the state of graph inside task process
+                tracker.extend_graph_with_conversation_and_tasklist(
+                    user_system_assistant_conversation,
+                    Some(TaskList {
+                        tasks: generated_questions.tasks.clone(),
+                        ask_user: None,
+                    }),
+                )?;
+
+              // when you ask LLM to generate tasks, subtasks and questions, it might not generate it 
+              // when the user hasen't provided enough context.
+              // for instance, if user asks something like "help me with my api", 
+              // the LLM might respond with a generic response with some detail like "Can you provide more context? What specifically do you need help with regarding your API?"
+              // In this case the the systems state in the graph would transition to AwaitingUserInput
+              // if you don't stop here and dry to fetch answer again, the state machine will loop forever.
+              // Instead you return and provide more opporunity for user to provide input.
+                (state, _ )  = tracker.last_conversation_processing_stage();
+                if state == ConversationProcessingStage::AwaitingUserInput {
+                    // return TaskList
+                    return Ok(suggest_response.tasks.clone());
+                }
+            }
+            ConversationProcessingStage::TasksAndQuestionsGenerated => {
+                debug!("Tasks and questions are generated, moving onto finding answers for the questions.");
+                // return the tasks, subtasks and questions.
+                let task_list = tracker.get_unanswered_questions()?;
+                debug!(
+                    "Unanswered questions fetched from task_graph: {:?}",
+                    task_list
+                );
+                // print the graph
+                //tracker.print_graph_hierarchy();
+                let questions_with_answers = get_codebase_answers_for_questions(
+                    request.repo_name.clone(),
+                    &task_list.clone(),
+                )
+                .await;
+                // update the graph with answers
+                // Note: this mutates the state of graph inside task process
+                tracker.extend_graph_with_answers(questions_with_answers)?;
+                // find if any of the Result in Vec has error, if so just return the error
+                // the reason to do this is to avoid the state machine getting into an infinite loop.
+                // Imagine a scenario where there were some unanswered questions, 
+                // we don't want the system to continue further until they succeed.
+                // So we update the task graph even if there some successfull answers, and return error 
+                // even if there was one unsuccessful answer. 
+                // the client can retry, and the next time the system will contine from where it left off
+                // to retry fetching answer only for the unanswered questions.
+                let answer_err = questions_with_answers.iter().find(|x| x.is_err());
+                if let Some(err_result) = answer_err {
+                    return Err(err_result.clone().unwrap_err());
+                } else {
+                    return Ok(task_list);
+                }
+            }
+            ConversationProcessingStage::AwaitingUserInput => {
+                debug!("Awaiting user input, moving onto getting tasks/questions for the next objective round.");
+                state = ConversationProcessingStage::GenerateTasksAndQuestions;
+                //tracker.print_graph_hierarchy();
+            }
+            ConversationProcessingStage::Unknown => {
+                // return error
+                let err_msg = "Unknown graph state, aborting the conversation.";
+                error!("{}", err_msg);
+                return Err(anyhow::anyhow!("{}", err_msg));
+            }
+            ConversationProcessingStage::AllQuestionsAnswered => {
+                info!("All questions are answered, awaiting user input.");
+            }
+            ConversationProcessingStage::QuestionsPartiallyAnswered => {
+                info!("All tasks are completed, awaiting user input.");
+            }
+            ConversationProcessingStage::ProcessingError => {
+                // return error
+                let err_msg = "Error occurred in conversation processing, aborting.";
+                error!("{}", err_msg);
+                return Err(anyhow::anyhow!("{}", err_msg));
+            }
+            ConversationProcessingStage::Done => {
+                info!("Conversation is completed.");
+                // return success
+                return Ok(TaskList::new());
+            }
         }
     }
 
     // get tasks and questions if the next step is GetTasks
     if next_step == NextControllerStep::GetTasks {
-        let messages = tracker.collect_conversation_messages()?;
-
         // get the generated questions from the LLM or the file based on the data modes
         let generated_questions_with_llm_messages: TaskListResponseWithMessage =
-            match generate_tasks_and_questions(request.user_query.clone(), request.repo_name.clone())
-                .await
+            match generate_tasks_and_questions(
+                request.user_query.clone(),
+                request.repo_name.clone(),
+            )
+            .await
             {
                 Ok(questions) => questions,
                 Err(e) => {
@@ -351,57 +455,57 @@ async fn generate_tasks_and_questions(
 /// # Returns
 /// A vector of `Result<QuestionWithAnswer, Error>` where each entry corresponds to the outcome
 /// (success or failure) of retrieving a code understanding for each question.
-// async fn get_code_understandings(
-//     repo_name: String,
-//     generated_questions: &Vec<QuestionWithId>,
-// ) -> Vec<Result<QuestionWithAnswer, Error>> {
-//     // Construct the URL for the code understanding service.
-//     let code_understanding_url = format!("{}/retrieve-code", CONFIG.code_understanding_url);
+async fn get_codebase_answers_for_questions(
+    repo_name: String,
+    generated_questions: &Vec<QuestionWithId>,
+) -> Vec<Result<QuestionWithAnswer, Error>> {
+    // Construct the URL for the code understanding service.
+    let code_understanding_url = format!("{}/retrieve-code", CONFIG.code_understanding_url);
 
-//     // Map each question to a future that represents an asynchronous service call
-//     // to retrieve the code understanding.
-//     let futures_answers_for_questions: Vec<_> = generated_questions
-//         .iter()
-//         .map(|question_with_id| {
-//             // Clone the URL and repository name for each service call.
-//             let url = code_understanding_url.clone();
-//             let repo_name = repo_name.clone();
+    // Map each question to a future that represents an asynchronous service call
+    // to retrieve the code understanding.
+    let futures_answers_for_questions: Vec<_> = generated_questions
+        .iter()
+        .map(|question_with_id| {
+            // Clone the URL and repository name for each service call.
+            let url = code_understanding_url.clone();
+            let repo_name = repo_name.clone();
 
-//             // Construct the query parameters for the service call.
-//             let mut query_params = HashMap::new();
-//             query_params.insert("query".to_string(), question_with_id.text.clone());
-//             query_params.insert("repo".to_string(), repo_name);
+            // Construct the query parameters for the service call.
+            let mut query_params = HashMap::new();
+            query_params.insert("query".to_string(), question_with_id.text.clone());
+            query_params.insert("repo".to_string(), repo_name);
 
-//             // Define an asynchronous block that makes the service call, processes the response,
-//             // and constructs a `QuestionWithAnswer` object.
-//             async move {
-//                 // Perform the service call.
-//                 let response: Result<CodeUnderstanding, Error> =
-//                     service_caller::<CodeUnderstandRequest, CodeUnderstanding>(
-//                         url,
-//                         Method::GET,
-//                         None,
-//                         Some(query_params),
-//                     )
-//                     .await;
+            // Define an asynchronous block that makes the service call, processes the response,
+            // and constructs a `QuestionWithAnswer` object.
+            async move {
+                // Perform the service call.
+                let response: Result<CodeUnderstanding, Error> =
+                    service_caller::<CodeUnderstandRequest, CodeUnderstanding>(
+                        url,
+                        Method::GET,
+                        None,
+                        Some(query_params),
+                    )
+                    .await;
 
-//                 // Convert the service response to a `QuestionWithAnswer`.
-//                 // In case of success, wrap the resulting `QuestionWithAnswer` in `Ok`.
-//                 // In case of an error, convert the error to `anyhow::Error` using `map_err`.
-//                 response
-//                     .map(|answer| QuestionWithAnswer {
-//                         question_id: question_with_id.id,
-//                         question: question_with_id.text.clone(),
-//                         answer,
-//                     })
-//                     .map_err(anyhow::Error::from)
-//             }
-//         })
-//         .collect();
+                // Convert the service response to a `QuestionWithAnswer`.
+                // In case of success, wrap the resulting `QuestionWithAnswer` in `Ok`.
+                // In case of an error, convert the error to `anyhow::Error` using `map_err`.
+                response
+                    .map(|answer| QuestionWithAnswer {
+                        question_id: question_with_id.id,
+                        question: question_with_id.text.clone(),
+                        answer,
+                    })
+                    .map_err(anyhow::Error::from)
+            }
+        })
+        .collect();
 
-//     // Await all futures to complete and collect their results.
-//     join_all(futures_answers_for_questions).await
-// }
+    // Await all futures to complete and collect their results.
+    join_all(futures_answers_for_questions).await
+}
 
 // TODO: Remove unused warning suppressor once the context generator is implemented
 #[allow(unused)]

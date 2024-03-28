@@ -1,3 +1,4 @@
+use anyhow::Error;
 use crate::task_graph::add_node::NodeError;
 use crate::task_graph::graph_model::EdgeV1;
 use crate::task_graph::graph_model::{NodeV1, TrackProcessV1};
@@ -15,6 +16,7 @@ use serde::de;
 #[derive(Debug, PartialEq)]
 pub enum ConversationProcessingStage {
     AwaitingUserInput,
+    GenerateTasksAndQuestions,
     TasksAndQuestionsGenerated, // Indicates that tasks and questions are generated, but answers are pending.
     AnswersGenerated,           // Indicates that answers to the generated questions are available.
     GraphNotInitialized,
@@ -22,6 +24,8 @@ pub enum ConversationProcessingStage {
     AllQuestionsAnswered, // tasks are generated and all questions are answered.
     QuestionsPartiallyAnswered, // s
     Unknown, // State cannot be determined or does not fit the other categories.
+    ProcessingError,
+    Done,
 }
 
 impl TrackProcessV1 {
