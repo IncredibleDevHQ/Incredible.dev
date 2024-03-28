@@ -3,11 +3,10 @@ use crate::task_graph::graph_model::EdgeV1;
 use crate::task_graph::graph_model::{NodeV1, TrackProcessV1};
 use common::llm_gateway::api::{Message, MessageSource, Messages};
 use log::debug;
-use petgraph::graph::DiGraph;
-use petgraph::graph::NodeIndex;
+use petgraph::graph::{DiGraph, NodeIndex};
+use petgraph::Direction;
 use petgraph::visit::EdgeRef;
 use petgraph::visit::{Dfs, IntoNodeReferences, Visitable};
-use petgraph::Graph;
 
 use common::models::{Subtask, Task, TaskList};
 use serde::de;
@@ -16,10 +15,12 @@ use serde::de;
 #[derive(Debug, PartialEq)]
 pub enum ConversationProcessingStage {
     AwaitingUserInput,
-    TasksAndQuestionsGenerated, // Indicates that tasks and questions are generated.
+    TasksAndQuestionsGenerated, // Indicates that tasks and questions are generated, but answers are pending.
     AnswersGenerated,           // Indicates that answers to the generated questions are available.
     GraphNotInitialized,
     OnlyRootNodeExists,
+    AllQuestionsAnswered, // tasks are generated and all questions are answered.
+    QuestionsPartiallyAnswered, // s
     Unknown, // State cannot be determined or does not fit the other categories.
 }
 
@@ -28,6 +29,38 @@ impl TrackProcessV1 {
     /// Returns the node ID of the last conversation node.
     pub fn last_conversation_node_id(&self) -> Option<NodeIndex> {
         self.last_added_conversation_node
+    }
+
+    // Assuming you have a graph `graph` already populated
+    fn check_question_completion(&self) -> ConversationProcessingStage {
+        let graph = self.graph.as_ref().unwrap();
+        let question_nodes = graph
+            .node_indices()
+            .filter_map(|node_idx| match graph.node_weight(node_idx) {
+                Some(NodeV1::Question(..)) => Some(node_idx),
+                _ => None,
+            })
+            .collect::<Vec<NodeIndex>>();
+
+        let mut answered_questions = 0;
+
+        for question_node in &question_nodes {
+            let has_answer = graph
+                .edges_directed(*question_node, Direction::Outgoing)
+                .any(|edge| matches!(graph.node_weight(edge.target()), Some(NodeV1::Answer(..))));
+
+            if has_answer {
+                answered_questions += 1;
+            }
+        }
+
+        match answered_questions {
+            0 => ConversationProcessingStage::TasksAndQuestionsGenerated,
+            count if count == question_nodes.len() => {
+                ConversationProcessingStage::AllQuestionsAnswered
+            }
+            _ => ConversationProcessingStage::QuestionsPartiallyAnswered,
+        }
     }
 
     /// Determines the processing stage of the last conversation in the graph.
@@ -50,16 +83,19 @@ impl TrackProcessV1 {
                 // Proceed if there are more nodes beyond the root.
                 if let Some(last_conversation_node_id) = self.last_added_conversation_node {
                     // Check for the existence of a 'Process' edge to a Task node from the last conversation node.
-                    let process_to_task_edge_exists = graph
+                    let conversation_to_task_edge_exists = graph
                         .edges_directed(last_conversation_node_id, petgraph::Direction::Outgoing)
                         .any(|edge| {
                             matches!(edge.weight(), EdgeV1::Task)
                                 && matches!(graph.node_weight(edge.target()), Some(NodeV1::Task(_)))
                         });
 
-                    let processing_stage = if process_to_task_edge_exists {
-                        // If there's a Process edge to a Task node, we know tasks and associated questions were generated.
-                        ConversationProcessingStage::TasksAndQuestionsGenerated
+                    let processing_stage = if conversation_to_task_edge_exists {
+                        // If tasks exist, the systems state could be one of the three 
+                        // 1. TasksAndQuestionsGenerated - Tasks and questions are generated, but answers are pending.
+                        // 2. AllQuestionsAnswered - Tasks are generated and all questions are answered.
+                        // 3. QuestionsPartiallyAnswered - Tasks are generated and some questions are answered., but some are pending.
+                        self.check_question_completion()
                     } else {
                         // If no Process edge to a Task node is found, we're awaiting user input or further actions.
                         ConversationProcessingStage::AwaitingUserInput
@@ -222,8 +258,7 @@ impl TrackProcessV1 {
     }
 
     // print the nodes and edges of the graph in a hierarchical manner.
-    pub fn print_graph_hierarchy(&self)
-    {
+    pub fn print_graph_hierarchy(&self) {
         // If the graph is not initialized, return early.
         if self.graph.is_none() {
             println!("Graph is not initialized. Cannot print the graph.");

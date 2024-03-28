@@ -103,6 +103,12 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
         ConversationProcessingStage::AnswersGenerated => {
             info!("Answers are generated, awaiting user input.");
         }
+        ConversationProcessingStage::AllQuestionsAnswered => {
+            info!("All questions are answered, awaiting user input.");
+        }
+        ConversationProcessingStage::QuestionsPartiallyAnswered => {
+            info!("All tasks are completed, awaiting user input.");
+        }
     }
 
     // get tasks and questions if the next step is GetTasks
