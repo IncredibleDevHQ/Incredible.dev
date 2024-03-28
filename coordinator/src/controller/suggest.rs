@@ -1,5 +1,5 @@
 use anyhow::{Error, Result};
-use common::llm_gateway::api::Message;
+use common::llm_gateway::api::{Message, Messages};
 use common::models::{
     CodeContextRequest, CodeUnderstandRequest, TaskList, TaskListResponseWithMessage,
 };
@@ -13,7 +13,7 @@ use crate::task_graph::graph_model::{
 };
 use crate::task_graph::ops::NextControllerStep;
 use crate::task_graph::redis::load_task_process_from_redis;
-use crate::task_graph::state::{print_graph_hierarchy, ConversationProcessingStage};
+use crate::task_graph::state::ConversationProcessingStage;
 use common::{llm_gateway, prompts};
 use common::{service_interaction::service_caller, CodeUnderstanding, CodeUnderstandings};
 
@@ -86,12 +86,12 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
             // return the tasks, subtasks and questions.
             let task_list = tracker.extract_task_list_response()?;
             // print the graph
-            print_graph_hierarchy(&tracker.graph.unwrap());
+            tracker.print_graph_hierarchy();
             return Ok(task_list);
         }
         ConversationProcessingStage::AwaitingUserInput => {
             info!("Awaiting user input, continuing the conversation.");
-            let messages = tracker.collect_conversation_messages();
+            tracker.print_graph_hierarchy();
             next_step = NextControllerStep::GetTasks;
         }
         ConversationProcessingStage::Unknown => {
@@ -107,9 +107,11 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
 
     // get tasks and questions if the next step is GetTasks
     if next_step == NextControllerStep::GetTasks {
+        let messages = tracker.collect_conversation_messages()?;
+
         // get the generated questions from the LLM or the file based on the data modes
         let generated_questions_with_llm_messages: TaskListResponseWithMessage =
-            match get_generated_questions(request.user_query.clone(), request.repo_name.clone())
+            match generate_tasks_and_questions(request.user_query.clone(), request.repo_name.clone())
                 .await
             {
                 Ok(questions) => questions,
@@ -260,11 +262,11 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<TaskList, anyhow
     // })
 }
 
-async fn get_generated_questions(
+async fn generate_tasks_and_questions(
     user_query: String,
     repo_name: String,
 ) -> Result<TaskListResponseWithMessage, anyhow::Error> {
-    // intialize new llm gateway.
+    // initialize new llm gateway.
 
     // otherwise call the llm gateway to generate the questions
     let llm_gateway = llm_gateway::Client::new(&CONFIG.openai_url)
@@ -274,7 +276,10 @@ async fn get_generated_questions(
 
     let system_prompt: String = prompts::question_concept_generator_prompt(&user_query, &repo_name);
     let system_message = llm_gateway::api::Message::system(&system_prompt);
-    let mut messages = Some(system_message).into_iter().collect::<Vec<_>>();
+    // append the system message to the message history
+    let mut messages = Some(system_message.clone()).into_iter().collect::<Vec<_>>();
+
+    // append the system message to the message history
 
     let response = match llm_gateway
         .clone()
@@ -304,14 +309,14 @@ async fn get_generated_questions(
     let assistant_message = llm_gateway::api::Message::assistant(&choices_str);
     messages.push(assistant_message);
 
-    log::debug!("Choices: {}", choices_str);
+    //log::debug!("Choices: {}", choices_str);
 
     let response_task_list: Result<TaskList, serde_json::Error> =
         serde_json::from_str(&choices_str);
 
     match response_task_list {
         Ok(task_list) => {
-            log::debug!("Task list: {:?}", task_list);
+            //log::debug!("Task list: {:?}", task_list);
             Ok(TaskListResponseWithMessage {
                 task_list: task_list,
                 messages,

@@ -9,7 +9,7 @@ use petgraph::visit::EdgeRef;
 use petgraph::visit::{Dfs, IntoNodeReferences, Visitable};
 use petgraph::Graph;
 
-use common::models::{Subtask, Task, TaskList };
+use common::models::{Subtask, Task, TaskList};
 use serde::de;
 
 /// Enum representing the various stages following the last conversation.
@@ -183,7 +183,7 @@ impl TrackProcessV1 {
 
         Ok(TaskList {
             tasks: Some(tasks),
-            ask_user: None, 
+            ask_user: None,
         })
     }
     // Helper functions (extract_subtasks and extract_questions) remain the same as previously defined.
@@ -220,34 +220,38 @@ impl TrackProcessV1 {
 
         Ok(Messages { messages })
     }
-}
 
-/// Prints the graph hierarchy starting from the root node.
-pub fn print_graph_hierarchy<N, E>(graph: &Graph<N, E>)
-where
-    N: std::fmt::Debug,
-    E: std::fmt::Debug,
-{
-    // Initialize depth-first search (DFS) to traverse the graph.
-    let mut dfs = Dfs::new(&graph, graph.node_indices().next().unwrap());
-
-    while let Some(node_id) = dfs.next(&graph) {
-        // The depth here is used to indent the output for hierarchy visualization.
-        let depth = dfs.stack.len();
-        let indent = " ".repeat(depth * 4); // Indent based on depth.
-
-        if let Some(node) = graph.node_weight(node_id) {
-            println!("{}{:?} (Node ID: {:?})", indent, node, node_id);
+    // print the nodes and edges of the graph in a hierarchical manner.
+    pub fn print_graph_hierarchy(&self)
+    {
+        // If the graph is not initialized, return early.
+        if self.graph.is_none() {
+            println!("Graph is not initialized. Cannot print the graph.");
+            return;
         }
 
-        // Print edges and connected nodes.
-        for edge in graph.edges(node_id) {
-            println!(
-                "{}--> Edge: {:?}, connects to Node ID: {:?}",
-                " ".repeat((depth + 1) * 4),
-                edge.weight(),
-                edge.target()
-            );
+        let graph = self.graph.as_ref().unwrap();
+        // Initialize depth-first search (DFS) to traverse the graph.
+        let mut dfs = Dfs::new(&graph, graph.node_indices().next().unwrap());
+
+        while let Some(node_id) = dfs.next(&graph) {
+            // The depth here is used to indent the output for hierarchy visualization.
+            let depth = dfs.stack.len();
+            let indent = " ".repeat(depth * 4); // Indent based on depth.
+
+            if let Some(node) = graph.node_weight(node_id) {
+                println!("{}{:?} (Node ID: {:?})", indent, node, node_id);
+            }
+
+            // Print edges and connected nodes.
+            for edge in graph.edges(node_id) {
+                println!(
+                    "{}--> Edge: {:?}, connects to Node ID: {:?}",
+                    " ".repeat((depth + 1) * 4),
+                    edge.weight(),
+                    edge.target()
+                );
+            }
         }
     }
 }
