@@ -17,6 +17,7 @@ mod index_filter;
 mod index_processor;
 mod semantic_index;
 mod stack_graph;
+pub mod state;
 mod util;
 
 extern crate git2;
@@ -24,6 +25,7 @@ extern crate git2;
 use crate::ast::symbol::{SymbolKey, SymbolLocations, SymbolValue};
 use crate::ast::CodeFileAST;
 use crate::semantic_index::{SemanticError, SemanticIndex};
+use crate::state::{update_process_state, CodeIndexingTaskStatus};
 use hash::compute_hashes;
 use index_filter::index_filter;
 
@@ -688,8 +690,10 @@ impl Indexer {
         config: Config,
         branch: &str,
         version: &str,
+        task_id: String,
     ) -> Result<()> {
         info!("Indexing repository: {}", repo_name);
+        update_process_state(&task_id, 0, CodeIndexingTaskStatus::Running);
         // Create a new Repository instance using the `new` method.
         let mut repo = Repository::new(
             disk_path.clone(),
@@ -746,6 +750,7 @@ impl Indexer {
         )
         .await?;
 
+        update_process_state(&task_id, 0, CodeIndexingTaskStatus::Completed);
         Ok(())
     }
 
