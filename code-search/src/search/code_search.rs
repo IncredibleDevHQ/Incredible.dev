@@ -1,3 +1,4 @@
+use common::hasher::generate_quikwit_index_name;
 use log::debug;
 use std::sync::Arc;
 
@@ -5,11 +6,11 @@ extern crate common;
 
 use crate::db::DbConnect;
 use crate::graph::scope_graph::SymbolLocations;
-use common::models::CodeChunk;
 use crate::parser::literal::Literal;
 use crate::search::payload::{CodeExtractMeta, PathExtractMeta, SymbolPayload};
 use crate::search::ranking::rank_symbol_payloads;
 use crate::AppState;
+use common::models::CodeChunk;
 
 use anyhow::{anyhow, Error, Result};
 use serde::{Deserialize, Serialize};
@@ -249,32 +250,14 @@ async fn process_paths(
     Ok(results)
 }
 
-// Input is repo name in format v2/owner_name/repo_name.
-// We generate hash of namespace using md5 and prefix it with the repo name extracted from namespace.
-pub fn generate_quikwit_index_name(namespace: &str) -> String {
-    // TODO: Temporarily changed for ease of development
-    log::debug!("Generating quikwit index name for namespace: {}", namespace);
-    // let repo_name = namespace.split("/").last().unwrap();
-    // let version = namespace.split("/").nth(0).unwrap();
-    // let md5_index_id = compute(namespace);
-    // // create a hex string
-    // let new_index_id = format!("{:x}", md5_index_id);
-    // let index_name = format!("{}-{}-{}", version, repo_name, new_index_id);
-    return namespace.to_string();
-}
-
 pub async fn get_file_content(
     path: &str,
     repo_name: &String,
     app_state: Arc<AppState>,
 ) -> Result<Option<ContentDocument>> {
     let config = app_state.configuration.clone();
-
-    let environment = config.environment.clone();
-
     let new_index_id = generate_quikwit_index_name(repo_name);
 
-    // log::debug!("fetching file content {}\n", path);
-
+    log::debug!("fetching file content {}\n", path);
     get_file_from_quickwit(&new_index_id, "relative_path", path, app_state).await
 }
