@@ -1,5 +1,6 @@
 use anyhow::Error;
-use log::{error, debug, info};
+use common::hasher::generate_qdrant_index_name;
+use log::{debug, error, info};
 use reqwest::header::HeaderValue;
 use reqwest::Client;
 
@@ -11,7 +12,6 @@ use crate::models::SymbolSearchRequest;
 use crate::search::code_search::code_search;
 use crate::AppState;
 use anyhow::Result;
-use md5::compute;
 use reqwest;
 use serde::{Deserialize, Serialize};
 
@@ -128,19 +128,4 @@ async fn get_collection_status(
             return Err(e.into());
         }
     }
-}
-
-pub fn generate_qdrant_index_name(namespace: &str) -> String {
-    // TODO: Temporarily changed for ease of development
-    debug!("Namespace inside qdrant: {}", namespace);
-    // let repo_name = namespace.split("/").last().unwrap();
-    // let version = namespace.split("/").nth(0).unwrap();
-    // let md5_index_id = compute(namespace);
-    // // create a hex string
-    // let new_index_id = format!("{:x}", md5_index_id);
-    // let index_name = format!(
-    //     "{}-{}-{}-documents-symbols",
-    //     version, repo_name, new_index_id
-    // );
-    return namespace.to_string();
 }
