@@ -1,9 +1,9 @@
-use crate::controller::symbol::generate_qdrant_index_name;
 use crate::search::semantic::SemanticError::QdrantInitializationError;
 use anyhow::Result;
+use common::hasher::generate_qdrant_index_name;
+use log::debug;
 use std::{str, time::Duration};
 use thiserror::Error;
-use log::debug;
 
 use crate::{
     parser::literal::Literal,
@@ -209,8 +209,7 @@ impl Semantic {
         let search_request = &SearchPoints {
             limit,
             vector,
-            // TODO: collection name is hard coded, eliminate that later.
-            collection_name: generate_qdrant_index_name("documents_symbol"),
+            collection_name: generate_qdrant_index_name(repo_name),
             offset: Some(offset),
             score_threshold: Some(threshold),
             with_payload: Some(WithPayloadSelector {
@@ -225,7 +224,6 @@ impl Semantic {
             }),
             ..Default::default()
         };
-
 
         let response = self.qdrant.search_points(search_request).await?;
 

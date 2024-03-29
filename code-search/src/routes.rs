@@ -132,6 +132,8 @@ fn parent_scope_retrieve(
         .and_then(parentscope::parent_scope_search) // Assuming you have a corresponding handler in the controller
 }
 
+
+
 /// Provides DbConnect instance wrapped in Arc<Mutex> to the next filter.
 fn with_db(
     db: Arc<DbConnect>,
