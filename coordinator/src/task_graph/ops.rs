@@ -8,7 +8,7 @@ use anyhow::Result;
 use common::llm_gateway::api::{Message, MessageSource};
 use common::models::TaskList;
 use common::CodeUnderstanding;
-use log::{error, info};
+use log::{error, debug, info};
 use petgraph::graph::NodeIndex;
 use std::time::SystemTime;
 
@@ -189,10 +189,12 @@ impl TrackProcessV1 {
         // Iterate through the answers, skipping any that are errors.
         for answer_result in answers {
             if let Ok(answer) = answer_result {
+                debug!("Successfully processing an answer: {:?}", answer);
                 // Use the NodeIndex from the answer to directly reference the question node.
                 let question_node_index = NodeIndex::new(answer.question_id);
                 // Ensure the node index points to a valid Question node.
                 if let Some(NodeV1::Question(_)) = graph.node_weight(question_node_index) {
+                    debug!("Adding answer to question node with index: {:?}", question_node_index);
                     // Create an Answer node and connect it to the Question node.
                     let answer_node = graph.add_node(NodeV1::Answer(answer.answer.answer.clone()));
                     graph.add_edge(question_node_index, answer_node, EdgeV1::Answer);
@@ -205,7 +207,17 @@ impl TrackProcessV1 {
                 } else {
                     return Err(NodeError::InvalidQuestionNode);
                 }
+            } else {
+                error!("Failed to process an answer due to error: {:?}", answer_result.as_ref().err());
             }
+        }
+        // update the last_updated timestamp to the current time
+        self.last_updated = SystemTime::now();
+        // save the task process to redis
+        if let Err(e) = save_task_process_to_redis(self) {
+            error!("Failed to save task process to Redis: {:?}", e);
+            // return error if saving to redis fails
+            return Err(NodeError::RedisSaveError);
         }
         Ok(())
     }
