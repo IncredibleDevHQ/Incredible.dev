@@ -6,6 +6,7 @@ mod controller;
 mod models;
 mod routes;
 mod task_graph;
+mod utility;
 
 use core::result::Result::Ok;
 use std::env;
