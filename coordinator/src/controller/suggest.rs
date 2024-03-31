@@ -133,7 +133,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 // the LLM might respond with a generic response with some detail like "Can you provide more context? What specifically do you need help with regarding your API?"
                 // In this case the the systems state in the graph would transition to AwaitingUserInput
                 // if you don't stop here and dry to fetch answer again, the state machine will loop forever.
-                // Instead you return and provide more opporunity for user to provide input.
+                // Instead you return and provide more opportunity for user to provide input.
                 (state, _) = tracker.last_conversation_processing_stage();
                 if state == ConversationProcessingStage::AwaitingUserInput {
                     debug!("Tasks and Questions not generated, awaiting more user input, returning ask_user state.");
@@ -144,12 +144,13 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                         questions_with_answers: None,
                     });
                 }
-                // the tasks and questions are successfullly generated, move to find answers for the questions.
+                // the tasks and questions are successfully generated, move to find answers for the questions.
                 debug!("Tasks and Questions generated successfully, moving onto finding answers for the generated questions.");
                 state = ConversationProcessingStage::TasksAndQuestionsGenerated;
             }
             ConversationProcessingStage::TasksAndQuestionsGenerated => {
                 debug!("Tasks and questions are generated, moving onto finding answers for the questions.");
+                tracker.print_graph_hierarchy();
                 // return the tasks, subtasks and questions.
                 let task_list = tracker.get_unanswered_questions()?;
                 debug!(
@@ -176,7 +177,10 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 // to retry fetching answer only for the unanswered questions.
                 let answer_err = questions_with_answers.iter().find(|x| x.is_err());
                 if let Some(err_result) = answer_err {
-                    return Err(anyhow::anyhow!(err_result.as_ref().unwrap_err().to_string()));
+                    return Err(anyhow::anyhow!(err_result
+                        .as_ref()
+                        .unwrap_err()
+                        .to_string()));
                 } else {
                     let answers = questions_with_answers
                         .into_iter()
@@ -336,6 +340,14 @@ async fn get_codebase_answers_for_questions(
                     )
                     .await;
 
+                // log error from response
+                if response.is_err() {
+                    error!(
+                        "Error fetching code understanding for question:{}, Response error: {}",
+                        question_with_id.clone(),
+                        response.as_ref().err().unwrap()
+                    );
+                }
                 // Convert the service response to a `QuestionWithAnswer`.
                 // In case of success, wrap the resulting `QuestionWithAnswer` in `Ok`.
                 // In case of an error, convert the error to `anyhow::Error` using `map_err`.

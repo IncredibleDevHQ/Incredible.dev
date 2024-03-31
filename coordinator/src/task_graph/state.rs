@@ -1,4 +1,3 @@
-use serde::de;
 use crate::task_graph::add_node::NodeError;
 use crate::task_graph::graph_model::EdgeV1;
 use crate::task_graph::graph_model::{NodeV1, QuestionWithAnswer, TrackProcessV1};
@@ -9,6 +8,7 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use petgraph::visit::{Dfs, IntoNodeReferences, Visitable};
 use petgraph::Direction;
+use serde::de;
 
 use common::models::{Subtask, Task, TaskList};
 use common::CodeUnderstanding;
@@ -45,10 +45,19 @@ impl TrackProcessV1 {
             .collect::<Vec<NodeIndex>>();
 
         let mut answered_questions = 0;
+        if question_nodes.is_empty() {
+            debug!("No question nodes found in the graph.");
+            return ConversationProcessingStage::GenerateTasksAndQuestions;
+        }
 
         for question_node in &question_nodes {
             let has_answer = graph
                 .edges_directed(*question_node, Direction::Outgoing)
+                // map and print the edges 
+                .map(|edge| {
+                    debug!("Edge: {:?}", edge);
+                    edge
+                })
                 .any(|edge| matches!(graph.node_weight(edge.target()), Some(NodeV1::Answer(..))));
 
             if has_answer {
@@ -57,11 +66,18 @@ impl TrackProcessV1 {
         }
 
         match answered_questions {
-            0 => ConversationProcessingStage::TasksAndQuestionsGenerated,
             count if count == question_nodes.len() => {
+                debug!("All questions are answered.");
                 ConversationProcessingStage::AllQuestionsAnswered
             }
-            _ => ConversationProcessingStage::QuestionsPartiallyAnswered,
+            0 => {
+                debug!("No questions are answered.");
+                ConversationProcessingStage::TasksAndQuestionsGenerated
+            }
+            
+            _ => {
+                debug!("Some questions are answered, but some are pending: Total answered: {}, Total questions: {}", answered_questions, question_nodes.len());
+                ConversationProcessingStage::QuestionsPartiallyAnswered},
         }
     }
 
@@ -289,7 +305,8 @@ impl TrackProcessV1 {
         for node_idx in graph.node_indices() {
             if let NodeV1::Question(question) = &graph[node_idx] {
                 // Attempt to find a connected Answer node
-                let answer_edge = graph.edges_directed(node_idx, petgraph::Direction::Outgoing)
+                let answer_edge = graph
+                    .edges_directed(node_idx, petgraph::Direction::Outgoing)
                     .find(|edge| matches!(edge.weight(), EdgeV1::Answer));
 
                 if let Some(edge) = answer_edge {
@@ -299,7 +316,6 @@ impl TrackProcessV1 {
                             question_id: node_idx.index(), // Using the node index as a unique identifier
                             question: question.clone(),
                             answer: CodeUnderstanding {
-                                // Assuming CodeUnderstanding is derived from the answer text; adjust accordingly.
                                 context: vec![], // Populate with the actual context
                                 question: question.clone(),
                                 answer: answer_text.clone(),
