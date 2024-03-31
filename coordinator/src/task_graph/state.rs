@@ -3,6 +3,7 @@ use crate::task_graph::graph_model::EdgeV1;
 use crate::task_graph::graph_model::{NodeV1, QuestionWithAnswer, TrackProcessV1};
 use anyhow::Error;
 use common::llm_gateway::api::{Message, MessageSource, Messages};
+use common::CodeContext;
 use log::debug;
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
@@ -53,7 +54,7 @@ impl TrackProcessV1 {
         for question_node in &question_nodes {
             let has_answer = graph
                 .edges_directed(*question_node, Direction::Outgoing)
-                // map and print the edges 
+                // map and print the edges
                 .map(|edge| {
                     debug!("Edge: {:?}", edge);
                     edge
@@ -74,10 +75,11 @@ impl TrackProcessV1 {
                 debug!("No questions are answered.");
                 ConversationProcessingStage::TasksAndQuestionsGenerated
             }
-            
+
             _ => {
                 debug!("Some questions are answered, but some are pending: Total answered: {}, Total questions: {}", answered_questions, question_nodes.len());
-                ConversationProcessingStage::QuestionsPartiallyAnswered},
+                ConversationProcessingStage::QuestionsPartiallyAnswered
+            }
         }
     }
 
@@ -296,7 +298,31 @@ impl TrackProcessV1 {
         })
     }
 
-    // Extracts the current list of tasks with questions and answers which are alreaady answered.
+    // Modified to return a Result, propagating an error if the graph isn't initialized.
+    fn get_contexts_for_answer(
+        &self,
+        answer_node_index: NodeIndex,
+    ) -> Result<Vec<CodeContext>, NodeError> {
+        let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
+
+        // Proceed to collect contexts only if the graph is available.
+        Ok(graph
+            .edges_directed(answer_node_index, petgraph::Direction::Outgoing)
+            .filter_map(|edge| {
+                if matches!(edge.weight(), EdgeV1::CodeContext) {
+                    if let NodeV1::CodeContext(context) = &graph[edge.target()] {
+                        Some(context.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect())
+    }
+
+    // Update the usage in get_current_questions_with_answers to handle the Result.
     pub fn get_current_questions_with_answers(&self) -> Result<Vec<QuestionWithAnswer>, NodeError> {
         let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
 
@@ -304,19 +330,20 @@ impl TrackProcessV1 {
 
         for node_idx in graph.node_indices() {
             if let NodeV1::Question(question) = &graph[node_idx] {
-                // Attempt to find a connected Answer node
                 let answer_edge = graph
                     .edges_directed(node_idx, petgraph::Direction::Outgoing)
                     .find(|edge| matches!(edge.weight(), EdgeV1::Answer));
 
                 if let Some(edge) = answer_edge {
                     if let NodeV1::Answer(answer_text) = &graph[edge.target()] {
-                        // Construct a QuestionWithAnswer object
+                        // Handle the error or unwrap the result.
+                        let contexts = self.get_contexts_for_answer(edge.target())?;
+
                         let question_with_answer = QuestionWithAnswer {
-                            question_id: node_idx.index(), // Using the node index as a unique identifier
+                            question_id: node_idx.index(),
                             question: question.clone(),
                             answer: CodeUnderstanding {
-                                context: vec![], // Populate with the actual context
+                                context: contexts,
                                 question: question.clone(),
                                 answer: answer_text.clone(),
                             },
