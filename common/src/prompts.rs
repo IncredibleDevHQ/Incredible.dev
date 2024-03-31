@@ -239,7 +239,10 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
     let question_concept_generator_prompt = format!(
         r#"#####
 
-        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Alongside each task and subtask, you will generate questions aimed at understanding the current codebase. These questions should be insightful, focusing on the existing codebase's structure and behavior without directly addressing the specific changes to be made.
+        
+        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Alongside each task and subtask, you will generate questions aimed at understanding the current codebase. These questions should be specific and insightful, focusing on the existing codebase's structure and behavior without directly addressing the specific changes to be made.
+
+        Emphasize the need for specificity in your questions. Avoid using vague references like 'this endpoint' or 'that endpoint.' Instead, require the questions to specify exact endpoints, functionalities, or components. For instance, instead of asking 'How does this endpoint respond?', ask 'How does the /retrieve endpoint respond, and what is its data structure?'.
 
         Before generating tasks and subtasks, introspect whether a junior developer would have enough information to understand what problem or issue needs to be solved based on the provided issue description. The clarity and specificity of the issue description are crucial for creating actionable and understandable tasks.
 
@@ -312,7 +315,7 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
         Your job is to perform the following tasks:
         - Generate 1 to 5 main tasks based on the issue description, ensuring each task is detailed, clear, and actionable. Avoid creating vague tasks like 'Improve the API,' which do not provide enough information for a junior engineer to act upon. Instead, detail what specific improvements are needed, as in 'Update the GET endpoint in the API to handle error status codes more effectively.'
         - For each main task, define 1 to 5 subtasks that provide specific steps and actions required.
-        - For each subtask, create 1 to 4 questions that delve into the codebase's existing structure and behavior, relevant to the task at hand.
+        - For each subtask, create 1 to 4 questions that delve into the codebase's existing structure and behavior, relevant to the task at hand. Ensure that the questions are specific and refer to exact components or endpoints.
 
         When referring to APIs or other components, always use specific and descriptive names. Never use generic terms like "other API." Instead, clarify the API's purpose or function, describing it in a way that reflects its role in the system.
 
