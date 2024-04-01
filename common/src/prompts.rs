@@ -1,3 +1,5 @@
+use crate::models::TaskDetailsWithContext;
+
 pub fn functions(add_proc: bool) -> serde_json::Value {
     let mut funcs = serde_json::json!(
         [
@@ -339,3 +341,26 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
     question_concept_generator_prompt
 }
 
+// prompt to summarize the multiple answers geneated from the questions of a given task. 
+fn create_task_answer_summarization_prompt(
+    user_query: &str,
+    task: &TaskDetailsWithContext,
+) -> String {
+    let mut prompt = format!(
+        "Given the user query '{}', review the following task:\nTask: {}\n",
+        user_query, task.task_description
+    );
+
+    for (i, answer_context) in task.details.iter().enumerate() {
+        prompt += &format!("\nContext {}:\n", i + 1);
+        for (j, question) in answer_context.questions.iter().enumerate() {
+            prompt += &format!("Q{}: {}\n", j + 1, question);
+        }
+        for (k, answer) in answer_context.answers.iter().enumerate() {
+            prompt += &format!("A{}: {}\n", k + 1, answer);
+        }
+    }
+
+    prompt += "\nSummarize the key points from the provided answers into clear bullet points, highlighting the essential information to understand and address the task:";
+    prompt
+}
