@@ -6,11 +6,11 @@ use std::sync::Arc;
 extern crate tracing;
 
 use anyhow::anyhow;
+use common::ast::symbol::{SymbolKey, SymbolValue};
+use common::ast::text_range::{Point, TextRange};
 use tracing::{debug, error, trace, warn};
 mod chunking;
-mod text_range;
 mod vector_payload;
-use crate::ast::symbol::{SymbolKey, SymbolValue};
 
 use chunking::{add_token_range, Chunk, DEDUCT_SPECIAL_TOKENS};
 use ndarray::Axis;
@@ -24,7 +24,6 @@ use qdrant_client::prelude::QdrantClient;
 use qdrant_client::qdrant::{PointId, PointStruct};
 use std::collections::HashMap;
 use std::fmt;
-use text_range::{Point, TextRange};
 use thiserror::Error;
 use uuid::Uuid;
 use vector_payload::{Embedding, Payload, SymbolPayload};

@@ -1,4 +1,6 @@
 use anyhow::anyhow;
+use common::ast::symbol::{SymbolKey, SymbolLocations, SymbolValue};
+use common::ast::CodeFileAST;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::error::Error;
@@ -10,7 +12,6 @@ use tokio;
 
 use log::{debug, error, info};
 
-mod ast;
 mod generate_index_schema;
 mod hash;
 mod index_filter;
@@ -22,8 +23,6 @@ mod util;
 
 extern crate git2;
 
-use crate::ast::symbol::{SymbolKey, SymbolLocations, SymbolValue};
-use crate::ast::CodeFileAST;
 use crate::semantic_index::{SemanticError, SemanticIndex};
 use crate::state::{update_process_state, CodeIndexingTaskStatus};
 use hash::compute_hashes;

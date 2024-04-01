@@ -2,13 +2,13 @@ pub use expect_test::expect;
 
 use std::collections::HashSet;
 
-use crate::ast::ast_graph::{scope::NodeKind, Language, TreeSitterFile};
-
 use expect_test::Expect;
+
+use crate::ast::{ast_graph::NodeKind, language_support::Language, CodeFileAST};
 
 #[rustfmt::skip]
 pub fn counts(src: &str, lang_id: &str) -> (usize, usize, usize, usize) {
-    let tsf = TreeSitterFile::try_build(src.as_bytes(), lang_id).unwrap();
+    let tsf = CodeFileAST::build_ast(src.as_bytes(), lang_id).unwrap();
     let scope_graph = tsf.scope_graph().unwrap();
     let nodes = scope_graph.graph.node_weights();
     nodes.fold((0, 0, 0, 0), |(s, d, r, i), node| match node {
@@ -26,7 +26,7 @@ pub fn assert_eq_defs(src: &[u8], lang_id: &str, defs: Vec<(&str, &str)>) {
     };
     let namespaces = language.namespaces;
 
-    let tsf = TreeSitterFile::try_build(src, lang_id).unwrap();
+    let tsf = CodeFileAST::build_ast(src, lang_id).unwrap();
     let scope_graph = tsf.scope_graph().unwrap();
 
     let expected_defs: HashSet<_> = defs.into_iter().collect();
@@ -51,7 +51,7 @@ pub fn test_scopes(lang_id: &str, src: &[u8], expected: Expect) {
         Language::Supported(config) => config,
         _ => panic!("testing unsupported language"),
     };
-    let tsf = TreeSitterFile::try_build(src, lang_id).unwrap();
+    let tsf = CodeFileAST::build_ast(src, lang_id).unwrap();
     let observed = tsf.scope_graph().unwrap().debug(src, language);
 
     expected.assert_debug_eq(&observed)

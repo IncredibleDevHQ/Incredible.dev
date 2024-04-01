@@ -32,7 +32,7 @@ pub static JAVASCRIPT: TSLanguageConfig = TSLanguageConfig {
 
 #[cfg(test)]
 mod test {
-    use crate::intelligence::language::test_utils::*;
+    use crate::ast::language_support::test_utils::*;
 
     #[test]
     fn declare_lexical() {
