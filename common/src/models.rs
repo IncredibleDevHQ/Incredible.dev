@@ -139,40 +139,23 @@ pub struct TaskDetailsWithContext {
     pub merged_code_contexts: Vec<CodeContext>,
 }
 
-impl fmt::Display for AnswerAndContexts {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl fmt::Display for TaskDetailsWithContext {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Task ID: {}\nTask Description: {}\n", self.task_id, self.task_description)?;
+
         write!(f, "Questions:\n")?;
         for question in &self.questions {
-            writeln!(f, "- {}", question)?;
+            write!(f, " - {}\n", question)?;
         }
 
         write!(f, "Answers:\n")?;
         for answer in &self.answers {
-            writeln!(f, "- {}", answer)?;
+            write!(f, " - {}\n", answer)?;
         }
 
-        write!(f, "Merged Code Contexts:\n")?;
+        write!(f, "Code Contexts:\n")?;
         for context in &self.merged_code_contexts {
-            writeln!(
-                f,
-                "- Path: {}\n  Hidden: {}\n  Repo: {}\n  Branch: {:?}\n  Ranges: {:?}\n",
-                context.path, context.hidden, context.repo, context.branch, context.ranges
-            )?;
-        }
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for TaskDetailsWithContext {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "Task ID: {}\nTask Description: {}\n",
-            self.task_id, self.task_description
-        )?;
-        for (i, detail) in self.details.iter().enumerate() {
-            writeln!(f, "Detail {}:\n{}", i + 1, detail)?;
+            write!(f, " - {:?}\n", context)?;
         }
 
         Ok(())
@@ -180,12 +163,12 @@ impl fmt::Display for TaskDetailsWithContext {
 }
 
 impl fmt::Display for TasksQuestionsAnswersDetails {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Root Node ID: {}\n", self.root_node_id)?;
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Root Node ID: {}\n", self.root_node_id)?;
         for (i, task) in self.tasks.iter().enumerate() {
-            writeln!(f, "Task {}:\n{}", i + 1, task)?;
+            write!(f, "Task {}:\n{}\n", i + 1, task)?;
         }
-
         Ok(())
     }
 }
+
