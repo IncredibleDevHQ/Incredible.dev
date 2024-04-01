@@ -22,6 +22,8 @@ pub enum ConversationProcessingStage {
     GraphNotInitialized,
     OnlyRootNodeExists,
     AllQuestionsAnswered, // tasks are generated and all questions are answered.
+    SummarizeAnswers,   // Move to this state after all the questions are answered, but yet to be summarized.
+    AnswersSummarized, // Move to this state after all the questions are answered and then summarized. 
     QuestionsPartiallyAnswered, // s
     Unknown,              // State cannot be determined or does not fit the other categories.
 }

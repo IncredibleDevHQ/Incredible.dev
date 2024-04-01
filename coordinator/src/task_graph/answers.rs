@@ -1,12 +1,16 @@
+use std::ops::Range;
+
 use crate::task_graph::add_node::NodeError;
 use crate::task_graph::graph_model::{EdgeV1, NodeV1, TrackProcessV1};
+use crate::task_graph::redis::save_task_process_to_redis;
+
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
 
-use std::ops::Range;
-
 use common::models::{TaskDetailsWithContext, TasksQuestionsAnswersDetails};
 use common::CodeContext;
+
+use log::error;
 
 impl TrackProcessV1 {
     // Collects task details along with their associated questions, answers, and code contexts from the graph.
@@ -58,7 +62,7 @@ impl TrackProcessV1 {
     }
 
     /// Connects the first task in the provided `TasksQuestionsAnswersDetails` to a new `AnswerSummary` node.
-    pub fn connect_first_task_to_answer_summary(
+    pub fn connect_task_to_answer_summary(
         &mut self,
         task_details: &TasksQuestionsAnswersDetails,
         summary: String,
@@ -88,6 +92,12 @@ impl TrackProcessV1 {
                 answer_summary_node,
                 EdgeV1::SummarizedAnswer,
             );
+            // save the graph to redis
+            if let Err(e) = save_task_process_to_redis(self) {
+                error!("Failed to save task process to Redis: {:?}", e);
+                // return error if saving to redis fails
+                return Err(NodeError::RedisSaveError);
+            }
 
             Ok(())
         } else {
