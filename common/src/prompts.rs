@@ -1,4 +1,4 @@
-use crate::models::TaskDetailsWithContext;
+use crate::models::TasksQuestionsAnswersDetails;
 
 pub fn functions(add_proc: bool) -> serde_json::Value {
     let mut funcs = serde_json::json!(
@@ -341,26 +341,30 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
     question_concept_generator_prompt
 }
 
-// prompt to summarize the multiple answers geneated from the questions of a given task. 
 pub fn create_task_answer_summarization_prompt(
     user_query: &str,
-    task: &TaskDetailsWithContext,
+    tasks_details: &TasksQuestionsAnswersDetails,
 ) -> String {
     let mut prompt = format!(
-        "Given the user query '{}', review the following task:\nTask: {}\n",
-        user_query, task.task_description
+        "You are a junior software engineer who has received the following tasks, questions, and related answers about a specific issue. Summarize the information provided as if you were preparing to discuss it with a senior software engineer for further clarification.\n\nUser Query: '{}'\n",
+        user_query
     );
 
-    for (i, answer_context) in task.details.iter().enumerate() {
-        prompt += &format!("\nContext {}:\n", i + 1);
-        for (j, question) in answer_context.questions.iter().enumerate() {
-            prompt += &format!("Q{}: {}\n", j + 1, question);
-        }
-        for (k, answer) in answer_context.answers.iter().enumerate() {
-            prompt += &format!("A{}: {}\n", k + 1, answer);
+    for (i, task) in tasks_details.tasks.iter().enumerate() {
+        prompt += &format!("\nTask {}: {}\n", i + 1, task.task_description);
+        for (j, answer_context) in task.details.iter().enumerate() {
+            prompt += &format!("\nContext for Answer {}:\n", j + 1);
+            for (k, question) in answer_context.questions.iter().enumerate() {
+                prompt += &format!("Q{}: {}\n", k + 1, question);
+            }
+            for (l, answer) in answer_context.answers.iter().enumerate() {
+                prompt += &format!("A{}: {}\n", l + 1, answer);
+            }
         }
     }
 
-    prompt += "\nSummarize the key points from the provided answers into clear bullet points, highlighting the essential information to understand and address the task:";
+    prompt += "\nCreate a clear summary of the key points from all the answers, focusing on details that are crucial for solving the user query and the tasks. Structure your summary in bullet points.\n\n";
+    prompt += "Identify and note down any conflicting, ambiguous, or missing information you might need to ask the senior software engineer about. Frame these points as questions or concerns that you, as a junior engineer, would like to clarify to ensure you have a complete understanding of the tasks, answers, and their context.\n";
+
     prompt
 }
