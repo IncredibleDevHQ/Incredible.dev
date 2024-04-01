@@ -209,6 +209,8 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
             }
             ConversationProcessingStage::AllQuestionsAnswered => {
                 debug!("All questions are answered, nothing left to do, returning the result from the task graph");
+                let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts();
+                debug!("Tasks, Questions, Answers and Contexts: {:?}", tasks_qna_context.unwrap());
                 return Ok(SuggestResponse {
                     tasks: Some(tracker.get_current_tasks()?),
                     questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
