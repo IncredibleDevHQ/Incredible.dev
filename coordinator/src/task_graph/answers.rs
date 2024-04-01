@@ -7,26 +7,8 @@ use std::fmt;
 use std::collections::HashMap;
 use std::ops::Range;
 
+use common::models::{AnswerAndContexts, TaskDetailsWithContext, TasksQuestionsAnswersDetails};
 use common::CodeContext;
-#[derive(Debug, Clone)]
-pub struct TasksQuestionsAnswersDetails {
-    pub root_node_id: usize,
-    pub tasks: Vec<TaskDetailsWithContext>,
-}
-
-#[derive(Debug, Clone)]
-pub struct AnswerAndContexts {
-    pub questions: Vec<String>,
-    pub answers: Vec<String>,
-    pub code_contexts: Vec<CodeContext>,
-    pub merged_code_contexts: Vec<CodeContext>, // Stores the merged contexts
-}
-#[derive(Debug, Clone)]
-pub struct TaskDetailsWithContext {
-    pub task_id: usize,
-    pub task_description: String,
-    pub details: Vec<AnswerAndContexts>,
-}
 
 impl TrackProcessV1 {
     // Collects task details along with their associated questions, answers, and code contexts from the graph.
@@ -164,53 +146,3 @@ fn merge_ranges(ranges: &Vec<Range<usize>>) -> Vec<Range<usize>> {
     merged_ranges
 }
 
-impl fmt::Display for AnswerAndContexts {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Questions:\n")?;
-        for question in &self.questions {
-            writeln!(f, "- {}", question)?;
-        }
-
-        write!(f, "Answers:\n")?;
-        for answer in &self.answers {
-            writeln!(f, "- {}", answer)?;
-        }
-
-        write!(f, "Merged Code Contexts:\n")?;
-        for context in &self.merged_code_contexts {
-            writeln!(
-                f,
-                "- Path: {}\n  Hidden: {}\n  Repo: {}\n  Branch: {:?}\n  Ranges: {:?}\n",
-                context.path, context.hidden, context.repo, context.branch, context.ranges
-            )?;
-        }
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for TaskDetailsWithContext {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "Task ID: {}\nTask Description: {}\n",
-            self.task_id, self.task_description
-        )?;
-        for (i, detail) in self.details.iter().enumerate() {
-            writeln!(f, "Detail {}:\n{}", i + 1, detail)?;
-        }
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for TasksQuestionsAnswersDetails {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Root Node ID: {}\n", self.root_node_id)?;
-        for (i, task) in self.tasks.iter().enumerate() {
-            writeln!(f, "Task {}:\n{}", i + 1, task)?;
-        }
-
-        Ok(())
-    }
-}
