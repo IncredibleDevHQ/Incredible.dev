@@ -352,14 +352,13 @@ pub fn create_task_answer_summarization_prompt(
 
     for (i, task) in tasks_details.tasks.iter().enumerate() {
         prompt += &format!("\nTask {}: {}\n", i + 1, task.task_description);
-        for (j, answer_context) in task.details.iter().enumerate() {
-            prompt += &format!("\nContext for Answer {}:\n", j + 1);
-            for (k, question) in answer_context.questions.iter().enumerate() {
-                prompt += &format!("Q{}: {}\n", k + 1, question);
-            }
-            for (l, answer) in answer_context.answers.iter().enumerate() {
-                prompt += &format!("A{}: {}\n", l + 1, answer);
-            }
+        
+        // Iterating through questions and answers for each task
+        for (j, question) in task.questions.iter().enumerate() {
+            prompt += &format!("Q{}: {}\n", j + 1, question);
+        }
+        for (k, answer) in task.answers.iter().enumerate() {
+            prompt += &format!("A{}: {}\n", k + 1, answer);
         }
     }
 

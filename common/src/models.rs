@@ -1,9 +1,8 @@
 use crate::llm_gateway::api::Message;
-use crate::{CodeUnderstandings, CodeContext};
+use crate::{CodeContext, CodeUnderstandings};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use std::fmt;
 use std::ops::Range;
-
 
 /// Represents a code chunk
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -122,11 +121,35 @@ impl fmt::Display for Subtask {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct TasksQuestionsAnswersDetails {
     pub root_node_id: usize,
     pub tasks: Vec<TaskDetailsWithContext>,
+    // summary of all the questions answers for the tasks. Here is a sample summary:
+    // - User Query: The user wants the application to make calls to the code-understanding service API, and for each question received in the response, it needs to call another API from the code-understanding service for the answers.
+    // - Task 1 involves modifying the API inside the coordinator service to call the code-understanding service API.
+    //     - The code-understanding service API receives and processes incoming data using `warp` and `serde` libraries.
+    //     - The coordinator service API passes data to the code-understanding service API via POST requests.
+    //     - To connect to the code-understanding API service, client configuration is needed, which includes setting up the base URL, HTTP client, model, and bearer token (if needed).
+    //     - The actual connection with the code-understanding service isn't established in Coordinator service itself, but the URL to the code-understanding service is provided as an environment variable named `CODE_UNDERSTANDING_URL`.
+    //     - The coordinator service API doesn't call any other services directly, but there is evidence of calling other services in the `modifier` microservice.
+    //     - The Coordinator service API in this context is a simple HTTP web service with a home endpoint and a suggest endpoint for suggestion related operations.
+    // - Task 2 involves calling another API from the code-understanding service to obtain answers for each question returned from the code-understanding service API:
+    //     - The expected response containing the answers is formatted in the `Exchange` struct.
+    //     - The code-understanding API expect queries in a particular structure as a part of requests made to it.
+    //     - The specified API endpoint doesn't exist in this codebase for obtaining answers, but it's apparent that `https://api.openai.com/v1/chat/completions` endpoint from the OpenAI API is used to simulate conversations which might involve roughly the same functionality.
+    //     - Answer within questions possibly refer to various structs, enums, and types defined in code snippets.
+    //     - Questions within the response are structured in a JSON array in string format, containing different phrasing of same underlying problem.
+    //     - The response from the code-understanding service API is in a form of `ChatCompletion` struct.
+    
+    // Questions to present to the senior software engineer:
+    
+    // 1. Which API endpoint should be used to obtain answers from the code-understanding service API? Is it within the given codebase or is an external API involved (like OpenAI)?
+    // 2. How are the connections between coordinator service API and the code-understanding service API established?
+    // 3. What is the actual operation performed by `handle_modify_code_wrapper` function in the `perform_suggest` method of the coordinator service API?
+    // 4. Are there any authentication requirements or details to know about when configuring the client for connection with the code-understanding service API?
+    // 5. Are there any limitations or constraints to consider when interacting with these APIs?
+    pub answer_summary: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -141,7 +164,11 @@ pub struct TaskDetailsWithContext {
 
 impl fmt::Display for TaskDetailsWithContext {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Task ID: {}\nTask Description: {}\n", self.task_id, self.task_description)?;
+        write!(
+            f,
+            "Task ID: {}\nTask Description: {}\n",
+            self.task_id, self.task_description
+        )?;
 
         write!(f, "Questions:\n")?;
         for question in &self.questions {
@@ -171,4 +198,3 @@ impl fmt::Display for TasksQuestionsAnswersDetails {
         Ok(())
     }
 }
-
