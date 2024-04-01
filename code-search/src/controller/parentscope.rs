@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use crate::models::ParentScopeRequest;
-use crate::search::code_search::{get_file_content, ExtractionConfig};
+use crate::search::code_search::get_file_content;
 use crate::utilities::util::return_byte_range_from_line_numbers;
 use crate::AppState;
-use anyhow::anyhow;
 
-use log::{debug, info, error};
+use common::ast::graph_code_pluck::ExtractionConfig;
+use log::{debug, error};
 
 pub async fn parent_scope_search(
     params: ParentScopeRequest,
@@ -14,15 +14,13 @@ pub async fn parent_scope_search(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let path = params.file.clone();
     let repo_name = params.repo.clone();
-    // debug log of the request 
+    // debug log of the request
     debug!(
         "Parent scope search request for file {} at lines {}-{}",
-        path,
-        params.start_line,
-        params.end_line
+        path, params.start_line, params.end_line
     );
     // Attempt to retrieve the file content asynchronously based on the provided path and repository name.
-    let source_document = get_file_content(&path, &repo_name,app_state).await;
+    let source_document = get_file_content(&path, &repo_name, app_state).await;
 
     match source_document {
         Ok(content) => {
@@ -43,7 +41,8 @@ pub async fn parent_scope_search(
 
                 // if there is no symbol locations, return a BAD REQUEST response
                 if symbol_locations.is_err() {
-                    let response = format!("Error: No symbol locations found for the file: {}", path);
+                    let response =
+                        format!("Error: No symbol locations found for the file: {}", path);
                     return Ok(warp::reply::with_status(
                         warp::reply::json(&response),
                         warp::http::StatusCode::BAD_REQUEST,
@@ -73,10 +72,9 @@ pub async fn parent_scope_search(
 
                 // return bad request if scope graph cannot be found.
                 // get scope graph from the symbol locations
-                let sg = scope_binary
-                    .scope_graph();
+                let sg = scope_binary.scope_graph();
 
-                // return HTTP bad request response from the api if scope graph cant be foud 
+                // return HTTP bad request response from the api if scope graph cant be foud
                 if sg.is_none() {
                     error!("Scope graph not found for the file: {}", path);
                     let response = format!("Error: Scope graph not found for the file: {}", path);
