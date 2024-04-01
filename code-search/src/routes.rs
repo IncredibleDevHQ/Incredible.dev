@@ -7,11 +7,9 @@ use warp::{self, Filter};
 
 use crate::controller::{parentscope, span, symbol};
 use crate::db::DbConnect;
-use crate::graph::symbol_ops;
+// use crate::graph::symbol_ops;
 use crate::models::{ParentScopeRequest, SymbolSearchRequest};
 use crate::AppState;
-
-use serde::Deserialize;
 
 pub fn search_routes(
     app_state: Arc<AppState>,
@@ -131,8 +129,6 @@ fn parent_scope_retrieve(
         .and(warp::any().map(move || app_state.clone()))
         .and_then(parentscope::parent_scope_search) // Assuming you have a corresponding handler in the controller
 }
-
-
 
 /// Provides DbConnect instance wrapped in Arc<Mutex> to the next filter.
 fn with_db(

@@ -5,13 +5,14 @@ use std::env;
 use std::sync::Arc;
 use warp;
 
+mod code_navigation;
 mod controller;
 mod db;
-mod graph;
 mod models;
 mod parser;
 mod routes;
 mod search;
+mod snippet;
 mod utilities;
 
 extern crate reqwest;
@@ -40,7 +41,6 @@ struct AppState {
 }
 
 async fn init_state() -> Result<AppState, anyhow::Error> {
-
     // load using dotenv
     dotenv().ok();
     let configuration = Configuration {
