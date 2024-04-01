@@ -7,7 +7,7 @@ use std::fmt;
 use std::collections::HashMap;
 use std::ops::Range;
 
-use common::models::{AnswerAndContexts, TaskDetailsWithContext, TasksQuestionsAnswersDetails};
+use common::models::{ TaskDetailsWithContext, TasksQuestionsAnswersDetails};
 use common::CodeContext;
 
 impl TrackProcessV1 {
@@ -77,7 +77,28 @@ impl TrackProcessV1 {
             tasks: tasks_details,
         })
     }
-    
+}
+
+
+pub fn merge_code_contexts(contexts: &Vec<CodeContext>) -> Vec<CodeContext> {
+    let mut merged_contexts: Vec<CodeContext> = Vec::new();
+
+    for context in contexts {
+        let existing_context = merged_contexts.iter_mut().find(|c| c.path == context.path && c.repo == context.repo && c.branch == context.branch);
+
+        match existing_context {
+            Some(existing) => {
+                existing.ranges.extend(context.ranges);
+                existing.ranges = merge_ranges(&existing.ranges.clone());
+            },
+            None => {
+                let mut new_context = context.clone();
+                new_context.ranges = merge_ranges(&new_context.ranges);
+                merged_contexts.push(new_context);
+            }
+        }
+    }
+    merged_contexts
 }
 
 fn merge_ranges(ranges: &Vec<Range<usize>>) -> Vec<Range<usize>> {
