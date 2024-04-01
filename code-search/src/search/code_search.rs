@@ -1,3 +1,5 @@
+use common::ast::graph_code_pluck::{ContentDocument, ExtractedContent};
+use common::ast::symbol::SymbolLocations;
 use common::hasher::generate_quikwit_index_name;
 use log::debug;
 use std::sync::Arc;
@@ -5,7 +7,6 @@ use std::sync::Arc;
 extern crate common;
 
 use crate::db::DbConnect;
-use crate::graph::scope_graph::SymbolLocations;
 use crate::parser::literal::Literal;
 use crate::search::payload::{CodeExtractMeta, PathExtractMeta, SymbolPayload};
 use crate::search::ranking::rank_symbol_payloads;
@@ -16,61 +17,6 @@ use anyhow::{anyhow, Error, Result};
 use serde::{Deserialize, Serialize};
 
 use super::quikwit::get_file_from_quickwit;
-
-#[derive(Serialize, Deserialize, Default, Debug, Clone)]
-pub struct ExtractedContent {
-    pub path: String,
-    pub content: String,
-    pub start_byte: usize,
-    pub end_byte: usize,
-    pub start_line: usize,
-    pub end_line: usize,
-    pub scope_map: Option<String>,
-}
-
-#[derive(Default, Debug, Clone, Serialize)]
-pub struct ExtractionConfig {
-    pub code_byte_expansion_range: usize, // Number of bytes to expand from the start and end.
-    pub min_lines_to_return: usize,       // Minimum number of lines the extraction should return.
-    pub max_lines_limit: Option<usize>,   // Optional maximum number of lines to extract.
-}
-
-#[derive(Default, Debug, Clone, Serialize)]
-pub struct ContentDocument {
-    pub repo_name: String,
-    pub repo_ref: String,
-    pub relative_path: String,
-    pub lang: Option<String>,
-    pub line_end_indices: Vec<u8>,
-    pub content: String,
-    pub symbol_locations: Vec<u8>,
-    pub symbols: String,
-}
-
-impl ContentDocument {
-    pub fn fetch_line_indices(&self) -> Vec<usize> {
-        let line_end_indices: Vec<usize> = self
-            .line_end_indices
-            .chunks(4)
-            .filter_map(|chunk| {
-                // Convert each 4-byte chunk to a u32.
-                if chunk.len() == 4 {
-                    let value =
-                        u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as usize;
-                    Some(value)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        line_end_indices
-    }
-    pub fn symbol_locations(&self) -> Result<SymbolLocations> {
-        let symbol_locations = bincode::deserialize::<SymbolLocations>(&self.symbol_locations)?;
-        Ok(symbol_locations)
-    }
-}
 
 const CODE_SEARCH_LIMIT: u64 = 10;
 
@@ -227,7 +173,7 @@ async fn process_paths(
                 path_meta.score
             );
 
-            let extraction_config = ExtractionConfig {
+            let extraction_config = common::ast::graph_code_pluck::ExtractionConfig {
                 code_byte_expansion_range: 300,
                 min_lines_to_return: 8,
                 max_lines_limit: Some(20),
