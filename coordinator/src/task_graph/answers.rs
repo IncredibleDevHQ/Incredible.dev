@@ -1,10 +1,8 @@
 use crate::task_graph::add_node::NodeError;
-use crate::task_graph::graph_model::{EdgeV1, NodeV1, TrackProcessV1};
+use crate::task_graph::graph_model::{NodeV1, TrackProcessV1};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
-use std::fmt;
 
-use std::collections::HashMap;
 use std::ops::Range;
 
 use common::models::{ TaskDetailsWithContext, TasksQuestionsAnswersDetails};
@@ -88,7 +86,7 @@ pub fn merge_code_contexts(contexts: &Vec<CodeContext>) -> Vec<CodeContext> {
 
         match existing_context {
             Some(existing) => {
-                existing.ranges.extend(context.ranges);
+                existing.ranges.extend(context.ranges.clone());
                 existing.ranges = merge_ranges(&existing.ranges.clone());
             },
             None => {

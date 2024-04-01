@@ -1,5 +1,5 @@
 use crate::llm_ops::summarize::generate_summarized_answer_for_task;
-use crate::llm_ops::tasks_questions::{self, generate_tasks_and_questions};
+use crate::llm_ops::tasks_questions::generate_tasks_and_questions;
 use anyhow::{Error, Result};
 use common::llm_gateway::api::{Message, Messages};
 use common::models::{
@@ -218,9 +218,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 let tasks_context = tasks_qna_context.unwrap();
 
                 for task in &tasks_context.tasks {
-                    for code_context in &task.details {
-                        debug!("Code Context: {:?}", code_context.merged_code_contexts);
-                    }
+                    debug!("Code Context: {:?}", task.merged_code_contexts);
                 }
 
                 generate_summarized_answer_for_task(
