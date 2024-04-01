@@ -71,6 +71,7 @@ pub enum NodeV1 {
     Subtask(String),          // Represents a subtask under a specific task.
     Question(String),  // Represents a question related to a specific subtask. 
     Answer(String),           // Represents an answer to a question.
+    AnswerSummary(String),    // Represents a summary of the answer.
     CodeContext(CodeContext), // Represents a code context associated with an answer.
 }
 
@@ -91,6 +92,8 @@ pub enum EdgeV1 {
     Question,    // An edge from a subtask to a question about that subtask.
     Answer,      // Connects a question to its answer.
     CodeContext, // Connects an answer to its code context.
+    SummarizedAnswer, // Connects a conversation node to an answer summary node.
+    // SummarizedAnswer are siblings of the tasks with same conversation parent.
 }
 
 #[derive(Debug, Clone)]

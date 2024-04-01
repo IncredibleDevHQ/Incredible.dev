@@ -1,7 +1,7 @@
 use crate::llm_ops::summarize::generate_summarized_answer_for_task;
 use crate::llm_ops::tasks_questions::generate_tasks_and_questions;
 use anyhow::{Error, Result};
-use common::llm_gateway::api::{Message, Messages};
+use common::llm_gateway::api::Message;
 use common::models::{
     CodeContextRequest, CodeUnderstandRequest, TaskList, TaskListResponseWithMessage,
 };
