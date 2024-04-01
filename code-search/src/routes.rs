@@ -1,11 +1,12 @@
 extern crate common;
 use common::models::CodeSpanRequest;
+use common::TokenInfoRequest;
 
 use std::convert::Infallible;
 use std::sync::Arc;
 use warp::{self, Filter};
 
-use crate::controller::{parentscope, span, symbol};
+use crate::controller::{navigator, parentscope, span, symbol};
 use crate::db::DbConnect;
 // use crate::graph::symbol_ops;
 use crate::models::{ParentScopeRequest, SymbolSearchRequest};
@@ -17,6 +18,7 @@ pub fn search_routes(
     symbol_search(app_state.clone())
         .or(span_code_chunk_retrieve(app_state.clone()))
         .or(parent_scope_retrieve(app_state.clone()))
+        .or(token_info_fetcher(app_state.clone()))
 }
 
 /// POST /symbols
@@ -128,6 +130,19 @@ fn parent_scope_retrieve(
         )
         .and(warp::any().map(move || app_state.clone()))
         .and_then(parentscope::parent_scope_search) // Assuming you have a corresponding handler in the controller
+}
+
+fn token_info_fetcher(
+    app_state: Arc<AppState>,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path("token_info")
+        .and(warp::post())
+        .and(
+            warp::body::content_length_limit(1024 * 16)
+                .and(warp::body::json::<TokenInfoRequest>()),
+        )
+        .and(warp::any().map(move || app_state.clone()))
+        .and_then(navigator::handle_token_info_fetcher_wrapper) // Assuming you have a corresponding handler in the controller
 }
 
 /// Provides DbConnect instance wrapped in Arc<Mutex> to the next filter.
