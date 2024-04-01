@@ -6,6 +6,7 @@ pub mod llm_gateway;
 pub mod models;
 pub mod service_interaction;
 pub mod prompts;
+pub mod ast;
 
 pub mod prompt_string_generator {
     use std::future::Future;

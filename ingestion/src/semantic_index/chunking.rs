@@ -1,6 +1,7 @@
-use crate::semantic_index::text_range::{Point, TextRange};
 extern crate clap;
 use clap::builder::PossibleValue;
+use common::ast::text_range::Point;
+use common::ast::text_range::TextRange;
 // use range
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
