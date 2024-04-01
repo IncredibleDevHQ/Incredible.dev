@@ -1,12 +1,11 @@
 use anyhow::{Error, Result};
 use bincode::config;
+use common::ast::graph_code_pluck::ContentDocument;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::env;
 use std::sync::Arc;
 use log::{error, info, debug};
-
-use crate::search::code_search::ContentDocument;
 use crate::{AppState, CLIENT};
 
 #[derive(Debug, Serialize, Deserialize)]
