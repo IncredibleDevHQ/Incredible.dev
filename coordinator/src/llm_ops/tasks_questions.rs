@@ -23,8 +23,6 @@ pub async fn generate_tasks_and_questions(
     // append the system message to the message history
     let mut messages = Some(system_message.clone()).into_iter().collect::<Vec<_>>();
 
-    // append the system message to the message history
-
     let response = match llm_gateway
         .clone()
         .model(ANSWER_MODEL)

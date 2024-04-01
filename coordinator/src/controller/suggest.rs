@@ -1,9 +1,10 @@
+use crate::llm_ops::summarize::generate_summarized_answer_for_task;
+use crate::llm_ops::tasks_questions::{self, generate_tasks_and_questions};
 use anyhow::{Error, Result};
 use common::llm_gateway::api::{Message, Messages};
 use common::models::{
     CodeContextRequest, CodeUnderstandRequest, TaskList, TaskListResponseWithMessage,
 };
-use crate::llm_ops::tasks_questions::generate_tasks_and_questions;
 
 use futures::future::join_all;
 use log::{debug, error, info};
@@ -211,7 +212,22 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
             ConversationProcessingStage::AllQuestionsAnswered => {
                 debug!("All questions are answered, nothing left to do, returning the result from the task graph");
                 let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts();
-                debug!("Tasks, Questions, Answers and Contexts: {:?}", tasks_qna_context.unwrap());
+                // call generate_summarized_answer_for_task for one task from tasks_qna_context
+                // debug log the summarized answer
+                // iterate the print the context inside the tasks_qna_context
+                let tasks_context = tasks_qna_context.unwrap();
+
+                for task in &tasks_context.tasks {
+                    for code_context in &task.details {
+                        debug!("Code Context: {:?}", code_context.merged_code_contexts);
+                    }
+                }
+
+                generate_summarized_answer_for_task(
+                    request.user_query.clone(),
+                    &tasks_context, 
+                )
+                .await?;
                 return Ok(SuggestResponse {
                     tasks: Some(tracker.get_current_tasks()?),
                     questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
@@ -225,7 +241,6 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
         }
     }
 }
-
 
 /// Asynchronously retrieves code understandings for a set of questions.
 ///

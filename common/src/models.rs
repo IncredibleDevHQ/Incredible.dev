@@ -130,17 +130,13 @@ pub struct TasksQuestionsAnswersDetails {
 }
 
 #[derive(Debug, Clone)]
-pub struct AnswerAndContexts {
-    pub questions: Vec<String>,
-    pub answers: Vec<String>,
-    pub code_contexts: Vec<CodeContext>,
-    pub merged_code_contexts: Vec<CodeContext>, // Stores the merged contexts
-}
-#[derive(Debug, Clone)]
 pub struct TaskDetailsWithContext {
     pub task_id: usize,
     pub task_description: String,
-    pub details: Vec<AnswerAndContexts>,
+    pub questions: Vec<String>,
+    pub answers: Vec<String>,
+    pub code_contexts: Vec<CodeContext>,
+    pub merged_code_contexts: Vec<CodeContext>,
 }
 
 impl fmt::Display for AnswerAndContexts {
