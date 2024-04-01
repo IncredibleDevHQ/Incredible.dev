@@ -342,7 +342,7 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
 }
 
 // prompt to summarize the multiple answers geneated from the questions of a given task. 
-fn create_task_answer_summarization_prompt(
+pub fn create_task_answer_summarization_prompt(
     user_query: &str,
     task: &TaskDetailsWithContext,
 ) -> String {
