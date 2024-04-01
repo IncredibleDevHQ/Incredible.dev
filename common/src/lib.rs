@@ -1,12 +1,12 @@
-use std::ops::Range;
 use std::fmt;
+use std::ops::Range;
 
+pub mod ast;
 pub mod hasher;
 pub mod llm_gateway;
 pub mod models;
-pub mod service_interaction;
 pub mod prompts;
-pub mod ast;
+pub mod service_interaction;
 
 pub mod prompt_string_generator {
     use std::future::Future;
@@ -55,7 +55,6 @@ impl fmt::Display for CodeUnderstanding {
     }
 }
 
-
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct CodeUnderstandings {
     pub repo: String,
@@ -88,3 +87,13 @@ impl std::fmt::Display for CodeChunk {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TokenInfoRequest {
+    #[serde(rename = "repo_name")]
+    pub repo_ref: String,
+    #[serde(rename = "file_path")]
+    pub relative_path: String,
+    pub branch: Option<String>,
+    pub start: usize,
+    pub end: usize,
+}
