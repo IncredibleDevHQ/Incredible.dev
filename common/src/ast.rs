@@ -2,12 +2,15 @@ use tree_sitter::{Parser, Tree};
 pub mod ast_graph;
 pub mod debug;
 pub mod def;
+pub mod graph_code_pluck;
 pub mod import;
 pub mod language_support;
 pub mod reference;
 pub mod scope;
 pub mod symbol;
 pub mod text_range;
+pub mod utils;
+
 use ast_graph::ResolutionMethod;
 use language_support::Language;
 use language_support::TSLanguage;
