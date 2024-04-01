@@ -173,9 +173,9 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 // the reason to do this is to avoid the state machine getting into an infinite loop.
                 // Imagine a scenario where there were some unanswered questions,
                 // we don't want the system to continue further until they succeed.
-                // So we update the task graph even if there some successfull answers, and return error
+                // So we update the task graph even if there some successful answers, and return error
                 // even if there was one unsuccessful answer.
-                // the client can retry, and the next time the system will contine from where it left off
+                // the client can retry, and the next time the system will continue from where it left off
                 // to retry fetching answer only for the unanswered questions.
                 let answer_err = questions_with_answers.iter().find(|x| x.is_err());
                 if let Some(err_result) = answer_err {
@@ -183,20 +183,22 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                         .as_ref()
                         .unwrap_err()
                         .to_string()));
-                } else {
-                    let answers = questions_with_answers
-                        .into_iter()
-                        .map(|x| x.unwrap())
-                        .collect::<Vec<_>>();
-                    return Ok(SuggestResponse {
-                        tasks: Some(tracker.get_current_tasks()?),
-                        questions_with_answers: Some(answers),
-                        ask_user: None,
-                    });
                 }
+                // } else {
+                //     let answers = questions_with_answers
+                //         .into_iter()
+                //         .map(|x| x.unwrap())
+                //         .collect::<Vec<_>>();
+                //     return Ok(SuggestResponse {
+                //         tasks: Some(tracker.get_current_tasks()?),
+                //         questions_with_answers: Some(answers),
+                //         ask_user: None,
+                //     });
+                // }
+                let state = ConversationProcessingStage::AllQuestionsAnswered;
             }
             // you start with this state because the previous conversation with the user ended
-            // abruply since the user didn't provide enough context.
+            // abruptly since the user didn't provide enough context.
             // So you regenerate tasks and questions to continue the conversation.
             ConversationProcessingStage::AwaitingUserInput => {
                 debug!("Awaiting user input, moving onto getting tasks/questions for the next objective round.");
@@ -210,31 +212,67 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 return Err(anyhow::anyhow!("{}", err_msg));
             }
             ConversationProcessingStage::AllQuestionsAnswered => {
-                debug!("All questions are answered, nothing left to do, returning the result from the task graph");
-                let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts();
-                // call generate_summarized_answer_for_task for one task from tasks_qna_context
-                // debug log the summarized answer
-                // iterate the print the context inside the tasks_qna_context
-                let tasks_context = tasks_qna_context.unwrap();
+                debug!("All questions are answered, Summarizing the answers.");
+                let state = ConversationProcessingStage::SummarizeAnswers;
+                // let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts();
+                // // call generate_summarized_answer_for_task for one task from tasks_qna_context
+                // // debug log the summarized answer
+                // // iterate the print the context inside the tasks_qna_context
+                // let tasks_context = tasks_qna_context.unwrap();
 
-                for task in &tasks_context.tasks {
+                // for task in &tasks_context.tasks {
+                //     debug!("Code Context: {:?}", task.merged_code_contexts);
+                // }
+
+                // generate_summarized_answer_for_task(
+                //     request.user_query.clone(),
+                //     &tasks_context,
+                // )
+                // .await?;
+                // return Ok(SuggestResponse {
+                //     tasks: Some(tracker.get_current_tasks()?),
+                //     questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
+                //     ask_user: None,
+                // });
+            }
+            ConversationProcessingStage::SummarizeAnswers => {
+                debug!("Summarizing answers for the tasks and questions.");
+                let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts()?;
+
+                for task in &tasks_qna_context.tasks {
                     debug!("Code Context: {:?}", task.merged_code_contexts);
                 }
 
-                generate_summarized_answer_for_task(
-                    request.user_query.clone(),
-                    &tasks_context, 
-                )
-                .await?;
+                let summary =
+                    generate_summarized_answer_for_task(request.user_query.clone(), &tasks_qna_context)
+                        .await?;
+
+                // connect the summary to the graph 
+                tracker.connect_task_to_answer_summary(&tasks_qna_context, summary)?;
+
+                state = ConversationProcessingStage::AnswersSummarized;
+
                 return Ok(SuggestResponse {
                     tasks: Some(tracker.get_current_tasks()?),
                     questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
                     ask_user: None,
                 });
+
             }
             ConversationProcessingStage::QuestionsPartiallyAnswered => {
                 debug!("Some Questions are unanswered, continuing to find answers.");
                 state = ConversationProcessingStage::TasksAndQuestionsGenerated;
+            }
+
+            ConversationProcessingStage::AnswersSummarized => {
+                // nothing more to do,return the answers.
+                debug!("All answers summarized, nothing to do!");
+                return Ok(SuggestResponse {
+                    tasks: Some(tracker.get_current_tasks()?),
+                    questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
+                    ask_user: None,
+                });
+
             }
         }
     }
