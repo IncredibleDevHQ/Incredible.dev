@@ -6,6 +6,7 @@ use crate::task_graph::redis::save_task_process_to_redis;
 
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
+use petgraph::Direction;
 
 use common::models::{TaskDetailsWithContext, TasksQuestionsAnswersDetails};
 use common::CodeContext;
@@ -13,47 +14,35 @@ use common::CodeContext;
 use log::error;
 
 impl TrackProcessV1 {
-    // Collects task details along with their associated questions, answers, and code contexts from the graph.
+    /// Collects details about tasks, questions, answers, and code contexts from the graph.
+    /// Additionally, it checks for an answer summary in the graph and includes it if present.
     pub fn collect_tasks_questions_answers_contexts(
         &self,
     ) -> Result<TasksQuestionsAnswersDetails, NodeError> {
-        // Check if the graph is initialized, return an error if not.
+        // Ensure the graph is initialized before proceeding.
         let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
-
         let mut tasks_details = Vec::new();
         let mut answer_summary: Option<String> = None;
 
-        // Iterate through all nodes to find the AnswerSummary node if it exists.
+        // Iterate through all nodes in the graph to process tasks and check for an answer summary.
         for node_index in graph.node_indices() {
-            if let NodeV1::AnswerSummary(summary) = &graph[node_index] {
-                answer_summary = Some(summary.clone());
-                break; // Assuming there's only one AnswerSummary node in the graph.
+            match &graph[node_index] {
+                // If the current node is a task, collect its related details.
+                NodeV1::Task(task_description) => {
+                    let task_details =
+                        self.collect_task_details(graph, node_index, task_description)?;
+                    tasks_details.push(task_details);
+                }
+                // If an answer summary node is found, store its content.
+                NodeV1::AnswerSummary(summary) => {
+                    answer_summary = Some(summary.clone());
+                }
+                // Ignore other node types.
+                _ => {}
             }
         }
 
-        // Iterate through all nodes in the graph to find task nodes.
-        for node_index in graph.node_indices() {
-            if let NodeV1::Task(task_description) = &graph[node_index] {
-                let mut questions = Vec::new();
-                let mut answers = Vec::new();
-                let mut code_contexts = Vec::new();
-
-                // Logic to collect questions, answers, and code contexts remains the same.
-
-                let merged_code_contexts = merge_code_contexts(&code_contexts);
-
-                tasks_details.push(TaskDetailsWithContext {
-                    task_id: node_index.index(),
-                    task_description: task_description.clone(),
-                    questions,
-                    answers,
-                    code_contexts,
-                    merged_code_contexts,
-                });
-            }
-        }
-
-        // Include the answer summary in the final result if it was found.
+        // Return the aggregated details including tasks and potential answer summary.
         Ok(TasksQuestionsAnswersDetails {
             root_node_id: self.root_node.ok_or(NodeError::RootNodeNotFound)?.index(),
             tasks: tasks_details,
@@ -61,6 +50,73 @@ impl TrackProcessV1 {
         })
     }
 
+    /// Collects details for a specific task including its questions, answers, and code contexts.
+    fn collect_task_details(
+        &self,
+        graph: &DiGraph<NodeV1, EdgeV1>,
+        node_index: NodeIndex,
+        task_description: &String,
+    ) -> Result<TaskDetailsWithContext, NodeError> {
+        let mut questions = Vec::new();
+        let mut answers = Vec::new();
+        let mut code_contexts = Vec::new();
+
+        // For the given task node, iterate over its connected subtask nodes.
+        for edge in graph.edges_directed(node_index, Direction::Outgoing) {
+            if let NodeV1::Subtask(_) = &graph[edge.target()] {
+                // For each subtask node, collect its connected questions.
+                for subtask_edge in graph.edges_directed(edge.target(), Direction::Outgoing) {
+                    if let NodeV1::Question(question) = &graph[subtask_edge.target()] {
+                        questions.push(question.clone());
+                        // Collect answers and code contexts for each question.
+                        self.collect_answers_and_contexts(
+                            graph,
+                            subtask_edge.target(),
+                            &mut answers,
+                            &mut code_contexts,
+                        )?;
+                    }
+                }
+            }
+        }
+
+        // Merge overlapping code contexts to ensure there are no redundant entries.
+        let merged_code_contexts = merge_code_contexts(&code_contexts);
+
+        // Return the aggregated details for the task including its questions, answers, and code contexts.
+        Ok(TaskDetailsWithContext {
+            task_id: node_index.index(), // Use the node index as a unique identifier for the task.
+            task_description: task_description.clone(),
+            questions,
+            answers,
+            code_contexts,
+            merged_code_contexts,
+        })
+    }
+
+    /// Collects answers and code contexts connected to a given question node.
+    fn collect_answers_and_contexts(
+        &self,
+        graph: &DiGraph<NodeV1, EdgeV1>,
+        question_node: NodeIndex,
+        answers: &mut Vec<String>,
+        code_contexts: &mut Vec<CodeContext>,
+    ) -> Result<(), NodeError> {
+        // Iterate over edges from the question node to find connected answer nodes.
+        for answer_edge in graph.edges_directed(question_node, Direction::Outgoing) {
+            if let NodeV1::Answer(answer) = &graph[answer_edge.target()] {
+                answers.push(answer.clone());
+                // For each answer node, collect connected code context nodes.
+                for context_edge in graph.edges_directed(answer_edge.target(), Direction::Outgoing)
+                {
+                    if let NodeV1::CodeContext(context) = &graph[context_edge.target()] {
+                        code_contexts.push(context.clone());
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
     /// Connects the first task in the provided `TasksQuestionsAnswersDetails` to a new `AnswerSummary` node.
     pub fn connect_task_to_answer_summary(
         &mut self,
@@ -98,6 +154,7 @@ impl TrackProcessV1 {
                 // return error if saving to redis fails
                 return Err(NodeError::RedisSaveError);
             }
+
             Ok(())
         } else {
             Err(NodeError::NoTaskFound)

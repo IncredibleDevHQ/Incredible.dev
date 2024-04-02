@@ -184,18 +184,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                         .unwrap_err()
                         .to_string()));
                 }
-                // } else {
-                //     let answers = questions_with_answers
-                //         .into_iter()
-                //         .map(|x| x.unwrap())
-                //         .collect::<Vec<_>>();
-                //     return Ok(SuggestResponse {
-                //         tasks: Some(tracker.get_current_tasks()?),
-                //         questions_with_answers: Some(answers),
-                //         ask_user: None,
-                //     });
-                // }
-                let state = ConversationProcessingStage::AllQuestionsAnswered;
+                state = ConversationProcessingStage::AllQuestionsAnswered;
             }
             // you start with this state because the previous conversation with the user ended
             // abruptly since the user didn't provide enough context.
@@ -214,33 +203,14 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
             ConversationProcessingStage::AllQuestionsAnswered => {
                 debug!("All questions are answered, Summarizing the answers.");
                 state = ConversationProcessingStage::SummarizeAnswers;
-                // let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts();
-                // // call generate_summarized_answer_for_task for one task from tasks_qna_context
-                // // debug log the summarized answer
-                // // iterate the print the context inside the tasks_qna_context
-                // let tasks_context = tasks_qna_context.unwrap();
-
-                // for task in &tasks_context.tasks {
-                //     debug!("Code Context: {:?}", task.merged_code_contexts);
-                // }
-
-                // generate_summarized_answer_for_task(
-                //     request.user_query.clone(),
-                //     &tasks_context,
-                // )
-                // .await?;
-                // return Ok(SuggestResponse {
-                //     tasks: Some(tracker.get_current_tasks()?),
-                //     questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
-                //     ask_user: None,
-                // });
             }
+            // Summarize answers after all the answers are fetched.
             ConversationProcessingStage::SummarizeAnswers => {
                 debug!("Summarizing answers for the tasks and questions.");
                 let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts()?;
 
                 for task in &tasks_qna_context.tasks {
-                    debug!("Code Context: {:?}", task.merged_code_contexts);
+                    debug!("Code Context: {:?}", task);
                 }
 
                 let summary = generate_summarized_answer_for_task(
@@ -251,9 +221,6 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
 
                 // connect the summary to the graph, this will also save the summary to the redis.
                 tracker.connect_task_to_answer_summary(&tasks_qna_context, summary)?;
-
-                // set the state to AnswersSummarized
-                state = ConversationProcessingStage::AnswersSummarized;
 
                 return Ok(SuggestResponse {
                     tasks: Some(tracker.get_current_tasks()?),
@@ -269,6 +236,11 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
             ConversationProcessingStage::AnswersSummarized => {
                 // nothing more to do,return the answers.
                 debug!("All answers summarized, nothing to do!");
+                let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts()?;
+
+                debug!("summary: {:?}", tasks_qna_context.answer_summary.unwrap());
+                
+
                 return Ok(SuggestResponse {
                     tasks: Some(tracker.get_current_tasks()?),
                     questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
