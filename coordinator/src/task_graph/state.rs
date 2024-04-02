@@ -22,10 +22,10 @@ pub enum ConversationProcessingStage {
     GraphNotInitialized,
     OnlyRootNodeExists,
     AllQuestionsAnswered, // tasks are generated and all questions are answered.
-    SummarizeAnswers,   // Move to this state after all the questions are answered, but yet to be summarized.
-    AnswersSummarized, // Move to this state after all the questions are answered and then summarized. 
+    SummarizeAnswers, // Move to this state after all the questions are answered, but yet to be summarized.
+    AnswersSummarized, // Move to this state after all the questions are answered and then summarized.
     QuestionsPartiallyAnswered, // s
-    Unknown,              // State cannot be determined or does not fit the other categories.
+    Unknown,           // State cannot be determined or does not fit the other categories.
 }
 
 impl TrackProcessV1 {
@@ -36,8 +36,9 @@ impl TrackProcessV1 {
     }
 
     // Assuming you have a graph `graph` already populated
-    fn check_question_completion(&self) -> ConversationProcessingStage {
+    pub fn check_question_completion(&self) -> ConversationProcessingStage {
         let graph = self.graph.as_ref().unwrap();
+
         let question_nodes = graph
             .node_indices()
             .filter_map(|node_idx| match graph.node_weight(node_idx) {
@@ -47,19 +48,15 @@ impl TrackProcessV1 {
             .collect::<Vec<NodeIndex>>();
 
         let mut answered_questions = 0;
+
         if question_nodes.is_empty() {
             debug!("No question nodes found in the graph.");
             return ConversationProcessingStage::GenerateTasksAndQuestions;
         }
 
-        for question_node in &question_nodes {
+        for question_node in question_nodes {
             let has_answer = graph
-                .edges_directed(*question_node, Direction::Outgoing)
-                // map and print the edges
-                .map(|edge| {
-                    debug!("Edge: {:?}", edge);
-                    edge
-                })
+                .edges_directed(question_node, Direction::Outgoing)
                 .any(|edge| matches!(graph.node_weight(edge.target()), Some(NodeV1::Answer(..))));
 
             if has_answer {
@@ -67,23 +64,29 @@ impl TrackProcessV1 {
             }
         }
 
-        match answered_questions {
-            count if count == question_nodes.len() => {
-                debug!("All questions are answered.");
+        if answered_questions == question_nodes.len() {
+            // Check if there is an AnswerSummary node.
+            let has_answer_summary = graph.node_indices().any(|node_idx| {
+                matches!(graph.node_weight(node_idx), Some(NodeV1::AnswerSummary(..)))
+            });
+
+            return if has_answer_summary {
+                debug!("All questions are answered and summarized.");
+                ConversationProcessingStage::AnswersSummarized
+            } else {
+                debug!("All questions are answered, but not summarized.");
                 ConversationProcessingStage::AllQuestionsAnswered
-            }
-            0 => {
-                debug!("No questions are answered.");
-                ConversationProcessingStage::TasksAndQuestionsGenerated
-            }
-
-            _ => {
-                debug!("Some questions are answered, but some are pending: Total answered: {}, Total questions: {}", answered_questions, question_nodes.len());
-                ConversationProcessingStage::QuestionsPartiallyAnswered
-            }
+            };
         }
-    }
 
+        if answered_questions == 0 {
+            debug!("No questions are answered.");
+            return ConversationProcessingStage::TasksAndQuestionsGenerated;
+        }
+
+        debug!("Some questions are answered, but some are pending.");
+        ConversationProcessingStage::QuestionsPartiallyAnswered
+    }
     /// Determines the processing stage of the last conversation in the graph.
     /// We never persist the graph in the Redis just with a Root node.
     /// Hence we make an assumption that the last conversation node is available.
