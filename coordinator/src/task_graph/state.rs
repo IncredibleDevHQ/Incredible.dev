@@ -54,9 +54,9 @@ impl TrackProcessV1 {
             return ConversationProcessingStage::GenerateTasksAndQuestions;
         }
 
-        for question_node in question_nodes {
+        for question_node in &question_nodes {
             let has_answer = graph
-                .edges_directed(question_node, Direction::Outgoing)
+                .edges_directed(*question_node, Direction::Outgoing)
                 .any(|edge| matches!(graph.node_weight(edge.target()), Some(NodeV1::Answer(..))));
 
             if has_answer {
