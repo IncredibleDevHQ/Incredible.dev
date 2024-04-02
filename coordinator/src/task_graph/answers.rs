@@ -4,9 +4,10 @@ use crate::task_graph::add_node::NodeError;
 use crate::task_graph::graph_model::{EdgeV1, NodeV1, TrackProcessV1};
 use crate::task_graph::redis::save_task_process_to_redis;
 
-use petgraph::graph::{DiGraph, NodeIndex};
+use petgraph::graph::{DiGraph, NodeIndex, EdgeIndex};
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
+
 
 use common::models::{TaskDetailsWithContext, TasksQuestionsAnswersDetails};
 use common::CodeContext;
@@ -117,7 +118,8 @@ impl TrackProcessV1 {
         }
         Ok(())
     }
-    /// Connects the first task in the provided `TasksQuestionsAnswersDetails` to a new `AnswerSummary` node.
+    /// Connects the first task in the provided `TasksQuestionsAnswersDetails` to a new `AnswerSummary` node,
+    /// ensuring there's only one summary node per task by removing any existing summary nodes.
     pub fn connect_task_to_answer_summary(
         &mut self,
         task_details: &TasksQuestionsAnswersDetails,
@@ -141,21 +143,30 @@ impl TrackProcessV1 {
                 })
                 .ok_or(NodeError::MissingParentNode)?;
 
-            // Create the AnswerSummary node and connect it to the parent conversation node.
+            // Check for an existing summary node and remove it along with its edge before adding a new one.
+            let existing_summary_edges: Vec<EdgeIndex> = graph
+                .edges_directed(parent_conversation_node_id, petgraph::Direction::Outgoing)
+                .filter(|edge| matches!(graph[edge.target()], NodeV1::AnswerSummary(_)))
+                .map(|edge| edge.id())
+                .collect();
+
+            for edge_id in existing_summary_edges {
+                graph.remove_edge(edge_id);
+            }
+
+            // Once existing summaries are cleared, add the new AnswerSummary node.
             let answer_summary_node = graph.add_node(NodeV1::AnswerSummary(summary));
             graph.add_edge(
                 parent_conversation_node_id,
                 answer_summary_node,
                 EdgeV1::SummarizedAnswer,
             );
-            // save the graph to redis
-            if let Err(e) = save_task_process_to_redis(self) {
-                error!("Failed to save task process to Redis: {:?}", e);
-                // return error if saving to redis fails
-                return Err(NodeError::RedisSaveError);
-            }
 
-            Ok(())
+            // Attempt to save the updated graph to Redis.
+            save_task_process_to_redis(self).map_err(|e| {
+                error!("Failed to save task process to Redis: {:?}", e);
+                NodeError::RedisSaveError
+            })
         } else {
             Err(NodeError::NoTaskFound)
         }
