@@ -213,7 +213,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
             }
             ConversationProcessingStage::AllQuestionsAnswered => {
                 debug!("All questions are answered, Summarizing the answers.");
-                let state = ConversationProcessingStage::SummarizeAnswers;
+                state = ConversationProcessingStage::SummarizeAnswers;
                 // let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts();
                 // // call generate_summarized_answer_for_task for one task from tasks_qna_context
                 // // debug log the summarized answer
@@ -243,13 +243,16 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                     debug!("Code Context: {:?}", task.merged_code_contexts);
                 }
 
-                let summary =
-                    generate_summarized_answer_for_task(request.user_query.clone(), &tasks_qna_context)
-                        .await?;
+                let summary = generate_summarized_answer_for_task(
+                    request.user_query.clone(),
+                    &tasks_qna_context,
+                )
+                .await?;
 
-                // connect the summary to the graph 
+                // connect the summary to the graph, this will also save the summary to the redis.
                 tracker.connect_task_to_answer_summary(&tasks_qna_context, summary)?;
 
+                // set the state to AnswersSummarized
                 state = ConversationProcessingStage::AnswersSummarized;
 
                 return Ok(SuggestResponse {
@@ -257,7 +260,6 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                     questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
                     ask_user: None,
                 });
-
             }
             ConversationProcessingStage::QuestionsPartiallyAnswered => {
                 debug!("Some Questions are unanswered, continuing to find answers.");
@@ -272,7 +274,6 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                     questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
                     ask_user: None,
                 });
-
             }
         }
     }

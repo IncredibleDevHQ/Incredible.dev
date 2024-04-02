@@ -98,7 +98,6 @@ impl TrackProcessV1 {
                 // return error if saving to redis fails
                 return Err(NodeError::RedisSaveError);
             }
-
             Ok(())
         } else {
             Err(NodeError::NoTaskFound)
