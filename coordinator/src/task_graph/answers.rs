@@ -12,7 +12,7 @@ use petgraph::Direction;
 use common::models::{TaskDetailsWithContext, TasksQuestionsAnswersDetails};
 use common::CodeContext;
 
-use log::error;
+use log::{error, debug};
 
 impl TrackProcessV1 {
     /// Collects details about tasks, questions, answers, and code contexts from the graph.
@@ -151,6 +151,7 @@ impl TrackProcessV1 {
                 .collect();
 
             for edge_id in existing_summary_edges {
+                debug!("Removing existing summary edge: {:?}", edge_id);
                 graph.remove_edge(edge_id);
             }
 

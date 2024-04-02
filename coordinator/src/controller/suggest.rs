@@ -1,4 +1,6 @@
-use crate::llm_ops::summarize::generate_summarized_answer_for_task;
+use crate::llm_ops::summarize::{
+    generate_single_task_summarization_, generate_summarized_answer_for_task,
+};
 use crate::llm_ops::tasks_questions::generate_tasks_and_questions;
 use anyhow::{Error, Result};
 use common::llm_gateway::api::Message;
@@ -21,7 +23,6 @@ use common::{service_interaction::service_caller, CodeUnderstanding, CodeUnderst
 
 use crate::{models::SuggestRequest, CONFIG};
 
-pub const ANSWER_MODEL: &str = "gpt-4-0613";
 
 pub async fn handle_suggest_wrapper(
     request: SuggestRequest,
@@ -209,10 +210,6 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 debug!("Summarizing answers for the tasks and questions.");
                 let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts()?;
 
-                for task in &tasks_qna_context.tasks {
-                    debug!("Code Context: {:?}", task);
-                }
-
                 let summary = generate_summarized_answer_for_task(
                     request.user_query.clone(),
                     &tasks_qna_context,
@@ -238,9 +235,30 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 debug!("All answers summarized, nothing to do!");
                 let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts()?;
 
-                debug!("summary: {:?}", tasks_qna_context.answer_summary.unwrap());
-                
+                for task in &tasks_qna_context.tasks {
+                    debug!("Code Context: {:?}", task.merged_code_contexts);
+                }
 
+                let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts()?;
+
+                // for task in &tasks_qna_context.tasks {
+                //     // call generate_single_task_summarization function to generate the summary for each task.
+                    generate_single_task_summarization_(
+                        &request.user_query.clone(),
+                        &CONFIG.code_search_url,
+                       &tasks_qna_context.tasks[1].clone(),
+                    )
+                    .await?;
+                // }
+
+                let summary = generate_summarized_answer_for_task(
+                    request.user_query.clone(),
+                    &tasks_qna_context,
+                )
+                .await?;
+
+                // connect the summary to the graph, this will also save the summary to the redis.
+                tracker.connect_task_to_answer_summary(&tasks_qna_context, summary)?;
                 return Ok(SuggestResponse {
                     tasks: Some(tracker.get_current_tasks()?),
                     questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
