@@ -1,4 +1,6 @@
-use crate::models::TasksQuestionsAnswersDetails;
+use log::debug;
+
+use crate::models::{TasksQuestionsAnswersDetails, CodeSpanRequest, CodeChunk, TaskDetailsWithContext};
 
 pub fn functions(add_proc: bool) -> serde_json::Value {
     let mut funcs = serde_json::json!(
@@ -346,24 +348,107 @@ pub fn create_task_answer_summarization_prompt(
     tasks_details: &TasksQuestionsAnswersDetails,
 ) -> String {
     let mut prompt = format!(
-        "You are a junior software engineer who has received the following tasks, questions, and related answers about a specific issue. Summarize the information provided as if you were preparing to discuss it with a senior software engineer for further clarification.\n\nUser Query: '{}'\n",
+        "As a junior software engineer, you've received tasks, questions, and answers related to an issue you're working on. These were provided by your colleague. Your goal is to summarize this information, preparing yourself to discuss it for better clarity. Here's the issue you're addressing:\n\nUser Query: '{}'\n\n",
         user_query
     );
 
+    prompt += "## Task Summary:\n";
+
     for (i, task) in tasks_details.tasks.iter().enumerate() {
-        prompt += &format!("\nTask {}: {}\n", i + 1, task.task_description);
-        
-        // Iterating through questions and answers for each task
+        prompt += &format!("### Task {}: {}\n", i + 1, task.task_description);
+        prompt += "Key points from the answers:\n";
+
+        // Adding questions and answers for the task in bullet points.
         for (j, question) in task.questions.iter().enumerate() {
-            prompt += &format!("Q{}: {}\n", j + 1, question);
+            prompt += &format!("  - Q{}: {}\n", j + 1, question);
+            if j < task.answers.len() {
+                prompt += &format!("    - Answer: {}\n", task.answers[j]);
+            }
         }
-        for (k, answer) in task.answers.iter().enumerate() {
-            prompt += &format!("A{}: {}\n", k + 1, answer);
+
+        // Instructions for summarizing the information.
+        prompt += &format!(
+            "\nPlease summarize the key information from the answers for Task {}: {}\n",
+            i + 1,
+            task.task_description
+        );
+    }
+
+    // Section for listing critical clarifying questions.
+    prompt += "\n## Critical Clarifying Questions:\n";
+    prompt += "Imagine you are in the middle of coding to solve the above tasks. The following questions are crucial for continuing your coding process effectively. List any points that need further clarification, or where information seems to be conflicting, ambiguous, or missing, which could potentially block progress while coding to solve the task:\n";
+
+    for _ in 0..20 {
+        prompt += "  - Question\n";
+    }
+
+    prompt += "\nThe summary should be detailed, clear, and structured in bullet points to aid in your upcoming discussion. Group all the clarifying questions in one section at the end.\n";
+
+    prompt
+}
+
+async fn fetch_code_snippet(request: CodeSpanRequest, code_search_url: &str) -> Result<Vec<CodeChunk>, anyhow::Error> {
+    let client = reqwest::Client::new();
+    let api_url = format!("{}/span", code_search_url);
+
+    debug!("API URL: {}", api_url);
+    // Making a POST request to the code search API with the given span request
+    let response = client.post(api_url)
+                         .json(&request)
+                         .send()
+                         .await?
+                         .error_for_status()? // Checks for HTTP error statuses
+                         .json::<Vec<CodeChunk>>()
+                         .await?;
+
+    Ok(response)
+}
+
+pub async fn generate_single_task_summarization_prompt(
+    user_query: &str,
+    url: &str,
+    task_detail: &TaskDetailsWithContext,
+) -> Result<String, anyhow::Error> {
+    let mut prompt = format!(
+        "As a junior software engineer, you're working on a task provided by your colleague. Summarize the information related to this task and prepare clarifying questions. Here's the issue you're addressing:\n\nUser Query: '{}'\n\n",
+        user_query
+    );
+
+    prompt += &format!(
+        "## Task Summary:\n\n### Task: {}\n",
+        task_detail.task_description
+    );
+
+    // Adding code contexts to the prompt
+    prompt += "#### Code Contexts:\n";
+    // Inside generate_single_task_summarization_prompt function
+    for context in &task_detail.merged_code_contexts {
+        let code_span_request = CodeSpanRequest {
+            repo: context.repo.clone(),
+            branch: context.branch.clone(),
+            path: context.path.clone(),
+            ranges: Some(context.ranges.clone()),
+            id: Some(task_detail.task_id.to_string()),
+        };
+
+        let code_snippets = fetch_code_snippet(code_span_request, url).await?;
+        for snippet in code_snippets {
+            //debug!("Code from the API: {}", snippet);
+            prompt += &format!(
+                "**File**: {}\n**Code** (Lines {} - {}):\n```\n{}\n```\n",
+                snippet.path, snippet.start_line, snippet.end_line, snippet.snippet
+            );
         }
     }
 
-    prompt += "\nCreate a clear summary of the key points from all the answers, focusing on details that are crucial for solving the user query and the tasks. Structure your summary in bullet points.\n\n";
-    prompt += "Identify and note down any conflicting, ambiguous, or missing information you might need to ask the senior software engineer about. Frame these points as questions or concerns that you, as a junior engineer, would like to clarify to ensure you have a complete understanding of the tasks, answers, and their context.\n";
+    prompt += "\n## Critical Clarifying Questions:\n";
+    prompt += "Imagine you are in the middle of coding to solve the above tasks. The following questions are crucial for continuing your coding process effectively. List any points that need further clarification, or where information seems to be conflicting, ambiguous, or missing, which could potentially block progress while coding to solve the task:\n";
 
-    prompt
+    for _ in 0..20 {
+        prompt += "  - Question\n";
+    }
+
+    prompt += "\nThe summary should be detailed, clear, and structured in bullet points to aid in your upcoming discussion. Group all the clarifying questions in one section at the end.\n";
+
+    Ok(prompt)
 }

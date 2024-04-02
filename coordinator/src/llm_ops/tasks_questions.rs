@@ -2,7 +2,6 @@ use common::models::TaskListResponseWithMessage;
 use common::llm_gateway;
 use common::prompts;
 use crate::CONFIG;
-use crate::controller::suggest::ANSWER_MODEL;
 use common::models::TaskList;
 use log::error;
 
@@ -25,7 +24,7 @@ pub async fn generate_tasks_and_questions(
 
     let response = match llm_gateway
         .clone()
-        .model(ANSWER_MODEL)
+        .model(&CONFIG.openai_model)
         .chat(&messages, None)
         .await
     {
