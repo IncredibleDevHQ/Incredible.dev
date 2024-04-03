@@ -370,18 +370,29 @@ impl Client {
                 // presence_penalty: Some(0.5),
                 // frequency_penalty: Some(0.5),
                 //provider: self.provider,
-                model: Some("gpt-4".to_string()),
+                model: Some("gpt-4-turbo-preview".to_string()),
                 //extra_stop_sequences: vec![],
                 //session_reference_id: self.session_reference_id.clone(),
             });
         }
         // use builder to create request
-        let request = builder.build().unwrap();
+        let request = builder.build();
+        if request.is_err() {
+            return Err(anyhow::anyhow!("Failed to build request"));
+        }
+        let request = request.unwrap();
         // call request and await response
-        let response = self.http.execute(request).await.unwrap();
+        let response = self.http.execute(request).await.map_err(|e| {
+            log::debug!("Error: {:?}", e);
+            anyhow::anyhow!("Failed to execute request to open AI: {:?}", e)
+        })?;
+
+        log::debug!("response status: {:?}", response.status());
+
         // get response body
-        let body = response.text().await.unwrap();
-        //println!("response body: {:?}", body);
+        let body = response.text().await?;
+        log::debug!("response body from open ai: {:?}\n", body);
+    
 
         // Deserialize the JSON string into a ChatCompletion struct
         let chat_completion: ChatCompletion = serde_json::from_str(&body)?;

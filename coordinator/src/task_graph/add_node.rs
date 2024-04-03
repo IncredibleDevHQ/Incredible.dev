@@ -15,9 +15,10 @@ pub enum NodeError {
     RootNodeNotFound,
     NodeNotFound(String),
     InvalidNodeId,
-    InvalidParentNode,
+    MissingParentNode,
     MissingLastUpdatedNode,
     InvalidQuestionNode,
+    NoTaskFound,
     RedisSaveError,
 }
 
@@ -28,9 +29,10 @@ impl fmt::Display for NodeError {
             NodeError::RootNodeNotFound => write!(f, "Root node not found."),
             NodeError::NodeNotFound(ref message) => write!(f, "{}", message),
             NodeError::InvalidNodeId => write!(f, "Invalid node ID provided."),
-            NodeError::InvalidParentNode => write!(f, "Parent node is not a conversation node."),
+            NodeError::MissingParentNode => write!(f, "Parent node is not a conversation node."),
             NodeError::MissingLastUpdatedNode => write!(f, "No last updated node found."),
             NodeError::InvalidQuestionNode => write!(f, "Invalid question node provided."),
+            NodeError::NoTaskFound => write!(f, "No task found."),
             NodeError::RedisSaveError => write!(f, "Error saving the task process to Redis."),
         }
     }

@@ -1,14 +1,14 @@
-use serde::de;
 use crate::task_graph::add_node::NodeError;
 use crate::task_graph::graph_model::EdgeV1;
 use crate::task_graph::graph_model::{NodeV1, QuestionWithAnswer, TrackProcessV1};
-use anyhow::Error;
 use common::llm_gateway::api::{Message, MessageSource, Messages};
+use common::CodeContext;
 use log::debug;
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use petgraph::visit::{Dfs, IntoNodeReferences, Visitable};
 use petgraph::Direction;
+use serde::de;
 
 use common::models::{Subtask, Task, TaskList};
 use common::CodeUnderstanding;
@@ -22,8 +22,10 @@ pub enum ConversationProcessingStage {
     GraphNotInitialized,
     OnlyRootNodeExists,
     AllQuestionsAnswered, // tasks are generated and all questions are answered.
+    SummarizeAnswers, // Move to this state after all the questions are answered, but yet to be summarized.
+    AnswersSummarized, // Move to this state after all the questions are answered and then summarized.
     QuestionsPartiallyAnswered, // s
-    Unknown,              // State cannot be determined or does not fit the other categories.
+    Unknown,           // State cannot be determined or does not fit the other categories.
 }
 
 impl TrackProcessV1 {
@@ -34,8 +36,9 @@ impl TrackProcessV1 {
     }
 
     // Assuming you have a graph `graph` already populated
-    fn check_question_completion(&self) -> ConversationProcessingStage {
+    pub fn check_question_completion(&self) -> ConversationProcessingStage {
         let graph = self.graph.as_ref().unwrap();
+
         let question_nodes = graph
             .node_indices()
             .filter_map(|node_idx| match graph.node_weight(node_idx) {
@@ -45,6 +48,11 @@ impl TrackProcessV1 {
             .collect::<Vec<NodeIndex>>();
 
         let mut answered_questions = 0;
+
+        if question_nodes.is_empty() {
+            debug!("No question nodes found in the graph.");
+            return ConversationProcessingStage::GenerateTasksAndQuestions;
+        }
 
         for question_node in &question_nodes {
             let has_answer = graph
@@ -56,15 +64,29 @@ impl TrackProcessV1 {
             }
         }
 
-        match answered_questions {
-            0 => ConversationProcessingStage::TasksAndQuestionsGenerated,
-            count if count == question_nodes.len() => {
-                ConversationProcessingStage::AllQuestionsAnswered
-            }
-            _ => ConversationProcessingStage::QuestionsPartiallyAnswered,
-        }
-    }
+        if answered_questions == question_nodes.len() {
+            // Check if there is an AnswerSummary node.
+            let has_answer_summary = graph.node_indices().any(|node_idx| {
+                matches!(graph.node_weight(node_idx), Some(NodeV1::AnswerSummary(..)))
+            });
 
+            return if has_answer_summary {
+                debug!("All questions are answered and summarized.");
+                ConversationProcessingStage::AnswersSummarized
+            } else {
+                debug!("All questions are answered, but not summarized.");
+                ConversationProcessingStage::AllQuestionsAnswered
+            };
+        }
+
+        if answered_questions == 0 {
+            debug!("No questions are answered.");
+            return ConversationProcessingStage::TasksAndQuestionsGenerated;
+        }
+
+        debug!("Some questions are answered, but some are pending.");
+        ConversationProcessingStage::QuestionsPartiallyAnswered
+    }
     /// Determines the processing stage of the last conversation in the graph.
     /// We never persist the graph in the Redis just with a Root node.
     /// Hence we make an assumption that the last conversation node is available.
@@ -280,7 +302,31 @@ impl TrackProcessV1 {
         })
     }
 
-    // Extracts the current list of tasks with questions and answers which are alreaady answered.
+    // Modified to return a Result, propagating an error if the graph isn't initialized.
+    fn get_contexts_for_answer(
+        &self,
+        answer_node_index: NodeIndex,
+    ) -> Result<Vec<CodeContext>, NodeError> {
+        let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
+
+        // Proceed to collect contexts only if the graph is available.
+        Ok(graph
+            .edges_directed(answer_node_index, petgraph::Direction::Outgoing)
+            .filter_map(|edge| {
+                if matches!(edge.weight(), EdgeV1::CodeContext) {
+                    if let NodeV1::CodeContext(context) = &graph[edge.target()] {
+                        Some(context.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect())
+    }
+
+    // Update the usage in get_current_questions_with_answers to handle the Result.
     pub fn get_current_questions_with_answers(&self) -> Result<Vec<QuestionWithAnswer>, NodeError> {
         let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
 
@@ -288,19 +334,20 @@ impl TrackProcessV1 {
 
         for node_idx in graph.node_indices() {
             if let NodeV1::Question(question) = &graph[node_idx] {
-                // Attempt to find a connected Answer node
-                let answer_edge = graph.edges_directed(node_idx, petgraph::Direction::Outgoing)
+                let answer_edge = graph
+                    .edges_directed(node_idx, petgraph::Direction::Outgoing)
                     .find(|edge| matches!(edge.weight(), EdgeV1::Answer));
 
                 if let Some(edge) = answer_edge {
                     if let NodeV1::Answer(answer_text) = &graph[edge.target()] {
-                        // Construct a QuestionWithAnswer object
+                        // Handle the error or unwrap the result.
+                        let contexts = self.get_contexts_for_answer(edge.target())?;
+
                         let question_with_answer = QuestionWithAnswer {
-                            question_id: node_idx.index(), // Using the node index as a unique identifier
+                            question_id: node_idx.index(),
                             question: question.clone(),
                             answer: CodeUnderstanding {
-                                // Assuming CodeUnderstanding is derived from the answer text; adjust accordingly.
-                                context: vec![], // Populate with the actual context
+                                context: contexts,
                                 question: question.clone(),
                                 answer: answer_text.clone(),
                             },

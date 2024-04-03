@@ -3,9 +3,11 @@ use log::{error, info};
 use once_cell::sync::Lazy;
 
 mod controller;
+mod llm_ops;
 mod models;
 mod routes;
 mod task_graph;
+mod utility;
 
 use core::result::Result::Ok;
 use std::env;

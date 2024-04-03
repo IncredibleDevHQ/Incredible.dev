@@ -167,7 +167,7 @@ impl Agent {
             .map(|(c, _)| CodeContext {
                 path: c.path.clone(),
                 hidden: false,
-                repo: "repo".to_owned(), // Change to RepoRef
+                repo: self.repo_name.clone(), 
                 branch: None,
                 ranges: vec![c.start_line..c.end_line],
             })
