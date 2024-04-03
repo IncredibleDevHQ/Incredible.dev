@@ -113,11 +113,19 @@ pub async fn get_file_from_quickwit(
     search_query: &str,
     app_state: Arc<AppState>,
 ) -> Result<Option<ContentDocument>> {
-    let response_array = search_quickwit(index_name, search_field, search_query, app_state).await?;
+    let query = if !search_field.is_empty() {
+        format!("{}:{}", search_field, search_query)
+    } else {
+        search_query.to_owned()
+    };
+    let response_array = search_quickwit(index_name, &query, app_state).await?;
+    let filtered_response_array: Vec<ContentDocument> = response_array
+        .into_iter()
+        .filter((|doc| doc.relative_path == search_query))
+        .collect();
 
-    let cloned_response_array = response_array.clone(); // Clone the response_array
-
-    let paths: Vec<_> = cloned_response_array
+    let paths: Vec<_> = filtered_response_array
+        .clone()
         .into_iter()
         .map(|c| c.relative_path)
         .collect::<HashSet<_>>() // Removes duplicates
@@ -125,27 +133,20 @@ pub async fn get_file_from_quickwit(
         .collect::<Vec<_>>();
     debug!("Quickwit paths: {:?}", paths);
 
-    Ok(response_array)
+    return Ok(filtered_response_array.first().or(None).cloned());
 }
 
 pub async fn search_quickwit(
     index_name: &str,
-    search_field: &str,
-    search_query: &str,
+    query: &str,
     app_state: Arc<AppState>,
-) -> Result<Option<ContentDocument>, Error> {
+) -> Result<Vec<ContentDocument>, Error> {
     let config = app_state.configuration.clone();
 
     let base_url = config.quikwit_db_url.clone();
 
-    let query = if !search_field.is_empty() {
-        format!("{}:{}", search_field, search_query)
-    } else {
-        search_query.to_owned()
-    };
-
     let json_data = BodyRes {
-        query,
+        query: query.to_string(),
         max_hits: 10,
     };
 
@@ -171,19 +172,16 @@ pub async fn search_quickwit(
         match parsed_response {
             Ok(api_response) => {
                 for result_item in api_response.hits {
-                    if search_query == result_item.relative_path {
-                        debug!("Found a match: {}", search_query);
-                        response_array.push(ContentDocument {
-                            relative_path: result_item.relative_path,
-                            repo_name: result_item.repo_name,
-                            lang: result_item.lang,
-                            content: result_item.content,
-                            repo_ref: result_item.repo_ref,
-                            line_end_indices: result_item.line_end_indices,
-                            symbol_locations: result_item.symbol_locations,
-                            symbols: result_item.symbols,
-                        });
-                    }
+                    response_array.push(ContentDocument {
+                        relative_path: result_item.relative_path,
+                        repo_name: result_item.repo_name,
+                        lang: result_item.lang,
+                        content: result_item.content,
+                        repo_ref: result_item.repo_ref,
+                        line_end_indices: result_item.line_end_indices,
+                        symbol_locations: result_item.symbol_locations,
+                        symbols: result_item.symbols,
+                    });
                 }
             }
             Err(err) => {
@@ -194,9 +192,5 @@ pub async fn search_quickwit(
         error!("Request was not successful: {}", response.status());
     }
 
-    if !response_array.is_empty() {
-        Ok(Some(response_array[0].clone())) // Return the first ContentDocument
-    } else {
-        Ok(None) // No ContentDocument found
-    }
+    Ok(response_array)
 }
