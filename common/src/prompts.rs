@@ -1,3 +1,7 @@
+use log::debug;
+
+use crate::models::{TasksQuestionsAnswersDetails, CodeSpanRequest, CodeChunk, TaskDetailsWithContext};
+
 pub fn functions(add_proc: bool) -> serde_json::Value {
     let mut funcs = serde_json::json!(
         [
@@ -239,7 +243,10 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
     let question_concept_generator_prompt = format!(
         r#"#####
 
-        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Alongside each task and subtask, you will generate questions aimed at understanding the current codebase. These questions should be insightful, focusing on the existing codebase's structure and behavior without directly addressing the specific changes to be made.
+        
+        You are a Tool that takes an issue description for a developer task and deconstructs it into actionable tasks and subtasks focusing on code modifications. Alongside each task and subtask, you will generate questions aimed at understanding the current codebase. These questions should be specific and insightful, focusing on the existing codebase's structure and behavior without directly addressing the specific changes to be made.
+
+        Emphasize the need for specificity in your questions. Avoid using vague references like 'this endpoint' or 'that endpoint.' Instead, require the questions to specify exact endpoints, functionalities, or components. For instance, instead of asking 'How does this endpoint respond?', ask 'How does the /retrieve endpoint respond, and what is its data structure?'.
 
         Before generating tasks and subtasks, introspect whether a junior developer would have enough information to understand what problem or issue needs to be solved based on the provided issue description. The clarity and specificity of the issue description are crucial for creating actionable and understandable tasks.
 
@@ -312,7 +319,7 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
         Your job is to perform the following tasks:
         - Generate 1 to 5 main tasks based on the issue description, ensuring each task is detailed, clear, and actionable. Avoid creating vague tasks like 'Improve the API,' which do not provide enough information for a junior engineer to act upon. Instead, detail what specific improvements are needed, as in 'Update the GET endpoint in the API to handle error status codes more effectively.'
         - For each main task, define 1 to 5 subtasks that provide specific steps and actions required.
-        - For each subtask, create 1 to 4 questions that delve into the codebase's existing structure and behavior, relevant to the task at hand.
+        - For each subtask, create 1 to 4 questions that delve into the codebase's existing structure and behavior, relevant to the task at hand. Ensure that the questions are specific and refer to exact components or endpoints.
 
         When referring to APIs or other components, always use specific and descriptive names. Never use generic terms like "other API." Instead, clarify the API's purpose or function, describing it in a way that reflects its role in the system.
 
@@ -336,3 +343,112 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
     question_concept_generator_prompt
 }
 
+pub fn create_task_answer_summarization_prompt(
+    user_query: &str,
+    tasks_details: &TasksQuestionsAnswersDetails,
+) -> String {
+    let mut prompt = format!(
+        "As a junior software engineer, you've received tasks, questions, and answers related to an issue you're working on. These were provided by your colleague. Your goal is to summarize this information, preparing yourself to discuss it for better clarity. Here's the issue you're addressing:\n\nUser Query: '{}'\n\n",
+        user_query
+    );
+
+    prompt += "## Task Summary:\n";
+
+    for (i, task) in tasks_details.tasks.iter().enumerate() {
+        prompt += &format!("### Task {}: {}\n", i + 1, task.task_description);
+        prompt += "Key points from the answers:\n";
+
+        // Adding questions and answers for the task in bullet points.
+        for (j, question) in task.questions.iter().enumerate() {
+            prompt += &format!("  - Q{}: {}\n", j + 1, question);
+            if j < task.answers.len() {
+                prompt += &format!("    - Answer: {}\n", task.answers[j]);
+            }
+        }
+
+        // Instructions for summarizing the information.
+        prompt += &format!(
+            "\nPlease summarize the key information from the answers for Task {}: {}\n",
+            i + 1,
+            task.task_description
+        );
+    }
+
+    // Section for listing critical clarifying questions.
+    prompt += "\n## Critical Clarifying Questions:\n";
+    prompt += "Imagine you are in the middle of coding to solve the above tasks. The following questions are crucial for continuing your coding process effectively. List any points that need further clarification, or where information seems to be conflicting, ambiguous, or missing, which could potentially block progress while coding to solve the task:\n";
+
+    for _ in 0..20 {
+        prompt += "  - Question\n";
+    }
+
+    prompt += "\nThe summary should be detailed, clear, and structured in bullet points to aid in your upcoming discussion. Group all the clarifying questions in one section at the end.\n";
+
+    prompt
+}
+
+async fn fetch_code_snippet(request: CodeSpanRequest, code_search_url: &str) -> Result<Vec<CodeChunk>, anyhow::Error> {
+    let client = reqwest::Client::new();
+    let api_url = format!("{}/span", code_search_url);
+
+    debug!("API URL: {}", api_url);
+    // Making a POST request to the code search API with the given span request
+    let response = client.post(api_url)
+                         .json(&request)
+                         .send()
+                         .await?
+                         .error_for_status()? // Checks for HTTP error statuses
+                         .json::<Vec<CodeChunk>>()
+                         .await?;
+
+    Ok(response)
+}
+
+pub async fn generate_single_task_summarization_prompt(
+    user_query: &str,
+    url: &str,
+    task_detail: &TaskDetailsWithContext,
+) -> Result<String, anyhow::Error> {
+    let mut prompt = format!(
+        "As a junior software engineer, you're working on a task provided by your colleague. Summarize the information related to this task and prepare clarifying questions. Here's the issue you're addressing:\n\nUser Query: '{}'\n\n",
+        user_query
+    );
+
+    prompt += &format!(
+        "## Task Summary:\n\n### Task: {}\n",
+        task_detail.task_description
+    );
+
+    // Adding code contexts to the prompt
+    prompt += "#### Code Contexts:\n";
+    // Inside generate_single_task_summarization_prompt function
+    for context in &task_detail.merged_code_contexts {
+        let code_span_request = CodeSpanRequest {
+            repo: context.repo.clone(),
+            branch: context.branch.clone(),
+            path: context.path.clone(),
+            ranges: Some(context.ranges.clone()),
+            id: Some(task_detail.task_id.to_string()),
+        };
+
+        let code_snippets = fetch_code_snippet(code_span_request, url).await?;
+        for snippet in code_snippets {
+            //debug!("Code from the API: {}", snippet);
+            prompt += &format!(
+                "**File**: {}\n**Code** (Lines {} - {}):\n```\n{}\n```\n",
+                snippet.path, snippet.start_line, snippet.end_line, snippet.snippet
+            );
+        }
+    }
+
+    prompt += "\n## Critical Clarifying Questions:\n";
+    prompt += "Imagine you are in the middle of coding to solve the above tasks. The following questions are crucial for continuing your coding process effectively. List any points that need further clarification, or where information seems to be conflicting, ambiguous, or missing, which could potentially block progress while coding to solve the task:\n";
+
+    for _ in 0..20 {
+        prompt += "  - Question\n";
+    }
+
+    prompt += "\nThe summary should be detailed, clear, and structured in bullet points to aid in your upcoming discussion. Group all the clarifying questions in one section at the end.\n";
+
+    Ok(prompt)
+}

@@ -1,8 +1,13 @@
+use crate::llm_ops::summarize::{
+    generate_single_task_summarization_, generate_summarized_answer_for_task,
+};
+use crate::llm_ops::tasks_questions::generate_tasks_and_questions;
 use anyhow::{Error, Result};
-use common::llm_gateway::api::{Message, Messages};
+use common::llm_gateway::api::Message;
 use common::models::{
     CodeContextRequest, CodeUnderstandRequest, TaskList, TaskListResponseWithMessage,
 };
+
 use futures::future::join_all;
 use log::{debug, error, info};
 use reqwest::{Method, StatusCode};
@@ -14,12 +19,10 @@ use crate::task_graph::graph_model::{
 };
 use crate::task_graph::redis::load_task_process_from_redis;
 use crate::task_graph::state::ConversationProcessingStage;
-use common::{llm_gateway, prompts};
 use common::{service_interaction::service_caller, CodeUnderstanding, CodeUnderstandings};
 
 use crate::{models::SuggestRequest, CONFIG};
 
-pub const ANSWER_MODEL: &str = "gpt-4-0613";
 
 pub async fn handle_suggest_wrapper(
     request: SuggestRequest,
@@ -133,7 +136,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 // the LLM might respond with a generic response with some detail like "Can you provide more context? What specifically do you need help with regarding your API?"
                 // In this case the the systems state in the graph would transition to AwaitingUserInput
                 // if you don't stop here and dry to fetch answer again, the state machine will loop forever.
-                // Instead you return and provide more opporunity for user to provide input.
+                // Instead you return and provide more opportunity for user to provide input.
                 (state, _) = tracker.last_conversation_processing_stage();
                 if state == ConversationProcessingStage::AwaitingUserInput {
                     debug!("Tasks and Questions not generated, awaiting more user input, returning ask_user state.");
@@ -144,12 +147,13 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                         questions_with_answers: None,
                     });
                 }
-                // the tasks and questions are successfullly generated, move to find answers for the questions.
+                // the tasks and questions are successfully generated, move to find answers for the questions.
                 debug!("Tasks and Questions generated successfully, moving onto finding answers for the generated questions.");
                 state = ConversationProcessingStage::TasksAndQuestionsGenerated;
             }
             ConversationProcessingStage::TasksAndQuestionsGenerated => {
                 debug!("Tasks and questions are generated, moving onto finding answers for the questions.");
+                tracker.print_graph_hierarchy();
                 // return the tasks, subtasks and questions.
                 let task_list = tracker.get_unanswered_questions()?;
                 debug!(
@@ -170,27 +174,21 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 // the reason to do this is to avoid the state machine getting into an infinite loop.
                 // Imagine a scenario where there were some unanswered questions,
                 // we don't want the system to continue further until they succeed.
-                // So we update the task graph even if there some successfull answers, and return error
+                // So we update the task graph even if there some successful answers, and return error
                 // even if there was one unsuccessful answer.
-                // the client can retry, and the next time the system will contine from where it left off
+                // the client can retry, and the next time the system will continue from where it left off
                 // to retry fetching answer only for the unanswered questions.
                 let answer_err = questions_with_answers.iter().find(|x| x.is_err());
                 if let Some(err_result) = answer_err {
-                    return Err(anyhow::anyhow!(err_result.as_ref().unwrap_err().to_string()));
-                } else {
-                    let answers = questions_with_answers
-                        .into_iter()
-                        .map(|x| x.unwrap())
-                        .collect::<Vec<_>>();
-                    return Ok(SuggestResponse {
-                        tasks: Some(tracker.get_current_tasks()?),
-                        questions_with_answers: Some(answers),
-                        ask_user: None,
-                    });
+                    return Err(anyhow::anyhow!(err_result
+                        .as_ref()
+                        .unwrap_err()
+                        .to_string()));
                 }
+                state = ConversationProcessingStage::AllQuestionsAnswered;
             }
             // you start with this state because the previous conversation with the user ended
-            // abruply since the user didn't provide enough context.
+            // abruptly since the user didn't provide enough context.
             // So you regenerate tasks and questions to continue the conversation.
             ConversationProcessingStage::AwaitingUserInput => {
                 debug!("Awaiting user input, moving onto getting tasks/questions for the next objective round.");
@@ -204,7 +202,23 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 return Err(anyhow::anyhow!("{}", err_msg));
             }
             ConversationProcessingStage::AllQuestionsAnswered => {
-                debug!("All questions are answered, nothing left to do, returning the result from the task graph");
+                debug!("All questions are answered, Summarizing the answers.");
+                state = ConversationProcessingStage::SummarizeAnswers;
+            }
+            // Summarize answers after all the answers are fetched.
+            ConversationProcessingStage::SummarizeAnswers => {
+                debug!("Summarizing answers for the tasks and questions.");
+                let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts()?;
+
+                let summary = generate_summarized_answer_for_task(
+                    request.user_query.clone(),
+                    &tasks_qna_context,
+                )
+                .await?;
+
+                // connect the summary to the graph, this will also save the summary to the redis.
+                tracker.connect_task_to_answer_summary(&tasks_qna_context, summary)?;
+
                 return Ok(SuggestResponse {
                     tasks: Some(tracker.get_current_tasks()?),
                     questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
@@ -215,76 +229,42 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 debug!("Some Questions are unanswered, continuing to find answers.");
                 state = ConversationProcessingStage::TasksAndQuestionsGenerated;
             }
-        }
-    }
-}
 
-async fn generate_tasks_and_questions(
-    user_query: String,
-    repo_name: String,
-) -> Result<TaskListResponseWithMessage, anyhow::Error> {
-    // initialize new llm gateway.
+            ConversationProcessingStage::AnswersSummarized => {
+                // nothing more to do,return the answers.
+                debug!("All answers summarized, nothing to do!");
+                let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts()?;
 
-    // otherwise call the llm gateway to generate the questions
-    let llm_gateway = llm_gateway::Client::new(&CONFIG.openai_url)
-        .temperature(0.0)
-        .bearer(CONFIG.openai_api_key.clone())
-        .model(&CONFIG.openai_api_key.clone());
+                for task in &tasks_qna_context.tasks {
+                    debug!("Code Context: {:?}", task.merged_code_contexts);
+                }
 
-    let system_prompt: String = prompts::question_concept_generator_prompt(&user_query, &repo_name);
-    let system_message = llm_gateway::api::Message::system(&system_prompt);
-    // append the system message to the message history
-    let mut messages = Some(system_message.clone()).into_iter().collect::<Vec<_>>();
+                let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts()?;
 
-    // append the system message to the message history
+                // for task in &tasks_qna_context.tasks {
+                //     // call generate_single_task_summarization function to generate the summary for each task.
+                    generate_single_task_summarization_(
+                        &request.user_query.clone(),
+                        &CONFIG.code_search_url,
+                       &tasks_qna_context.tasks[1].clone(),
+                    )
+                    .await?;
+                // }
 
-    let response = match llm_gateway
-        .clone()
-        .model(ANSWER_MODEL)
-        .chat(&messages, None)
-        .await
-    {
-        Ok(response) => Some(response),
-        Err(_) => None,
-    };
-    let final_response = match response {
-        Some(response) => response,
-        None => {
-            log::error!("Error: Unable to fetch response from the gateway");
-            // Return error as API response
-            return Err(anyhow::anyhow!("Unable to fetch response from the gateway"));
-        }
-    };
+                let summary = generate_summarized_answer_for_task(
+                    request.user_query.clone(),
+                    &tasks_qna_context,
+                )
+                .await?;
 
-    let choices_str = final_response.choices[0]
-        .message
-        .content
-        .clone()
-        .unwrap_or_else(|| "".to_string());
-
-    // create assistant message and add it to the messages
-    let assistant_message = llm_gateway::api::Message::assistant(&choices_str);
-    messages.push(assistant_message);
-
-    //log::debug!("Choices: {}", choices_str);
-
-    let response_task_list: Result<TaskList, serde_json::Error> =
-        serde_json::from_str(&choices_str);
-
-    match response_task_list {
-        Ok(task_list) => {
-            //log::debug!("Task list: {:?}", task_list);
-            Ok(TaskListResponseWithMessage {
-                task_list: task_list,
-                messages,
-            })
-        }
-        Err(e) => {
-            error!("Failed to parse response from the gateway: {}", e);
-            Err(anyhow::anyhow!(
-                "Failed to parse response from the gateway: {}",
-                e
-            ))
+                // connect the summary to the graph, this will also save the summary to the redis.
+                tracker.connect_task_to_answer_summary(&tasks_qna_context, summary)?;
+                return Ok(SuggestResponse {
+                    tasks: Some(tracker.get_current_tasks()?),
+                    questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
+                    ask_user: None,
+                });
+            }
         }
     }
 }
@@ -336,6 +316,14 @@ async fn get_codebase_answers_for_questions(
                     )
                     .await;
 
+                // log error from response
+                if response.is_err() {
+                    error!(
+                        "Error fetching code understanding for question:{}, Response error: {}",
+                        question_with_id.clone(),
+                        response.as_ref().err().unwrap()
+                    );
+                }
                 // Convert the service response to a `QuestionWithAnswer`.
                 // In case of success, wrap the resulting `QuestionWithAnswer` in `Ok`.
                 // In case of an error, convert the error to `anyhow::Error` using `map_err`.
