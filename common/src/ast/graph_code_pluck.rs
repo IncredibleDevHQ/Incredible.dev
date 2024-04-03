@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ast::utils::{adjust_byte_positions, get_line_number};
 
-use super::{ast_graph::ScopeGraph, symbol::SymbolLocations};
+use super::{ast_graph::ScopeGraph, symbol::SymbolLocations, text_range::TextRange, CodeFileAST};
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct ExtractedContent {
@@ -58,6 +58,11 @@ impl ContentDocument {
     pub fn symbol_locations(&self) -> anyhow::Result<SymbolLocations> {
         let symbol_locations = bincode::deserialize::<SymbolLocations>(&self.symbol_locations)?;
         Ok(symbol_locations)
+    }
+    pub fn hoverable_ranges(&self) -> Option<Vec<TextRange>> {
+        CodeFileAST::build_ast(self.content.as_bytes(), self.lang.as_ref()?)
+            .and_then(CodeFileAST::hoverable_ranges)
+            .ok()
     }
 }
 
