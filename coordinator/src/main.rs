@@ -1,4 +1,5 @@
 use anyhow::Result;
+use common::{config::set_redis_url, task_graph::redis::establish_redis_connection};
 use log::{error, info};
 use once_cell::sync::Lazy;
 
@@ -6,7 +7,6 @@ mod controller;
 mod llm_ops;
 mod models;
 mod routes;
-mod task_graph;
 mod utility;
 
 use core::result::Result::Ok;
@@ -91,7 +91,8 @@ async fn main() -> Result<()> {
     info!("All dependent services are up!");
 
     // test redis connection
-    let conn = task_graph::redis::establish_redis_connection().map_err(|e| {
+    set_redis_url(&CONFIG.redis_url); // Set redis url in the common package
+    let _conn = establish_redis_connection().map_err(|e| {
         error!("Failed to establish Redis connection, check if Redis is running and is accessible: {:?}", e);
         panic!("Failed to establish Redis connection: {:?}", e);
     });
