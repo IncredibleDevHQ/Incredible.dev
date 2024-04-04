@@ -790,6 +790,7 @@ dependencies = [
  "md5",
  "once_cell",
  "petgraph",
+ "redis",
  "reqwest",
  "reqwest-eventsource 0.4.0",
  "semver",
@@ -811,6 +812,7 @@ dependencies = [
  "tree-sitter-ruby",
  "tree-sitter-rust",
  "tree-sitter-typescript",
+ "uuid",
 ]
 
 [[package]]

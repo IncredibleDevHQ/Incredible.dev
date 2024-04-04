@@ -8,21 +8,20 @@ use common::models::{
     CodeContextRequest, CodeUnderstandRequest, TaskList, TaskListResponseWithMessage,
 };
 
+use common::task_graph::graph_model::{
+    ConversationChain, QuestionWithAnswer, QuestionWithId, TrackProcessV1,
+};
+use common::task_graph::redis::load_task_process_from_redis;
+use common::task_graph::state::ConversationProcessingStage;
 use futures::future::join_all;
 use log::{debug, error, info};
 use reqwest::{Method, StatusCode};
 use std::{collections::HashMap, convert::Infallible};
 
 use crate::models::SuggestResponse;
-use crate::task_graph::graph_model::{
-    ConversationChain, QuestionWithAnswer, QuestionWithId, TrackProcessV1,
-};
-use crate::task_graph::redis::load_task_process_from_redis;
-use crate::task_graph::state::ConversationProcessingStage;
 use common::{service_interaction::service_caller, CodeUnderstanding, CodeUnderstandings};
 
 use crate::{models::SuggestRequest, CONFIG};
-
 
 pub async fn handle_suggest_wrapper(
     request: SuggestRequest,
@@ -243,12 +242,12 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
 
                 // for task in &tasks_qna_context.tasks {
                 //     // call generate_single_task_summarization function to generate the summary for each task.
-                    generate_single_task_summarization_(
-                        &request.user_query.clone(),
-                        &CONFIG.code_search_url,
-                       &tasks_qna_context.tasks[1].clone(),
-                    )
-                    .await?;
+                generate_single_task_summarization_(
+                    &request.user_query.clone(),
+                    &CONFIG.code_search_url,
+                    &tasks_qna_context.tasks[1].clone(),
+                )
+                .await?;
                 // }
 
                 let summary = generate_summarized_answer_for_task(
