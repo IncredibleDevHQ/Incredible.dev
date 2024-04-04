@@ -1,11 +1,9 @@
-use common::llm_gateway::api::{Message, MessageSource};
+use crate::{llm_gateway::api::{Message, MessageSource}, CodeContext, CodeUnderstanding};
 use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use uuid::Uuid;
 
-extern crate common;
-use common::{CodeContext, CodeUnderstanding};
 
 /// Represents the process of tracking tasks, subtasks, and questions within a directed graph.
 /// Each instance of `TrackProcess` maintains its own graph, root node, and unique identifier (UUID)

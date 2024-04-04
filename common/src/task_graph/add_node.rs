@@ -3,10 +3,10 @@ use std::error::Error;
 use std::fmt;
 use uuid::Uuid;
 
+use crate::llm_gateway::api::{Message, MessageSource};
 use crate::task_graph::graph_model::TrackProcessV1;
 use crate::task_graph::graph_model::{EdgeV1, NodeV1};
 use anyhow::Result;
-use common::llm_gateway::api::{Message, MessageSource};
 use petgraph::graph::{Node, NodeIndex};
 
 #[derive(Debug)]
