@@ -18,7 +18,7 @@ bstr = "1.8.0"
 mime_guess = "2.0.4"
 unicode-width = "0.1.11"
 sha2 = "0.10.8"
-
+dirs = "5.0.0"
 
 serde = { version = "1.0", features = ["derive"] }
 # Add any other dependencies required for `RepoRef` or other types used.
