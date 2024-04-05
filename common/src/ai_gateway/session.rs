@@ -1,7 +1,8 @@
 use super::input::resolve_data_url;
-use super::{Config, Input, Model};
+use crate::ai_gateway::client::Model;
+use crate::ai_gateway::input::Input;
 
-use crate::client::{Message, MessageContent, MessageRole};
+use crate::ai_gateway::client::{Message, MessageContent, MessageRole};
 use crate::render::MarkdownRender;
 
 use anyhow::{bail, Context, Result};
