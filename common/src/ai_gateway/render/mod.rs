@@ -4,9 +4,10 @@ mod stream;
 pub use self::markdown::{MarkdownRender, RenderOptions};
 use self::stream::{markdown_stream, raw_stream};
 
-use crate::client::Client;
-use crate::config::{GlobalConfig, Input};
-use crate::utils::AbortSignal;
+use crate::ai_gateway::client::Client;
+use crate::config::{GlobalConfig};
+use crate::ai_gateway::input::Input;
+use crate::ai_gateway::utils::AbortSignal;
 
 use anyhow::{Context, Result};
 use crossbeam::channel::{unbounded, Sender};

@@ -1,6 +1,6 @@
 use crate::ai_gateway::tiktoken::{cl100k_base, CoreBPE};
 use lazy_static::lazy_static;
-use sha2::Sha256;
+use sha2::{Sha256, Digest};
 use std::env;
 use std::sync::{Arc, Mutex};
 
@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 pub fn count_tokens(text: &str) -> usize {
     cl100k_base_singleton()
         .lock()
+        .expect("Failed to lock cl100k_base")
         .encode_with_special_tokens(text)
         .len()
 }
@@ -187,3 +188,4 @@ fn validate_integer(text: &str) -> Validation {
         Validation::Valid
     }
 }
+
