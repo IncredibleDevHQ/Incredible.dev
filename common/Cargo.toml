@@ -72,5 +72,4 @@ uuid = { version = "1.0", features = ["v4"] }
 crossbeam = "0.8.2"
 inquire = "0.7.0"
 futures-util = "0.3.29"
-dirs = "5.0.0"
 chrono = "0.4.23"
