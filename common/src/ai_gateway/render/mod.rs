@@ -30,7 +30,6 @@ pub fn render_stream(
     let mut stream_handler = {
         let (tx, rx) = unbounded();
         let abort_clone = abort.clone();
-        let highlight = config.read().highlight;
         spawn(move || {
             let run = move || {
                 if stdout().is_terminal() {
@@ -41,7 +40,7 @@ pub fn render_stream(
                 }
             };
             if let Err(err) = run() {
-                render_error(err, highlight);
+                render_error(err);
             }
             drop(wg_cloned);
         });
@@ -64,14 +63,10 @@ pub fn render_stream(
     }
 }
 
-pub fn render_error(err: anyhow::Error, highlight: bool) {
+pub fn render_error(err: anyhow::Error ) {
     let err = format!("{err:?}");
-    if highlight {
         let style = Style::new().fg(Color::Red);
         eprintln!("{}", style.paint(err));
-    } else {
-        eprintln!("{err}");
-    }
 }
 
 pub struct ReplyHandler {
