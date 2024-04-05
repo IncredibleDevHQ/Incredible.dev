@@ -1,4 +1,5 @@
 use super::{openai::OpenAIConfig, ClientConfig, Message, MessageContent, Model};
+use crate::ai_gateway::client;
 
 use crate::{
     config::{GlobalConfig, Input},
