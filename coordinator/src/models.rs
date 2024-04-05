@@ -1,15 +1,14 @@
 use common::models::TaskList;
 use serde::{Deserialize, Serialize};
 
-use crate::task_graph::graph_model::QuestionWithAnswer;
+use common::task_graph::graph_model::QuestionWithAnswer;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SuggestRequest {
-    pub id: Option<String>, 
+    pub id: Option<String>,
     pub user_query: String,
     pub repo_name: String,
 }
-
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SuggestResponse {
