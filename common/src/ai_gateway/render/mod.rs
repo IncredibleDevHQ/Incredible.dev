@@ -5,7 +5,7 @@ pub use self::markdown::{MarkdownRender, RenderOptions};
 use self::stream::{markdown_stream, raw_stream};
 
 use crate::ai_gateway::client::Client;
-use crate::config::{GlobalConfig};
+use crate::ai_gateway::config::AIGatewayConfig;
 use crate::ai_gateway::input::Input;
 use crate::ai_gateway::utils::AbortSignal;
 use log::debug;
@@ -21,12 +21,12 @@ use std::thread::spawn;
 pub fn render_stream(
     input: &Input,
     client: &dyn Client,
-    config: &GlobalConfig,
+    config: &AIGatewayConfig,
     abort: AbortSignal,
 ) -> Result<String> {
     let wg = WaitGroup::new();
     let wg_cloned = wg.clone();
-    let render_options = config.read().get_render_options()?;
+    let render_options = config.get_render_options()?;
     let mut stream_handler = {
         let (tx, rx) = unbounded();
         let abort_clone = abort.clone();

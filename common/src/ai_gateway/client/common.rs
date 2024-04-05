@@ -1,11 +1,13 @@
-use super::{openai::OpenAIConfig, ClientConfig, Message, MessageContent, Model};
 use crate::ai_gateway::client;
+use super::{openai::OpenAIConfig, ClientConfig, Message, MessageContent, Model};
 
+use crate::ai_gateway::config::AIGatewayConfig;
 use crate::ai_gateway::{
-    config::{GlobalConfig, Input},
     render::ReplyHandler,
     utils::{prompt_input_integer, prompt_input_string, PromptKind},
 };
+
+use crate::ai_gateway::input::Input;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -41,7 +43,7 @@ macro_rules! register_client {
         $(
             #[derive(Debug)]
             pub struct $client {
-                global_config: $crate::config::GlobalConfig,
+                global_config: $crate::ai_gateway::config::AIGatewayConfig,
                 config: $config,
                 model: $crate::ai_gateway::client::Model,
             }
@@ -49,9 +51,9 @@ macro_rules! register_client {
             impl $client {
                 pub const NAME: &'static str = $name;
 
-                pub fn init(global_config: &$crate::config::GlobalConfig) -> Option<Box<dyn Client>> {
-                    let model = global_config.read().model.clone();
-                    let config = global_config.read().clients.iter().find_map(|client_config| {
+                pub fn init(global_config: &$crate::ai_gateway::config::AIGatewayConfig) -> Option<Box<dyn Client>> {
+                    let model = global_config.model.clone();
+                    let config = global_config.clients.iter().find_map(|client_config| {
                         if let ClientConfig::$config(c) = client_config {
                             if Self::name(c) == &model.client_name {
                                 return Some(c.clone())
@@ -74,11 +76,11 @@ macro_rules! register_client {
 
         )+
 
-        pub fn init_client(config: &$crate::config::GlobalConfig) -> anyhow::Result<Box<dyn Client>> {
+        pub fn init_client(config: &$crate::ai_gateway::config::AIGatewayConfig) -> anyhow::Result<Box<dyn Client>> {
             None
             $(.or_else(|| $client::init(config)))+
             .ok_or_else(|| {
-                let model = config.read().model.clone();
+                let model = config.model.clone();
                 anyhow::anyhow!("Unknown client '{}'", &model.client_name)
             })
         }
@@ -110,7 +112,7 @@ macro_rules! register_client {
             anyhow::bail!("Unknown client {}", client)
         }
 
-        pub fn list_models(config: &$crate::config::Config) -> Vec<$crate::ai_gateway::client::Model> {
+        pub fn list_models(config: &$crate::ai_gateway::config::AIGatewayConfig) -> Vec<$crate::ai_gateway::client::Model> {
             config
                 .clients
                 .iter()
@@ -130,7 +132,7 @@ macro_rules! client_common_fns {
         fn config(
             &self,
         ) -> (
-            &$crate::config::GlobalConfig,
+            &$crate::ai_gateway::config::AIGatewayConfig,
             &Option<$crate::ai_gateway::client::ExtraConfig>,
         ) {
             (&self.global_config, &self.config.extra)
@@ -199,7 +201,7 @@ macro_rules! config_get_fn {
 
 #[async_trait]
 pub trait Client {
-    fn config(&self) -> (&GlobalConfig, &Option<ExtraConfig>);
+    fn config(&self) -> (&AIGatewayConfig, &Option<ExtraConfig>);
 
     fn models(&self) -> Vec<Model>;
 
