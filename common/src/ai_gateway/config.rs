@@ -5,6 +5,10 @@ use anyhow::{bail, Result};
 pub struct AIGatewayConfig {
     #[serde(rename(serialize = "model", deserialize = "model"))]
     pub model_id: Option<String>,
+    /// LLM temperature
+    pub temperature: Option<f64>,
+    /// Whether to save the session
+    pub save_session: Option<bool>,
     pub client_config: Vec<ClientConfig>,
     #[serde(skip)]
     pub model: Model,

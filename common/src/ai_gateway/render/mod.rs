@@ -8,6 +8,7 @@ use crate::ai_gateway::client::Client;
 use crate::config::{GlobalConfig};
 use crate::ai_gateway::input::Input;
 use crate::ai_gateway::utils::AbortSignal;
+use log::debug;
 
 use anyhow::{Context, Result};
 use crossbeam::channel::{unbounded, Sender};
