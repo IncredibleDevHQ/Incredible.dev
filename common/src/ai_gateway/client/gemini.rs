@@ -1,7 +1,7 @@
 use super::vertexai::{build_body, send_message, send_message_streaming};
 use super::{Client, ExtraConfig, GeminiClient, Model, PromptType, SendData, TokensCountFactors};
 
-use crate::{render::ReplyHandler, utils::PromptKind};
+use crate::ai_gateway::{render::ReplyHandler, utils::PromptKind};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -82,7 +82,7 @@ impl GeminiClient {
 
         let url = format!("{API_BASE}{}:{}?key={}", model, func, api_key);
 
-        debug!("Gemini Request: {url} {body}");
+        log::debug!("Gemini Request: {url} {body}");
 
         let builder = client.post(url).json(&body);
 
