@@ -1,12 +1,15 @@
 use std::fmt;
 use std::ops::Range;
 
+
 pub mod ast;
 pub mod hasher;
 pub mod llm_gateway;
 pub mod models;
 pub mod prompts;
 pub mod service_interaction;
+pub mod ai_gateway;
+
 
 pub mod prompt_string_generator {
     use std::future::Future;

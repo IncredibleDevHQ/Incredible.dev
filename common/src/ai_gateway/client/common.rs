@@ -225,59 +225,9 @@ pub trait Client {
         Ok(client)
     }
 
-    fn send_message(&self, input: Input) -> Result<String> {
-        init_tokio_runtime()?.block_on(async {
-            let global_config = self.config().0;
-            if global_config.read().dry_run {
-                let content = global_config.read().echo_messages(&input);
-                return Ok(content);
-            }
-            let client = self.build_client()?;
-            let data = global_config.read().prepare_send_data(&input, false)?;
-            self.send_message_inner(&client, data)
-                .await
-                .with_context(|| "Failed to get answer")
-        })
-    }
+    fn send_message(&self, input: Input) -> Result<String>; 
 
-    fn send_message_streaming(&self, input: &Input, handler: &mut ReplyHandler) -> Result<()> {
-        async fn watch_abort(abort: AbortSignal) {
-            loop {
-                if abort.aborted() {
-                    break;
-                }
-                sleep(Duration::from_millis(100)).await;
-            }
-        }
-        let abort = handler.get_abort();
-        let input = input.clone();
-        init_tokio_runtime()?.block_on(async move {
-            tokio::select! {
-                ret = async {
-                    let global_config = self.config().0;
-                    if global_config.read().dry_run {
-                        let content = global_config.read().echo_messages(&input);
-                        let tokens = tokenize(&content);
-                        for token in tokens {
-                            tokio::time::sleep(Duration::from_millis(10)).await;
-                            handler.text(&token)?;
-                        }
-                        return Ok(());
-                    }
-                    let client = self.build_client()?;
-                    let data = global_config.read().prepare_send_data(&input, true)?;
-                    self.send_message_streaming_inner(&client, handler, data).await
-                } => {
-                    handler.done()?;
-                    ret.with_context(|| "Failed to get answer")
-                }
-                _ = watch_abort(abort.clone()) => {
-                    handler.done()?;
-                    Ok(())
-                 },
-            }
-        })
-    }
+    fn send_message_streaming(&self, input: &Input, handler: &mut ReplyHandler) -> Result<()>; 
 
     async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<String>;
 
