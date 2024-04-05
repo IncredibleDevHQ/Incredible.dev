@@ -33,4 +33,18 @@ impl AIGatewayConfig {
         self.set_model(&model)?;
         Ok(())
     }
+    pub fn set_model(&mut self, value: &str) -> Result<()> {
+        let models = list_models(self);
+        let model = Model::find(&models, value);
+        match model {
+            None => bail!("Invalid model '{}'", value),
+            Some(model) => {
+                if let Some(session) = self.session.as_mut() {
+                    session.set_model(model.clone())?;
+                }
+                self.model = model;
+                Ok(())
+            }
+        }
+    }
 }
