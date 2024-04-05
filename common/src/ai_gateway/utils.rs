@@ -1,6 +1,6 @@
 use crate::ai_gateway::tiktoken::{cl100k_base, CoreBPE};
 use lazy_static::lazy_static;
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::env;
 use std::sync::{Arc, Mutex};
 
@@ -189,3 +189,10 @@ fn validate_integer(text: &str) -> Validation {
     }
 }
 
+pub fn get_env_name(key: &str) -> String {
+    format!(
+        "{}_{}",
+        env!("CARGO_CRATE_NAME").to_ascii_uppercase(),
+        key.to_ascii_uppercase(),
+    )
+}
