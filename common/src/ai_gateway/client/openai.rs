@@ -1,6 +1,6 @@
 use super::{ExtraConfig, Model, OpenAIClient, PromptType, SendData, TokensCountFactors};
 
-use crate::{render::ReplyHandler, utils::PromptKind};
+use crate::ai_gateway::{render::ReplyHandler, utils::PromptKind};
 
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
@@ -63,7 +63,7 @@ impl OpenAIClient {
 
         let url = format!("{api_base}/chat/completions");
 
-        debug!("OpenAI Request: {url} {body}");
+        log::debug!("OpenAI Request: {url} {body}");
 
         let mut builder = client.post(url).bearer_auth(api_key).json(&body);
 

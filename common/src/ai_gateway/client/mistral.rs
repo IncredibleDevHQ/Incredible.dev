@@ -1,7 +1,7 @@
 use super::openai::{openai_build_body, OPENAI_TOKENS_COUNT_FACTORS};
 use super::{ExtraConfig, MistralClient, Model, PromptType, SendData};
 
-use crate::utils::PromptKind;
+use crate::ai_gateway::utils::PromptKind;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -57,7 +57,7 @@ impl MistralClient {
 
         let url = API_URL;
 
-        debug!("Mistral Request: {url} {body}");
+        log::debug!("Mistral Request: {url} {body}");
 
         let mut builder = client.post(url).json(&body);
         if let Some(api_key) = api_key {

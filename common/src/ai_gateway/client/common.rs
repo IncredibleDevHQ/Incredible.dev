@@ -1,13 +1,10 @@
 use super::{openai::OpenAIConfig, ClientConfig, Message, MessageContent, Model};
 use crate::ai_gateway::client;
 
-use crate::{
+use crate::ai_gateway::{
     config::{GlobalConfig, Input},
     render::ReplyHandler,
-    utils::{
-        init_tokio_runtime, prompt_input_integer, prompt_input_string, tokenize, AbortSignal,
-        PromptKind,
-    },
+    utils::{prompt_input_integer, prompt_input_string, PromptKind},
 };
 
 use anyhow::{Context, Result};
@@ -16,7 +13,6 @@ use reqwest::{Client as ReqwestClient, ClientBuilder, Proxy, RequestBuilder};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{env, future::Future, time::Duration};
-use tokio::time::sleep;
 
 #[macro_export]
 macro_rules! register_client {
@@ -47,7 +43,7 @@ macro_rules! register_client {
             pub struct $client {
                 global_config: $crate::config::GlobalConfig,
                 config: $config,
-                model: $crate::client::Model,
+                model: $crate::ai_gateway::client::Model,
             }
 
             impl $client {
@@ -87,7 +83,7 @@ macro_rules! register_client {
             })
         }
 
-        pub fn ensure_model_capabilities(client: &mut dyn Client, capabilities: $crate::client::ModelCapabilities) -> anyhow::Result<()> {
+        pub fn ensure_model_capabilities(client: &mut dyn Client, capabilities: $crate::ai_gateway::client::ModelCapabilities) -> anyhow::Result<()> {
             if !client.model().capabilities.contains(capabilities) {
                 let models = client.models();
                 if let Some(model) = models.into_iter().find(|v| v.capabilities.contains(capabilities)) {
@@ -114,7 +110,7 @@ macro_rules! register_client {
             anyhow::bail!("Unknown client {}", client)
         }
 
-        pub fn list_models(config: &$crate::config::Config) -> Vec<$crate::client::Model> {
+        pub fn list_models(config: &$crate::config::Config) -> Vec<$crate::ai_gateway::client::Model> {
             config
                 .clients
                 .iter()
@@ -135,7 +131,7 @@ macro_rules! client_common_fns {
             &self,
         ) -> (
             &$crate::config::GlobalConfig,
-            &Option<$crate::client::ExtraConfig>,
+            &Option<$crate::ai_gateway::client::ExtraConfig>,
         ) {
             (&self.global_config, &self.config.extra)
         }
@@ -158,26 +154,27 @@ macro_rules! client_common_fns {
 macro_rules! openai_compatible_client {
     ($client:ident) => {
         #[async_trait]
-        impl $crate::client::Client for $crate::client::$client {
+        impl $crate::ai_gateway::client::Client for $crate::ai_gateway::client::$client {
             client_common_fns!();
 
             async fn send_message_inner(
                 &self,
                 client: &reqwest::Client,
-                data: $crate::client::SendData,
+                data: $crate::ai_gateway::client::SendData,
             ) -> anyhow::Result<String> {
                 let builder = self.request_builder(client, data)?;
-                $crate::client::openai::openai_send_message(builder).await
+                $crate::ai_gateway::client::openai::openai_send_message(builder).await
             }
 
             async fn send_message_streaming_inner(
                 &self,
                 client: &reqwest::Client,
-                handler: &mut $crate::render::ReplyHandler,
-                data: $crate::client::SendData,
+                handler: &mut $crate::ai_gateway::render::ReplyHandler,
+                data: $crate::ai_gateway::client::SendData,
             ) -> Result<()> {
                 let builder = self.request_builder(client, data)?;
-                $crate::client::openai::openai_send_message_streaming(builder, handler).await
+                $crate::ai_gateway::client::openai::openai_send_message_streaming(builder, handler)
+                    .await
             }
         }
     };
@@ -226,9 +223,9 @@ pub trait Client {
         Ok(client)
     }
 
-    fn send_message(&self, input: Input) -> Result<String>; 
+    // fn send_message(&self, input: Input) -> Result<String>;
 
-    fn send_message_streaming(&self, input: &Input, handler: &mut ReplyHandler) -> Result<()>; 
+    // fn send_message_streaming(&self, input: &Input, handler: &mut ReplyHandler) -> Result<()>;
 
     async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<String>;
 
