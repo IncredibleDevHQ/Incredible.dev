@@ -6,7 +6,7 @@ use crate::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::ai_gateway::input::Input;
+crate::ai_gateway::input::Input;
 
 const INPUT_PLACEHOLDER: &str = "__INPUT__";
 

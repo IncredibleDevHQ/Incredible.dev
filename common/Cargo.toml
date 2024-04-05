@@ -17,6 +17,7 @@ fancy-regex = "0.13.0"
 bstr = "1.8.0"
 mime_guess = "2.0.4"
 unicode-width = "0.1.11"
+sha2 = "0.10.8"
 
 
 serde = { version = "1.0", features = ["derive"] }
