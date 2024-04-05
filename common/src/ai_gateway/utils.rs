@@ -1,5 +1,6 @@
 use lazy_static::lazy_static;
 use std::sync::{Arc, Mutex};
+use crate::ai_gateway::tiktoken::{CoreBPE, cl100k_base};
 
 /// Count how many tokens a piece of text needs to consume
 pub fn count_tokens(text: &str) -> usize {
