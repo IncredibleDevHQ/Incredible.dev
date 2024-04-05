@@ -17,6 +17,8 @@ use language_support::TSLanguage;
 use language_support::TSLanguageConfig;
 
 use crate::ast::ast_graph::ScopeGraph;
+
+use self::text_range::TextRange;
 pub struct CodeFileAST<'a> {
     /// The original source that was used to generate this file.
     src: &'a [u8],
@@ -78,5 +80,20 @@ impl<'a> CodeFileAST<'a> {
         let root_node = self.tree.root_node();
 
         Ok(ResolutionMethod::Generic.build_scope(query, root_node, self.src, self.language))
+    }
+
+    pub fn hoverable_ranges(self) -> Result<Vec<TextRange>, CodeFileASTError> {
+        let query = self
+            .language
+            .hoverable_query
+            .query(self.language.grammar)
+            .map_err(CodeFileASTError::QueryError)?;
+        let root_node = self.tree.root_node();
+        let mut cursor = tree_sitter::QueryCursor::new();
+        Ok(cursor
+            .matches(query, root_node, self.src)
+            .flat_map(|m| m.captures)
+            .map(|c| c.node.range().into())
+            .collect::<Vec<_>>())
     }
 }

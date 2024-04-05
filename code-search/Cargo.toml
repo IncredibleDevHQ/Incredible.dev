@@ -55,3 +55,4 @@ log = "0.4.21"
 smallvec = { version = "1.11.1", features = ["serde"] }
 pretty_assertions = "1.0.1"
 rayon = "1.6.1"
+compact_str = "0.7.1"
