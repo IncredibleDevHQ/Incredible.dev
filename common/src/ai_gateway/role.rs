@@ -1,4 +1,4 @@
-use crate::{
+use crate::ai_gateway::{
     client::{Message, MessageContent, MessageRole},
     utils::{detect_os, detect_shell},
 };
@@ -6,7 +6,7 @@ use crate::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-crate::ai_gateway::input::Input;
+use crate::ai_gateway::input::Input;
 
 const INPUT_PLACEHOLDER: &str = "__INPUT__";
 
