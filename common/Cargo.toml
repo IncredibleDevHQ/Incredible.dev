@@ -15,6 +15,9 @@ base64 = "0.22.0"
 parking_lot = "0.12.1"
 fancy-regex = "0.13.0"
 bstr = "1.8.0"
+mime_guess = "2.0.4"
+unicode-width = "0.1.11"
+
 
 serde = { version = "1.0", features = ["derive"] }
 # Add any other dependencies required for `RepoRef` or other types used.
