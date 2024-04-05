@@ -3,7 +3,7 @@ use super::{
     TokensCountFactors,
 };
 
-use crate::{
+use crate::ai_gateway::{
     client::{ImageUrl, MessageContent, MessageContentPart},
     render::ReplyHandler,
     utils::PromptKind,
@@ -81,7 +81,7 @@ impl ClaudeClient {
 
         let url = API_BASE;
 
-        debug!("Claude Request: {url} {body}");
+        log::debug!("Claude Request: {url} {body}");
 
         let mut builder = client.post(url).json(&body);
         builder = builder.header("anthropic-version", "2023-06-01");

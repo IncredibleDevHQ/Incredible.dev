@@ -1,4 +1,4 @@
-use crate::config::Input;
+use crate::ai_gateway::input::Input;
 
 use serde::{Deserialize, Serialize};
 
@@ -102,7 +102,7 @@ pub struct ImageUrl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::InputContext;
+    use crate::ai_gateway::input::InputContext;
 
     #[test]
     fn test_serde() {

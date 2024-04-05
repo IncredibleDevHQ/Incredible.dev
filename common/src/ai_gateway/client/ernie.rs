@@ -1,6 +1,6 @@
 use super::{patch_system_message, Client, ErnieClient, ExtraConfig, Model, PromptType, SendData};
 
-use crate::{render::ReplyHandler, utils::PromptKind};
+use crate::ai_gateway::{render::ReplyHandler, utils::PromptKind};
 
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
@@ -102,7 +102,7 @@ impl ErnieClient {
 
         let url = format!("{API_BASE}{chat_endpoint}?access_token={access_token}");
 
-        debug!("Ernie Request: {url} {body}");
+        log::debug!("Ernie Request: {url} {body}");
 
         let builder = client.post(url).json(&body);
 

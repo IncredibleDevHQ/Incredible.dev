@@ -2,7 +2,7 @@ use super::{
     message::*, Client, ExtraConfig, Model, PromptType, QianwenClient, SendData, TokensCountFactors,
 };
 
-use crate::{
+use crate::ai_gateway::{
     render::ReplyHandler,
     utils::{sha256sum, PromptKind},
 };
@@ -105,7 +105,7 @@ impl QianwenClient {
         };
         let (body, has_upload) = build_body(data, self.model.name.clone(), is_vl)?;
 
-        debug!("Qianwen Request: {url} {body}");
+        log::debug!("Qianwen Request: {url} {body}");
 
         let mut builder = client.post(url).bearer_auth(api_key).json(&body);
         if stream {
