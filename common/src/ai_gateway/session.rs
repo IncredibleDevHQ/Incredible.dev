@@ -1,6 +1,7 @@
 use super::input::resolve_data_url;
 use crate::ai_gateway::client::Model;
 use crate::ai_gateway::input::Input;
+use crate::ai_gateway::config::AIGatewayConfig;
 
 use crate::ai_gateway::client::{Message, MessageContent, MessageRole};
 use crate::ai_gateway::render::MarkdownRender;
@@ -40,7 +41,7 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(config: &Config, name: &str) -> Self {
+    pub fn new(config: &AIGatewayConfig, name: &str) -> Self {
         Self {
             model_id: config.model.id(),
             temperature: config.temperature,
