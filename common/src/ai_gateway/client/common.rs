@@ -1,5 +1,8 @@
-use crate::ai_gateway::client;
 use super::{openai::OpenAIConfig, ClientConfig, Message, MessageContent, Model};
+use crate::ai_gateway::client;
+use crate::ai_gateway::utils::{AbortSignal, init_tokio_runtime};
+use std::{env, future::Future, time::Duration};
+use tokio::time::sleep;
 
 use crate::ai_gateway::config::AIGatewayConfig;
 use crate::ai_gateway::{
@@ -14,7 +17,6 @@ use async_trait::async_trait;
 use reqwest::{Client as ReqwestClient, ClientBuilder, Proxy, RequestBuilder};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::{env, future::Future, time::Duration};
 
 #[macro_export]
 macro_rules! register_client {
@@ -225,9 +227,46 @@ pub trait Client {
         Ok(client)
     }
 
-    // fn send_message(&self, input: Input) -> Result<String>;
+    fn send_message(&self, input: Input) -> Result<String> {
+        init_tokio_runtime()?.block_on(async {
+            let global_config = self.config().0;
+            let client = self.build_client()?;
+            let data = global_config.prepare_send_data(&input, false)?;
+            self.send_message_inner(&client, data)
+                .await
+                .with_context(|| "Failed to get answer")
+        })
+    }
 
-    // fn send_message_streaming(&self, input: &Input, handler: &mut ReplyHandler) -> Result<()>;
+    fn send_message_streaming(&self, input: &Input, handler: &mut ReplyHandler) -> Result<()> {
+        async fn watch_abort(abort: AbortSignal) {
+            loop {
+                if abort.aborted() {
+                    break;
+                }
+                sleep(Duration::from_millis(100)).await;
+            }
+        }
+        let abort = handler.get_abort();
+        let input = input.clone();
+        init_tokio_runtime()?.block_on(async move {
+            tokio::select! {
+                ret = async {
+                    let global_config = self.config().0;
+                    let client = self.build_client()?;
+                    let data = global_config.prepare_send_data(&input, true)?;
+                    self.send_message_streaming_inner(&client, handler, data).await
+                } => {
+                    handler.done()?;
+                    ret.with_context(|| "Failed to get answer")
+                }
+                _ = watch_abort(abort.clone()) => {
+                    handler.done()?;
+                    Ok(())
+                 },
+            }
+        })
+    }
 
     async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<String>;
 

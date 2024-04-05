@@ -181,6 +181,14 @@ pub enum PromptKind {
     Integer,
 }
 
+pub fn init_tokio_runtime() -> anyhow::Result<tokio::runtime::Runtime> {
+    use anyhow::Context;
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .with_context(|| "Failed to init tokio")
+}
+
 fn validate_integer(text: &str) -> Validation {
     if text.parse::<i32>().is_err() {
         Validation::Invalid("Must be a integer".into())
