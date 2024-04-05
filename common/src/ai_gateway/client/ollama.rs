@@ -3,7 +3,7 @@ use super::{
     PromptType, SendData, TokensCountFactors,
 };
 
-use crate::{render::ReplyHandler, utils::PromptKind};
+use crate::ai_gateway::{render::ReplyHandler, utils::PromptKind};
 
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
@@ -86,7 +86,7 @@ impl OllamaClient {
 
         let url = format!("{}{chat_endpoint}", self.config.api_base);
 
-        debug!("Ollama Request: {url} {body}");
+        log::debug!("Ollama Request: {url} {body}");
 
         let mut builder = client.post(url).json(&body);
         if let Some(api_key) = api_key {

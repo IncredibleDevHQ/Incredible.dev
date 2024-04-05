@@ -1,8 +1,8 @@
+use crate::ai_gateway::tiktoken::{cl100k_base, CoreBPE};
 use lazy_static::lazy_static;
-use std::sync::{Arc, Mutex};
-use crate::ai_gateway::tiktoken::{CoreBPE, cl100k_base};
 use sha2::Sha256;
 use std::env;
+use std::sync::{Arc, Mutex};
 
 /// Count how many tokens a piece of text needs to consume
 pub fn count_tokens(text: &str) -> usize {
@@ -75,5 +75,115 @@ pub fn detect_shell() -> (String, String, &'static str) {
             shell_name
         };
         (shell_name, shell_cmd, "-c")
+    }
+}
+
+use std::sync::atomic::{AtomicBool, Ordering};
+
+pub type AbortSignal = Arc<AbortSignalInner>;
+
+pub struct AbortSignalInner {
+    ctrlc: AtomicBool,
+    ctrld: AtomicBool,
+}
+
+pub fn create_abort_signal() -> AbortSignal {
+    AbortSignalInner::new()
+}
+
+impl AbortSignalInner {
+    pub fn new() -> AbortSignal {
+        Arc::new(Self {
+            ctrlc: AtomicBool::new(false),
+            ctrld: AtomicBool::new(false),
+        })
+    }
+
+    pub fn aborted(&self) -> bool {
+        if self.aborted_ctrlc() {
+            return true;
+        }
+        if self.aborted_ctrld() {
+            return true;
+        }
+        false
+    }
+
+    pub fn aborted_ctrlc(&self) -> bool {
+        self.ctrlc.load(Ordering::SeqCst)
+    }
+
+    pub fn aborted_ctrld(&self) -> bool {
+        self.ctrld.load(Ordering::SeqCst)
+    }
+
+    pub fn reset(&self) {
+        self.ctrlc.store(false, Ordering::SeqCst);
+        self.ctrld.store(false, Ordering::SeqCst);
+    }
+
+    pub fn set_ctrlc(&self) {
+        self.ctrlc.store(true, Ordering::SeqCst);
+    }
+
+    pub fn set_ctrld(&self) {
+        self.ctrld.store(true, Ordering::SeqCst);
+    }
+}
+
+use inquire::{required, validator::Validation, Text};
+
+const MSG_REQUIRED: &str = "This field is required";
+const MSG_OPTIONAL: &str = "Optional field - Press ↵ to skip";
+
+pub fn prompt_input_string(desc: &str, required: bool) -> anyhow::Result<String> {
+    let mut text = Text::new(desc);
+    if required {
+        text = text.with_validator(required!(MSG_REQUIRED))
+    } else {
+        text = text.with_help_message(MSG_OPTIONAL)
+    }
+    let text = text.prompt()?;
+    Ok(text)
+}
+
+pub fn prompt_input_integer(desc: &str, required: bool) -> anyhow::Result<String> {
+    let mut text = Text::new(desc);
+    if required {
+        text = text.with_validator(|text: &str| {
+            let out = if text.is_empty() {
+                Validation::Invalid(MSG_REQUIRED.into())
+            } else {
+                validate_integer(text)
+            };
+            Ok(out)
+        })
+    } else {
+        text = text
+            .with_validator(|text: &str| {
+                let out = if text.is_empty() {
+                    Validation::Valid
+                } else {
+                    validate_integer(text)
+                };
+                Ok(out)
+            })
+            .with_help_message(MSG_OPTIONAL)
+    }
+    let text = text.prompt()?;
+    Ok(text)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PromptKind {
+    String,
+    Integer,
+}
+
+fn validate_integer(text: &str) -> Validation {
+    if text.parse::<i32>().is_err() {
+        Validation::Invalid("Must be a integer".into())
+    } else {
+        Validation::Valid
     }
 }

@@ -1,7 +1,7 @@
 use super::openai::{openai_build_body, OPENAI_TOKENS_COUNT_FACTORS};
 use super::{ExtraConfig, MoonshotClient, Model, PromptType, SendData};
 
-use crate::utils::PromptKind;
+use crate::ai_gateway::utils::PromptKind;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -55,7 +55,7 @@ impl MoonshotClient {
 
         let url = API_URL;
 
-        debug!("Moonshot Request: {url} {body}");
+        log::debug!("Moonshot Request: {url} {body}");
 
         let mut builder = client.post(url).json(&body);
         if let Some(api_key) = api_key {
