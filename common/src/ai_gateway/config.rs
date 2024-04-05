@@ -1,13 +1,18 @@
-use crate::ai_gateway::client::{list_models, ClientConfig, Model};
+use crate::ai_gateway::client::{list_models, ClientConfig, Model, SendData, Message};
 use crate::ai_gateway::render::RenderOptions;
 use crate::ai_gateway::session::Session;
 use crate::ai_gateway::utils::get_env_name;
+use crate::ai_gateway::input::Input;
+
+
+
 use anyhow::{anyhow, bail, Context, Result};
 use is_terminal::IsTerminal;
 use std::env;
 use std::io::{stderr, stdin, stdout, Read};
 use std::path::PathBuf;
 use syntect::highlighting::ThemeSet;
+
 
 /// Monokai Extended
 const DARK_THEME: &[u8] = include_bytes!("./assets/monokai-extended.theme.bin");
@@ -120,5 +125,34 @@ impl AIGatewayConfig {
             Ok("truecolor")
         );
         Ok(RenderOptions::new(theme, wrap, self.wrap_code, truecolor))
+    }
+
+    pub fn build_messages(&self, input: &Input) -> Result<Vec<Message>> {
+        let messages = if let Some(session) = input.session(&self.session) {
+            session.build_emssages(input)
+        } else if let Some(role) = input.role() {
+            role.build_messages(input)
+        } else {
+            let message = Message::new(input);
+            vec![message]
+        };
+        Ok(messages)
+    }
+
+    pub fn prepare_send_data(&self, input: &Input, stream: bool) -> Result<SendData> {
+        let messages = self.build_messages(input)?;
+        let temperature = if let Some(session) = input.session(&self.session) {
+            session.temperature()
+        } else if let Some(role) = input.role() {
+            role.temperature
+        } else {
+            self.temperature
+        };
+        self.model.max_input_tokens_limit(&messages)?;
+        Ok(SendData {
+            messages,
+            temperature,
+            stream,
+        })
     }
 }
