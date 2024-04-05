@@ -28,7 +28,7 @@ pub struct AIGatewayConfig {
     pub wrap: Option<String>,
     /// Whether wrap code block
     pub wrap_code: bool,
-    pub client_config: Vec<ClientConfig>,
+    pub clients: Vec<ClientConfig>,
     #[serde(skip)]
     pub model: Model,
     #[serde(skip)]
