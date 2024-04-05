@@ -1,5 +1,5 @@
-use crate::ai_gateway::client::{ClientConfig, list_models, Model};
-use anyhow::bail;
+use crate::ai_gateway::client::{list_models, ClientConfig, Model};
+use anyhow::{bail, Result};
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct AIGatewayConfig {
@@ -8,7 +8,6 @@ pub struct AIGatewayConfig {
     pub client_config: Vec<ClientConfig>,
     #[serde(skip)]
     pub model: Model,
-
 }
 
 // Read config from yaml file using serde yaml and deserialize it into AI Gateway Config

@@ -1,7 +1,7 @@
 use super::openai::{openai_build_body, OPENAI_TOKENS_COUNT_FACTORS};
 use super::{ExtraConfig, Model, ModelConfig, OpenAICompatibleClient, PromptType, SendData};
 
-use crate::utils::PromptKind;
+use crate::ai_gateway::utils::PromptKind;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -66,7 +66,7 @@ impl OpenAICompatibleClient {
 
         let url = format!("{}{chat_endpoint}", self.config.api_base);
 
-        debug!("OpenAICompatible Request: {url} {body}");
+        log::debug!("OpenAICompatible Request: {url} {body}");
 
         let mut builder = client.post(url).json(&body);
         if let Some(api_key) = api_key {
