@@ -226,15 +226,15 @@ pub trait Client {
         Ok(client)
     }
 
-    fn send_message(&self, input: Input) -> Result<String> {
-        init_tokio_runtime()?.block_on(async {
-            let global_config = self.config().0;
-            let client = self.build_client()?;
-            let data = global_config.prepare_send_data(&input, false)?;
-            self.send_message_inner(&client, data)
-                .await
-                .with_context(|| "Failed to get answer")
-        })
+    async fn send_message(&self, input: Input) -> Result<String> {
+        // init_tokio_runtime()?.block_on(async {
+        let global_config = self.config().0;
+        let client = self.build_client()?;
+        let data = global_config.prepare_send_data(&input, false)?;
+        self.send_message_inner(&client, data)
+            .await
+            .with_context(|| "Failed to get answer")
+        // })
     }
 
     fn send_message_streaming(&self, input: &Input, handler: &mut ReplyHandler) -> Result<()> {

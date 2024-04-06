@@ -10,26 +10,26 @@ use crate::ai_gateway::render::{render_stream, MarkdownRender};
 use crate::ai_gateway::utils::{create_abort_signal, extract_block, now};
 
 impl AIGatewayConfig {
-    fn start_directive(
-        config: &mut AIGatewayConfig,
+    pub async fn start_directive(
+        &mut self,
         text: &str,
         include: Option<Vec<String>>,
         no_stream: bool,
         code_mode: bool,
-    ) -> Result<()> {
+    ) -> Result<String> {
         let input = Input::new(text, include.unwrap_or_default())?;
-        let mut client = init_client(config)?;
+        let mut client = init_client(self)?;
         ensure_model_capabilities(client.as_mut(), input.required_capabilities())?;
 
         let output = if no_stream {
-            let output = client.send_message(input.clone())?;
+            let output = client.send_message(input.clone()).await?;
             let output = if code_mode && output.trim_start().starts_with("```") {
                 extract_block(&output)
             } else {
                 output.clone()
             };
             if no_stream {
-                let render_options = config.get_render_options()?;
+                let render_options = self.get_render_options()?;
                 let mut markdown_render = MarkdownRender::init(render_options)?;
                 println!("{}", markdown_render.render(&output).trim());
             } else {
@@ -38,12 +38,12 @@ impl AIGatewayConfig {
             output
         } else {
             let abort = create_abort_signal();
-            render_stream(&input, client.as_ref(), config, abort)?
+            render_stream(&input, client.as_ref(), self, abort)?
         };
         // Save the message/session
-        config.save_message(input, &output)?;
-        config.end_session()?;
-        Ok(())
+        self.save_message(input, &output)?;
+        self.end_session()?;
+        Ok(output)
     }
 
     fn open_message_file(&self) -> Result<File> {
@@ -66,8 +66,9 @@ impl AIGatewayConfig {
         let timestamp = now();
         let summary = input.summary();
         let input_markdown = input.render();
-        let output = 
-                format!("# CHAT: {summary} [{timestamp}]\n{input_markdown}\n--------\n{output}\n--------\n\n",);
+        let output = format!(
+            "# CHAT: {summary} [{timestamp}]\n{input_markdown}\n--------\n{output}\n--------\n\n",
+        );
         file.write_all(output.as_bytes())
             .with_context(|| "Failed to save message")
     }
