@@ -1,10 +1,8 @@
-use crate::ai_gateway::client::{list_models, ClientConfig, Model, SendData, Message};
+use crate::ai_gateway::client::{list_models, ClientConfig, Message, Model, SendData};
+use crate::ai_gateway::input::Input;
 use crate::ai_gateway::render::RenderOptions;
 use crate::ai_gateway::session::session::Session;
 use crate::ai_gateway::utils::get_env_name;
-use crate::ai_gateway::input::Input;
-
-
 
 use anyhow::{anyhow, bail, Context, Result};
 use is_terminal::IsTerminal;
@@ -12,7 +10,6 @@ use std::env;
 use std::io::{stderr, stdin, stdout, Read};
 use std::path::PathBuf;
 use syntect::highlighting::ThemeSet;
-
 
 /// Monokai Extended
 const DARK_THEME: &[u8] = include_bytes!("./assets/monokai-extended.theme.bin");
@@ -33,11 +30,15 @@ pub struct AIGatewayConfig {
     pub wrap: Option<String>,
     /// Whether wrap code block
     pub wrap_code: bool,
+    /// Compress session if tokens exceed this value (>=1000)
+    pub compress_threshold: usize,
     pub clients: Vec<ClientConfig>,
     #[serde(skip)]
     pub model: Model,
     #[serde(skip)]
     pub session: Option<Session>,
+    #[serde(skip)]
+    pub last_message: Option<(Input, String)>,
 }
 
 // Read config from yaml file using serde yaml and deserialize it into AI Gateway Config
