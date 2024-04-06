@@ -1,6 +1,3 @@
-use crate::ai_gateway::role::Role;
-use crate::ai_gateway::session::session::Session;
-
 use crate::ai_gateway::client::{ImageUrl, MessageContent, MessageContentPart, ModelCapabilities};
 use crate::ai_gateway::utils::sha256sum;
 
