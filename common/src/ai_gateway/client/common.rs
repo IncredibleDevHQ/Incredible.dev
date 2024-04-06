@@ -1,6 +1,5 @@
 use super::{openai::OpenAIConfig, ClientConfig, Message, MessageContent, Model};
-use crate::ai_gateway::client;
-use crate::ai_gateway::utils::{AbortSignal, init_tokio_runtime};
+use crate::ai_gateway::utils::{init_tokio_runtime, AbortSignal};
 use std::{env, future::Future, time::Duration};
 use tokio::time::sleep;
 
