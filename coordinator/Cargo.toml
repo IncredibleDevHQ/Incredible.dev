@@ -24,10 +24,12 @@ tokio = { version = "1.29.1", features = [
     "sync",
     "fs",
 ] }
-petgraph = { version = "0.6.3", default-features = false, features = ["serde-1"] }
+petgraph = { version = "0.6.3", default-features = false, features = [
+    "serde-1",
+] }
 warp = "0.3.6"
-reqwest-eventsource = "0.4.0"
-reqwest = { version = "0.11.18", features = [
+reqwest-eventsource = "0.6.0"
+reqwest = { version = "0.12.2", features = [
     "rustls-tls-webpki-roots",
     "cookies",
     "json",
