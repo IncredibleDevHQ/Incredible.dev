@@ -1,6 +1,6 @@
 use crate::ai_gateway::client::{list_models, ClientConfig, Model, SendData, Message};
 use crate::ai_gateway::render::RenderOptions;
-use crate::ai_gateway::session::Session;
+use crate::ai_gateway::session::session::Session;
 use crate::ai_gateway::utils::get_env_name;
 use crate::ai_gateway::input::Input;
 
@@ -62,6 +62,7 @@ impl AIGatewayConfig {
         self.set_model(&model)?;
         Ok(())
     }
+
     pub fn set_model(&mut self, value: &str) -> Result<()> {
         let models = list_models(self);
         let model = Model::find(&models, value);

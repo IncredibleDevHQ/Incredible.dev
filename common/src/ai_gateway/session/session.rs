@@ -1,4 +1,4 @@
-use super::input::resolve_data_url;
+use crate::ai_gateway::input::resolve_data_url;
 use crate::ai_gateway::client::Model;
 use crate::ai_gateway::input::Input;
 use crate::ai_gateway::config::AIGatewayConfig;
