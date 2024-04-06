@@ -30,8 +30,8 @@ petgraph = { version = "0.6.3", default-features = false, features = [
     "serde-1",
 ] }
 warp = "0.3.6"
-reqwest-eventsource = "0.6.0"
-reqwest = { version = "0.12.2", features = [
+reqwest-eventsource = "0.4.0"
+reqwest = { version = "0.11.18", features = [
     "rustls-tls-webpki-roots",
     "cookies",
     "json",
@@ -39,7 +39,3 @@ reqwest = { version = "0.12.2", features = [
 serde_json = "1.0.100"
 serde = { version = "1.0.166", features = ["derive"] }
 futures = "0.3.28"
-http = "0.2.12"
-
-[patch.crates-io]
-http = { version = "0.2.12", replace-with = "http" }
