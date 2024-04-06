@@ -7,6 +7,8 @@ edition = "2021"
 
 [dependencies]
 common = { path = "../common" }
+
+uuid = { version = "1.0", features = ["v4"] }
 redis = "0.23.0"
 anyhow = "1.0.71"
 dotenv = "0.15.0"
@@ -37,4 +39,7 @@ reqwest = { version = "0.12.2", features = [
 serde_json = "1.0.100"
 serde = { version = "1.0.166", features = ["derive"] }
 futures = "0.3.28"
-uuid = { version = "1.0", features = ["v4"] }
+http = "0.2.12"
+
+[patch.crates-io]
+http = { version = "0.2.12", replace-with = "http" }
