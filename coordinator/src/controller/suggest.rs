@@ -8,6 +8,7 @@ use common::models::{
     CodeContextRequest, CodeUnderstandRequest, TaskList, TaskListResponseWithMessage,
 };
 
+use common::service_interaction::HttpMethod;
 use common::task_graph::graph_model::{
     ConversationChain, QuestionWithAnswer, QuestionWithId, TrackProcessV1,
 };
@@ -309,7 +310,7 @@ async fn get_codebase_answers_for_questions(
                 let response: Result<CodeUnderstanding, Error> =
                     service_caller::<CodeUnderstandRequest, CodeUnderstanding>(
                         url,
-                        Method::GET,
+                        HttpMethod::GET,
                         None,
                         Some(query_params),
                     )
@@ -347,7 +348,7 @@ async fn get_code_context(code_understanding: CodeUnderstandings) -> Result<Stri
     let code_context_url = format!("{}/find-code-context", CONFIG.context_generator_url);
     let code_context = service_caller::<CodeContextRequest, String>(
         code_context_url,
-        Method::POST,
+        HttpMethod::POST,
         Some(CodeContextRequest {
             qna_context: code_understanding.clone(),
         }),

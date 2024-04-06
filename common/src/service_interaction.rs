@@ -69,10 +69,27 @@ pub async fn fetch_code_span(
     }
 }
 
+pub enum HttpMethod {
+    GET,
+    POST,
+    PUT,
+    DELETE,
+}
+impl HttpMethod {
+    pub fn to_reqwest_method(&self) -> Method {
+        match self {
+            HttpMethod::GET => Method::GET,
+            HttpMethod::POST => Method::POST,
+            HttpMethod::PUT => Method::PUT,
+            HttpMethod::DELETE => Method::DELETE,
+        }
+    }
+}
+
 // Async function to call a service and return the response as a deserialized object.
 pub async fn service_caller<A: Serialize, B: DeserializeOwned>(
     url: String,
-    method: Method,
+    method: HttpMethod,
     body: Option<A>,
     query_params: Option<HashMap<String, String>>,
 ) -> Result<B, Error> {
@@ -82,10 +99,14 @@ pub async fn service_caller<A: Serialize, B: DeserializeOwned>(
     // Create a new HTTP client instance
     let client = Client::new();
 
-    log::debug!("Calling service at {} with method {:?}", url, method);
+    log::debug!(
+        "Calling service at {} with method {:?}",
+        url,
+        method.to_reqwest_method()
+    );
 
     // Prepare the request with the specified method
-    let mut request_builder = client.request(method.clone(), url);
+    let mut request_builder = client.request(method.to_reqwest_method(), url);
 
     // Add query parameters if present
     if let Some(params) = query_params {
@@ -94,7 +115,7 @@ pub async fn service_caller<A: Serialize, B: DeserializeOwned>(
 
     // If there is a body, serialize it to JSON and attach it to the request.
     if let Some(body_value) = body {
-        if method != Method::GET {
+        if method.to_reqwest_method() != Method::GET {
             let json_body = json!(body_value);
             request_builder = request_builder.json(&json_body);
         } else {
@@ -123,7 +144,11 @@ pub async fn service_caller<A: Serialize, B: DeserializeOwned>(
         | StatusCode::BAD_GATEWAY
         | StatusCode::SERVICE_UNAVAILABLE
         | StatusCode::GATEWAY_TIMEOUT => {
-            let error_message = format!("Error: Response status: {}, Error Message: {}", response.status(), response.text().await?);
+            let error_message = format!(
+                "Error: Response status: {}, Error Message: {}",
+                response.status(),
+                response.text().await?
+            );
             log::error!("{}", error_message);
             Err(anyhow!(error_message))
         }
