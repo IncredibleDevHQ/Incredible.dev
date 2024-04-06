@@ -9,3 +9,4 @@ members = [
     "common",
     "coordinator",
 ]
+resolver = "2"
