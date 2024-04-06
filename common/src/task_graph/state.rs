@@ -365,7 +365,6 @@ impl TrackProcessV1 {
     pub fn collect_conversation_messages(&self) -> Result<Messages, NodeError> {
         // Verify that the graph is initialized and the root node exists.
         let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
-        let root_node = self.root_node.ok_or(NodeError::RootNodeNotFound)?;
 
         let mut messages = Vec::new();
 

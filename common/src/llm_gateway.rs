@@ -316,7 +316,7 @@ impl Client {
         // const SCALE_FACTOR: f32 = 1.5;
         println!("llm call");
         match functions {
-            Some(func_call) => {}
+            Some(_func_call) => {}
             None => {}
         }
         // println!("Messages: \n {:?}", messages);
