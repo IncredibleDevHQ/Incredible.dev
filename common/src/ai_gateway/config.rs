@@ -67,6 +67,7 @@ impl AIGatewayConfig {
     pub fn initialize(yaml_str: &str) -> Result<Self> {
         let mut config = Self::from_yaml(yaml_str)?;
         config.setup_model()?;
+
         Ok(config)
     }
 
@@ -169,26 +170,14 @@ impl AIGatewayConfig {
     }
 
     pub fn build_messages(&self, input: &Input) -> Result<Vec<Message>> {
-        let messages = if let Some(session) = input.session(&self.session) {
-            session.build_emssages(input)
-        } else if let Some(role) = input.role() {
-            role.build_messages(input)
-        } else {
-            let message = Message::new(input);
-            vec![message]
-        };
-        Ok(messages)
+        let message = Message::new(input);
+        Ok(vec![message])
     }
 
     pub fn prepare_send_data(&self, input: &Input, stream: bool) -> Result<SendData> {
         let messages = self.build_messages(input)?;
-        let temperature = if let Some(session) = input.session(&self.session) {
-            session.temperature()
-        } else if let Some(role) = input.role() {
-            role.temperature
-        } else {
-            self.temperature
-        };
+        let temperature = self.temperature;
+
         self.model.max_input_tokens_limit(&messages)?;
         Ok(SendData {
             messages,

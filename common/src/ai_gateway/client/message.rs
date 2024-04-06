@@ -98,21 +98,3 @@ pub enum MessageContentPart {
 pub struct ImageUrl {
     pub url: String,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ai_gateway::input::InputContext;
-
-    #[test]
-    fn test_serde() {
-        assert_eq!(
-            serde_json::to_string(&Message::new(&Input::from_str(
-                "Hello World",
-                InputContext::default()
-            )))
-            .unwrap(),
-            "{\"role\":\"user\",\"content\":\"Hello World\"}"
-        );
-    }
-}

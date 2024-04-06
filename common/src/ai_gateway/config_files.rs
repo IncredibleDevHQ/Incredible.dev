@@ -1,11 +1,11 @@
-use std::path::PathBuf;
-use anyhow::Result;
 use crate::ai_gateway::config::AIGatewayConfig;
+use anyhow::{Result, anyhow, Context};
+use std::{fs::create_dir_all, path::{Path, PathBuf}};
+
 
 const CONFIG_FILE_NAME: &str = "config.yaml";
 const MESSAGES_FILE_NAME: &str = "messages.md";
 const SESSIONS_DIR_NAME: &str = "sessions";
-
 
 impl AIGatewayConfig {
     pub fn config_file() -> Result<PathBuf> {
@@ -25,4 +25,22 @@ impl AIGatewayConfig {
         path.push(&format!("{name}.yaml"));
         Ok(path)
     }
+}
+
+pub fn ensure_parent_exists(path: &Path) -> Result<()> {
+    if path.exists() {
+        return Ok(());
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow!("Failed to write to {}, No parent path", path.display()))?;
+    if !parent.exists() {
+        create_dir_all(parent).with_context(|| {
+            format!(
+                "Failed to write {}, Cannot create parent directory",
+                path.display()
+            )
+        })?;
+    }
+    Ok(())
 }
