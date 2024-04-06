@@ -93,7 +93,7 @@ impl TrackProcessV1 {
     }
 
     pub fn integrate_tasks(&mut self, task_list: TaskList) -> Result<&mut Self, NodeError> {
-        let start_node = self
+        let _start_node = self
             .last_added_conversation_node
             .ok_or(NodeError::MissingLastUpdatedNode)?;
 

@@ -9,7 +9,7 @@ use crate::ai_gateway::input::Input;
 use anyhow::{anyhow, bail, Context, Result};
 use is_terminal::IsTerminal;
 use std::env;
-use std::io::{stderr, stdin, stdout, Read};
+use std::io::stdout;
 use std::path::PathBuf;
 use syntect::highlighting::ThemeSet;
 
