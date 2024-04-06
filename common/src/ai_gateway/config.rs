@@ -9,6 +9,7 @@ use is_terminal::IsTerminal;
 use std::env;
 use std::io::stdout;
 use std::path::PathBuf;
+use std::str::FromStr;
 use syntect::highlighting::ThemeSet;
 
 const CLIENTS_FIELD: &str = "clients";
@@ -62,28 +63,38 @@ impl Default for AIGatewayConfig {
     }
 }
 
+pub fn initialize_ai_gateway(yaml_str: Option<&str>) -> Result<AIGatewayConfig> {
+    let read_file = |path: &PathBuf| -> Result<String> {
+        let ctx = || format!("Failed to read config file: {}", path.display());
+        let content = std::fs::read_to_string(path).context(ctx())?;
+        Ok(content)
+    };
+    let file_path = match PathBuf::from_str(
+        "/Users/tekkie/Projects/superspace/nezuko/common/example-config.yaml",
+    ) {
+        Ok(path) => path.clone(),
+        Err(_) => bail!("Failed to read default config file"),
+    };
+    let default_yaml = read_file(&file_path)?;
+    let yaml_str = yaml_str.unwrap_or(&default_yaml);
+
+    let mut config = AIGatewayConfig::from_yaml(yaml_str)?;
+    config.setup_model()?;
+
+    Ok(config)
+}
+
 // Read config from yaml file using serde yaml and deserialize it into AI Gateway Config
 impl AIGatewayConfig {
-    pub fn initialize(yaml_str: &str) -> Result<Self> {
-        let mut config = Self::from_yaml(yaml_str)?;
-        config.setup_model()?;
-
-        Ok(config)
-    }
-
     pub fn from_yaml(content: &str) -> Result<Self> {
-        let ctx = || format!("Failed to load config: {}", content);
-
-        let config: Self = serde_yaml::from_str(&content)
-            .map_err(|err| {
-                let err_msg = err.to_string();
-                if err_msg.starts_with(&format!("{}: ", CLIENTS_FIELD)) {
-                    anyhow!("clients: invalid value")
-                } else {
-                    anyhow!("{err_msg}")
-                }
-            })
-            .with_context(ctx)?;
+        let config: Self = serde_yaml::from_str(&content).map_err(|err| {
+            let err_msg = err.to_string();
+            if err_msg.starts_with(&format!("{}: ", CLIENTS_FIELD)) {
+                anyhow!("clients: invalid value")
+            } else {
+                anyhow!("err_msg: {}", err_msg)
+            }
+        })?;
 
         Ok(config)
     }

@@ -1,5 +1,13 @@
 use anyhow::Result;
-use common::{config::set_redis_url, task_graph::redis::establish_redis_connection};
+use common::{
+    ai_gateway::{
+        client::init_client,
+        config::{initialize_ai_gateway, AIGatewayConfig},
+        input::Input,
+    },
+    config::set_redis_url,
+    task_graph::redis::establish_redis_connection,
+};
 use log::{error, info};
 use once_cell::sync::Lazy;
 
@@ -96,6 +104,22 @@ async fn main() -> Result<()> {
         error!("Failed to establish Redis connection, check if Redis is running and is accessible: {:?}", e);
         panic!("Failed to establish Redis connection: {:?}", e);
     });
+
+    // setup AI gateway
+    let mut ai_gateway = match initialize_ai_gateway(None) {
+        Ok(ai_gateway) => ai_gateway,
+        Err(e) => {
+            error!("Failed to initialize AI Gateway: {}", e);
+            panic!("Failed to initialize AI Gateway: {}", e);
+        }
+    };
+
+    let output = ai_gateway
+        .start_directive("Hello from the other side", None, true, false)
+        .and_then(|output| {
+            info!("Output: {}", output);
+            Ok(())
+        });
 
     let coordinator_routes = routes::coordinator();
     warp::serve(coordinator_routes)
