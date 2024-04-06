@@ -1,4 +1,4 @@
-use super::input::resolve_data_url;
+use crate::ai_gateway::input::resolve_data_url;
 use crate::ai_gateway::client::Model;
 use crate::ai_gateway::input::Input;
 use crate::ai_gateway::config::AIGatewayConfig;
@@ -277,12 +277,6 @@ impl Session {
 
     pub fn add_message(&mut self, input: &Input, output: &str) -> Result<()> {
         let mut need_add_msg = true;
-        if self.messages.is_empty() {
-            if let Some(role) = input.role() {
-                self.messages.extend(role.build_messages(input));
-                need_add_msg = false;
-            }
-        }
         if need_add_msg {
             self.messages.push(Message {
                 role: MessageRole::User,
@@ -306,19 +300,15 @@ impl Session {
     }
 
     pub fn echo_messages(&self, input: &Input) -> String {
-        let messages = self.build_emssages(input);
+        let messages = self.build_messages(input);
         serde_yaml::to_string(&messages).unwrap_or_else(|_| "Unable to echo message".into())
     }
 
-    pub fn build_emssages(&self, input: &Input) -> Vec<Message> {
+    pub fn build_messages(&self, input: &Input) -> Vec<Message> {
         let mut messages = self.messages.clone();
         let mut need_add_msg = true;
         let len = messages.len();
         if len == 0 {
-            if let Some(role) = input.role() {
-                messages = role.build_messages(input);
-                need_add_msg = false;
-            }
         } else if len == 1 && self.compressed_messages.len() >= 2 {
             messages
                 .extend(self.compressed_messages[self.compressed_messages.len() - 2..].to_vec());
