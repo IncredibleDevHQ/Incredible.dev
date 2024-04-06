@@ -1,10 +1,8 @@
-use crate::ai_gateway::client::{list_models, ClientConfig, Model, SendData, Message};
-use crate::ai_gateway::render::RenderOptions;
-use crate::ai_gateway::session::Session;
-use crate::ai_gateway::utils::get_env_name;
+use crate::ai_gateway::client::{list_models, ClientConfig, Message, Model, SendData};
 use crate::ai_gateway::input::Input;
-
-
+use crate::ai_gateway::render::RenderOptions;
+use crate::ai_gateway::session::session::Session;
+use crate::ai_gateway::utils::get_env_name;
 
 use anyhow::{anyhow, bail, Context, Result};
 use is_terminal::IsTerminal;
@@ -13,6 +11,7 @@ use std::io::stdout;
 use std::path::PathBuf;
 use syntect::highlighting::ThemeSet;
 
+const CLIENTS_FIELD: &str = "clients";
 
 /// Monokai Extended
 const DARK_THEME: &[u8] = include_bytes!("./assets/monokai-extended.theme.bin");
@@ -33,17 +32,59 @@ pub struct AIGatewayConfig {
     pub wrap: Option<String>,
     /// Whether wrap code block
     pub wrap_code: bool,
+    /// Compress session if tokens exceed this value (>=1000)
+    pub compress_threshold: usize,
     pub clients: Vec<ClientConfig>,
     #[serde(skip)]
     pub model: Model,
     #[serde(skip)]
     pub session: Option<Session>,
+    #[serde(skip)]
+    pub last_message: Option<(Input, String)>,
+}
+
+impl Default for AIGatewayConfig {
+    fn default() -> Self {
+        Self {
+            model_id: None,
+            temperature: None,
+            save_session: None,
+            highlight: true,
+            light_theme: false,
+            wrap: None,
+            wrap_code: false,
+            compress_threshold: 2000,
+            clients: vec![ClientConfig::default()],
+            session: None,
+            model: Default::default(),
+            last_message: None,
+        }
+    }
 }
 
 // Read config from yaml file using serde yaml and deserialize it into AI Gateway Config
 impl AIGatewayConfig {
-    pub fn from_yaml(yaml: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let config: AIGatewayConfig = serde_yaml::from_str(yaml)?;
+    pub fn initialize(yaml_str: &str) -> Result<Self> {
+        let mut config = Self::from_yaml(yaml_str)?;
+        config.setup_model()?;
+
+        Ok(config)
+    }
+
+    pub fn from_yaml(content: &str) -> Result<Self> {
+        let ctx = || format!("Failed to load config: {}", content);
+
+        let config: Self = serde_yaml::from_str(&content)
+            .map_err(|err| {
+                let err_msg = err.to_string();
+                if err_msg.starts_with(&format!("{}: ", CLIENTS_FIELD)) {
+                    anyhow!("clients: invalid value")
+                } else {
+                    anyhow!("{err_msg}")
+                }
+            })
+            .with_context(ctx)?;
+
         Ok(config)
     }
 
@@ -62,6 +103,7 @@ impl AIGatewayConfig {
         self.set_model(&model)?;
         Ok(())
     }
+
     pub fn set_model(&mut self, value: &str) -> Result<()> {
         let models = list_models(self);
         let model = Model::find(&models, value);
@@ -128,26 +170,14 @@ impl AIGatewayConfig {
     }
 
     pub fn build_messages(&self, input: &Input) -> Result<Vec<Message>> {
-        let messages = if let Some(session) = input.session(&self.session) {
-            session.build_emssages(input)
-        } else if let Some(role) = input.role() {
-            role.build_messages(input)
-        } else {
-            let message = Message::new(input);
-            vec![message]
-        };
-        Ok(messages)
+        let message = Message::new(input);
+        Ok(vec![message])
     }
 
     pub fn prepare_send_data(&self, input: &Input, stream: bool) -> Result<SendData> {
         let messages = self.build_messages(input)?;
-        let temperature = if let Some(session) = input.session(&self.session) {
-            session.temperature()
-        } else if let Some(role) = input.role() {
-            role.temperature
-        } else {
-            self.temperature
-        };
+        let temperature = self.temperature;
+
         self.model.max_input_tokens_limit(&messages)?;
         Ok(SendData {
             messages,
