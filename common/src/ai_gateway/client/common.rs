@@ -201,7 +201,7 @@ macro_rules! config_get_fn {
 }
 
 #[async_trait]
-pub trait Client {
+pub trait Client: Send + Sync {
     fn config(&self) -> (&AIGatewayConfig, &Option<ExtraConfig>);
 
     fn models(&self) -> Vec<Model>;
@@ -227,14 +227,14 @@ pub trait Client {
     }
 
     async fn send_message(&self, input: Input) -> Result<String> {
-        // init_tokio_runtime()?.block_on(async {
         let global_config = self.config().0;
+        // Ensure `build_client` and `prepare_send_data` do not block.
         let client = self.build_client()?;
         let data = global_config.prepare_send_data(&input, false)?;
-        self.send_message_inner(&client, data)
-            .await
+    
+        // Directly await the async operation.
+        self.send_message_inner(&client, data).await
             .with_context(|| "Failed to get answer")
-        // })
     }
 
     fn send_message_streaming(&self, input: &Input, handler: &mut ReplyHandler) -> Result<()> {

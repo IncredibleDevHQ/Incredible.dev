@@ -113,13 +113,12 @@ async fn main() -> Result<()> {
             panic!("Failed to initialize AI Gateway: {}", e);
         }
     };
+    // Directly await the async function `start_directive`
+    let output = ai_gateway.start_directive("Hello from the other side", None, true, false).await
+        .expect("Failed to execute start_directive");
 
-    let output = ai_gateway
-        .start_directive("Hello from the other side", None, true, false)
-        .and_then(|output| {
-            info!("Output: {}", output);
-            Ok(())
-        });
+    info!("AI Gateway output: {:?}", output);
+
 
     let coordinator_routes = routes::coordinator();
     warp::serve(coordinator_routes)

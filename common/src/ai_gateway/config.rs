@@ -70,7 +70,7 @@ pub fn initialize_ai_gateway(yaml_str: Option<&str>) -> Result<AIGatewayConfig> 
         Ok(content)
     };
     let file_path = match PathBuf::from_str(
-        "/Users/tekkie/Projects/superspace/nezuko/common/example-config.yaml",
+        "/Users/incredible/Documents/GitHub/nezuko/common/example-config.yaml",
     ) {
         Ok(path) => path.clone(),
         Err(_) => bail!("Failed to read default config file"),
