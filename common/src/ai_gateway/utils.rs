@@ -1,8 +1,13 @@
 use crate::ai_gateway::tiktoken::{cl100k_base, CoreBPE};
+use fancy_regex::Regex;
 use lazy_static::lazy_static;
 use sha2::{Digest, Sha256};
 use std::env;
 use std::sync::{Arc, Mutex};
+
+lazy_static! {
+    pub static ref CODE_BLOCK_RE: Regex = Regex::new(r"(?ms)```\w*(.*)```").unwrap();
+}
 
 /// Count how many tokens a piece of text needs to consume
 pub fn count_tokens(text: &str) -> usize {
@@ -203,4 +208,25 @@ pub fn get_env_name(key: &str) -> String {
         env!("CARGO_CRATE_NAME").to_ascii_uppercase(),
         key.to_ascii_uppercase(),
     )
+}
+
+pub fn extract_block(input: &str) -> String {
+    let output: String = CODE_BLOCK_RE
+        .captures_iter(input)
+        .filter_map(|m| {
+            m.ok()
+                .and_then(|cap| cap.get(1))
+                .map(|m| String::from(m.as_str()))
+        })
+        .collect();
+    if output.is_empty() {
+        input.trim().to_string()
+    } else {
+        output.trim().to_string()
+    }
+}
+
+pub fn now() -> String {
+    let now = chrono::Local::now();
+    now.to_rfc3339_opts(chrono::SecondsFormat::Secs, false)
 }

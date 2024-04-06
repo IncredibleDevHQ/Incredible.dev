@@ -7,3 +7,4 @@ pub mod role;
 pub mod session;  
 pub mod render;
 pub mod config_files;
+pub mod message;
