@@ -94,8 +94,24 @@ impl Input {
         self.text.is_empty() && self.medias.is_empty()
     }
 
+    pub fn history_exists(&self) -> bool {
+        self.history.is_some()
+    }
+
+    pub fn get_history(&self) -> Option<Vec<Message>> {
+        self.history.clone()
+    }   
+
     pub fn data_urls(&self) -> HashMap<String, String> {
         self.data_urls.clone()
+    }
+
+    pub fn function_calls_exists(&self) -> bool {
+        self.functions.is_some()
+    }
+
+    pub fn function_calls(&self) -> Option<Vec<Function>> {
+        self.functions.clone()
     }
 
     pub fn summary(&self) -> String {
