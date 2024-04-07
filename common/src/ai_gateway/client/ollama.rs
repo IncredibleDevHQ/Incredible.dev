@@ -140,6 +140,7 @@ async fn send_message_streaming(builder: RequestBuilder, handler: &mut ReplyHand
 fn build_body(data: SendData, model: String) -> Result<Value> {
     let SendData {
         mut messages,
+        functions,
         temperature,
         stream,
     } = data;

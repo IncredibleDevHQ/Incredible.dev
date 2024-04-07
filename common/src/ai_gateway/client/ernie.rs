@@ -206,6 +206,7 @@ fn check_error(data: &Value) -> Result<()> {
 fn build_body(data: SendData, _model: String) -> Value {
     let SendData {
         mut messages,
+        functions, 
         temperature,
         stream,
     } = data;
