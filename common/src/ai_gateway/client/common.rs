@@ -294,6 +294,8 @@ pub struct SendData {
     pub messages: Vec<Message>,
     pub temperature: Option<f64>,
     pub stream: bool,
+    // Optional field to represent the agent function calling data
+    pub functions: Option<Vec<Function>>,
 }
 
 pub type PromptType<'a> = (&'a str, &'a str, bool, PromptKind);
