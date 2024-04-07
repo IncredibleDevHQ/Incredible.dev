@@ -12,6 +12,8 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use syntect::highlighting::ThemeSet;
 
+use super::input;
+
 const CLIENTS_FIELD: &str = "clients";
 
 /// Monokai Extended
@@ -181,8 +183,18 @@ impl AIGatewayConfig {
     }
 
     pub fn build_messages(&self, input: &Input) -> Result<Vec<Message>> {
+        // create a new user message from the input
         let message = Message::new(input);
-        Ok(vec![message])
+        
+        // push the message if there history in input.history 
+        // else return the vec of one message 
+        if input.history_exists(){
+            let mut messages = input.get_history().unwrap();
+            messages.push(message);
+            Ok(messages)
+        } else {
+            Ok(vec![message])
+        }
     }
 
     pub fn prepare_send_data(&self, input: &Input, stream: bool) -> Result<SendData> {
@@ -194,6 +206,7 @@ impl AIGatewayConfig {
             messages,
             temperature,
             stream,
+            functions: input.function_calls(),
         })
     }
 }
