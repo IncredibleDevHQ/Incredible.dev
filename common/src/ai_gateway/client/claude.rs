@@ -202,6 +202,7 @@ fn build_body(data: SendData, model: String) -> Result<Value> {
     });
 
       // Add functions (tools in Anthropics terminology) if available.
+      // https://docs.anthropic.com/claude/docs/tool-use
       if let Some(tools) = functions {
         body["tools"] = json!(tools);
     }
