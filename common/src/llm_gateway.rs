@@ -317,7 +317,7 @@ impl Client {
         } else {
             builder = builder.json(&api::Request {
                 messages: messages.to_owned(),
-                // convert functiond arugment into vector of functions.
+                // convert function argument into vector of functions.
                 functions: Some(
                     functions
                         .map(|funcs| {
