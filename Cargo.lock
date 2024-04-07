@@ -759,7 +759,6 @@ dependencies = [
  "serde_yaml 0.9.34+deprecated",
  "smallvec",
  "strsim 0.10.0",
- "tantivy",
  "thiserror",
  "tiktoken-rs",
  "tokenizers",
