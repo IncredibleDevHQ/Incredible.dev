@@ -119,7 +119,8 @@ async fn main() -> Result<()> {
     let _output = AI_GATEWAY
         .lock()
         .unwrap()
-        .start_directive("Hello from the other side", None, true, false)
+        .use_llm("Hello from the other side", None, None, None, true, false)
+        
         .await
         .map_err(|e| {
             panic!("Failed to start AI Gateway: {:?}", e);
