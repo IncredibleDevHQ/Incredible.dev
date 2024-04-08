@@ -7,8 +7,12 @@ use std::time::Duration;
 use crate::AppState;
 use anyhow::{anyhow, Context, Result};
 
-use common::{llm_gateway::{self, api::FunctionCall}, prompts};
+use common::prompts;
+
 use crate::agent::exchange::{Exchange, SearchStep, Update};
+use common::ai_gateway::function_calling::{Function, FunctionCall};
+use common::llm_gateway;
+
 
 use crate::agent::transform;
 // Types of repo
@@ -205,7 +209,7 @@ impl Agent {
             Action::Proc { query, paths } => self.process_files(query, paths).await?,
         };
 
-        let functions = serde_json::from_value::<Vec<llm_gateway::api::Function>>(
+        let functions = serde_json::from_value::<Vec<Function>>(
             prompts::functions(self.paths().next().is_some()), // Only add proc if there are paths in context
         )
         .unwrap();

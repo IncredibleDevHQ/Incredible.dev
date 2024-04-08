@@ -1,0 +1,65 @@
+{
+    "tasks": [
+        {
+            "task": "Modify the API within the coordinator service",
+            "subtasks": [
+                {
+                    "subtask": "Understand the API structure within the coordinator service",
+                    "questions": [
+                        "What is the function of the current API inside the coordinator service?",
+                        "What are its inputs, outputs, and flow of data?",
+                        "What dependencies does this API currently have within the application?"
+                    ]
+                },
+                {
+                    "subtask": "Make modifications in coordinator service API",
+                    "questions": [
+                        "What modifications are expected in the coordinator service API?",
+                        "How will these modifications change the data flow within the service?",
+                        "What precautions should be considered to ensure consistent performance of the coordinator service API post modification?"
+                    ]
+                }
+            ]
+        },
+        {
+            "task": "Set up coordinator service API to call the code-understanding service API",
+            "subtasks": [
+                {
+                    "subtask": "Identify the requirements for calling the code-understanding service API",
+                    "questions": [
+                        "What is the way to interact with the code-understanding service API?",
+                        "What are the required parameters and expected response format?",
+                        "Are there any exceptions or error cases to handle while interacting with the code-understanding service API?"
+                    ]
+                },
+                {
+                    "subtask": "Implement the call to code-understanding service API",
+                    "questions": [
+                        "Where in the coordinator service API should the calls to the code-understanding service API be incorporated?",
+                        "What changes are needed in the coordinator service API to make this integration possible?"
+                    ]
+                }
+            ]
+        },
+        {
+            "task": "Fetch answers for each question via code-understanding service API",
+            "subtasks": [
+                {
+                    "subtask": "Understand the function for obtaining answers in the code-understanding service API",
+                    "questions": [
+                        "How can you interact with the code-understanding service to extract answers for a given question?",
+                        "What are the required parameters and expected response format for this functionality?",
+                        "Are there any exceptions or error cases to handle while interacting with this functionality?"
+                    ]
+                },
+                {
+                    "subtask": "Incorporate the call to fetch answers inside the coordinator service",
+                    "questions": [
+                        "Where in the coordinator service should the call to fetch answers be incorporated?",
+                        "What changes are necessary in the coordinator service to integrate this functionality?"
+                    ]
+                }
+            ]
+        }
+    ]
+}
