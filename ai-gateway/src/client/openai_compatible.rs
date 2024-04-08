@@ -1,7 +1,7 @@
 use super::openai::{openai_build_body, OPENAI_TOKENS_COUNT_FACTORS};
 use super::{ExtraConfig, Model, ModelConfig, OpenAICompatibleClient, PromptType, SendData};
 
-use crate::ai_gateway::utils::PromptKind;
+use crate::utils::PromptKind;
 
 use anyhow::Result;
 use async_trait::async_trait;

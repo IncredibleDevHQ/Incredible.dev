@@ -1,6 +1,6 @@
 use super::{patch_system_message, Client, ErnieClient, ExtraConfig, Model, PromptType, SendData};
 
-use crate::ai_gateway::{render::ReplyHandler, utils::PromptKind};
+use crate::{render::ReplyHandler, utils::PromptKind};
 
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;

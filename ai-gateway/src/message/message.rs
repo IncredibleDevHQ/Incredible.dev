@@ -2,13 +2,13 @@ use anyhow::{Context, Result};
 use std::fs::{File, OpenOptions};
 use std::io::{stdout, Write};
 
-use crate::ai_gateway::client::{ensure_model_capabilities, init_client, Message};
-use crate::ai_gateway::config::AIGatewayConfig;
-use crate::ai_gateway::config_files::ensure_parent_exists;
-use crate::ai_gateway::function_calling::Function;
-use crate::ai_gateway::input::Input;
-use crate::ai_gateway::render::{render_stream, MarkdownRender};
-use crate::ai_gateway::utils::{create_abort_signal, extract_block, now};
+use crate::client::{ensure_model_capabilities, init_client, Message};
+use crate::config::AIGatewayConfig;
+use crate::config_files::ensure_parent_exists;
+use crate::function_calling::Function;
+use crate::input::Input;
+use crate::render::{render_stream, MarkdownRender};
+use crate::utils::{create_abort_signal, extract_block, now};
 
 impl AIGatewayConfig {
     pub async fn use_llm(

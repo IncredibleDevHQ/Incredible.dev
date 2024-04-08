@@ -3,7 +3,7 @@ use super::{
     PromptType, SendData, TokensCountFactors,
 };
 
-use crate::ai_gateway::{render::ReplyHandler, utils::PromptKind};
+use crate::{render::ReplyHandler, utils::PromptKind};
 
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;

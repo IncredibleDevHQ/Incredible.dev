@@ -1,4 +1,4 @@
-use crate::ai_gateway::input::Input;
+use crate::input::Input;
 
 use serde::{Deserialize, Serialize};
 

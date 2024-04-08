@@ -1,8 +1,8 @@
-use crate::ai_gateway::client::{list_models, ClientConfig, Message, Model, SendData};
-use crate::ai_gateway::input::Input;
-use crate::ai_gateway::render::RenderOptions;
-use crate::ai_gateway::session::session::Session;
-use crate::ai_gateway::utils::get_env_name;
+use crate::client::{list_models, ClientConfig, Message, Model, SendData};
+use crate::input::Input;
+use crate::render::RenderOptions;
+use crate::session::session::Session;
+use crate::utils::get_env_name;
 
 use anyhow::{anyhow, bail, Context, Result};
 use is_terminal::IsTerminal;

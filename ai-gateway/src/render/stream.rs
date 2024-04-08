@@ -1,6 +1,6 @@
 use super::{MarkdownRender, ReplyEvent};
 
-use crate::ai_gateway::utils::AbortSignal;
+use crate::utils::AbortSignal;
 
 use anyhow::Result;
 use crossbeam::channel::Receiver;

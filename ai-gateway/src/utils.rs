@@ -1,4 +1,4 @@
-use crate::ai_gateway::tiktoken::{cl100k_base, CoreBPE};
+use crate::tiktoken::{cl100k_base, CoreBPE};
 use fancy_regex::Regex;
 use lazy_static::lazy_static;
 use sha2::{Digest, Sha256};

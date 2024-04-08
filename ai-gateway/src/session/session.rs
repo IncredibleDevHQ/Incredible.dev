@@ -1,10 +1,10 @@
-use crate::ai_gateway::input::resolve_data_url;
-use crate::ai_gateway::client::Model;
-use crate::ai_gateway::input::Input;
-use crate::ai_gateway::config::AIGatewayConfig;
+use crate::input::resolve_data_url;
+use crate::client::Model;
+use crate::input::Input;
+use crate::config::AIGatewayConfig;
 
-use crate::ai_gateway::client::{Message, MessageContent, MessageRole};
-use crate::ai_gateway::render::MarkdownRender;
+use crate::client::{Message, MessageContent, MessageRole};
+use crate::render::MarkdownRender;
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};

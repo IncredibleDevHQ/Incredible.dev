@@ -1,8 +1,8 @@
 use anyhow::{bail, Result, Context, anyhow};
 use std::fs::{remove_file, create_dir_all, read_dir};
 
-use crate::ai_gateway::config::AIGatewayConfig;
-use crate::ai_gateway::session::session::{TEMP_SESSION_NAME, Session};
+use crate::config::AIGatewayConfig;
+use crate::session::session::{TEMP_SESSION_NAME, Session};
 
 impl AIGatewayConfig {
     pub fn start_session(&mut self, session: Option<&str>) -> Result<()> {
