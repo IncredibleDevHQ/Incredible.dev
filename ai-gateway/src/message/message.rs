@@ -20,7 +20,7 @@ impl AIGatewayConfig {
         no_stream: bool,
         code_mode: bool,
     ) -> Result<String> {
-        let input = Input::new(text, functions, history, include.unwrap_or_default())?;
+        let input = Input::new(text, functions, history);
         let mut client = init_client(self)?;
         ensure_model_capabilities(client.as_mut(), input.required_capabilities())?;
 

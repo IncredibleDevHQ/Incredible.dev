@@ -1,4 +1,4 @@
-use super::{patch_system_message, Client, ErnieClient, ExtraConfig, Model, PromptType, SendData};
+use super::{ Client, ErnieClient, ExtraConfig, Model, PromptType, SendData};
 
 use crate::{render::ReplyHandler, utils::PromptKind};
 
@@ -211,7 +211,7 @@ fn build_body(data: SendData, _model: String) -> Value {
         stream,
     } = data;
 
-    patch_system_message(&mut messages);
+   // patch_system_message(&mut messages);
 
     let mut body = json!({
         "messages": messages,

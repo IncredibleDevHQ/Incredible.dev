@@ -1,6 +1,6 @@
 use super::{
-    message::*, patch_system_message, Client, ExtraConfig, Model, ModelConfig, OllamaClient,
-    PromptType, SendData, TokensCountFactors,
+    message::*, Client, ExtraConfig, Model, ModelConfig, OllamaClient, PromptType, SendData,
+    TokensCountFactors,
 };
 
 use crate::{render::ReplyHandler, utils::PromptKind};
@@ -122,7 +122,7 @@ async fn send_message_streaming(builder: RequestBuilder, handler: &mut ReplyHand
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
             if chunk.is_empty() {
-              continue;
+                continue;
             }
             let data: Value = serde_json::from_slice(&chunk)?;
             if data["done"].is_boolean() {
@@ -145,53 +145,17 @@ fn build_body(data: SendData, model: String) -> Result<Value> {
         stream,
     } = data;
 
-    patch_system_message(&mut messages);
-
-    let mut network_image_urls = vec![];
+    //patch_system_message(&mut messages);
+    // Directly map each message to its JSON representation.
     let messages: Vec<Value> = messages
         .into_iter()
         .map(|message| {
-            let role = message.role;
-            match message.content {
-                MessageContent::Text(text) => json!({
-                    "role": role,
-                    "content": text,
-                }),
-                MessageContent::Array(list) => {
-                    let mut content = vec![];
-                    let mut images = vec![];
-                    for item in list {
-                        match item {
-                            MessageContentPart::Text { text } => {
-                                content.push(text);
-                            }
-                            MessageContentPart::ImageUrl {
-                                image_url: ImageUrl { url },
-                            } => {
-                                if let Some((_, data)) = url
-                                    .strip_prefix("data:")
-                                    .and_then(|v| v.split_once(";base64,"))
-                                {
-                                    images.push(data.to_string());
-                                } else {
-                                    network_image_urls.push(url.clone());
-                                }
-                            }
-                        }
-                    }
-                    let content = content.join("\n\n");
-                    json!({ "role": role, "content": content, "images": images })
-                }
-            }
+            json!({
+                "role": message.role,
+                "content": message.content,
+            })
         })
         .collect();
-
-    if !network_image_urls.is_empty() {
-        bail!(
-            "The model does not support network images: {:?}",
-            network_image_urls
-        );
-    }
 
     let mut body = json!({
         "model": model,

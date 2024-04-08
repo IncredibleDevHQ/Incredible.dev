@@ -1,5 +1,5 @@
 use crate::{
-    client::{Message, MessageContent, MessageRole},
+    client::{Message, MessageRole},
     utils::{detect_os, detect_shell},
 };
 
