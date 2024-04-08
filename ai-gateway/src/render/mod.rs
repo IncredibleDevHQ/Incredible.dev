@@ -4,10 +4,10 @@ mod stream;
 pub use self::markdown::{MarkdownRender, RenderOptions};
 use self::stream::{markdown_stream, raw_stream};
 
-use crate::ai_gateway::client::Client;
-use crate::ai_gateway::config::AIGatewayConfig;
-use crate::ai_gateway::input::Input;
-use crate::ai_gateway::utils::AbortSignal;
+use crate::client::Client;
+use crate::config::AIGatewayConfig;
+use crate::input::Input;
+use crate::utils::AbortSignal;
 use log::debug;
 
 use anyhow::{Context, Result};

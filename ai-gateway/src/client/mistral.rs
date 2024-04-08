@@ -1,40 +1,42 @@
 use super::openai::{openai_build_body, OPENAI_TOKENS_COUNT_FACTORS};
-use super::{ExtraConfig, MoonshotClient, Model, PromptType, SendData};
+use super::{ExtraConfig, MistralClient, Model, PromptType, SendData};
 
-use crate::ai_gateway::utils::PromptKind;
+use crate::utils::PromptKind;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use reqwest::{Client as ReqwestClient, RequestBuilder};
 use serde::Deserialize;
 
-const API_URL: &str = "https://api.moonshot.cn/v1/chat/completions";
+const API_URL: &str = "https://api.mistral.ai/v1/chat/completions";
 
-const MODELS: [(&str, usize, &str); 3] = [
-    // https://platform.moonshot.cn/docs/intro
-    ("moonshot-v1-8k", 8000, "text"),
-    ("moonshot-v1-32k", 32000, "text"),
-    ("moonshot-v1-128k", 128000, "text"),
+const MODELS: [(&str, usize, &str); 5] = [
+    // https://docs.mistral.ai/platform/endpoints/
+    ("mistral-large-latest", 32000, "text"),
+    ("mistral-medium-latest", 32000, "text"),
+    ("mistral-small-latest", 32000, "text"),
+    ("open-mixtral-8x7b", 32000, "text"),
+    ("open-mistral-7b", 32000, "text"),
 ];
 
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct MoonshotConfig {
+pub struct MistralConfig {
     pub name: Option<String>,
     pub api_key: Option<String>,
     pub extra: Option<ExtraConfig>,
 }
 
-openai_compatible_client!(MoonshotClient);
+openai_compatible_client!(MistralClient);
 
-impl MoonshotClient {
+impl MistralClient {
     config_get_fn!(api_key, get_api_key);
 
     pub const PROMPTS: [PromptType<'static>; 1] = [
         ("api_key", "API Key:", false, PromptKind::String),
     ];
 
-    pub fn list_models(local_config: &MoonshotConfig) -> Vec<Model> {
+    pub fn list_models(local_config: &MistralConfig) -> Vec<Model> {
         let client_name = Self::name(local_config);
         MODELS
             .into_iter()
@@ -55,7 +57,7 @@ impl MoonshotClient {
 
         let url = API_URL;
 
-        log::debug!("Moonshot Request: {url} {body}");
+        log::debug!("Mistral Request: {url} {body}");
 
         let mut builder = client.post(url).json(&body);
         if let Some(api_key) = api_key {

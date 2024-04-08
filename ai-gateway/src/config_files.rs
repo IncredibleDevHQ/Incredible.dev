@@ -1,4 +1,4 @@
-use crate::ai_gateway::config::AIGatewayConfig;
+use crate::config::AIGatewayConfig;
 use anyhow::{Result, anyhow, Context};
 use std::{fs::create_dir_all, path::{Path, PathBuf}};
 

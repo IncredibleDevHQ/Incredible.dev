@@ -2,7 +2,7 @@ use super::{
     message::*, Client, ExtraConfig, Model, PromptType, QianwenClient, SendData, TokensCountFactors,
 };
 
-use crate::ai_gateway::{
+use crate::{
     render::ReplyHandler,
     utils::{sha256sum, PromptKind},
 };

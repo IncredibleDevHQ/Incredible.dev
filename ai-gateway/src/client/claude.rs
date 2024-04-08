@@ -3,7 +3,7 @@ use super::{
     TokensCountFactors,
 };
 
-use crate::ai_gateway::{
+use crate::{
     client::{ImageUrl, MessageContent, MessageContentPart},
     render::ReplyHandler,
     utils::PromptKind,

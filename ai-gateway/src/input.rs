@@ -1,5 +1,5 @@
-use crate::ai_gateway::client::{ImageUrl, MessageContent, MessageContentPart, ModelCapabilities};
-use crate::ai_gateway::utils::sha256sum;
+use crate::client::{ImageUrl, MessageContent, MessageContentPart, ModelCapabilities};
+use crate::utils::sha256sum;
 
 use anyhow::{bail, Context, Result};
 use base64::{self, engine::general_purpose::STANDARD, Engine};

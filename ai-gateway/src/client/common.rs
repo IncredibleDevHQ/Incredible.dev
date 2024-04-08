@@ -1,16 +1,16 @@
 use super::{openai::OpenAIConfig, ClientConfig, Message, MessageContent, Model};
-use crate::ai_gateway::utils::{init_tokio_runtime, AbortSignal};
+use crate::utils::{init_tokio_runtime, AbortSignal};
 use std::{env, future::Future, time::Duration};
 use tokio::time::sleep;
 
-use crate::ai_gateway::function_calling::Function;
-use crate::ai_gateway::config::AIGatewayConfig;
-use crate::ai_gateway::{
+use crate::function_calling::Function;
+use crate::config::AIGatewayConfig;
+use crate::{
     render::ReplyHandler,
     utils::{prompt_input_integer, prompt_input_string, PromptKind},
 };
 
-use crate::ai_gateway::input::Input;
+use crate::input::Input;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -45,15 +45,15 @@ macro_rules! register_client {
         $(
             #[derive(Debug)]
             pub struct $client {
-                global_config: $crate::ai_gateway::config::AIGatewayConfig,
+                global_config: $crate::config::AIGatewayConfig,
                 config: $config,
-                model: $crate::ai_gateway::client::Model,
+                model: $crate::client::Model,
             }
 
             impl $client {
                 pub const NAME: &'static str = $name;
 
-                pub fn init(global_config: &$crate::ai_gateway::config::AIGatewayConfig) -> Option<Box<dyn Client>> {
+                pub fn init(global_config: &$crate::config::AIGatewayConfig) -> Option<Box<dyn Client>> {
                     let model = global_config.model.clone();
                     let config = global_config.clients.iter().find_map(|client_config| {
                         if let ClientConfig::$config(c) = client_config {
@@ -78,7 +78,7 @@ macro_rules! register_client {
 
         )+
 
-        pub fn init_client(config: &$crate::ai_gateway::config::AIGatewayConfig) -> anyhow::Result<Box<dyn Client>> {
+        pub fn init_client(config: &$crate::config::AIGatewayConfig) -> anyhow::Result<Box<dyn Client>> {
             None
             $(.or_else(|| $client::init(config)))+
             .ok_or_else(|| {
@@ -87,7 +87,7 @@ macro_rules! register_client {
             })
         }
 
-        pub fn ensure_model_capabilities(client: &mut dyn Client, capabilities: $crate::ai_gateway::client::ModelCapabilities) -> anyhow::Result<()> {
+        pub fn ensure_model_capabilities(client: &mut dyn Client, capabilities: $crate::client::ModelCapabilities) -> anyhow::Result<()> {
             if !client.model().capabilities.contains(capabilities) {
                 let models = client.models();
                 if let Some(model) = models.into_iter().find(|v| v.capabilities.contains(capabilities)) {
@@ -114,7 +114,7 @@ macro_rules! register_client {
             anyhow::bail!("Unknown client {}", client)
         }
 
-        pub fn list_models(config: &$crate::ai_gateway::config::AIGatewayConfig) -> Vec<$crate::ai_gateway::client::Model> {
+        pub fn list_models(config: &$crate::config::AIGatewayConfig) -> Vec<$crate::client::Model> {
             config
                 .clients
                 .iter()
@@ -134,8 +134,8 @@ macro_rules! client_common_fns {
         fn config(
             &self,
         ) -> (
-            &$crate::ai_gateway::config::AIGatewayConfig,
-            &Option<$crate::ai_gateway::client::ExtraConfig>,
+            &$crate::config::AIGatewayConfig,
+            &Option<$crate::client::ExtraConfig>,
         ) {
             (&self.global_config, &self.config.extra)
         }
@@ -158,26 +158,26 @@ macro_rules! client_common_fns {
 macro_rules! openai_compatible_client {
     ($client:ident) => {
         #[async_trait]
-        impl $crate::ai_gateway::client::Client for $crate::ai_gateway::client::$client {
+        impl $crate::client::Client for $crate::client::$client {
             client_common_fns!();
 
             async fn send_message_inner(
                 &self,
                 client: &reqwest::Client,
-                data: $crate::ai_gateway::client::SendData,
+                data: $crate::client::SendData,
             ) -> anyhow::Result<String> {
                 let builder = self.request_builder(client, data)?;
-                $crate::ai_gateway::client::openai::openai_send_message(builder).await
+                $crate::client::openai::openai_send_message(builder).await
             }
 
             async fn send_message_streaming_inner(
                 &self,
                 client: &reqwest::Client,
-                handler: &mut $crate::ai_gateway::render::ReplyHandler,
-                data: $crate::ai_gateway::client::SendData,
+                handler: &mut $crate::render::ReplyHandler,
+                data: $crate::client::SendData,
             ) -> Result<()> {
                 let builder = self.request_builder(client, data)?;
-                $crate::ai_gateway::client::openai::openai_send_message_streaming(builder, handler)
+                $crate::client::openai::openai_send_message_streaming(builder, handler)
                     .await
             }
         }

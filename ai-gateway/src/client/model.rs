@@ -1,6 +1,6 @@
 use super::message::{Message, MessageContent};
 
-use crate::ai_gateway::utils::count_tokens;
+use crate::utils::count_tokens;
 
 use anyhow::{bail, Result};
 use serde::{Deserialize, Deserializer};
