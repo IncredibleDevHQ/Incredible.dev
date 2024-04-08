@@ -8,6 +8,6 @@ members = [
     "modifier",
     "common",
     "coordinator",
-    "ai-gateway"
+    "ai-gateway",
 ]
 resolver = "2"
