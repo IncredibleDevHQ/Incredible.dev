@@ -1,10 +1,6 @@
 use anyhow::Result;
 use common::{
-    ai_gateway::{
-        client::init_client,
-        config::{initialize_ai_gateway, AIGatewayConfig},
-        input::Input,
-    },
+    ai_gateway::config::{initialize_ai_gateway, AIGatewayConfig},
     config::set_redis_url,
     task_graph::redis::establish_redis_connection,
 };
@@ -18,7 +14,7 @@ mod routes;
 mod utility;
 
 use core::result::Result::Ok;
-use std::env;
+use std::{env, sync::Mutex};
 
 #[allow(unused)]
 #[derive(Debug, Clone)]
@@ -67,9 +63,23 @@ impl Configuration {
                 .unwrap_or_else(|_| "gpt-4-1106-preview".to_string()),
         }
     }
+
+    fn init_ai_gateway() -> Mutex<AIGatewayConfig> {
+        // setup AI gateway
+        let ai_gateway = match initialize_ai_gateway(None) {
+            Ok(ai_gateway) => ai_gateway,
+            Err(e) => {
+                error!("Failed to initialize AI Gateway: {}", e);
+                panic!("Failed to initialize AI Gateway: {}", e);
+            }
+        };
+
+        Mutex::new(ai_gateway)
+    }
 }
 
 static CONFIG: Lazy<Configuration> = Lazy::new(|| Configuration::load_from_env());
+static AI_GATEWAY: Lazy<Mutex<AIGatewayConfig>> = Lazy::new(|| Configuration::init_ai_gateway());
 
 // write a function test if the dependency services are up and running
 async fn health_check(url: &str) -> bool {
@@ -105,20 +115,15 @@ async fn main() -> Result<()> {
         panic!("Failed to establish Redis connection: {:?}", e);
     });
 
-    // setup AI gateway
-    let mut ai_gateway = match initialize_ai_gateway(None) {
-        Ok(ai_gateway) => ai_gateway,
-        Err(e) => {
-            error!("Failed to initialize AI Gateway: {}", e);
-            panic!("Failed to initialize AI Gateway: {}", e);
-        }
-    };
-    // Directly await the async function `start_directive`
-    let output = ai_gateway.start_directive("Hello from the other side", None, true, false).await
-        .expect("Failed to execute start_directive");
-
-    info!("AI Gateway output: {:?}", output);
-
+    // test if the AI gateway is initialized properly
+    let _output = AI_GATEWAY
+        .lock()
+        .unwrap()
+        .start_directive("Hello from the other side", None, true, false)
+        .await
+        .map_err(|e| {
+            panic!("Failed to start AI Gateway: {:?}", e);
+        });
 
     let coordinator_routes = routes::coordinator();
     warp::serve(coordinator_routes)
