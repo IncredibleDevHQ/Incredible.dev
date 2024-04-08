@@ -3,6 +3,7 @@ use crate::ai_gateway::utils::{init_tokio_runtime, AbortSignal};
 use std::{env, future::Future, time::Duration};
 use tokio::time::sleep;
 
+use crate::ai_gateway::function_calling::Function;
 use crate::ai_gateway::config::AIGatewayConfig;
 use crate::ai_gateway::{
     render::ReplyHandler,
@@ -227,10 +228,10 @@ pub trait Client: Send + Sync {
     }
 
     async fn send_message(&self, input: Input) -> Result<String> {
-        let global_config = self.config().0;
+        let config= self.config().0;
         // Ensure `build_client` and `prepare_send_data` do not block.
         let client = self.build_client()?;
-        let data = global_config.prepare_send_data(&input, false)?;
+        let data = config.prepare_send_data(&input, false)?;
     
         // Directly await the async operation.
         self.send_message_inner(&client, data).await
@@ -294,6 +295,8 @@ pub struct SendData {
     pub messages: Vec<Message>,
     pub temperature: Option<f64>,
     pub stream: bool,
+    // Optional field to represent the agent function calling data
+    pub functions: Option<Vec<Function>>,
 }
 
 pub type PromptType<'a> = (&'a str, &'a str, bool, PromptKind);

@@ -133,6 +133,7 @@ pub async fn openai_send_message_streaming(
 pub fn openai_build_body(data: SendData, model: String) -> Value {
     let SendData {
         messages,
+        functions,
         temperature,
         stream,
     } = data;
@@ -141,6 +142,13 @@ pub fn openai_build_body(data: SendData, model: String) -> Value {
         "model": model,
         "messages": messages,
     });
+
+    // Check if there are any functions provided and add them to the body.
+    if let Some(funcs) = functions {
+        // Here we assume that the functions Vec<Function> can be serialized directly.
+        // This requires that Function and any nested structs are serializable.
+        body["functions"] = json!(funcs);
+    }
 
     // The default max_tokens of gpt-4-vision-preview is only 16, we need to make it larger
     if model == "gpt-4-vision-preview" {

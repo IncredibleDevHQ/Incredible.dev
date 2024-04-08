@@ -189,6 +189,7 @@ fn check_error(data: &Value) -> Result<()> {
 fn build_body(data: SendData, model: String, is_vl: bool) -> Result<(Value, bool)> {
     let SendData {
         messages,
+        functions,
         temperature,
         stream,
     } = data;
@@ -245,11 +246,18 @@ fn build_body(data: SendData, model: String, is_vl: bool) -> Result<(Value, bool
         (input, parameters)
     };
 
-    let body = json!({
+    let mut body = json!({
         "model": model,
         "input": input,
         "parameters": parameters
     });
+
+    // add function calling options if provided 
+    // https://qwen.readthedocs.io/en/latest/framework/function_call.html
+    if let Some(functions) = functions {
+        body["functions"] = json!(functions);
+    }
+
     Ok((body, has_upload))
 }
 

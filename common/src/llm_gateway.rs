@@ -1,6 +1,7 @@
 use anyhow::{Result};
 use tiktoken_rs;
-use self::api::FunctionCall;
+
+use crate::ai_gateway::function_calling::{FunctionCall, Function, Functions};
 
 use serde::{Deserialize, Serialize};
 
@@ -33,36 +34,8 @@ pub struct ChatCompletion {
 pub mod api {
     use std::collections::HashMap;
 
-    #[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-    pub struct FunctionCall {
-        pub name: Option<String>,
-        pub arguments: String,
-    }
+    use crate::ai_gateway::function_calling::{Function, FunctionCall};
 
-    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-    pub struct Function {
-        pub name: String,
-        pub description: String,
-        pub parameters: Parameters,
-    }
-
-    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-    pub struct Parameters {
-        #[serde(rename = "type")]
-        pub _type: String,
-        pub properties: HashMap<String, Parameter>,
-        pub required: Vec<String>,
-    }
-
-    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-    pub struct Parameter {
-        #[serde(rename = "type")]
-        pub _type: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub description: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub items: Option<Box<Parameter>>,
-    }
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
     #[serde(untagged)]
     pub enum Message {
@@ -94,11 +67,6 @@ pub mod api {
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
     pub struct Messages {
         pub messages: Vec<Message>,
-    }
-
-    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-    pub struct Functions {
-        pub functions: Vec<Function>,
     }
 
     #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -310,7 +278,7 @@ impl Client {
     pub async fn chat(
         &self,
         messages: &[api::Message],
-        functions: Option<&[api::Function]>,
+        functions: Option<&[Function]>,
     ) -> Result<ChatCompletion> {
         // const INITIAL_DELAY: Duration = Duration::from_millis(100);
         // const SCALE_FACTOR: f32 = 1.5;
@@ -349,11 +317,11 @@ impl Client {
         } else {
             builder = builder.json(&api::Request {
                 messages: messages.to_owned(),
-                // convert functiond arugment into vector of functions.
+                // convert function argument into vector of functions.
                 functions: Some(
                     functions
                         .map(|funcs| {
-                            api::Functions {
+                            Functions {
                                 functions: funcs.to_owned(),
                             }
                             .functions

@@ -14,6 +14,9 @@ use std::{
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+use super::client::Message;
+use super::function_calling::Function;
+
 const IMAGE_EXTS: [&str; 5] = ["png", "jpeg", "jpg", "webp", "gif"];
 
 lazy_static! {
@@ -25,6 +28,8 @@ pub struct Input {
     text: String,
     medias: Vec<String>,
     data_urls: HashMap<String, String>,
+    functions: Option<Vec<Function>>,
+    history: Option<Vec<Message>>,
 }
 
 impl Input {
@@ -33,10 +38,18 @@ impl Input {
             text: text.to_string(),
             medias: Default::default(),
             data_urls: Default::default(),
+            // defaults to None.
+            functions: Default::default(),
+            history: Default::default(),
         }
     }
 
-    pub fn new(text: &str, files: Vec<String>) -> Result<Self> {
+    pub fn new(
+        text: &str,
+        functions: Option<Vec<Function>>,
+        history: Option<Vec<Message>>,
+        files: Vec<String>,
+    ) -> Result<Self> {
         let mut texts = vec![text.to_string()];
         let mut medias = vec![];
         let mut data_urls = HashMap::new();
@@ -70,6 +83,8 @@ impl Input {
 
         Ok(Self {
             text: texts.join("\n"),
+            functions: functions,
+            history: history,
             medias,
             data_urls,
         })
@@ -79,8 +94,24 @@ impl Input {
         self.text.is_empty() && self.medias.is_empty()
     }
 
+    pub fn history_exists(&self) -> bool {
+        self.history.is_some()
+    }
+
+    pub fn get_history(&self) -> Option<Vec<Message>> {
+        self.history.clone()
+    }   
+
     pub fn data_urls(&self) -> HashMap<String, String> {
         self.data_urls.clone()
+    }
+
+    pub fn function_calls_exists(&self) -> bool {
+        self.functions.is_some()
+    }
+
+    pub fn function_calls(&self) -> Option<Vec<Function>> {
+        self.functions.clone()
     }
 
     pub fn summary(&self) -> String {
