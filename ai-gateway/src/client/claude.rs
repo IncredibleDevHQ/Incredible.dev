@@ -1,13 +1,6 @@
-use super::{
-    patch_system_message, ClaudeClient, Client, ExtraConfig, Model, PromptType, SendData,
-    TokensCountFactors,
-};
+use super::{ClaudeClient, Client, ExtraConfig, Model, PromptType, SendData, TokensCountFactors};
 
-use crate::{
-    client::{ImageUrl, MessageContent, MessageContentPart},
-    render::ReplyHandler,
-    utils::PromptKind,
-};
+use crate::{render::ReplyHandler, utils::PromptKind};
 
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
@@ -142,58 +135,22 @@ async fn send_message_streaming(builder: RequestBuilder, handler: &mut ReplyHand
 
 fn build_body(data: SendData, model: String) -> Result<Value> {
     let SendData {
-        mut messages,
-        functions, 
+        messages,
+        functions,
         temperature,
         stream,
     } = data;
 
-    patch_system_message(&mut messages);
-
-    let mut network_image_urls = vec![];
+    // Serialize messages with content being just a string without specifying the type.
     let messages: Vec<Value> = messages
         .into_iter()
         .map(|message| {
-            let role = message.role;
-            let content = match message.content {
-                MessageContent::Text(text) => vec![json!({"type": "text", "text": text})],
-                MessageContent::Array(list) => list
-                    .into_iter()
-                    .map(|item| match item {
-                        MessageContentPart::Text { text } => json!({"type": "text", "text": text}),
-                        MessageContentPart::ImageUrl {
-                            image_url: ImageUrl { url },
-                        } => {
-                            if let Some((mime_type, data)) = url
-                                .strip_prefix("data:")
-                                .and_then(|v| v.split_once(";base64,"))
-                            {
-                                json!({
-                                    "type": "image",
-                                    "source": {
-                                        "type": "base64",
-                                        "media_type": mime_type,
-                                        "data": data,
-                                    }
-                                })
-                            } else {
-                                network_image_urls.push(url.clone());
-                                json!({ "url": url })
-                            }
-                        }
-                    })
-                    .collect(),
-            };
-            json!({ "role": role, "content": content })
+            json!({
+                "role": message.role,
+                "content": message.content
+            })
         })
         .collect();
-
-    if !network_image_urls.is_empty() {
-        bail!(
-            "The model does not support network images: {:?}",
-            network_image_urls
-        );
-    }
 
     let mut body = json!({
         "model": model,
@@ -201,18 +158,20 @@ fn build_body(data: SendData, model: String) -> Result<Value> {
         "messages": messages,
     });
 
-      // Add functions (tools in Anthropics terminology) if available.
-      // https://docs.anthropic.com/claude/docs/tool-use
-      if let Some(tools) = functions {
+    // Add functions (tools in Anthropics terminology) if available.
+    // https://docs.anthropic.com/claude/docs/tool-use
+    if let Some(tools) = functions {
         body["tools"] = json!(tools);
     }
 
+    // Add temperature and stream settings if they are present.
     if let Some(v) = temperature {
-        body["temperature"] = v.into();
+        body["temperature"] = json!(v);
     }
     if stream {
-        body["stream"] = true.into();
+        body["stream"] = json!(true);
     }
+
     Ok(body)
 }
 

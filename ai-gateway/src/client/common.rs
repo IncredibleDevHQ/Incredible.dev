@@ -1,10 +1,10 @@
-use super::{openai::OpenAIConfig, ClientConfig, Message, MessageContent, Model};
+use super::{openai::OpenAIConfig, ClientConfig, Message, Model};
 use crate::utils::{init_tokio_runtime, AbortSignal};
 use std::{env, future::Future, time::Duration};
 use tokio::time::sleep;
 
-use crate::function_calling::Function;
 use crate::config::AIGatewayConfig;
+use crate::function_calling::Function;
 use crate::{
     render::ReplyHandler,
     utils::{prompt_input_integer, prompt_input_string, PromptKind},
@@ -177,8 +177,7 @@ macro_rules! openai_compatible_client {
                 data: $crate::client::SendData,
             ) -> Result<()> {
                 let builder = self.request_builder(client, data)?;
-                $crate::client::openai::openai_send_message_streaming(builder, handler)
-                    .await
+                $crate::client::openai::openai_send_message_streaming(builder, handler).await
             }
         }
     };
@@ -228,13 +227,14 @@ pub trait Client: Send + Sync {
     }
 
     async fn send_message(&self, input: Input) -> Result<String> {
-        let config= self.config().0;
+        let config = self.config().0;
         // Ensure `build_client` and `prepare_send_data` do not block.
         let client = self.build_client()?;
         let data = config.prepare_send_data(&input, false)?;
-    
+
         // Directly await the async operation.
-        self.send_message_inner(&client, data).await
+        self.send_message_inner(&client, data)
+            .await
             .with_context(|| "Failed to get answer")
     }
 
@@ -343,18 +343,18 @@ where
     Ok(())
 }
 
-pub fn patch_system_message(messages: &mut Vec<Message>) {
-    if messages[0].role.is_system() {
-        let system_message = messages.remove(0);
-        if let (Some(message), MessageContent::Text(system_text)) =
-            (messages.get_mut(0), system_message.content)
-        {
-            if let MessageContent::Text(text) = message.content.clone() {
-                message.content = MessageContent::Text(format!("{}\n\n{}", system_text, text))
-            }
-        }
-    }
-}
+// pub fn patch_system_message(messages: &mut Vec<Message>) {
+//     if messages[0].role.is_system() {
+//         let system_message = messages.remove(0);
+//         if let (Some(message), MessageContent::Text(system_text)) =
+//             (messages.get_mut(0), system_message.content)
+//         {
+//             if let MessageContent::Text(text) = message.content.clone() {
+//                 message.content = MessageContent::Text(format!("{}\n\n{}", system_text, text))
+//             }
+//         }
+//     }
+// }
 
 fn set_config_value(json: &mut Value, path: &str, kind: &PromptKind, value: &str) {
     let segs: Vec<&str> = path.split('.').collect();

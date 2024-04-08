@@ -1,5 +1,5 @@
 use super::{
-    message::*, patch_system_message, Client, ExtraConfig, Model, PromptType, SendData,
+    message::*, Client, ExtraConfig, Model, PromptType, SendData,
     TokensCountFactors, VertexAIClient,
 };
 
@@ -219,14 +219,11 @@ pub(crate) fn build_body(
     block_threshold: Option<String>,
 ) -> Result<Value> {
     let SendData {
-        mut messages,
+        messages,
         temperature,
         ..
     } = data;
 
-    patch_system_message(&mut messages);
-
-    let mut network_image_urls = vec![];
     let contents: Vec<Value> = messages
         .into_iter()
         .map(|message| {
@@ -234,50 +231,27 @@ pub(crate) fn build_body(
                 MessageRole::User => "user",
                 _ => "model",
             };
-            match message.content {
-                MessageContent::Text(text) => json!({
-                    "role": role,
-                    "parts": [{ "text": text }]
-                }),
-                MessageContent::Array(list) => {
-                    let list: Vec<Value> = list
-                        .into_iter()
-                        .map(|item| match item {
-                            MessageContentPart::Text { text } => json!({"text": text}),
-                            MessageContentPart::ImageUrl { image_url: ImageUrl { url } } => {
-                                if let Some((mime_type, data)) = url.strip_prefix("data:").and_then(|v| v.split_once(";base64,")) {
-                                    json!({ "inline_data": { "mime_type": mime_type, "data": data } })
-                                } else {
-                                    network_image_urls.push(url.clone());
-                                    json!({ "url": url })
-                                }
-                            },
-                        })
-                        .collect();
-                    json!({ "role": role, "parts": list })
-                }
-            }
+            // Directly use the message content without parsing for different types.
+            json!({
+                "role": role,
+                "parts": [{ "text": message.content }]
+            })
         })
         .collect();
 
-    if !network_image_urls.is_empty() {
-        bail!(
-            "The model does not support network images: {:?}",
-            network_image_urls
-        );
-    }
-
     let mut body = json!({ "contents": contents });
 
+    // Include block thresholds if provided.
     if let Some(block_threshold) = block_threshold {
         body["safetySettings"] = json!([
-            {"category":"HARM_CATEGORY_HARASSMENT","threshold":block_threshold},
-            {"category":"HARM_CATEGORY_HATE_SPEECH","threshold":block_threshold},
-            {"category":"HARM_CATEGORY_SEXUALLY_EXPLICIT","threshold":block_threshold},
-            {"category":"HARM_CATEGORY_DANGEROUS_CONTENT","threshold":block_threshold}
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": block_threshold},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": block_threshold},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": block_threshold},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": block_threshold}
         ]);
     }
 
+    // Include temperature settings if provided.
     if let Some(temperature) = temperature {
         body["generationConfig"] = json!({
             "temperature": temperature,

@@ -1,9 +1,8 @@
-use crate::input::resolve_data_url;
 use crate::client::Model;
-use crate::input::Input;
 use crate::config::AIGatewayConfig;
+use crate::input::Input;
 
-use crate::client::{Message, MessageContent, MessageRole};
+use crate::client::{Message, MessageRole};
 use crate::render::MarkdownRender;
 
 use anyhow::{bail, Context, Result};
@@ -162,25 +161,19 @@ impl Session {
 
         if !self.is_empty() {
             lines.push("".into());
-            let resolve_url_fn = |url: &str| resolve_data_url(&self.data_urls, url.to_string());
 
-            for message in &self.messages {
-                match message.role {
-                    MessageRole::System => {
-                        lines.push(render.render(&message.content.render_input(resolve_url_fn)));
-                    }
-                    MessageRole::Assistant => {
-                        if let MessageContent::Text(text) = &message.content {
-                            lines.push(render.render(text));
+            if !self.messages.is_empty() {
+                lines.push("".into());
+
+                for message in &self.messages {
+                    match message.role {
+                        MessageRole::System => {
+                            lines.push(render.render(&message.content));
                         }
-                        lines.push("".into());
-                    }
-                    MessageRole::User => {
-                        lines.push(format!(
-                            "{}）{}",
-                            self.name,
-                            message.content.render_input(resolve_url_fn)
-                        ));
+                        MessageRole::Assistant | MessageRole::User => {
+                            lines.push(render.render(&message.content));
+                            lines.push("".into());
+                        }
                     }
                 }
             }
@@ -237,7 +230,7 @@ impl Session {
         self.compressed_messages.append(&mut self.messages);
         self.messages.push(Message {
             role: MessageRole::System,
-            content: MessageContent::Text(prompt),
+            content: prompt,
         });
         self.dirty = true;
     }
@@ -280,13 +273,12 @@ impl Session {
         if need_add_msg {
             self.messages.push(Message {
                 role: MessageRole::User,
-                content: input.to_message_content(),
+                content: input.to_message(),
             });
         }
-        self.data_urls.extend(input.data_urls());
         self.messages.push(Message {
             role: MessageRole::Assistant,
-            content: MessageContent::Text(output.to_string()),
+            content: output.to_string(),
         });
         self.dirty = true;
         Ok(())
@@ -316,7 +308,7 @@ impl Session {
         if need_add_msg {
             messages.push(Message {
                 role: MessageRole::User,
-                content: input.to_message_content(),
+                content: input.to_message(),
             });
         }
         messages

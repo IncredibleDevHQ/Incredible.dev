@@ -1,4 +1,4 @@
-use crate::client::{ImageUrl, MessageContent, MessageContentPart, ModelCapabilities};
+use crate::client::ModelCapabilities;
 use crate::utils::sha256sum;
 
 use anyhow::{bail, Context, Result};
@@ -26,8 +26,6 @@ lazy_static! {
 #[derive(Debug, Clone)]
 pub struct Input {
     text: String,
-    medias: Vec<String>,
-    data_urls: HashMap<String, String>,
     functions: Option<Vec<Function>>,
     history: Option<Vec<Message>>,
 }
@@ -36,9 +34,6 @@ impl Input {
     pub fn from_str(text: &str) -> Self {
         Self {
             text: text.to_string(),
-            medias: Default::default(),
-            data_urls: Default::default(),
-            // defaults to None.
             functions: Default::default(),
             history: Default::default(),
         }
@@ -48,50 +43,16 @@ impl Input {
         text: &str,
         functions: Option<Vec<Function>>,
         history: Option<Vec<Message>>,
-        files: Vec<String>,
-    ) -> Result<Self> {
-        let mut texts = vec![text.to_string()];
-        let mut medias = vec![];
-        let mut data_urls = HashMap::new();
-        for file_item in files.into_iter() {
-            match resolve_path(&file_item) {
-                Some(file_path) => {
-                    let file_path = fs::canonicalize(file_path)
-                        .with_context(|| format!("Unable to use file '{file_item}'"))?;
-                    if is_image_ext(&file_path) {
-                        let data_url = read_media_to_data_url(&file_path)?;
-                        data_urls.insert(sha256sum(&data_url), file_path.display().to_string());
-                        medias.push(data_url)
-                    } else {
-                        let mut text = String::new();
-                        let mut file = File::open(&file_path)
-                            .with_context(|| format!("Unable to open file '{file_item}'"))?;
-                        file.read_to_string(&mut text)
-                            .with_context(|| format!("Unable to read file '{file_item}'"))?;
-                        texts.push(text);
-                    }
-                }
-                None => {
-                    if is_image_ext(Path::new(&file_item)) {
-                        medias.push(file_item)
-                    } else {
-                        bail!("Unable to use file '{file_item}");
-                    }
-                }
-            }
+    ) -> Self {
+        Self {
+            text: text.to_string(),
+            functions,
+            history,
         }
-
-        Ok(Self {
-            text: texts.join("\n"),
-            functions: functions,
-            history: history,
-            medias,
-            data_urls,
-        })
     }
 
     pub fn is_empty(&self) -> bool {
-        self.text.is_empty() && self.medias.is_empty()
+        self.text.is_empty()
     }
 
     pub fn history_exists(&self) -> bool {
@@ -100,10 +61,6 @@ impl Input {
 
     pub fn get_history(&self) -> Option<Vec<Message>> {
         self.history.clone()
-    }   
-
-    pub fn data_urls(&self) -> HashMap<String, String> {
-        self.data_urls.clone()
     }
 
     pub fn function_calls_exists(&self) -> bool {
@@ -139,65 +96,16 @@ impl Input {
     }
 
     pub fn render(&self) -> String {
-        if self.medias.is_empty() {
-            return self.text.clone();
-        }
-        let text = if self.text.is_empty() {
-            self.text.to_string()
-        } else {
-            format!(" -- {}", self.text)
-        };
-        let files: Vec<String> = self
-            .medias
-            .iter()
-            .cloned()
-            .map(|url| resolve_data_url(&self.data_urls, url))
-            .collect();
-        format!(".file {}{}", files.join(" "), text)
+        self.text.clone()
     }
 
-    pub fn to_message_content(&self) -> MessageContent {
-        if self.medias.is_empty() {
-            MessageContent::Text(self.text.clone())
-        } else {
-            let mut list: Vec<MessageContentPart> = self
-                .medias
-                .iter()
-                .cloned()
-                .map(|url| MessageContentPart::ImageUrl {
-                    image_url: ImageUrl { url },
-                })
-                .collect();
-            if !self.text.is_empty() {
-                list.insert(
-                    0,
-                    MessageContentPart::Text {
-                        text: self.text.clone(),
-                    },
-                );
-            }
-            MessageContent::Array(list)
-        }
+    pub fn to_message(&self) -> String {
+        self.text.clone()
     }
 
+    // Without media, we assume only text capabilities are needed.
     pub fn required_capabilities(&self) -> ModelCapabilities {
-        if !self.medias.is_empty() {
-            ModelCapabilities::Vision
-        } else {
-            ModelCapabilities::Text
-        }
-    }
-}
-
-pub fn resolve_data_url(data_urls: &HashMap<String, String>, data_url: String) -> String {
-    if data_url.starts_with("data:") {
-        let hash = sha256sum(&data_url);
-        if let Some(path) = data_urls.get(&hash) {
-            return path.to_string();
-        }
-        data_url
-    } else {
-        data_url
+        ModelCapabilities::Text
     }
 }
 
