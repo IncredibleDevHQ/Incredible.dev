@@ -143,6 +143,7 @@ async fn send_message_streaming(builder: RequestBuilder, handler: &mut ReplyHand
 fn build_body(data: SendData, model: String) -> Result<Value> {
     let SendData {
         mut messages,
+        functions, 
         temperature,
         stream,
     } = data;
@@ -199,6 +200,12 @@ fn build_body(data: SendData, model: String) -> Result<Value> {
         "max_tokens": 4096,
         "messages": messages,
     });
+
+      // Add functions (tools in Anthropics terminology) if available.
+      // https://docs.anthropic.com/claude/docs/tool-use
+      if let Some(tools) = functions {
+        body["tools"] = json!(tools);
+    }
 
     if let Some(v) = temperature {
         body["temperature"] = v.into();
