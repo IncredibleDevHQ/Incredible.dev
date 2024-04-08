@@ -1,7 +1,8 @@
 use anyhow::{Result};
 use tiktoken_rs;
+use ai_gateway;
 
-use crate::ai_gateway::function_calling::{FunctionCall, Function, Functions};
+use ai_gateway::function_calling::{FunctionCall, Function, Functions};
 
 use serde::{Deserialize, Serialize};
 
@@ -34,7 +35,7 @@ pub struct ChatCompletion {
 pub mod api {
     use std::collections::HashMap;
 
-    use crate::ai_gateway::function_calling::{Function, FunctionCall};
+    use ai_gateway::function_calling::{Function, FunctionCall};
 
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
     #[serde(untagged)]

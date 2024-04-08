@@ -1,9 +1,8 @@
 use anyhow::Result;
-use common::{
-    ai_gateway::config::{initialize_ai_gateway, AIGatewayConfig},
-    config::set_redis_url,
-    task_graph::redis::establish_redis_connection,
-};
+use ai_gateway::config::{initialize_ai_gateway, AIGatewayConfig};
+use  common::{   config::set_redis_url,
+    task_graph::redis::establish_redis_connection};
+
 use log::{error, info};
 use once_cell::sync::Lazy;
 
