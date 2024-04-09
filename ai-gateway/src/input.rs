@@ -14,7 +14,7 @@ use std::{
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use super::client::Message;
+use crate::message::message::Message;
 use super::function_calling::Function;
 
 const IMAGE_EXTS: [&str; 5] = ["png", "jpeg", "jpg", "webp", "gif"];

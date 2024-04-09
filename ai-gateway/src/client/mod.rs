@@ -1,10 +1,8 @@
 #[macro_use]
 mod common;
-mod message;
 mod model;
 
 pub use common::*;
-pub use message::*;
 pub use model::*;
 
 register_client!(

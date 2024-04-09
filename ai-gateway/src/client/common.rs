@@ -1,4 +1,4 @@
-use super::{openai::OpenAIConfig, ClientConfig, Message, Model};
+use super::{openai::OpenAIConfig, ClientConfig, Model};
 use crate::utils::{init_tokio_runtime, AbortSignal};
 use std::{env, future::Future, time::Duration};
 use tokio::time::sleep;
@@ -9,7 +9,7 @@ use crate::{
     render::ReplyHandler,
     utils::{prompt_input_integer, prompt_input_string, PromptKind},
 };
-
+use crate::message::message::Message;
 use crate::input::Input;
 
 use anyhow::{Context, Result};
