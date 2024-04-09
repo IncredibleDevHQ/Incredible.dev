@@ -17,7 +17,6 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use crate::message::message::Message;
 use super::function_calling::Function;
 
-const IMAGE_EXTS: [&str; 5] = ["png", "jpeg", "jpg", "webp", "gif"];
 
 lazy_static! {
     static ref URL_RE: Regex = Regex::new(r"^[A-Za-z0-9_-]{2,}:/").unwrap();
@@ -107,39 +106,4 @@ impl Input {
     pub fn required_capabilities(&self) -> ModelCapabilities {
         ModelCapabilities::Text
     }
-}
-
-fn resolve_path(file: &str) -> Option<PathBuf> {
-    if let Ok(true) = URL_RE.is_match(file) {
-        return None;
-    }
-    let path = if let (Some(file), Some(home)) = (file.strip_prefix('~'), dirs::home_dir()) {
-        home.join(file)
-    } else {
-        std::env::current_dir().ok()?.join(file)
-    };
-    Some(path)
-}
-
-fn is_image_ext(path: &Path) -> bool {
-    path.extension()
-        .map(|v| {
-            IMAGE_EXTS
-                .iter()
-                .any(|ext| *ext == v.to_string_lossy().to_lowercase())
-        })
-        .unwrap_or_default()
-}
-
-fn read_media_to_data_url<P: AsRef<Path>>(image_path: P) -> Result<String> {
-    let mime_type = from_path(&image_path).first_or_octet_stream().to_string();
-
-    let mut file = File::open(image_path)?;
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)?;
-
-    let encoded_image = STANDARD.encode(buffer);
-    let data_url = format!("data:{};base64,{}", mime_type, encoded_image);
-
-    Ok(data_url)
 }

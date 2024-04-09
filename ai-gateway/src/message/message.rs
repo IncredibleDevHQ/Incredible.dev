@@ -1,28 +1,79 @@
 use anyhow::{Context, Result};
 use std::fs::{File, OpenOptions};
-use std::io::{stdout, Write};
+use std::io::Write;
 
 use crate::client::{ensure_model_capabilities, init_client};
 use crate::config::AIGatewayConfig;
 use crate::config_files::ensure_parent_exists;
-use crate::function_calling::Function;
+use crate::function_calling::{Function, FunctionCall};
 use crate::input::Input;
 use crate::render::{render_stream, MarkdownRender};
 use crate::utils::{create_abort_signal, extract_block, now};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Message {
-    pub role: MessageRole,
-    pub content: String,
+// #[derive(Debug, Clone, Deserialize, Serialize)]
+// pub struct Message {
+//     pub role: MessageRole,
+//     pub content: String,
+// }
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum Message {
+    FunctionReturn {
+        role: MessageRole,
+        name: String,
+        content: String,
+    },
+    FunctionCall {
+        role: MessageRole,
+        function_call: FunctionCall,
+        content: (),
+    },
+    // NB: This has to be the last variant as this enum is marked `#[serde(untagged)]`, so
+    // deserialization will always try this variant last. Otherwise, it is possible to
+    // accidentally deserialize a `FunctionReturn` value as `PlainText`.
+    PlainText {
+        role: MessageRole,
+        content: String,
+    },
 }
 
+
 impl Message {
-    pub fn new(input: &Input) -> Self {
-        Self {
-            role: MessageRole::User,
-            content: input.to_message(),
+    pub fn new_text(role: MessageRole, content: &str) -> Self {
+        Self::PlainText {
+            role: role.to_owned(),
+            content: content.to_owned(),
+        }
+    }
+
+    pub fn system(content: &str) -> Self {
+        Self::new_text(MessageRole::System, content)
+    }
+
+    pub fn user(content: &str) -> Self {
+        Self::new_text(MessageRole::User, content)
+    }
+
+    pub fn assistant(content: &str) -> Self {
+        Self::new_text(MessageRole::Assistant, content)
+    }
+
+    pub fn function_call(call: &FunctionCall) -> Self {
+        Self::FunctionCall {
+            role: MessageRole::Assistant, 
+            function_call: call.clone(),
+            content: (),
+        }
+    }
+
+    pub fn function_return(name: &str, content: &str) -> Self {
+        Self::FunctionReturn {
+            role: MessageRole::Function.to_owned(), 
+            name: name.to_string(),
+            content: content.to_string(),
         }
     }
 }
@@ -33,6 +84,7 @@ pub enum MessageRole {
     System,
     Assistant,
     User,
+    Function,
 }
 
 #[allow(dead_code)]
@@ -48,6 +100,9 @@ impl MessageRole {
     pub fn is_assistant(&self) -> bool {
         matches!(self, MessageRole::Assistant)
     }
+    pub fn is_function(&self) -> bool {
+        matches!(self, MessageRole::Function)
+    }
 }
 
 impl AIGatewayConfig {
@@ -56,7 +111,6 @@ impl AIGatewayConfig {
         text: &str,
         history: Option<Vec<Message>>,
         functions: Option<Vec<Function>>,
-        include: Option<Vec<String>>,
         no_stream: bool,
         code_mode: bool,
     ) -> Result<String> {

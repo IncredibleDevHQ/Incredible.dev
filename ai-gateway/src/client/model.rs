@@ -1,4 +1,4 @@
-use crate::message::message::Message; 
+use crate::message::message::Message;
 
 use crate::utils::count_tokens;
 
@@ -99,7 +99,17 @@ impl Model {
     pub fn messages_tokens(&self, messages: &[Message]) -> usize {
         messages
             .iter()
-            .map(|message| count_tokens(&message.content))
+            .map(|message| {
+                match message {
+                    Message::FunctionReturn { content, .. }
+                    | Message::PlainText { content, .. } => count_tokens(content),
+                    Message::FunctionCall { function_call, .. } => {
+                        // This placeholder returns 0, assuming no tokens to count within a function call structure.
+                        // Alternatively, you could serialize function_call to a string and count its tokens.
+                        0
+                    }
+                }
+            })
             .sum()
     }
 
@@ -110,7 +120,16 @@ impl Model {
         let num_messages = messages.len();
         let message_tokens = self.messages_tokens(messages);
         let (per_messages, _) = self.tokens_count_factors;
-        if messages[num_messages - 1].role.is_user() {
+
+        // Extract the role of the last message.
+        // We need to match against the Message enum to extract the role properly.
+        let last_message_role = match &messages[num_messages - 1] {
+            Message::FunctionReturn { role, .. } => role,
+            Message::FunctionCall { role, .. } => role,
+            Message::PlainText { role, .. } => role,
+        };
+
+        if last_message_role.is_user() {
             num_messages * per_messages + message_tokens
         } else {
             (num_messages - 1) * per_messages + message_tokens

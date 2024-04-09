@@ -1,9 +1,9 @@
 use crate::client::{list_models, ClientConfig, Model, SendData};
 use crate::input::Input;
+use crate::message::message::{Message, MessageRole};
 use crate::render::RenderOptions;
 use crate::session::session::Session;
 use crate::utils::get_env_name;
-use crate::message::message::Message;
 
 use anyhow::{anyhow, bail, Context, Result};
 use is_terminal::IsTerminal;
@@ -12,7 +12,6 @@ use std::io::stdout;
 use std::path::PathBuf;
 use std::str::FromStr;
 use syntect::highlighting::ThemeSet;
-
 
 const CLIENTS_FIELD: &str = "clients";
 
@@ -184,11 +183,11 @@ impl AIGatewayConfig {
 
     pub fn build_messages(&self, input: &Input) -> Result<Vec<Message>> {
         // create a new user message from the input
-        let message = Message::new(input);
-        
-        // push the message if there history in input.history 
-        // else return the vec of one message 
-        if input.history_exists(){
+        let message = Message::new_text(MessageRole::User,&input.to_message());
+
+        // push the message if there history in input.history
+        // else return the vec of one message
+        if input.history_exists() {
             let mut messages = input.get_history().unwrap();
             messages.push(message);
             Ok(messages)
