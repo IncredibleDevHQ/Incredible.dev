@@ -5,6 +5,7 @@ use common::models::{TaskDetailsWithContext, TasksQuestionsAnswersDetails};
 use common::prompts::{
     create_task_answer_summarization_prompt, generate_single_task_summarization_prompt,
 };
+use ai_gateway::message::message;
 
 use crate::CONFIG;
 
@@ -21,7 +22,7 @@ pub async fn generate_summarized_answer_for_task(
         .temperature(0.0)
         .bearer(CONFIG.openai_api_key.clone())
         .model(&CONFIG.openai_api_key.clone());
-    let system_message = llm_gateway::api::Message::system(&summarization_prompt);
+    let system_message = message::Message::system(&summarization_prompt);
     // append the system message to the message history
     let mut messages = Some(system_message.clone()).into_iter().collect::<Vec<_>>();
 
@@ -68,7 +69,7 @@ pub async fn generate_single_task_summarization_(
         .temperature(0.0)
         .bearer(CONFIG.openai_api_key.clone())
         .model(&CONFIG.openai_api_key.clone());
-    let system_message = llm_gateway::api::Message::system(&summarization_prompt);
+    let system_message = message::Message::system(&summarization_prompt);
     // append the system message to the message history
     let mut messages = Some(system_message.clone()).into_iter().collect::<Vec<_>>();
 

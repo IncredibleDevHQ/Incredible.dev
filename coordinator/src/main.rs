@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
     let _output = AI_GATEWAY
         .lock()
         .unwrap()
-        .use_llm("Hello from the other side", None, None, true, false)
+        .use_llm("Can indians code?", None, None, true, false)
         .await
         .map_err(|e| {
             panic!("Failed to start AI Gateway: {:?}", e);
