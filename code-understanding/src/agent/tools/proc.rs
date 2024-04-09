@@ -5,6 +5,7 @@ use tiktoken_rs::CoreBPE;
 use tracing::{debug, instrument};
 
 use crate::agent::exchange::{CodeChunk, SearchStep, Update};
+use ai_gateway::message::message::Message;
 
 use common::{llm_gateway, prompts};
 
@@ -83,7 +84,7 @@ impl Agent {
                     .model("gpt-3.5-turbo-16k-0613")
                     // Set low frequency penalty to discourage long outputs.
                     .frequency_penalty(0.2)
-                    .chat(&[llm_gateway::api::Message::system(&prompt)], None)
+                    .chat(&[Message::system(&prompt)], None)
                     .await?;
 
                 let choices = response.choices[0].clone();
