@@ -1,4 +1,5 @@
 use super::{ClaudeClient, Client, ExtraConfig, Model, PromptType, SendData, TokensCountFactors};
+use crate::message::message::Message;
 
 use crate::{render::ReplyHandler, utils::PromptKind};
 
@@ -144,14 +145,38 @@ fn build_body(data: SendData, model: String) -> Result<Value> {
     // Serialize messages with content being just a string without specifying the type.
     let messages: Vec<Value> = messages
         .into_iter()
-        .map(|message| {
-            json!({
-                "role": message.role,
-                "content": message.content
-            })
+        .map(|message| match message {
+            Message::FunctionReturn {
+                role,
+                name,
+                content,
+            } => {
+                json!({
+                    "role": role,
+                    "type": "function_return",
+                    "name": name,
+                    "content": content
+                })
+            }
+            Message::FunctionCall {
+                role,
+                function_call,
+                content: _,
+            } => {
+                json!({
+                    "role": role,
+                    "type": "function_call",
+                    "function_call": function_call
+                })
+            }
+            Message::PlainText { role, content } => {
+                json!({
+                    "role": role,
+                    "content": content
+                })
+            }
         })
         .collect();
-
     let mut body = json!({
         "model": model,
         "max_tokens": 4096,

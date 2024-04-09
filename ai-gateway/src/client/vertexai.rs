@@ -1,8 +1,5 @@
-use super::{
-  Client, ExtraConfig, Model, PromptType, SendData,
-    TokensCountFactors, VertexAIClient,
-};
-use crate::message::message::MessageRole;
+use super::{Client, ExtraConfig, Model, PromptType, SendData, TokensCountFactors, VertexAIClient};
+use crate::message::message::{MessageRole, Message};
 
 use crate::{render::ReplyHandler, utils::PromptKind};
 
@@ -228,21 +225,46 @@ pub(crate) fn build_body(
     let contents: Vec<Value> = messages
         .into_iter()
         .map(|message| {
-            let role = match message.role {
-                MessageRole::User => "user",
-                _ => "model",
+            let (role, text) = match message {
+                Message::FunctionReturn { role, content, .. }
+                | Message::PlainText { role, content } => {
+                    let role_str = match role {
+                        MessageRole::User => "user",
+                        _ => "model",
+                    };
+                    (role_str, content)
+                }
+                Message::FunctionCall {
+                    role,
+                    function_call,
+                    ..
+                } => {
+                    let role_str = match role {
+                        MessageRole::User => "user",
+                        _ => "model",
+                    };
+                    // Check if the function name is present and construct the description accordingly.
+                    let func_name = function_call
+                        .name
+                        .clone()
+                        .unwrap_or_else(|| "Unnamed function".to_string());
+                    let call_desc = format!(
+                        "Function call: {} with arguments: {}",
+                        func_name, function_call.arguments
+                    );
+                    (role_str, call_desc)
+                }
             };
-            // Directly use the message content without parsing for different types.
+
             json!({
                 "role": role,
-                "parts": [{ "text": message.content }]
+                "parts": [{ "text": text }]
             })
         })
         .collect();
 
     let mut body = json!({ "contents": contents });
 
-    // Include block thresholds if provided.
     if let Some(block_threshold) = block_threshold {
         body["safetySettings"] = json!([
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": block_threshold},
@@ -252,7 +274,6 @@ pub(crate) fn build_body(
         ]);
     }
 
-    // Include temperature settings if provided.
     if let Some(temperature) = temperature {
         body["generationConfig"] = json!({
             "temperature": temperature,

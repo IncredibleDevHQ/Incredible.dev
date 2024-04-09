@@ -1,8 +1,7 @@
 use super::{
-  Client, ExtraConfig, Model, ModelConfig, OllamaClient, PromptType, SendData,
-    TokensCountFactors,
+    Client, ExtraConfig, Model, ModelConfig, OllamaClient, PromptType, SendData, TokensCountFactors,
 };
-
+use crate::message::message::Message;
 use crate::{render::ReplyHandler, utils::PromptKind};
 
 use anyhow::{anyhow, bail, Result};
@@ -145,15 +144,38 @@ fn build_body(data: SendData, model: String) -> Result<Value> {
         stream,
     } = data;
 
-    //patch_system_message(&mut messages);
-    // Directly map each message to its JSON representation.
     let messages: Vec<Value> = messages
         .into_iter()
-        .map(|message| {
-            json!({
-                "role": message.role,
-                "content": message.content,
-            })
+        .map(|message| match message {
+            Message::FunctionReturn {
+                role,
+                name,
+                content,
+            } => {
+                json!({
+                    "role": role,
+                    "type": "function_return",
+                    "name": name,
+                    "content": content
+                })
+            }
+            Message::FunctionCall {
+                role,
+                function_call,
+                ..
+            } => {
+                json!({
+                    "role": role,
+                    "type": "function_call",
+                    "function_call": function_call
+                })
+            }
+            Message::PlainText { role, content } => {
+                json!({
+                    "role": role,
+                    "content": content
+                })
+            }
         })
         .collect();
 

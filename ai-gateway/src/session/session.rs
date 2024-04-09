@@ -95,9 +95,15 @@ impl Session {
     pub fn tokens(&self) -> usize {
         self.model.total_tokens(&self.messages)
     }
-
     pub fn user_messages_len(&self) -> usize {
-        self.messages.iter().filter(|v| v.role.is_user()).count()
+        self.messages
+            .iter()
+            .filter(|message| match message {
+                Message::FunctionReturn { role, .. } => role.is_user(),
+                Message::FunctionCall { role, .. } => role.is_user(),
+                Message::PlainText { role, .. } => role.is_user(),
+            })
+            .count()
     }
 
     pub fn export(&self) -> Result<String> {
@@ -138,11 +144,11 @@ impl Session {
 
         items.push(("model", self.model.id()));
 
-        if let Some(temperature) = self.temperature() {
+        if let Some(temperature) = self.temperature {
             items.push(("temperature", temperature.to_string()));
         }
 
-        if let Some(save_session) = self.save_session() {
+        if let Some(save_session) = self.save_session {
             items.push(("save_session", save_session.to_string()));
         }
 
@@ -159,19 +165,24 @@ impl Session {
             .map(|(name, value)| format!("{name:<20}{value}"))
             .collect();
 
-        if !self.is_empty() {
+        if !self.messages.is_empty() {
             lines.push("".into());
 
-            if !self.messages.is_empty() {
-                lines.push("".into());
-
-                for message in &self.messages {
-                    match message.role {
-                        MessageRole::System => {
-                            lines.push(render.render(&message.content));
-                        }
+            for message in &self.messages {
+                match message {
+                    Message::FunctionReturn { role, content, .. }
+                    | Message::PlainText { role, content, .. } => match role {
+                        MessageRole::System => lines.push(render.render(content)),
                         MessageRole::Assistant | MessageRole::User => {
-                            lines.push(render.render(&message.content));
+                            lines.push(render.render(content));
+                            lines.push("".into());
+                        }
+                        _ => (),
+                    },
+                    Message::FunctionCall { role, .. } => {
+                        if matches!(role, MessageRole::Assistant | MessageRole::User) {
+                            // If you want to display something specific for function calls, you can adjust here.
+                            lines.push(format!("Function call by {:?}: ", role));
                             lines.push("".into());
                         }
                     }
@@ -227,11 +238,16 @@ impl Session {
     }
 
     pub fn compress(&mut self, prompt: String) {
+        // Append current messages to compressed_messages and clear current messages
         self.compressed_messages.append(&mut self.messages);
-        self.messages.push(Message {
+
+        // Add a new system message using the PlainText variant
+        self.messages.push(Message::PlainText {
             role: MessageRole::System,
             content: prompt,
         });
+
+        // Mark as dirty since the state has changed
         self.dirty = true;
     }
 
@@ -269,17 +285,16 @@ impl Session {
     }
 
     pub fn add_message(&mut self, input: &Input, output: &str) -> Result<()> {
-        let mut need_add_msg = true;
-        if need_add_msg {
-            self.messages.push(Message {
-                role: MessageRole::User,
-                content: input.to_message(),
-            });
-        }
-        self.messages.push(Message {
+        self.messages.push(Message::PlainText {
+            role: MessageRole::User,
+            content: input.to_message(),
+        });
+
+        self.messages.push(Message::PlainText {
             role: MessageRole::Assistant,
             content: output.to_string(),
         });
+
         self.dirty = true;
         Ok(())
     }
@@ -298,19 +313,23 @@ impl Session {
 
     pub fn build_messages(&self, input: &Input) -> Vec<Message> {
         let mut messages = self.messages.clone();
-        let mut need_add_msg = true;
+        // Assuming need_add_msg is always true based on your snippet. If there's conditional logic, it should be implemented here.
         let len = messages.len();
+
         if len == 0 {
+            // No operation needed if there are no existing messages.
         } else if len == 1 && self.compressed_messages.len() >= 2 {
+            // Extending the last two compressed messages if only one message is present.
             messages
                 .extend(self.compressed_messages[self.compressed_messages.len() - 2..].to_vec());
         }
-        if need_add_msg {
-            messages.push(Message {
-                role: MessageRole::User,
-                content: input.to_message(),
-            });
-        }
+
+        // Adding a new user message.
+        messages.push(Message::PlainText {
+            role: MessageRole::User,
+            content: input.to_message(),
+        });
+
         messages
     }
 }
