@@ -10,6 +10,8 @@ use crate::agent::{
     transform,
 };
 
+use ai_gateway::message::message::{Message, MessageRole};
+
 use crate::agent::agent::Agent;
 use crate::agent::agent::ANSWER_MODEL;
 
@@ -42,7 +44,7 @@ impl Agent {
 
         let context = self.answer_context(aliases, ANSWER_MODEL).await?;
         let system_prompt = prompts::answer_article_prompt(aliases, &context);
-        let system_message = llm_gateway::api::Message::system(&system_prompt);
+        let system_message = Message::system(&system_prompt);
 
         let history = {
             let h = self.utter_history().collect::<Vec<_>>();
@@ -205,7 +207,7 @@ impl Agent {
     }
 
     /// History of `user`, `assistant` messages. These are the messages that are shown to the user.
-    fn utter_history(&self) -> impl Iterator<Item = llm_gateway::api::Message> + '_ {
+    fn utter_history(&self) -> impl Iterator<Item = Message> + '_ {
         const ANSWER_MAX_HISTORY_SIZE: usize = 5;
 
         self.exchanges
@@ -214,8 +216,8 @@ impl Agent {
             .take(ANSWER_MAX_HISTORY_SIZE)
             .rev()
             .flat_map(|e| {
-                let query = e.query().map(|q| llm_gateway::api::Message::PlainText {
-                    role: "user".to_owned(),
+                let query = e.query().map(|q| Message::PlainText {
+                    role: MessageRole::User, 
                     content: q,
                 });
 
@@ -224,8 +226,8 @@ impl Agent {
                         transform::encode_summarized(answer, Some(conclusion), "gpt-4-0613")
                             .unwrap();
 
-                    llm_gateway::api::Message::PlainText {
-                        role: "assistant".to_owned(),
+                    Message::PlainText {
+                        role: MessageRole::Assistant,
                         content: encoded,
                     }
                 });
@@ -400,9 +402,9 @@ impl Agent {
 
 // headroom refers to the amount of space reserved for the rest of the prompt
 fn trim_utter_history(
-    mut history: Vec<llm_gateway::api::Message>,
+    mut history: Vec<Message>,
     headroom: usize,
-) -> Result<Vec<llm_gateway::api::Message>> {
+) -> Result<Vec<Message>> {
     let mut tiktoken_msgs: Vec<tiktoken_rs::ChatCompletionRequestMessage> =
         history.iter().map(|m| m.into()).collect::<Vec<_>>();
 
@@ -444,20 +446,20 @@ mod tests {
     fn test_trimming_utter_history() {
         let long_string = "long string ".repeat(2000);
         let history = vec![
-            llm_gateway::api::Message::user("bar"),
-            llm_gateway::api::Message::assistant("baz"),
-            llm_gateway::api::Message::user(&long_string),
-            llm_gateway::api::Message::assistant("quux"),
-            llm_gateway::api::Message::user("fred"),
-            llm_gateway::api::Message::assistant("thud"),
-            llm_gateway::api::Message::user(&long_string),
-            llm_gateway::api::Message::user("corge"),
+            Message::user("bar"),
+            Message::assistant("baz"),
+            Message::user(&long_string),
+            Message::assistant("quux"),
+            Message::user("fred"),
+            Message::assistant("thud"),
+            Message::user(&long_string),
+            Message::user("corge"),
         ];
 
         // the answer needs 8100 tokens of 8192, the utter history can admit just one message
         assert_eq!(
             trim_utter_history(history.clone(), 8100).unwrap(),
-            vec![llm_gateway::api::Message::user("corge"),]
+            vec![Message::user("corge"),]
         );
 
         // the answer needs just 4000 tokens of 8192, the utter history can accomodate
@@ -465,11 +467,11 @@ mod tests {
         assert_eq!(
             trim_utter_history(history, 4000).unwrap(),
             vec![
-                llm_gateway::api::Message::assistant("quux"),
-                llm_gateway::api::Message::user("fred"),
-                llm_gateway::api::Message::assistant("thud"),
-                llm_gateway::api::Message::user(&long_string),
-                llm_gateway::api::Message::user("corge"),
+                Message::assistant("quux"),
+                Message::user("fred"),
+                Message::assistant("thud"),
+                Message::user(&long_string),
+                Message::user("corge"),
             ]
         );
     }

@@ -10,8 +10,9 @@ use anyhow::{anyhow, Context, Result};
 use common::prompts;
 
 use crate::agent::exchange::{Exchange, SearchStep, Update};
-use common::ai_gateway::function_calling::{Function, FunctionCall};
+use ai_gateway::function_calling::{Function, FunctionCall};
 use common::llm_gateway;
+use ai_gateway::message::message::{self, MessageRole};
 
 
 use crate::agent::transform;
@@ -214,7 +215,7 @@ impl Agent {
         )
         .unwrap();
 
-        let mut history = vec![llm_gateway::api::Message::system(&prompts::system(
+        let mut history = vec![message::Message::system(&prompts::system(
             self.paths(),
         ))];
         history.extend(self.history()?);
@@ -247,7 +248,7 @@ impl Agent {
     }
 
     /// The full history of messages, including intermediate function calls
-    fn history(&self) -> Result<Vec<llm_gateway::api::Message>> {
+    fn history(&self) -> Result<Vec<message::Message>> {
         const ANSWER_MAX_HISTORY_SIZE: usize = 3;
         const FUNCTION_CALL_INSTRUCTION: &str = "Call a function. Do not answer";
 
@@ -260,7 +261,7 @@ impl Agent {
             .try_fold(Vec::new(), |mut acc, e| -> Result<_> {
                 let query = e
                     .query()
-                    .map(|q| llm_gateway::api::Message::user(&q))
+                    .map(|q| message::Message::user(&q))
                     .ok_or_else(|| anyhow!("query does not have target"))?;
 
                 let steps = e.search_steps.iter().flat_map(|s| {
@@ -291,12 +292,12 @@ impl Agent {
                     };
 
                     vec![
-                        llm_gateway::api::Message::function_call(&FunctionCall {
+                        message::Message::function_call(&FunctionCall {
                             name: Some(name.clone()),
                             arguments,
                         }),
-                        llm_gateway::api::Message::function_return(&name, &s.get_response()),
-                        llm_gateway::api::Message::user(FUNCTION_CALL_INSTRUCTION),
+                        message::Message::function_return(&name, &s.get_response()),
+                        message::Message::user(FUNCTION_CALL_INSTRUCTION),
                     ]
                 });
 
@@ -304,7 +305,7 @@ impl Agent {
                     // NB: We intentionally discard the summary as it is redundant.
                     Some((answer, _conclusion)) => {
                         let encoded = transform::encode_summarized(answer, None, "gpt-3.5-turbo")?;
-                        Some(llm_gateway::api::Message::function_return("none", &encoded))
+                        Some(message::Message::function_return("none", &encoded))
                     }
 
                     None => None,
@@ -312,7 +313,7 @@ impl Agent {
 
                 acc.extend(
                     std::iter::once(query)
-                        .chain(vec![llm_gateway::api::Message::user(
+                        .chain(vec![message::Message::user(
                             FUNCTION_CALL_INSTRUCTION,
                         )])
                         .chain(steps)
@@ -343,8 +344,8 @@ impl Agent {
 }
 
 fn trim_history(
-    mut history: Vec<llm_gateway::api::Message>,
-) -> Result<Vec<llm_gateway::api::Message>> {
+    mut history: Vec<message::Message>,
+) -> Result<Vec<message::Message>> {
     const HEADROOM: usize = 2048;
     const HIDDEN: &str = "[HIDDEN]";
 
@@ -355,11 +356,11 @@ fn trim_history(
             .iter_mut()
             .zip(tiktoken_msgs.iter_mut())
             .position(|(m, tm)| match m {
-                llm_gateway::api::Message::PlainText {
+                message::Message::PlainText {
                     role,
                     ref mut content,
                 } => {
-                    if role == "assistant" && content != HIDDEN {
+                    if *role == MessageRole::Assistant && content != HIDDEN {
                         *content = HIDDEN.into();
                         tm.content = HIDDEN.into();
                         true
@@ -367,7 +368,7 @@ fn trim_history(
                         false
                     }
                 }
-                llm_gateway::api::Message::FunctionReturn {
+                message::Message::FunctionReturn {
                     role: _,
                     name: _,
                     ref mut content,
@@ -445,29 +446,29 @@ mod tests {
     fn test_trimming_history() {
         let long_string = "long string ".repeat(2000);
         let history = vec![
-            llm_gateway::api::Message::system("foo"),
-            llm_gateway::api::Message::user("bar"),
-            llm_gateway::api::Message::assistant("baz"),
-            llm_gateway::api::Message::user("box"),
-            llm_gateway::api::Message::assistant(&long_string),
-            llm_gateway::api::Message::user("fred"),
-            llm_gateway::api::Message::assistant("thud"),
-            llm_gateway::api::Message::user(&long_string),
-            llm_gateway::api::Message::user("corge"),
+            message::Message::system("foo"),
+            message::Message::user("bar"),
+            message::Message::assistant("baz"),
+            message::Message::user("box"),
+            message::Message::assistant(&long_string),
+            message::Message::user("fred"),
+            message::Message::assistant("thud"),
+            message::Message::user(&long_string),
+            message::Message::user("corge"),
         ];
 
         assert_eq!(
             trim_history(history).unwrap(),
             vec![
-                llm_gateway::api::Message::system("foo"),
-                llm_gateway::api::Message::user("bar"),
-                llm_gateway::api::Message::assistant("[HIDDEN]"),
-                llm_gateway::api::Message::user("box"),
-                llm_gateway::api::Message::assistant("[HIDDEN]"),
-                llm_gateway::api::Message::user("fred"),
-                llm_gateway::api::Message::assistant("thud"),
-                llm_gateway::api::Message::user(&long_string),
-                llm_gateway::api::Message::user("corge"),
+                message::Message::system("foo"),
+                message::Message::user("bar"),
+                message::Message::assistant("[HIDDEN]"),
+                message::Message::user("box"),
+                message::Message::assistant("[HIDDEN]"),
+                message::Message::user("fred"),
+                message::Message::assistant("thud"),
+                message::Message::user(&long_string),
+                message::Message::user("corge"),
             ]
         );
     }
