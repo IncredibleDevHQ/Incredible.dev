@@ -1,5 +1,5 @@
 use super::{
-    message::*, Client, ExtraConfig, Model, ModelConfig, OllamaClient, PromptType, SendData,
+  Client, ExtraConfig, Model, ModelConfig, OllamaClient, PromptType, SendData,
     TokensCountFactors,
 };
 

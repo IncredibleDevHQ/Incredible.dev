@@ -1,8 +1,9 @@
-use crate::client::{list_models, ClientConfig, Message, Model, SendData};
+use crate::client::{list_models, ClientConfig, Model, SendData};
 use crate::input::Input;
 use crate::render::RenderOptions;
 use crate::session::session::Session;
 use crate::utils::get_env_name;
+use crate::message::message::Message;
 
 use anyhow::{anyhow, bail, Context, Result};
 use is_terminal::IsTerminal;
@@ -12,7 +13,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use syntect::highlighting::ThemeSet;
 
-use super::input;
 
 const CLIENTS_FIELD: &str = "clients";
 

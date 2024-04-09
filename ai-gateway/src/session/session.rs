@@ -2,7 +2,7 @@ use crate::client::Model;
 use crate::config::AIGatewayConfig;
 use crate::input::Input;
 
-use crate::client::{Message, MessageRole};
+use crate::message::message::{Message, MessageRole};
 use crate::render::MarkdownRender;
 
 use anyhow::{bail, Context, Result};

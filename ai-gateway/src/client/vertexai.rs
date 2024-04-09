@@ -1,7 +1,8 @@
 use super::{
-    message::*, Client, ExtraConfig, Model, PromptType, SendData,
+  Client, ExtraConfig, Model, PromptType, SendData,
     TokensCountFactors, VertexAIClient,
 };
+use crate::message::message::MessageRole;
 
 use crate::{render::ReplyHandler, utils::PromptKind};
 

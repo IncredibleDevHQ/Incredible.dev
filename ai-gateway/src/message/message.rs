@@ -2,13 +2,53 @@ use anyhow::{Context, Result};
 use std::fs::{File, OpenOptions};
 use std::io::{stdout, Write};
 
-use crate::client::{ensure_model_capabilities, init_client, Message};
+use crate::client::{ensure_model_capabilities, init_client};
 use crate::config::AIGatewayConfig;
 use crate::config_files::ensure_parent_exists;
 use crate::function_calling::Function;
 use crate::input::Input;
 use crate::render::{render_stream, MarkdownRender};
 use crate::utils::{create_abort_signal, extract_block, now};
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Message {
+    pub role: MessageRole,
+    pub content: String,
+}
+
+impl Message {
+    pub fn new(input: &Input) -> Self {
+        Self {
+            role: MessageRole::User,
+            content: input.to_message(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageRole {
+    System,
+    Assistant,
+    User,
+}
+
+#[allow(dead_code)]
+impl MessageRole {
+    pub fn is_system(&self) -> bool {
+        matches!(self, MessageRole::System)
+    }
+
+    pub fn is_user(&self) -> bool {
+        matches!(self, MessageRole::User)
+    }
+
+    pub fn is_assistant(&self) -> bool {
+        matches!(self, MessageRole::Assistant)
+    }
+}
 
 impl AIGatewayConfig {
     pub async fn use_llm(
