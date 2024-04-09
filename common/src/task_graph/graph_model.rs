@@ -1,4 +1,5 @@
-use crate::{llm_gateway::api::{Message, MessageSource}, CodeContext, CodeUnderstanding};
+use crate::{CodeContext, CodeUnderstanding};
+use ai_gateway::message::message::{MessageRole, Message};
 use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
@@ -64,7 +65,7 @@ impl TrackProcessV1 {
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub enum NodeV1 {
     Root(String), // Root node with a UUID to uniquely identify the conversation or session.
-    Conversation(MessageSource, Message, String), // Represents a conversation node with a message source.
+    Conversation(MessageRole, Message, String), // Represents a conversation node with a message source.
     Task(String),             // Represents a discrete task derived from the root issue.
     Subtask(String),          // Represents a subtask under a specific task.
     Question(String),  // Represents a question related to a specific subtask. 

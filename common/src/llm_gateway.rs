@@ -1,9 +1,6 @@
-use anyhow::{Result};
-use tiktoken_rs;
-use ai_gateway;
-
-use ai_gateway::function_calling::{FunctionCall, Function, Functions};
-
+use ai_gateway::function_calling::{Function, FunctionCall, Functions};
+use ai_gateway::message::message;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -33,46 +30,16 @@ pub struct ChatCompletion {
 }
 
 pub mod api {
-    use std::collections::HashMap;
+    use ai_gateway::{function_calling::Function, message::message};
 
-    use ai_gateway::function_calling::{Function, FunctionCall};
-
-    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-    #[serde(untagged)]
-    pub enum Message {
-        FunctionReturn {
-            role: String,
-            name: String,
-            content: String,
-        },
-        FunctionCall {
-            role: String,
-            function_call: FunctionCall,
-            content: (),
-        },
-        // NB: This has to be the last variant as this enum is marked `#[serde(untagged)]`, so
-        // deserialization will always try this variant last. Otherwise, it is possible to
-        // accidentally deserialize a `FunctionReturn` value as `PlainText`.
-        PlainText {
-            role: String,
-            content: String,
-        },
-    }
-
-    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-    pub enum MessageSource {
-        User,
-        Assistant,
-        System,
-    }
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
     pub struct Messages {
-        pub messages: Vec<Message>,
+        pub messages: Vec<message::Message>,
     }
 
     #[derive(Debug, serde::Serialize, serde::Deserialize)]
     pub struct Request {
-        pub messages: Vec<Message>,
+        pub messages: Vec<message::Message>,
         // set rules to ignore the key if the value is None.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub functions: Option<Vec<Function>>,
@@ -111,81 +78,6 @@ pub mod api {
     }
 
     pub type Result = std::result::Result<String, Error>;
-}
-
-impl api::Message {
-    pub fn new_text(role: &str, content: &str) -> Self {
-        Self::PlainText {
-            role: role.to_owned(),
-            content: content.to_owned(),
-        }
-    }
-
-    pub fn system(content: &str) -> Self {
-        Self::new_text("system", content)
-    }
-
-    pub fn user(content: &str) -> Self {
-        Self::new_text("user", content)
-    }
-
-    pub fn assistant(content: &str) -> Self {
-        Self::new_text("assistant", content)
-    }
-
-    pub fn function_call(call: &FunctionCall) -> Self {
-        Self::FunctionCall {
-            role: "assistant".to_string(),
-            function_call: call.clone(),
-            content: (),
-        }
-    }
-
-    pub fn function_return(name: &str, content: &str) -> Self {
-        Self::FunctionReturn {
-            role: "function".to_string(),
-            name: name.to_string(),
-            content: content.to_string(),
-        }
-    }
-}
-
-impl From<&api::Message> for tiktoken_rs::ChatCompletionRequestMessage {
-    fn from(m: &api::Message) -> tiktoken_rs::ChatCompletionRequestMessage {
-        match m {
-            api::Message::PlainText { role, content } => {
-                tiktoken_rs::ChatCompletionRequestMessage {
-                    role: role.clone(),
-                    content: content.clone(),
-                    name: None,
-                }
-            }
-            api::Message::FunctionReturn {
-                role,
-                name,
-                content,
-            } => tiktoken_rs::ChatCompletionRequestMessage {
-                role: role.clone(),
-                content: content.clone(),
-                name: Some(name.clone()),
-            },
-            api::Message::FunctionCall {
-                role,
-                function_call,
-                content: _,
-            } => tiktoken_rs::ChatCompletionRequestMessage {
-                role: role.clone(),
-                content: serde_json::to_string(&function_call).unwrap(),
-                name: None,
-            },
-        }
-    }
-}
-
-enum ChatError {
-    BadRequest,
-    TooManyRequests,
-    Other(anyhow::Error),
 }
 
 #[derive(Clone)]
@@ -278,7 +170,7 @@ impl Client {
 
     pub async fn chat(
         &self,
-        messages: &[api::Message],
+        messages: &[message::Message],
         functions: Option<&[Function]>,
     ) -> Result<ChatCompletion> {
         // const INITIAL_DELAY: Duration = Duration::from_millis(100);
@@ -361,7 +253,6 @@ impl Client {
         // get response body
         let body = response.text().await?;
         log::debug!("response body from open ai: {:?}\n", body);
-    
 
         // Deserialize the JSON string into a ChatCompletion struct
         let chat_completion: ChatCompletion = serde_json::from_str(&body)?;

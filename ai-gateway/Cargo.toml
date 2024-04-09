@@ -36,6 +36,7 @@ futures = "0.3.28"
 crossbeam = "0.8.2"
 inquire = "0.7.0"
 futures-util = "0.3.29"
+tiktoken-rs = "0.4.5"
 
 serde = { version = "1.0", features = ["derive"] }
 # Add any other dependencies required for `RepoRef` or other types used.
