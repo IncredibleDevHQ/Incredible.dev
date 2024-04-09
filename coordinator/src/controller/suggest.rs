@@ -3,7 +3,7 @@ use crate::llm_ops::summarize::{
 };
 use crate::llm_ops::tasks_questions::generate_tasks_and_questions;
 use anyhow::{Error, Result};
-use common::llm_gateway::api::Message;
+use ai_gateway::message::message::Message;
 use common::models::{
     CodeContextRequest, CodeUnderstandRequest, TaskList, TaskListResponseWithMessage,
 };

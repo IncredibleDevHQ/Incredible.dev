@@ -5,6 +5,8 @@ use common::models::TaskListResponseWithMessage;
 use common::prompts;
 use log::error;
 
+use ai_gateway::message::message::Message;
+
 pub async fn generate_tasks_and_questions(
     user_query: String,
     repo_name: String,
@@ -18,7 +20,7 @@ pub async fn generate_tasks_and_questions(
         .model(&CONFIG.openai_api_key.clone());
 
     let system_prompt: String = prompts::question_concept_generator_prompt(&user_query, &repo_name);
-    let system_message = llm_gateway::api::Message::system(&system_prompt);
+    let system_message = Message::system(&system_prompt);
     // append the system message to the message history
     let mut messages = Some(system_message.clone()).into_iter().collect::<Vec<_>>();
 
@@ -47,7 +49,7 @@ pub async fn generate_tasks_and_questions(
         .unwrap_or_else(|| "".to_string());
 
     // create assistant message and add it to the messages
-    let assistant_message = llm_gateway::api::Message::assistant(&choices_str);
+    let assistant_message = Message::assistant(&choices_str);
     messages.push(assistant_message);
 
     //log::debug!("Choices: {}", choices_str);
