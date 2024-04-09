@@ -1,3 +1,4 @@
+use std::fmt;
 use anyhow::{Context, Result};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -38,6 +39,39 @@ pub enum Message {
         role: MessageRole,
         content: String,
     },
+}
+
+
+impl From<&Message> for tiktoken_rs::ChatCompletionRequestMessage {
+    fn from(m: &Message) -> tiktoken_rs::ChatCompletionRequestMessage {
+        match m {
+            Message::PlainText { role, content } => {
+                tiktoken_rs::ChatCompletionRequestMessage {
+                    role: role.to_string(),
+                    content: content.clone(),
+                    name: None,
+                }
+            }
+            Message::FunctionReturn {
+                role,
+                name,
+                content,
+            } => tiktoken_rs::ChatCompletionRequestMessage {
+                role: role.to_string(),
+                content: content.clone(),
+                name: Some(name.clone()),
+            },
+            Message::FunctionCall {
+                role,
+                function_call,
+                content: _,
+            } => tiktoken_rs::ChatCompletionRequestMessage {
+                role: role.to_string(),
+                content: serde_json::to_string(&function_call).unwrap(),
+                name: None,
+            },
+        }
+    }
 }
 
 
@@ -85,6 +119,17 @@ pub enum MessageRole {
     Assistant,
     User,
     Function,
+}
+
+impl fmt::Display for MessageRole {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            MessageRole::System => write!(f, "system"),
+            MessageRole::Assistant => write!(f, "assistant"),
+            MessageRole::User => write!(f, "user"),
+            MessageRole::Function => write!(f, "function"),
+        }
+    }
 }
 
 #[allow(dead_code)]

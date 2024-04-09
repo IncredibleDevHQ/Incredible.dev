@@ -1,6 +1,6 @@
-use crate::llm_gateway::api::Message;
+use ai_gateway::message::message::Message; 
 use crate::{CodeContext, CodeUnderstandings};
-use serde::{de, Deserialize, Deserializer, Serialize};
+use serde::{de, Deserialize, Serialize};
 use std::fmt;
 use std::ops::Range;
 

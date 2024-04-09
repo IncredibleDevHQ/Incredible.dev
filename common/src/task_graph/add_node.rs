@@ -3,7 +3,8 @@ use std::fmt;
 use std::time::SystemTime;
 use uuid::Uuid;
 
-use crate::llm_gateway::api::{Message, MessageSource};
+use ai_gateway::message::message::Message; 
+use ai_gateway::message::message::MessageRole; 
 use crate::task_graph::graph_model::TrackProcessV1;
 use crate::task_graph::graph_model::{EdgeV1, NodeV1};
 use anyhow::Result;
@@ -80,7 +81,7 @@ impl TrackProcessV1 {
     pub fn add_and_connect_conversation_node(
         &mut self,
         message: Message,
-        source: MessageSource,
+        source: MessageRole, 
     ) -> Result<&mut Self, NodeError> {
         // Initialize the graph if it's not already initialized.
         self.initialize_graph();
@@ -102,15 +103,15 @@ impl TrackProcessV1 {
 
     // Refactor these methods to leverage add_and_connect_conversation_node for better reuse.
     pub fn add_user_conversation(&mut self, message: Message) -> Result<&mut Self, NodeError> {
-        self.add_and_connect_conversation_node(message, MessageSource::User)
+        self.add_and_connect_conversation_node(message, MessageRole::User)
     }
 
     pub fn add_system_conversation(&mut self, message: Message) -> Result<&mut Self, NodeError> {
-        self.add_and_connect_conversation_node(message, MessageSource::System)
+        self.add_and_connect_conversation_node(message, MessageRole::System)
     }
 
     pub fn add_assistant_conversation(&mut self, message: Message) -> Result<&mut Self, NodeError> {
-        self.add_and_connect_conversation_node(message, MessageSource::Assistant)
+        self.add_and_connect_conversation_node(message, MessageRole::Assistant)
     }
 
     // Helper methods for adding task, subtask, and question nodes.

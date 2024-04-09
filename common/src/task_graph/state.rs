@@ -1,4 +1,5 @@
-use crate::llm_gateway::api::{Message, MessageSource, Messages};
+use crate::llm_gateway::api::Messages;
+use ai_gateway::message::message::Message;
 use crate::task_graph::add_node::NodeError;
 use crate::task_graph::graph_model::EdgeV1;
 use crate::task_graph::graph_model::{NodeV1, QuestionWithAnswer, TrackProcessV1};
@@ -370,12 +371,6 @@ impl TrackProcessV1 {
 
         for node_index in graph.node_indices() {
             if let Some(NodeV1::Conversation(source, message, _)) = graph.node_weight(node_index) {
-                let role = match source {
-                    MessageSource::User => "user",
-                    MessageSource::Assistant => "assistant",
-                    MessageSource::System => "system",
-                };
-
                 // Depending on the message variant, extract the content.
                 let message_content = match message {
                     Message::PlainText { content, .. } => content,
@@ -384,7 +379,7 @@ impl TrackProcessV1 {
                     _ => "",
                 };
 
-                let message = Message::new_text(role, message_content);
+                let message = Message::new_text(*source, message_content);
                 messages.push(message);
             }
         }
