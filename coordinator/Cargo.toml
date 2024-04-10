@@ -9,6 +9,7 @@ edition = "2021"
 common = { path = "../common" }
 ai-gateway = { path = "../ai-gateway"}
 
+lazy_static = "1.4.0"
 uuid = { version = "1.0", features = ["v4"] }
 redis = "0.23.0"
 anyhow = "1.0.71"
