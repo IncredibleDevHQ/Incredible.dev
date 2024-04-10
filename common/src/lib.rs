@@ -10,7 +10,6 @@ pub mod prompts;
 pub mod service_interaction;
 
 pub mod task_graph;
-pub mod config;
 
 pub mod prompt_string_generator {
     use std::future::Future;

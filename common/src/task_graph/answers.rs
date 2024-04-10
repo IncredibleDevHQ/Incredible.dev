@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use crate::task_graph::add_node::NodeError;
 use crate::task_graph::graph_model::{EdgeV1, NodeV1, TrackProcessV1};
-use crate::task_graph::redis::save_task_process_to_redis;
+use crate::task_graph::redis_config::get_redis_url;
 
 use petgraph::graph::{DiGraph, NodeIndex, EdgeIndex};
 use petgraph::visit::EdgeRef;
@@ -164,7 +164,7 @@ impl TrackProcessV1 {
             );
 
             // Attempt to save the updated graph to Redis.
-            save_task_process_to_redis(self).map_err(|e| {
+            self.save_task_process_to_redis(&get_redis_url()).map_err(|e| {
                 error!("Failed to save task process to Redis: {:?}", e);
                 NodeError::RedisSaveError
             })

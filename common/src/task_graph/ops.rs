@@ -4,11 +4,12 @@ use crate::task_graph::graph_model::QuestionWithAnswer;
 use crate::task_graph::graph_model::{
     ConversationChain, EdgeV1, NodeV1, QuestionWithId, TrackProcessV1,
 };
-use crate::task_graph::redis::save_task_process_to_redis;
 use anyhow::Result;
 use log::{debug, error, info};
 use petgraph::graph::NodeIndex;
 use std::time::SystemTime;
+
+use crate::task_graph::redis_config::get_redis_url;
 
 impl TrackProcessV1 {
     /// Extends the graph with a chain of conversation nodes followed by task-related nodes if a task list is provided.
@@ -83,7 +84,7 @@ impl TrackProcessV1 {
         self.last_updated = SystemTime::now();
 
         // save the task process to redis
-        if let Err(e) = save_task_process_to_redis(self) {
+        if let Err(e) = self.save_task_process_to_redis(&get_redis_url()) {
             error!("Failed to save task process to Redis: {:?}", e);
             // return error if saving to redis fails
             return Err(NodeError::RedisSaveError);
@@ -218,7 +219,7 @@ impl TrackProcessV1 {
         // update the last_updated timestamp to the current time
         self.last_updated = SystemTime::now();
         // save the task process to redis
-        if let Err(e) = save_task_process_to_redis(self) {
+        if let Err(e) = self.save_task_process_to_redis(&get_redis_url()) {
             error!("Failed to save task process to Redis: {:?}", e);
             // return error if saving to redis fails
             return Err(NodeError::RedisSaveError);

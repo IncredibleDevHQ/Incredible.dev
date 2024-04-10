@@ -1,5 +1,6 @@
 use crate::{CodeContext, CodeUnderstanding};
 use ai_gateway::message::message::{MessageRole, Message};
+use crate::task_graph::redis_config::set_redis_url;
 use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
@@ -21,7 +22,8 @@ pub struct TrackProcessV1 {
 
 impl TrackProcessV1 {
     /// Constructs a new `TrackProcessV1` instance.
-    pub fn new(repo: &str) -> Self {
+    pub fn new(repo: &str, redis_url: &str) -> Self {
+        set_redis_url(redis_url);
         Self {
             repo: repo.to_string(),
             graph: None,
