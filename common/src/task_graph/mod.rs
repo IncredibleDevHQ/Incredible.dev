@@ -4,3 +4,4 @@ pub mod redis;
 pub mod state;
 pub mod add_node;
 pub mod answers;
+pub mod redis_config;
