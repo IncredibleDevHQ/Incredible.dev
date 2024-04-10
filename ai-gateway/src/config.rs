@@ -4,13 +4,12 @@ use crate::message::message::{Message, MessageRole};
 use crate::render::RenderOptions;
 use crate::session::session::Session;
 use crate::utils::get_env_name;
-
+use std::{fs, path::Path};
 use anyhow::{anyhow, bail, Context, Result};
 use is_terminal::IsTerminal;
 use std::env;
 use std::io::stdout;
 use std::path::PathBuf;
-use std::str::FromStr;
 use syntect::highlighting::ThemeSet;
 
 const CLIENTS_FIELD: &str = "clients";
@@ -64,31 +63,23 @@ impl Default for AIGatewayConfig {
     }
 }
 
-pub fn initialize_ai_gateway(yaml_str: Option<&str>) -> Result<AIGatewayConfig> {
-    let read_file = |path: &PathBuf| -> Result<String> {
-        let ctx = || format!("Failed to read config file: {}", path.display());
-        let content = std::fs::read_to_string(path).context(ctx())?;
-        Ok(content)
-    };
-    let file_path = match PathBuf::from_str(
-        "/Users/incredible/Documents/GitHub/nezuko/common/example-config.yaml",
-    ) {
-        Ok(path) => path.clone(),
-        Err(_) => bail!("Failed to read default config file"),
-    };
-    let default_yaml = read_file(&file_path)?;
-    let yaml_str = yaml_str.unwrap_or(&default_yaml);
-
-    let mut config = AIGatewayConfig::from_yaml(yaml_str)?;
-    config.setup_model()?;
-
-    Ok(config)
-}
-
-// Read config from yaml file using serde yaml and deserialize it into AI Gateway Config
 impl AIGatewayConfig {
+    pub fn new(yaml_path: &str) -> Result<AIGatewayConfig> {
+        let file_path = Path::new(yaml_path);
+    
+        // Read the YAML content directly from the given path.
+        let content = fs::read_to_string(file_path)
+            .with_context(|| format!("Failed to read config file: {}", file_path.display()))?;
+    
+        // Deserialize the YAML string into AIGatewayConfig.
+        let config = AIGatewayConfig::from_yaml(&content)?;
+    
+        Ok(config)
+    }
+
+   // create a new AI Gateway from the given YAML configuration content. 
     pub fn from_yaml(content: &str) -> Result<Self> {
-        let config: Self = serde_yaml::from_str(&content).map_err(|err| {
+        let mut config: AIGatewayConfig = serde_yaml::from_str(&content).map_err(|err| {
             let err_msg = err.to_string();
             if err_msg.starts_with(&format!("{}: ", CLIENTS_FIELD)) {
                 anyhow!("clients: invalid value")
@@ -97,6 +88,7 @@ impl AIGatewayConfig {
             }
         })?;
 
+        config.setup_model()?;
         Ok(config)
     }
 
@@ -104,6 +96,7 @@ impl AIGatewayConfig {
         let model = match &self.model_id {
             Some(v) => v.clone(),
             None => {
+                log::debug!("Model id not set, using the first available model");
                 let models = list_models(self);
                 if models.is_empty() {
                     bail!("No available model");
@@ -183,7 +176,7 @@ impl AIGatewayConfig {
 
     pub fn build_messages(&self, input: &Input) -> Result<Vec<Message>> {
         // create a new user message from the input
-        let message = Message::new_text(MessageRole::User,&input.to_message());
+        let message = Message::new_text(MessageRole::User, &input.to_message());
 
         // push the message if there history in input.history
         // else return the vec of one message

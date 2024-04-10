@@ -5,12 +5,12 @@ use tokio::time::sleep;
 
 use crate::config::AIGatewayConfig;
 use crate::function_calling::Function;
+use crate::input::Input;
+use crate::message::message::Message;
 use crate::{
     render::ReplyHandler,
     utils::{prompt_input_integer, prompt_input_string, PromptKind},
 };
-use crate::message::message::Message;
-use crate::input::Input;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -55,6 +55,7 @@ macro_rules! register_client {
 
                 pub fn init(global_config: &$crate::config::AIGatewayConfig) -> Option<Box<dyn Client>> {
                     let model = global_config.model.clone();
+                    log::debug!("model {:?}", model);
                     let config = global_config.clients.iter().find_map(|client_config| {
                         if let ClientConfig::$config(c) = client_config {
                             if Self::name(c) == &model.client_name {
