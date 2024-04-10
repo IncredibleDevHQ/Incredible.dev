@@ -1,9 +1,10 @@
+use crate::configuration::{get_code_search_url, get_code_understanding_url, get_context_generator_url, get_redis_url};
 use crate::llm_ops::summarize::{
     generate_single_task_summarization_, generate_summarized_answer_for_task,
 };
 use crate::llm_ops::tasks_questions::generate_tasks_and_questions;
-use anyhow::{Error, Result};
 use ai_gateway::message::message::Message;
+use anyhow::{Error, Result};
 use common::models::{
     CodeContextRequest, CodeUnderstandRequest, TaskList, TaskListResponseWithMessage,
 };
@@ -47,14 +48,17 @@ pub async fn handle_suggest_wrapper(
 async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse, anyhow::Error> {
     // if the request.uuid exists, load the conversation from the conversations API
     let convo_id = request.id;
+
+    let redis_url: &str = &get_redis_url(); 
     let mut tracker = if convo_id.is_some() {
         let uuid = convo_id.clone().unwrap();
         info!(
             "Conversation ID exists, loading the conversation from Redis: {}",
             uuid
         );
+
         // load the conversation from the redis
-        let tracker = load_task_process_from_redis(&uuid);
+        let tracker = load_task_process_from_redis(redis_url, &uuid);
         // return error if there is error loading the conversation
         if tracker.is_err() {
             let err_msg = format!(
@@ -68,7 +72,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
     } else {
         info!("No conversation ID provided, New conversation initiated.");
         // create a new tracker
-        TrackProcessV1::new(&request.repo_name)
+        TrackProcessV1::new(&request.repo_name, redis_url)
     };
     // get the state of the conversation
     let (mut state, node_index) = tracker.last_conversation_processing_stage();
@@ -241,11 +245,12 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
 
                 let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts()?;
 
+                let code_search_url = get_code_search_url();
                 // for task in &tasks_qna_context.tasks {
                 //     // call generate_single_task_summarization function to generate the summary for each task.
                 generate_single_task_summarization_(
                     &request.user_query.clone(),
-                    &CONFIG.code_search_url,
+                    &code_search_url,
                     &tasks_qna_context.tasks[1].clone(),
                 )
                 .await?;
@@ -286,8 +291,9 @@ async fn get_codebase_answers_for_questions(
     repo_name: String,
     generated_questions: &Vec<QuestionWithId>,
 ) -> Vec<Result<QuestionWithAnswer, Error>> {
+    let code_understanding_service = get_code_understanding_url();
     // Construct the URL for the code understanding service.
-    let code_understanding_url = format!("{}/retrieve-code", CONFIG.code_understanding_url);
+    let code_understanding_url = format!("{}/retrieve-code", code_understanding_service);
 
     // Map each question to a future that represents an asynchronous service call
     // to retrieve the code understanding.
@@ -345,7 +351,8 @@ async fn get_codebase_answers_for_questions(
 // TODO: Remove unused warning suppressor once the context generator is implemented
 #[allow(unused)]
 async fn get_code_context(code_understanding: CodeUnderstandings) -> Result<String, anyhow::Error> {
-    let code_context_url = format!("{}/find-code-context", CONFIG.context_generator_url);
+    let context_generator_url = get_context_generator_url();
+    let code_context_url = format!("{}/find-code-context", context_generator_url);
     let code_context = service_caller::<CodeContextRequest, String>(
         code_context_url,
         HttpMethod::POST,

@@ -1,3 +1,4 @@
+use ai_gateway::config;
 use log::debug;
 
 use common::llm_gateway;
@@ -7,28 +8,33 @@ use common::prompts::{
 };
 use ai_gateway::message::message;
 
+use crate::configuration::{get_openai_api_key, get_openai_model, get_openai_url};
 use crate::CONFIG;
 
 pub async fn generate_summarized_answer_for_task(
     user_query: String,
     task: &TasksQuestionsAnswersDetails,
 ) -> Result<String, anyhow::Error> {
+    let open_ai_url = get_openai_url();
+    let open_ai_model = get_openai_model();
+    let open_ai_key = get_openai_api_key();
+    
     // Construct the summarization prompt for the given task and user query.
     let summarization_prompt = create_task_answer_summarization_prompt(&user_query, &task);
 
     //debug!("Summarization prompt: {}", summarization_prompt);
 
-    let llm_gateway = llm_gateway::Client::new(&CONFIG.openai_url)
+    let llm_gateway = llm_gateway::Client::new(&open_ai_url)
         .temperature(0.0)
-        .bearer(CONFIG.openai_api_key.clone())
-        .model(&CONFIG.openai_api_key.clone());
+        .bearer(open_ai_key)
+        .model(&open_ai_model);
     let system_message = message::Message::system(&summarization_prompt);
     // append the system message to the message history
     let mut messages = Some(system_message.clone()).into_iter().collect::<Vec<_>>();
 
     let response = match llm_gateway
         .clone()
-        .model(&CONFIG.openai_model)
+        .model(&open_ai_model)
         .chat(&messages, None)
         .await
     {
@@ -59,23 +65,26 @@ pub async fn generate_single_task_summarization_(
     search_url: &str,
     task: &TaskDetailsWithContext,
 ) -> Result<String, anyhow::Error> {
+    let open_ai_url = get_openai_url();
+    let open_ai_model = get_openai_model();
+    let open_ai_key = get_openai_api_key();
     // Construct the summarization prompt for the given task and user query.
     let summarization_prompt =
         generate_single_task_summarization_prompt(user_query, search_url, task).await?;
 
     //debug!("Summarization prompt: {}", summarization_prompt);
 
-    let llm_gateway = llm_gateway::Client::new(&CONFIG.openai_url)
+    let llm_gateway = llm_gateway::Client::new(&open_ai_url)
         .temperature(0.0)
-        .bearer(CONFIG.openai_api_key.clone())
-        .model(&CONFIG.openai_api_key.clone());
+        .bearer(open_ai_key)
+        .model(&open_ai_model);
     let system_message = message::Message::system(&summarization_prompt);
     // append the system message to the message history
     let mut messages = Some(system_message.clone()).into_iter().collect::<Vec<_>>();
 
     let response = match llm_gateway
         .clone()
-        .model(&CONFIG.openai_model)
+        .model(&open_ai_model)
         .chat(&messages, None)
         .await
     {
