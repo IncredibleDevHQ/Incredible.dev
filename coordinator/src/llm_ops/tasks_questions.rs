@@ -1,3 +1,4 @@
+use crate::configuration::{get_openai_url, get_openai_model, get_openai_api_key};
 use crate::CONFIG;
 use common::llm_gateway;
 use common::models::TaskList;
@@ -11,13 +12,17 @@ pub async fn generate_tasks_and_questions(
     user_query: String,
     repo_name: String,
 ) -> Result<TaskListResponseWithMessage, anyhow::Error> {
+    let open_ai_url = get_openai_url();
+    let open_ai_model = get_openai_model();
+    let open_ai_key = get_openai_api_key();
+    
     // initialize new llm gateway.
 
     // otherwise call the llm gateway to generate the questions
-    let llm_gateway = llm_gateway::Client::new(&CONFIG.openai_url)
+    let llm_gateway = llm_gateway::Client::new(&open_ai_url)
         .temperature(0.0)
-        .bearer(CONFIG.openai_api_key.clone())
-        .model(&CONFIG.openai_api_key.clone());
+        .bearer(open_ai_key)
+        .model(&open_ai_model);
 
     let system_prompt: String = prompts::question_concept_generator_prompt(&user_query, &repo_name);
     let system_message = Message::system(&system_prompt);
@@ -26,7 +31,7 @@ pub async fn generate_tasks_and_questions(
 
     let response = match llm_gateway
         .clone()
-        .model(&CONFIG.openai_model)
+        .model(&open_ai_model)
         .chat(&messages, None)
         .await
     {
