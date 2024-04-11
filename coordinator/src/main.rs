@@ -1,6 +1,5 @@
 use ai_gateway::config::AIGatewayConfig;
 use anyhow::Result;
-use common::ast::debug;
 use common::task_graph::redis::establish_redis_connection;
 use configuration::{get_ai_gateway_config, Configuration};
 use std::sync::RwLock;
@@ -19,6 +18,7 @@ mod utility;
 use core::result::Result::Ok;
 
 use crate::configuration::{get_code_search_url, get_code_understanding_url, get_redis_url};
+use crate::utility::call_llm;
 
 static CONFIG: Lazy<RwLock<Option<Configuration>>> = Lazy::new(|| RwLock::new(None));
 // write a function test if the dependency services are up and running
@@ -26,18 +26,6 @@ async fn health_check(url: &str) -> bool {
     // do async request and await for the response
     let response = reqwest::get(url).await;
     response.is_ok()
-}
-
-async fn test_ai_gateway() -> Result<String> {
-    let config = get_ai_gateway_config();
-    debug!("AI Gateway config from file: {}", config);
-    let mut ai_gateway_config = AIGatewayConfig::from_yaml(&config)?;
-    debug!("AI Gateway config from gateway lib: {:?}", ai_gateway_config);
-    let result = ai_gateway_config
-        .use_llm("Can indians code?", None, None, true, false)
-        .await?;
-
-    Ok(result)
 }
 
 pub async fn load_from_env() -> Configuration {
@@ -95,8 +83,9 @@ async fn main() -> Result<()> {
     debug!("Config data: {:?}", &config);
 
     info!("Testing AI Gateway");
+    let test_msg = "Testing whether you're alive!".to_string();
     // Test if the AI gateway is initialized properly, debug log the error and end the program
-    let llm_test_output = test_ai_gateway().await.map_err(|e| {
+    let llm_test_output = call_llm(Some(test_msg), None).await.map_err(|e| {
         error!("Failed to start AI Gateway: {:?}", e);
         panic!("AI Gateway initialization failed");
     });
