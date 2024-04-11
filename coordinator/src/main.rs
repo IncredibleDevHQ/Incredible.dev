@@ -83,7 +83,7 @@ async fn main() -> Result<()> {
     debug!("Config data: {:?}", &config);
 
     info!("Testing AI Gateway");
-    let test_msg = "Testing whether you're alive!".to_string();
+    let test_msg = "What LLM model are you?".to_string();
     // Test if the AI gateway is initialized properly, debug log the error and end the program
     let llm_test_output = call_llm(Some(test_msg), None).await.map_err(|e| {
         error!("Failed to start AI Gateway: {:?}", e);
