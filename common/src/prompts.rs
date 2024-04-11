@@ -306,8 +306,8 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
                 {{
                   "subtask": "Analyze the current interaction between Service A API and the Data Processing API",
                   "questions": [
-                    "How does Service A API currently interact with the Data Processing API?",
-                    "What data structures are used in the communication between Service A API and the Data Processing API?"
+                    "How does Service A API currently interact with the Data Processing API? I'm trying to Analyze the current interaction between Service A API and the Data Processing API, so that I can solve how to Enhance the Service A API to integrate with the Data Processing API for improved efficiency.",
+                    "What data structures are used in the communication between Service A API and the Data Processing API? I'm trying to Analyze the current interaction between Service A API and the Data Processing API, so that I can Enhance the Service A API to integrate with the Data Processing API for improved efficiency "
                   ]
                 }}
               ]
@@ -320,6 +320,7 @@ pub fn question_concept_generator_prompt(issue_desc: &str, repo_name: &str) -> S
         - Generate 1 to 5 main tasks based on the issue description, ensuring each task is detailed, clear, and actionable. Avoid creating vague tasks like 'Improve the API,' which do not provide enough information for a junior engineer to act upon. Instead, detail what specific improvements are needed, as in 'Update the GET endpoint in the API to handle error status codes more effectively.'
         - For each main task, define 1 to 5 subtasks that provide specific steps and actions required.
         - For each subtask, create 1 to 4 questions that delve into the codebase's existing structure and behavior, relevant to the task at hand. Ensure that the questions are specific and refer to exact components or endpoints.
+        - Append a concise version of the subtask and the task for each question so that the questions has its context. Let's say of the task is "Update the GET endpoint in the API to handle error status codes more effectively", then the subtask could be "Analyze the current error handling mechanism in the GET endpoint" and the question could be "How does the current error handling mechanism in the GET endpoint work? I'm trying to analyze the current error handling mechanism in the GET endpoint so that I can update the GET endpoint in the API to handle error status codes more effectively."
 
         When referring to APIs or other components, always use specific and descriptive names. Never use generic terms like "other API." Instead, clarify the API's purpose or function, describing it in a way that reflects its role in the system.
 
