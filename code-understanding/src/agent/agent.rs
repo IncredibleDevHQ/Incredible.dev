@@ -10,7 +10,7 @@ use anyhow::{anyhow, Context, Result};
 use common::prompts;
 
 use crate::agent::exchange::{Exchange, SearchStep, Update};
-use ai_gateway::function_calling::{Function, FunctionCall};
+use ai_gateway::{config::AIGatewayConfig, function_calling::{Function, FunctionCall}};
 use common::llm_gateway;
 use ai_gateway::message::message::{self, MessageRole};
 
@@ -78,7 +78,7 @@ pub struct Agent {
     pub repo_name: String,
     pub app_state: Arc<AppState>,
     pub exchanges: Vec<Exchange>,
-    pub llm_gateway: llm_gateway::Client,
+    pub ai_gateway: AIGatewayConfig, 
     pub query_id: uuid::Uuid,
 
     /// Indicate whether the request was answered.

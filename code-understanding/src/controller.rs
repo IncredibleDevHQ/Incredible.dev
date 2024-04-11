@@ -1,3 +1,4 @@
+use crate::config::get_openai_url;
 use crate::AppState;
 use common::models::CodeUnderstandRequest;
 use common::CodeUnderstanding;
@@ -36,8 +37,8 @@ pub async fn handle_retrieve_code(
     let mut exchanges = vec![];
     exchanges.push(Exchange::new(id, req.query.clone()));
 
-    // get the configuration from the app state
-    let configuration = &app_state.configuration;
+    // get the configuration from the global config
+    let configuration = get_openai_url();
 
     // intialize new llm gateway.
     let llm_gateway = llm_gateway::Client::new(&configuration.openai_url)

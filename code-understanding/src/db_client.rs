@@ -1,5 +1,5 @@
 use crate::agent::agent::{ContentDocument, FileDocument};
-use crate::config::Config;
+use crate::config::{clone_config, Config};
 use crate::helpers::build_fuzzy_regex_filter::build_fuzzy_regex_filter;
 use crate::helpers::case_permutations::case_permutations;
 use crate::helpers::trigrams::trigrams;
@@ -51,10 +51,12 @@ struct ResultItem {
 }
 
 impl DbConnect {
-    pub async fn new(config: &Config) -> Result<Self, anyhow::Error> {
+    pub async fn new() -> Result<Self, anyhow::Error> {
+
+        let config = clone_config(); 
         let http_client = reqwest::Client::new();
 
-        let semantic = search::semantic::Semantic::initialize(config).await;
+        let semantic = search::semantic::Semantic::initialize(&config).await;
         match semantic {
             Ok(semantic) => Ok(Self {
                 semantic,

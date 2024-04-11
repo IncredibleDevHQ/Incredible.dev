@@ -117,3 +117,7 @@ pub fn get_search_server_url() -> String {
 pub fn get_ai_gateway_config() -> String {
     CONFIG.read().unwrap().ai_gateway_config.clone()
 }
+
+pub fn clone_config() -> Config {
+    CONFIG.read().unwrap().clone()
+}
