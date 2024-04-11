@@ -1,5 +1,5 @@
-use std::fmt;
 use anyhow::{Context, Result};
+use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 
@@ -41,17 +41,14 @@ pub enum Message {
     },
 }
 
-
 impl From<&Message> for tiktoken_rs::ChatCompletionRequestMessage {
     fn from(m: &Message) -> tiktoken_rs::ChatCompletionRequestMessage {
         match m {
-            Message::PlainText { role, content } => {
-                tiktoken_rs::ChatCompletionRequestMessage {
-                    role: role.to_string(),
-                    content: content.clone(),
-                    name: None,
-                }
-            }
+            Message::PlainText { role, content } => tiktoken_rs::ChatCompletionRequestMessage {
+                role: role.to_string(),
+                content: content.clone(),
+                name: None,
+            },
             Message::FunctionReturn {
                 role,
                 name,
@@ -73,7 +70,6 @@ impl From<&Message> for tiktoken_rs::ChatCompletionRequestMessage {
         }
     }
 }
-
 
 impl Message {
     pub fn new_text(role: MessageRole, content: &str) -> Self {
@@ -97,7 +93,7 @@ impl Message {
 
     pub fn function_call(call: &FunctionCall) -> Self {
         Self::FunctionCall {
-            role: MessageRole::Assistant, 
+            role: MessageRole::Assistant,
             function_call: call.clone(),
             content: (),
         }
@@ -105,7 +101,7 @@ impl Message {
 
     pub fn function_return(name: &str, content: &str) -> Self {
         Self::FunctionReturn {
-            role: MessageRole::Function.to_owned(), 
+            role: MessageRole::Function.to_owned(),
             name: name.to_string(),
             content: content.to_string(),
         }
@@ -153,7 +149,7 @@ impl MessageRole {
 impl AIGatewayConfig {
     pub async fn use_llm(
         &mut self,
-        text: &str,
+        text: Option<String>,
         history: Option<Vec<Message>>,
         functions: Option<Vec<Function>>,
         no_stream: bool,

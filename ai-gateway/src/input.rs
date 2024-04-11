@@ -1,22 +1,10 @@
 use crate::client::ModelCapabilities;
-use crate::utils::sha256sum;
-
-use anyhow::{bail, Context, Result};
-use base64::{self, engine::general_purpose::STANDARD, Engine};
 use fancy_regex::Regex;
 use lazy_static::lazy_static;
-use mime_guess::from_path;
-use std::{
-    collections::HashMap,
-    fs::{self, File},
-    io::Read,
-    path::{Path, PathBuf},
-};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::message::message::Message;
 use super::function_calling::Function;
-
 
 lazy_static! {
     static ref URL_RE: Regex = Regex::new(r"^[A-Za-z0-9_-]{2,}:/").unwrap();
@@ -24,7 +12,7 @@ lazy_static! {
 
 #[derive(Debug, Clone)]
 pub struct Input {
-    text: String,
+    text: Option<String>,
     functions: Option<Vec<Function>>,
     history: Option<Vec<Message>>,
 }
@@ -32,26 +20,26 @@ pub struct Input {
 impl Input {
     pub fn from_str(text: &str) -> Self {
         Self {
-            text: text.to_string(),
+            text: Some(text.to_string()),
             functions: Default::default(),
             history: Default::default(),
         }
     }
 
     pub fn new(
-        text: &str,
+        text: Option<String>,
         functions: Option<Vec<Function>>,
         history: Option<Vec<Message>>,
     ) -> Self {
         Self {
-            text: text.to_string(),
+            text: text,
             functions,
             history,
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.text.is_empty()
+        self.text.is_none()
     }
 
     pub fn history_exists(&self) -> bool {
@@ -71,8 +59,13 @@ impl Input {
     }
 
     pub fn summary(&self) -> String {
+        if self.text.is_none() {
+            return "".to_string();
+        }
         let text: String = self
             .text
+            .clone()
+            .unwrap()
             .trim()
             .chars()
             .map(|c| if c.is_control() { ' ' } else { c })
@@ -95,11 +88,17 @@ impl Input {
     }
 
     pub fn render(&self) -> String {
-        self.text.clone()
+        if self.text.is_none() {
+            return "".to_string();
+        }
+        self.text.as_ref().unwrap().clone()
     }
 
     pub fn to_message(&self) -> String {
-        self.text.clone()
+        if self.text.is_none() {
+            return "".to_string();
+        }
+        self.text.clone().unwrap()
     }
 
     // Without media, we assume only text capabilities are needed.
