@@ -1,10 +1,11 @@
-use crate::utility::call_llm;
 use common::models::TaskList;
 use common::models::TaskListResponseWithMessage;
 use common::prompts;
 use log::error;
 
 use ai_gateway::message::message::Message;
+use common::ai_util::call_llm;
+use crate::configuration::get_ai_gateway_config;
 
 pub async fn generate_tasks_and_questions(
     user_query: String,
@@ -15,7 +16,7 @@ pub async fn generate_tasks_and_questions(
     // append the system message to the message history
     let mut messages = Some(system_message.clone()).into_iter().collect::<Vec<_>>();
 
-    let response_str = call_llm(None, Some(messages.clone())).await.map_err(|e| {
+    let response_str = call_llm(&get_ai_gateway_config(), None, Some(messages.clone())).await.map_err(|e| {
         error!("Failed to start AI Gateway: {:?}", e);
         return e;
     });

@@ -5,17 +5,6 @@ use log::debug;
 
 use crate::configuration::get_ai_gateway_config;
 
-pub async fn call_llm(user_msg: Option<String>, history: Option<Vec<Message>>) -> Result<String> {
-    let config = get_ai_gateway_config();
-    let mut ai_gateway_config = AIGatewayConfig::from_yaml(&config)?;
-    let result = ai_gateway_config
-        .use_llm(user_msg, history, None, true, false)
-        .await?;
-
-    debug!("LLM response: {}", result);
-    Ok(result)
-}
-
 fn merge_ranges(ranges: &[Range<usize>]) -> Vec<Range<usize>> {
     let mut sorted_ranges = ranges.to_vec();
     sorted_ranges.sort_by_key(|r| r.start);
