@@ -1,4 +1,4 @@
-use crate::agent::agent::Agent;
+use crate::{agent::agent::Agent, config::get_quickwit_url};
 use anyhow::{anyhow, Context, Result};
 use futures::{stream, StreamExt};
 use tiktoken_rs::CoreBPE;
@@ -16,6 +16,7 @@ impl Agent {
         const CHUNK_MERGE_DISTANCE: usize = 10;
         const MAX_TOKENS: usize = 15400;
 
+        let search_db_url = get_quickwit_url();
         let paths = path_aliases
             .iter()
             .copied()
@@ -38,7 +39,7 @@ impl Agent {
                 tracing::debug!(?path, "reading file");
 
                 let lines = self_
-                    .get_file_content(&path)
+                    .get_file_content(&search_db_url, &path)
                     .await?
                     .with_context(|| format!("path does not exist in the index: {path}"))?
                     .content
