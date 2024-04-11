@@ -1,7 +1,7 @@
 use anyhow::Result;
-use lazy_static::lazy_static;
-use std::sync::Once;
-use config::Config;
+use once_cell::sync::Lazy;
+use std::sync::{Once, RwLock};
+use config::{get_search_server_url, load_from_env, Config};
 
 mod agent;
 mod config;
@@ -15,15 +15,13 @@ use std::sync::Arc;
 
 use core::result::Result::Ok;
 struct AppState {
-    configuration: &'static config::Config,
     db_connection: db_client::DbConnect, // Assuming DbConnection is your database connection type
 }
 
 // initialize the app state with the configuration and database connection.
 async fn init_state() -> Result<AppState, anyhow::Error> {
-    let configuration = get_config(); 
     // call the search url home route and see if the server is running. If not return a message to the user to first start the server.
-    let search_url = format!("{}/", configuration.search_server_url);
+    let search_url = format!("{}/", get_search_server_url());
     let response = reqwest::get(&search_url).await;
     match response {
         Ok(_) => {
@@ -36,7 +34,7 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
     }
 
     // create new db client.
-    let db_client = match db_client::DbConnect::new(&configuration).await {
+    let db_client = match db_client::DbConnect::new().await {
         Ok(client) => client,
         Err(_) => {
             log::error!("Initializing database failed.");
@@ -45,28 +43,16 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
     };
 
     Ok(AppState {
-        configuration,
         db_connection: db_client,
     })
 }
 
-
-// Global variable to hold the configuration
-lazy_static! {
-    static ref CONFIG: Config = {
-        Config::new().expect("Failed to load configuration")
-    };
-}
-
-// Initialize once to ensure that the global variable is only initialized once
-static INIT: Once = Once::new();
-
-// Function to access the global CONFIG variable
-pub fn get_config() -> &'static Config {
-    // Ensure that the global variable is initialized only once
-    INIT.call_once(|| {});
-    &CONFIG
-}
+// global configuration while RwLock is used to ensure thread safety
+// Rwlock makes reads cheap, which is important because we will be reading the configuration a lot, and never mutate it after it is set.
+static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| {
+    // Directly load the configuration when initializing CONFIG.
+    RwLock::new(load_from_env())
+});
 
 #[tokio::main]
 async fn main() -> Result<()> {
