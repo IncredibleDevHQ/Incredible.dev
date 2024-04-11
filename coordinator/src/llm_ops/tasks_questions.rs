@@ -1,6 +1,4 @@
-use crate::configuration::{get_openai_url, get_openai_model, get_openai_api_key};
-use crate::CONFIG;
-use common::llm_gateway;
+use crate::utility::call_llm;
 use common::models::TaskList;
 use common::models::TaskListResponseWithMessage;
 use common::prompts;
@@ -12,55 +10,24 @@ pub async fn generate_tasks_and_questions(
     user_query: String,
     repo_name: String,
 ) -> Result<TaskListResponseWithMessage, anyhow::Error> {
-    let open_ai_url = get_openai_url();
-    let open_ai_model = get_openai_model();
-    let open_ai_key = get_openai_api_key();
-    
-    // initialize new llm gateway.
-
-    // otherwise call the llm gateway to generate the questions
-    let llm_gateway = llm_gateway::Client::new(&open_ai_url)
-        .temperature(0.0)
-        .bearer(open_ai_key)
-        .model(&open_ai_model);
-
     let system_prompt: String = prompts::question_concept_generator_prompt(&user_query, &repo_name);
     let system_message = Message::system(&system_prompt);
     // append the system message to the message history
     let mut messages = Some(system_message.clone()).into_iter().collect::<Vec<_>>();
 
-    let response = match llm_gateway
-        .clone()
-        .model(&open_ai_model)
-        .chat(&messages, None)
-        .await
-    {
-        Ok(response) => Some(response),
-        Err(_) => None,
-    };
-    let final_response = match response {
-        Some(response) => response,
-        None => {
-            log::error!("Error: Unable to fetch response from the gateway");
-            // Return error as API response
-            return Err(anyhow::anyhow!("Unable to fetch response from the gateway"));
-        }
-    };
+    let response_str = call_llm(None, Some(messages.clone())).await.map_err(|e| {
+        error!("Failed to start AI Gateway: {:?}", e);
+        return e;
+    });
 
-    let choices_str = final_response.choices[0]
-        .message
-        .content
-        .clone()
-        .unwrap_or_else(|| "".to_string());
-
+    let response = response_str.unwrap();
     // create assistant message and add it to the messages
-    let assistant_message = Message::assistant(&choices_str);
+    let assistant_message = Message::assistant(&response);
     messages.push(assistant_message);
 
-    //log::debug!("Choices: {}", choices_str);
+    log::debug!("Choices: {}", response);
 
-    let response_task_list: Result<TaskList, serde_json::Error> =
-        serde_json::from_str(&choices_str);
+    let response_task_list: Result<TaskList, serde_json::Error> = serde_json::from_str(&response);
 
     match response_task_list {
         Ok(task_list) => {
