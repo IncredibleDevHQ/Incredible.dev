@@ -175,18 +175,27 @@ impl AIGatewayConfig {
     }
 
     pub fn build_messages(&self, input: &Input) -> Result<Vec<Message>> {
-        // create a new user message from the input
-        let message = Message::new_text(MessageRole::User, &input.to_message());
-
-        // push the message if there history in input.history
-        // else return the vec of one message
-        if input.history_exists() {
-            let mut messages = input.get_history().unwrap();
-            messages.push(message);
-            Ok(messages)
-        } else {
-            Ok(vec![message])
+        let mut messages = vec![];
+    
+        // If both text and history are empty, return an error.
+        if input.is_empty() && !input.history_exists() {
+            bail!("Both text and history are empty.");
         }
+    
+        // If there's non-empty text, create a new user message from the input.
+        if !input.is_empty() {
+            let message_text = input.to_message();
+            if !message_text.is_empty() {
+                let message = Message::new_text(MessageRole::User, &message_text);
+                messages.push(message);
+            }
+        }
+    
+        // If there's history, extend the messages with it.
+        if let Some(history) = input.get_history() {
+            messages.extend(history);
+        }
+        Ok(messages)
     }
 
     pub fn prepare_send_data(&self, input: &Input, stream: bool) -> Result<SendData> {
