@@ -11,7 +11,7 @@ pub async fn generate_tasks_and_questions(
     repo_name: String,
 ) -> Result<TaskListResponseWithMessage, anyhow::Error> {
     let system_prompt: String = prompts::question_concept_generator_prompt(&user_query, &repo_name);
-    let system_message = Message::system(&system_prompt);
+    let system_message = Message::user(&system_prompt);
     // append the system message to the message history
     let mut messages = Some(system_message.clone()).into_iter().collect::<Vec<_>>();
 
