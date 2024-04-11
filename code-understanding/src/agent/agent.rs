@@ -324,10 +324,10 @@ impl Agent {
         Ok(history)
     }
 
-    pub async fn get_file_content(&self, path: &str) -> Result<Option<ContentDocument>> {
+    pub async fn get_file_content(&self, base_url: &str, path: &str) -> Result<Option<ContentDocument>> {
         self.app_state
             .db_connection
-            .get_file_from_quickwit(&self.repo_name, "relative_path", path)
+            .get_file_from_quickwit(base_url, &self.repo_name, "relative_path", path)
             .await
     }
 

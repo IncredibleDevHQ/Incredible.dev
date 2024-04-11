@@ -5,10 +5,10 @@ use futures::StreamExt;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tracing::{debug, info, instrument, trace};
 
-use crate::agent::{
+use crate::{agent::{
     exchange::{CodeChunk, FocusedChunk, Update},
     transform,
-};
+}, config::get_quickwit_url, search};
 
 use ai_gateway::message::message::{Message, MessageRole};
 
@@ -21,6 +21,7 @@ impl Agent {
     pub async fn answer(&mut self, aliases: &[usize]) -> Result<()> {
         const ANSWER_HEADROOM: usize = 1024; // the number of tokens reserved for the answer
 
+        let search_db_url = get_quickwit_url();
         println!(" Aliases from LLM: {:?}", aliases);
         debug!("creating article response");
 
@@ -31,7 +32,7 @@ impl Agent {
                 .context("invalid path alias passed")?;
 
             let doc = self
-                .get_file_content(path)
+                .get_file_content(&search_db_url, path)
                 .await?
                 .context("path did not exist")?;
 
@@ -251,6 +252,7 @@ impl Agent {
         aliases: &[usize],
         gpt_model: &str,
     ) -> Vec<CodeChunk> {
+        let search_db_url = get_quickwit_url();
         debug!(?aliases, "canonicalizing code chunks");
         println!("canonicalizing code chunks: {:?}", aliases);
         /// The ratio of code tokens to context size.
@@ -283,7 +285,7 @@ impl Agent {
                 spans.sort_by_key(|c| c.start);
 
                 let lines = self_
-                    .get_file_content(path)
+                    .get_file_content(&search_db_url,path)
                     .await
                     .unwrap()
                     .unwrap_or_else(|| panic!("path did not exist in the index: {path}"))
