@@ -1,4 +1,5 @@
 use anyhow::Result;
+use common::ai_util::call_llm;
 use common::task_graph::redis::establish_redis_connection;
 use configuration::Configuration;
 use std::sync::RwLock;
@@ -16,8 +17,7 @@ mod utility;
 
 use core::result::Result::Ok;
 
-use crate::configuration::{get_code_search_url, get_code_understanding_url, get_redis_url};
-use crate::utility::call_llm;
+use crate::configuration::{get_ai_gateway_config, get_code_search_url, get_code_understanding_url, get_redis_url};
 
 // global configuration while RwLock is used to ensure thread safety
 // Rwlock makes reads cheap, which is important because we will be reading the configuration a lot, and never mutate it after it is set.
@@ -78,7 +78,7 @@ async fn main() -> Result<()> {
     info!("Testing AI Gateway");
     let test_msg = "What LLM model are you?".to_string();
     // Test if the AI gateway is initialized properly, debug log the error and end the program
-    let llm_test_output = call_llm(Some(test_msg), None).await.map_err(|e| {
+    let llm_test_output = call_llm(&get_ai_gateway_config(), Some(test_msg), None).await.map_err(|e| {
         error!("Failed to start AI Gateway: {:?}", e);
         panic!("AI Gateway initialization failed");
     });

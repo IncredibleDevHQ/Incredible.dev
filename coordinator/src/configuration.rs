@@ -1,7 +1,3 @@
-use tokio::fs;
-use log::info;
-use std::env;
-
 use crate::CONFIG;
 
 #[allow(unused)]
@@ -20,38 +16,38 @@ pub struct Configuration {
 }
 
 pub fn get_redis_url() -> String {
-    CONFIG.read().unwrap().as_ref().unwrap().redis_url.clone()
+    CONFIG.read().unwrap().redis_url.clone()
 }
 
 pub fn get_code_search_url() -> String {
-    CONFIG.read().unwrap().as_ref().unwrap().code_search_url.clone()
+    CONFIG.read().unwrap().code_search_url.clone()
 }
 
 pub fn get_context_generator_url() -> String {
-    CONFIG.read().unwrap().as_ref().unwrap().context_generator_url.clone()
+    CONFIG.read().unwrap().context_generator_url.clone()
 }
 
 pub fn get_code_understanding_url() -> String {
-    CONFIG.read().unwrap().as_ref().unwrap().code_understanding_url.clone()
+    CONFIG.read().unwrap().code_understanding_url.clone()
 }
 
 pub fn get_code_modifier_url() -> String {
-    CONFIG.read().unwrap().as_ref().unwrap().code_modifier_url.clone()
+    CONFIG.read().unwrap().code_modifier_url.clone()
 }
 
 pub fn get_ai_gateway_config() -> String {
     log::debug!("Reading AI Gateway config");
-    CONFIG.read().unwrap().as_ref().unwrap().ai_gateway_config.clone()
+    CONFIG.read().unwrap().ai_gateway_config.clone()
 }
 
 pub fn get_openai_url() -> String {
-    CONFIG.read().unwrap().as_ref().unwrap().openai_url.clone()
+    CONFIG.read().unwrap().openai_url.clone()
 }
 
 pub fn get_openai_api_key() -> String {
-    CONFIG.read().unwrap().as_ref().unwrap().openai_api_key.clone()
+    CONFIG.read().unwrap().openai_api_key.clone()
 }
 
 pub fn get_openai_model() -> String {
-    CONFIG.read().unwrap().as_ref().unwrap().openai_model.clone()
+    CONFIG.read().unwrap().openai_model.clone()
 }
