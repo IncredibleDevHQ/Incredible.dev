@@ -1,5 +1,7 @@
 use std::{env, fs};
 use log::info;
+
+use crate::CONFIG;
 #[derive(Clone, Debug)]
 pub struct Config {
     pub semantic_url: String,
@@ -69,4 +71,49 @@ pub async fn load_from_env() -> Result<Config, anyhow::Error> {
         search_server_url,
         ai_gateway_config,
     })
+}
+
+pub fn get_semantic_url() -> String {
+    CONFIG.read().unwrap().semantic_url.clone()
+}
+
+pub fn get_qdrant_api_key() -> Option<String> {
+    CONFIG.read().unwrap().qdrant_api_key.clone()
+}
+
+pub fn get_tokenizer_path() -> String {
+    CONFIG.read().unwrap().tokenizer_path.clone()
+}
+
+pub fn get_model_path() -> String {
+    CONFIG.read().unwrap().model_path.clone()
+}
+
+pub fn get_openai_key() -> String {
+    CONFIG.read().unwrap().openai_key.clone()
+}
+
+pub fn get_openai_url() -> String {
+    CONFIG.read().unwrap().openai_url.clone()
+}
+
+pub fn get_openai_model() -> String {
+    CONFIG.read().unwrap().openai_model.clone()
+}
+
+pub fn get_quickwit_url() -> String {
+    CONFIG.read().unwrap().quickwit_url.clone()
+}
+
+pub fn get_semantic_collection_name() -> String {
+    CONFIG.read().unwrap().semantic_collection_name.clone()
+}
+
+pub fn get_search_server_url() -> String {
+    CONFIG.read().unwrap().search_server_url.clone()
+}
+
+// New getter for ai_gateway_config
+pub fn get_ai_gateway_config() -> String {
+    CONFIG.read().unwrap().ai_gateway_config.clone()
 }
