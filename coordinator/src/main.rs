@@ -1,11 +1,10 @@
-use ai_gateway::config::AIGatewayConfig;
 use anyhow::Result;
 use common::task_graph::redis::establish_redis_connection;
-use configuration::{get_ai_gateway_config, Configuration};
+use configuration::Configuration;
 use std::sync::RwLock;
 use std::{env, fs};
 
-use log::{debug, error, info};
+use log::{error, info};
 use once_cell::sync::Lazy;
 
 mod configuration;
@@ -20,7 +19,14 @@ use core::result::Result::Ok;
 use crate::configuration::{get_code_search_url, get_code_understanding_url, get_redis_url};
 use crate::utility::call_llm;
 
-static CONFIG: Lazy<RwLock<Option<Configuration>>> = Lazy::new(|| RwLock::new(None));
+// global configuration while RwLock is used to ensure thread safety
+// Rwlock makes reads cheap, which is important because we will be reading the configuration a lot, and never mutate it after it is set.
+
+static CONFIG: Lazy<RwLock<Configuration>> = Lazy::new(|| {
+    // Directly load the configuration when initializing CONFIG.
+    RwLock::new(load_from_env())
+});
+
 // write a function test if the dependency services are up and running
 async fn health_check(url: &str) -> bool {
     // do async request and await for the response
@@ -28,7 +34,7 @@ async fn health_check(url: &str) -> bool {
     response.is_ok()
 }
 
-pub async fn load_from_env() -> Configuration {
+pub fn load_from_env() -> Configuration {
     let environment = env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string());
     let env_file = format!(".env.{}", environment);
 
@@ -45,6 +51,7 @@ pub async fn load_from_env() -> Configuration {
         ai_gateway_config_path
     ));
 
+    info!("Env configuration along with AI Gateway configuration loaded successfully.");
     Configuration {
         environment: env::var("ENVIRONMENT").unwrap_or_else(|_| environment),
         code_search_url: env::var("CODE_SEARCH_URL")
@@ -67,21 +74,7 @@ pub async fn load_from_env() -> Configuration {
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
-    dotenv::dotenv().ok();
-
-    // Load the configuration from the environments
-    // Load the configuration from the environments
-    let config = load_from_env().await;
-
-    // Scope for the write lock so it gets released as soon as the configuration is set
-    {
-        let mut config_lock = CONFIG.write().unwrap();
-        *config_lock = Some(config.clone());
-    } // config_lock goes out of scope here, releasing the write lock
-
-    info!("Loaded configuration");
-    debug!("Config data: {:?}", &config);
-
+    
     info!("Testing AI Gateway");
     let test_msg = "What LLM model are you?".to_string();
     // Test if the AI gateway is initialized properly, debug log the error and end the program
