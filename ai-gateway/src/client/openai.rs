@@ -1,6 +1,9 @@
 use super::{ExtraConfig, Model, OpenAIClient, PromptType, SendData, TokensCountFactors};
 
-use crate::{function_calling::FunctionCall, message::message::MessageRole, render::ReplyHandler, utils::PromptKind};
+use crate::{
+    function_calling::FunctionCall, message::message::MessageRole, render::ReplyHandler,
+    utils::PromptKind,
+};
 
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
@@ -75,51 +78,81 @@ impl OpenAIClient {
     }
 }
 
-pub async fn openai_send_message(builder: RequestBuilder) -> Result<Message> {
+// Sample request 
+// "choices": [
+//         {
+//             "index": 0,
+//             "text": "Here is the information you requested:",
+//             "logprobs": null,
+//             "finish_reason": "tool_calls",
+//             "message": {
+//                 "role": "assistant",
+//                 "content": "",
+//                 "tool_calls": [
+//                     {
+//                         "id": "call_1a2b3c4d5e",
+//                         "type": "function",
+//                         "function": {
+//                             "name": "get_weather",
+//                             "arguments": "{\n  \"location\": \"San Francisco, CA\",\n  \"unit\": \"celsius\"\n}"
+//                         }
+//                     }
+//                 ]
+//             }
+//         }
+//     ],
+pub async fn openai_send_message(builder: RequestBuilder) -> Result<Vec<Message>> {
     let response = builder.send().await?;
     if !response.status().is_success() {
         let error_msg = response.text().await.unwrap_or_default();
-        bail!("Request failed: {error_msg}");
+        bail!("Request failed: {}", error_msg);
     }
 
     let data: Value = response.json().await?;
     if let Some(err_msg) = data["error"]["message"].as_str() {
-        bail!("{err_msg}");
+        bail!("API error: {}", err_msg);
     }
 
-    let choices = data["choices"][0].clone();
-    // 
-    let role = MessageRole::Assistant; 
+    let message = &data["choices"][0]["message"];
+    let role = MessageRole::Assistant;
+    let mut messages = Vec::new();
 
-    if choices["finish_reason"] == "tool_calls" {
-        let tool_calls = &choices["message"]["tool_calls"];
-        if tool_calls.is_array() && !tool_calls[0].is_null() {
-            let tool_call = &tool_calls[0];
+    // Handling tool calls and collecting them
+    if let Some(tool_calls) = message["tool_calls"].as_array() {
+        for tool_call in tool_calls {
             let id = tool_call["id"].as_str().map(String::from);
             let function = &tool_call["function"];
-            let name = function["name"].as_str().map(String::from);
+            let name = function["name"]
+                .as_str()
+                .map(String::from)
+                .unwrap_or_default();
             let arguments = function["arguments"]
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
 
-            Ok(Message::FunctionCall {
+            messages.push(Message::FunctionCall {
                 id,
                 role,
                 function_call: FunctionCall { name, arguments },
                 content: (),
-            })
-        } else {
-            bail!("No valid tool calls found in the response");
+            });
         }
-    } else {
-        let content = choices["message"]["content"]
-            .as_str()
-            .ok_or_else(|| anyhow!("Invalid response data: {data}"))?
-            .to_string();
-
-        Ok(Message::PlainText { role, content })
     }
+
+    // Handling plain text content
+    if let Some(content) = message["content"].as_str() {
+        messages.push(Message::PlainText {
+            role,
+            content: content.to_string(),
+        });
+    }
+
+    if messages.is_empty() {
+        bail!("No content or tool calls found in the response");
+    }
+
+    Ok(messages)
 }
 
 pub async fn openai_send_message_streaming(
