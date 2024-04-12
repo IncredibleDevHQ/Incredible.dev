@@ -1,5 +1,6 @@
 use super::{ClaudeClient, Client, ExtraConfig, Model, PromptType, SendData, TokensCountFactors};
-use crate::message::message::Message;
+use crate::function_calling::FunctionCall;
+use crate::message::message::{Message, MessageRole};
 
 use crate::{render::ReplyHandler, utils::PromptKind};
 
@@ -87,15 +88,51 @@ impl ClaudeClient {
     }
 }
 
-async fn send_message(builder: RequestBuilder) -> Result<String> {
+async fn send_message(builder: RequestBuilder) -> Result<Message> {
     let data: Value = builder.send().await?.json().await?;
     check_error(&data)?;
 
-    let output = data["content"][0]["text"]
-        .as_str()
-        .ok_or_else(|| anyhow!("Invalid response data: {data}"))?;
+    // Iterate through the content array to determine the response type
+    let contents = data["content"]
+        .as_array()
+        .ok_or_else(|| anyhow!("Invalid response format"))?;
 
-    Ok(output.to_string())
+    let mut text_message: Option<Message> = None;
+
+    for content in contents {
+        match content["type"].as_str() {
+            Some("tool_use") => {
+                let id = content["id"].as_str().map(String::from);
+                let name = content["name"]
+                    .as_str()
+                    .ok_or_else(|| anyhow!("Missing tool name in response"))?;
+                let arguments = serde_json::to_string(&content["input"])?;
+
+                return Ok(Message::FunctionCall {
+                    id,
+                    role: MessageRole::Assistant,
+                    function_call: FunctionCall {
+                        name: Some(name.to_string()),
+                        arguments,
+                    },
+                    content: (),
+                });
+            }
+            Some("text") => {
+                let text = content["text"]
+                    .as_str()
+                    .ok_or_else(|| anyhow!("Missing text in response"))?;
+                text_message = Some(Message::PlainText {
+                    role: MessageRole::Assistant,
+                    content: text.to_string(),
+                });
+            }
+            _ => {}
+        }
+    }
+
+    // Return the text message if no tool_use was found
+    text_message.ok_or_else(|| anyhow!("No valid message content found"))
 }
 
 async fn send_message_streaming(builder: RequestBuilder, handler: &mut ReplyHandler) -> Result<()> {
