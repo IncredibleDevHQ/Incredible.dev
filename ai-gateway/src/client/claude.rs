@@ -34,7 +34,11 @@ pub struct ClaudeConfig {
 impl Client for ClaudeClient {
     client_common_fns!();
 
-    async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<Message> {
+    async fn send_message_inner(
+        &self,
+        client: &ReqwestClient,
+        data: SendData,
+    ) -> Result<Vec<Message>> {
         let builder = self.request_builder(client, data)?;
         send_message(builder).await
     }
@@ -89,6 +93,26 @@ impl ClaudeClient {
 }
 
 /// Sends a request to an API and processes the response to return a collection of Message objects.
+/// parses the response 
+/// Here is how response for function calling looks like 
+/// {
+//   "id": "msg_01Aq9w938a90dw8q",
+//   "model": "claude-3-opus-20240229",
+//   "stop_reason": "tool_use",
+//   "role": "assistant",
+//   "content": [
+//     {
+//       "type": "text",
+//       "text": "<thinking>I need to call the get_weather function, and the user wants SF, which is likely San Francisco, CA.</thinking>"
+//     },
+//     {
+//       "type": "tool_use",
+//       "id": "toolu_01A09q90qw90lq917835lq9", 
+//       "name": "get_weather",
+//       "input": {"location": "San Francisco, CA", "unit": "celsius"}
+//     }
+//   ]
+// }
 pub async fn send_message(builder: RequestBuilder) -> Result<Vec<Message>> {
     let response = builder.send().await?;
     if !response.status().is_success() {
@@ -115,7 +139,7 @@ pub async fn send_message(builder: RequestBuilder) -> Result<Vec<Message>> {
                         role,
                         content: text.to_string(),
                     });
-                },
+                }
                 Some("tool_use") => {
                     let id = content["id"].as_str().map(String::from);
                     let function_call = FunctionCall {
@@ -128,7 +152,7 @@ pub async fn send_message(builder: RequestBuilder) -> Result<Vec<Message>> {
                         function_call,
                         content: (),
                     });
-                },
+                }
                 _ => continue, // Skip unknown types
             }
         }
@@ -174,38 +198,39 @@ async fn send_message_streaming(builder: RequestBuilder, handler: &mut ReplyHand
 }
 
 fn build_body(data: SendData, model: String) -> Result<Value> {
-    let SendData {
-        messages,
-        functions,
-        temperature,
-        stream,
-    } = data;
-
-    // Serialize messages with content being just a string without specifying the type.
-    let messages: Vec<Value> = messages
+    let messages: Vec<Value> = data
+        .messages
         .into_iter()
         .map(|message| match message {
             Message::FunctionReturn {
+                id,
                 role,
                 name,
                 content,
             } => {
                 json!({
                     "role": role,
-                    "type": "function_return",
-                    "name": name,
-                    "content": content
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": id.unwrap_or_default(),
+                        "content": content
+                    }]
                 })
             }
             Message::FunctionCall {
+                id,
                 role,
                 function_call,
                 content: _,
             } => {
                 json!({
                     "role": role,
-                    "type": "function_call",
-                    "function_call": function_call
+                    "content": [{
+                        "type": "tool_use",
+                        "id": id,
+                        "name": function_call.name,
+                        "input": function_call.arguments
+                    }]
                 })
             }
             Message::PlainText { role, content } => {
@@ -216,23 +241,20 @@ fn build_body(data: SendData, model: String) -> Result<Value> {
             }
         })
         .collect();
+
     let mut body = json!({
         "model": model,
-        "max_tokens": 4096,
-        "messages": messages,
+        "messages": messages
     });
 
-    // Add functions (tools in Anthropics terminology) if available.
-    // https://docs.anthropic.com/claude/docs/tool-use
-    if let Some(tools) = functions {
+    // Optionally add tools, temperature, and stream settings
+    if let Some(tools) = data.functions {
         body["tools"] = json!(tools);
     }
-
-    // Add temperature and stream settings if they are present.
-    if let Some(v) = temperature {
+    if let Some(v) = data.temperature {
         body["temperature"] = json!(v);
     }
-    if stream {
+    if data.stream {
         body["stream"] = json!(true);
     }
 
