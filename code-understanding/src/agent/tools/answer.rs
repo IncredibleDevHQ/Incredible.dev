@@ -22,7 +22,7 @@ impl Agent {
         const ANSWER_HEADROOM: usize = 1024; // the number of tokens reserved for the answer
 
         let search_db_url = get_quickwit_url();
-        println!(" Aliases from LLM: {:?}", aliases);
+        log::debug!(" Aliases from LLM: {:?}", aliases);
         debug!("creating article response");
 
         if aliases.len() == 1 {
@@ -59,7 +59,7 @@ impl Agent {
             .chain(history.iter().cloned())
             .collect::<Vec<_>>();
 
-        println!("Answer message: {:?}", messages.clone());
+        log::debug!("Answer message: {:?}", messages.clone());
         let response = self
             .llm_gateway
             .clone()
@@ -97,7 +97,7 @@ impl Agent {
             .to_owned()
         });
 
-        println!("\ngenerated answer\n {:?}", article);
+        log::debug!("\ngenerated answer\n {:?}", article);
 
         self.update(Update::Conclude(summary))?;
 
@@ -254,7 +254,7 @@ impl Agent {
     ) -> Vec<CodeChunk> {
         let search_db_url = get_quickwit_url();
         debug!(?aliases, "canonicalizing code chunks");
-        println!("canonicalizing code chunks: {:?}", aliases);
+        log::debug!("canonicalizing code chunks: {:?}", aliases);
         /// The ratio of code tokens to context size.
         ///
         /// Making this closure to 1 means that more of the context is taken up by source code.
@@ -273,8 +273,8 @@ impl Agent {
                 .push(c.start_line..c.end_line);
         }
 
-        println!("Spans by path: ");
-        println!("{:?}", spans_by_path);
+        log::debug!("Spans by path: ");
+        log::debug!("{:?}", spans_by_path);
 
         debug!(?spans_by_path, "expanding spans");
 
@@ -293,9 +293,9 @@ impl Agent {
                     .lines()
                     .map(str::to_owned)
                     .collect::<Vec<_>>();
-                println!("Inside stream");
-                println!("{:?}", path);
-                println!("{:?}", lines.len());
+                log::debug!("Inside stream");
+                log::debug!("{:?}", path);
+                log::debug!("{:?}", lines.len());
 
                 (path.clone(), lines)
             })
@@ -317,11 +317,11 @@ impl Agent {
                 .flat_map(|(path, spans)| spans.iter().map(move |s| (path, s)))
                 .map(|(path, span)| {
                     // print the hashmap line_by_file and print path
-                    // println!("lines_by_file: {:?}\n", lines_by_file);
-                    //println!("path: {:?}\n", path);
-                    println!("path {:?}", path);
-                    println!("lines of code {:?}", lines_by_file.get(path).unwrap().len());
-                    println!("Current span {:?}", span);
+                    // log::debug!("lines_by_file: {:?}\n", lines_by_file);
+                    //log::debug!("path: {:?}\n", path);
+                    log::debug!("path {:?}", path);
+                    log::debug!("lines of code {:?}", lines_by_file.get(path).unwrap().len());
+                    log::debug!("Current span {:?}", span);
                     let snippet = lines_by_file.get(path).unwrap()[span.clone()].join("\n");
                     bpe.encode_ordinary(&snippet).len()
                 })

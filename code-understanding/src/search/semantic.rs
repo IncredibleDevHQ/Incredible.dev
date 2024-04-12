@@ -109,7 +109,7 @@ impl Semantic {
         let attention_mask = tokenizer_output.get_attention_mask();
         let token_type_ids = tokenizer_output.get_type_ids();
         let length = input_ids.len();
-        println!("embedding {} tokens {:?}", length, sequence);
+        log::debug!("embedding {} tokens {:?}", length, sequence);
 
         let inputs_ids_array = ndarray::Array::from_shape_vec(
             (1, length),
@@ -196,7 +196,7 @@ pub fn deduplicate_snippets(
         )
     };
 
-    println!("preserved idxs after MMR are {:?}", idxs);
+    log::debug!("preserved idxs after MMR are {:?}", idxs);
 
     all_snippets
         .drain(..)
