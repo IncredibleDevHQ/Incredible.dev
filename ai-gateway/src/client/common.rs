@@ -158,6 +158,7 @@ macro_rules! client_common_fns {
 #[macro_export]
 macro_rules! openai_compatible_client {
     ($client:ident) => {
+        use crate::message::message::Message;
         #[async_trait]
         impl $crate::client::Client for $crate::client::$client {
             client_common_fns!();
@@ -166,7 +167,7 @@ macro_rules! openai_compatible_client {
                 &self,
                 client: &reqwest::Client,
                 data: $crate::client::SendData,
-            ) -> anyhow::Result<String> {
+            ) -> anyhow::Result<Message> {
                 let builder = self.request_builder(client, data)?;
                 $crate::client::openai::openai_send_message(builder).await
             }
@@ -227,7 +228,7 @@ pub trait Client: Send + Sync {
         Ok(client)
     }
 
-    async fn send_message(&self, input: Input) -> Result<String> {
+    async fn send_message(&self, input: Input) -> Result<Message> {
         let config = self.config().0;
         // Ensure `build_client` and `prepare_send_data` do not block.
         let client = self.build_client()?;
@@ -269,7 +270,7 @@ pub trait Client: Send + Sync {
         })
     }
 
-    async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<String>;
+    async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<Message>;
 
     async fn send_message_streaming_inner(
         &self,

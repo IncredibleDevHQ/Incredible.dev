@@ -1,6 +1,6 @@
 use super::{ExtraConfig, Model, OpenAIClient, PromptType, SendData, TokensCountFactors};
 
-use crate::{render::ReplyHandler, utils::PromptKind};
+use crate::{function_calling::FunctionCall, message::message::MessageRole, render::ReplyHandler, utils::PromptKind};
 
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
@@ -75,17 +75,51 @@ impl OpenAIClient {
     }
 }
 
-pub async fn openai_send_message(builder: RequestBuilder) -> Result<String> {
-    let data: Value = builder.send().await?.json().await?;
+pub async fn openai_send_message(builder: RequestBuilder) -> Result<Message> {
+    let response = builder.send().await?;
+    if !response.status().is_success() {
+        let error_msg = response.text().await.unwrap_or_default();
+        bail!("Request failed: {error_msg}");
+    }
+
+    let data: Value = response.json().await?;
     if let Some(err_msg) = data["error"]["message"].as_str() {
         bail!("{err_msg}");
     }
 
-    let output = data["choices"][0]["message"]["content"]
-        .as_str()
-        .ok_or_else(|| anyhow!("Invalid response data: {data}"))?;
+    let choices = data["choices"][0].clone();
+    // 
+    let role = MessageRole::Assistant; 
 
-    Ok(output.to_string())
+    if choices["finish_reason"] == "tool_calls" {
+        let tool_calls = &choices["message"]["tool_calls"];
+        if tool_calls.is_array() && !tool_calls[0].is_null() {
+            let tool_call = &tool_calls[0];
+            let id = tool_call["id"].as_str().map(String::from);
+            let function = &tool_call["function"];
+            let name = function["name"].as_str().map(String::from);
+            let arguments = function["arguments"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+
+            Ok(Message::FunctionCall {
+                id,
+                role,
+                function_call: FunctionCall { name, arguments },
+                content: (),
+            })
+        } else {
+            bail!("No valid tool calls found in the response");
+        }
+    } else {
+        let content = choices["message"]["content"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Invalid response data: {data}"))?
+            .to_string();
+
+        Ok(Message::PlainText { role, content })
+    }
 }
 
 pub async fn openai_send_message_streaming(
