@@ -4,14 +4,13 @@ use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::AppState;
+use crate::{config::get_ai_gateway_config, AppState};
 use anyhow::{anyhow, Context, Result};
 
-use common::prompts;
+use common::{ai_util::call_llm, prompts};
 
 use crate::agent::exchange::{Exchange, SearchStep, Update};
 use ai_gateway::{config::AIGatewayConfig, function_calling::{Function, FunctionCall}};
-use common::llm_gateway;
 use ai_gateway::message::message::{self, MessageRole};
 
 
@@ -225,10 +224,12 @@ impl Agent {
         let trimmed_history = trim_history(history.clone())?;
 
         log::debug!("trimmed history:\n {:?}", trimmed_history);
-        let chat_completion = self
-            .llm_gateway
-            .chat(&trim_history(history.clone())?, Some(&functions))
-            .await?;
+        let llm_output = call_llm(&get_ai_gateway_config(), None, Some(trimmed_history)).await.map_err(|e| {
+            log::error!("Failed to start AI Gateway: {:?}", e);
+            e
+        });
+
+        
 
         let choice = chat_completion.choices[0].clone();
         let functions_to_call = choice.message.function_call.unwrap().to_owned();
