@@ -88,51 +88,53 @@ impl ClaudeClient {
     }
 }
 
-async fn send_message(builder: RequestBuilder) -> Result<Message> {
-    let data: Value = builder.send().await?.json().await?;
-    check_error(&data)?;
+/// Sends a request to an API and processes the response to return a collection of Message objects.
+pub async fn send_message(builder: RequestBuilder) -> Result<Vec<Message>> {
+    let response = builder.send().await?;
+    if !response.status().is_success() {
+        let error_msg = response.text().await.unwrap_or_default();
+        bail!("Request failed: {}", error_msg);
+    }
 
-    // Iterate through the content array to determine the response type
-    let contents = data["content"]
-        .as_array()
-        .ok_or_else(|| anyhow!("Invalid response format"))?;
+    let data: Value = response.json().await?;
+    if let Some(err_msg) = data["error"]["message"].as_str() {
+        bail!("API error: {}", err_msg);
+    }
 
-    let mut text_message: Option<Message> = None;
+    // Initialize an empty vector to store messages
+    let mut messages = Vec::new();
 
-    for content in contents {
-        match content["type"].as_str() {
-            Some("tool_use") => {
-                let id = content["id"].as_str().map(String::from);
-                let name = content["name"]
-                    .as_str()
-                    .ok_or_else(|| anyhow!("Missing tool name in response"))?;
-                let arguments = serde_json::to_string(&content["input"])?;
-
-                return Ok(Message::FunctionCall {
-                    id,
-                    role: MessageRole::Assistant,
-                    function_call: FunctionCall {
-                        name: Some(name.to_string()),
-                        arguments,
-                    },
-                    content: (),
-                });
+    // Process each content entry in the response
+    if let Some(contents) = data["content"].as_array() {
+        for content in contents {
+            let role = MessageRole::Assistant; // Assuming the role is always 'Assistant'
+            match content["type"].as_str() {
+                Some("text") => {
+                    let text = content["text"].as_str().unwrap_or_default();
+                    messages.push(Message::PlainText {
+                        role,
+                        content: text.to_string(),
+                    });
+                },
+                Some("tool_use") => {
+                    let id = content["id"].as_str().map(String::from);
+                    let function_call = FunctionCall {
+                        name: content["name"].as_str().unwrap_or_default().to_string(),
+                        arguments: content["input"].to_string(),
+                    };
+                    messages.push(Message::FunctionCall {
+                        id,
+                        role,
+                        function_call,
+                        content: (),
+                    });
+                },
+                _ => continue, // Skip unknown types
             }
-            Some("text") => {
-                let text = content["text"]
-                    .as_str()
-                    .ok_or_else(|| anyhow!("Missing text in response"))?;
-                text_message = Some(Message::PlainText {
-                    role: MessageRole::Assistant,
-                    content: text.to_string(),
-                });
-            }
-            _ => {}
         }
     }
 
-    // Return the text message if no tool_use was found
-    text_message.ok_or_else(|| anyhow!("No valid message content found"))
+    Ok(messages)
 }
 
 async fn send_message_streaming(builder: RequestBuilder, handler: &mut ReplyHandler) -> Result<()> {
