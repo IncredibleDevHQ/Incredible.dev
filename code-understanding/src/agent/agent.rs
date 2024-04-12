@@ -98,7 +98,7 @@ pub struct Agent {
 impl Drop for Agent {
     fn drop(&mut self) {
         if !self.complete {
-            println!("Dropping agent");
+            log::debug!("Dropping agent");
         }
     }
 }
@@ -157,7 +157,7 @@ impl Agent {
     #[instrument(skip(self), level = "debug")]
     pub fn update(&mut self, update: Update) -> Result<()> {
         self.last_exchange_mut().apply_update(update);
-        //println!("update {:?}", update);
+        //log::debug!("update {:?}", update);
         Ok(())
     }
 
@@ -195,7 +195,7 @@ impl Agent {
 
     #[instrument(skip(self))]
     pub async fn step(&mut self, action: Action) -> Result<Option<Action>> {
-        println!("\ninside step {:?}\n", action);
+        log::debug!("\ninside step {:?}\n", action);
 
         match &action {
             Action::Query(s) => s.clone(),
@@ -220,11 +220,11 @@ impl Agent {
         ))];
         history.extend(self.history()?);
 
-        println!("full history:\n {:?}", history);
+        log::debug!("full history:\n {:?}", history);
 
         let trimmed_history = trim_history(history.clone())?;
 
-        println!("trimmed history:\n {:?}", trimmed_history);
+        log::debug!("trimmed history:\n {:?}", trimmed_history);
         let chat_completion = self
             .llm_gateway
             .chat(&trim_history(history.clone())?, Some(&functions))
@@ -233,13 +233,13 @@ impl Agent {
         let choice = chat_completion.choices[0].clone();
         let functions_to_call = choice.message.function_call.unwrap().to_owned();
         // print the next action picked.
-        println!("{:?} next action", functions_to_call);
+        log::debug!("{:?} next action", functions_to_call);
 
-        // println!("full_history:\n {:?}\n", &history);
-        //println!("trimmed_history:\n {:?}\n", &trimmed_history);
-        // println!("last_message:\n {:?} \n", history.last());
-        // println!("functions:\n {:?} \n", &functions);
-        // println!("raw_response:\n {:?} \n", &chat_completion);
+        // log::debug!("full_history:\n {:?}\n", &history);
+        //log::debug!("trimmed_history:\n {:?}\n", &trimmed_history);
+        // log::debug!("last_message:\n {:?} \n", history.last());
+        // log::debug!("functions:\n {:?} \n", &functions);
+        // log::debug!("raw_response:\n {:?} \n", &chat_completion);
 
         let action = Action::deserialize_gpt(&functions_to_call)
             .context("failed to deserialize LLM output")?;
@@ -335,7 +335,7 @@ impl Agent {
         &'a self,
         query: &str,
     ) -> impl Iterator<Item = FileDocument> + 'a {
-        println!("executing fuzzy search {}\n", query);
+        log::debug!("executing fuzzy search {}\n", query);
         self.app_state
             .db_connection
             .fuzzy_path_match(&self.repo_name, "relative_path", query, 50)

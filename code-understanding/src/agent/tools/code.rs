@@ -32,7 +32,7 @@ impl Agent {
         }
         let code_snippet = results_symbol.unwrap();
 
-        // println!("Size of semantic search: {}", results.len());
+        // log::debug!("Size of semantic search: {}", results.len());
 
         let mut code_chunks = code_snippet
             .into_iter()
@@ -65,7 +65,7 @@ impl Agent {
             .collect::<Vec<_>>()
             .join("\n\n");
 
-        println!("response: {}", response);
+        log::debug!("response: {}", response);
         self.update(Update::ReplaceStep(SearchStep::Code {
             query: query.clone(),
             response: response.clone(),

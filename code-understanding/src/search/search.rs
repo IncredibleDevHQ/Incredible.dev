@@ -40,18 +40,18 @@ impl Agent {
             Ok(result) => {
                 // loop through the result and print the relative path, language, sniipet, start line and end line.
                 // for chunk in result.clone() {
-                //     println!("relative_path: {:?}", chunk.relative_path);
-                //     println!("lang: {:?}", chunk.lang);
-                //     println!("snippet: {:?}", chunk.text);
-                //     println!("start_line: {:?}", chunk.start_line);
-                //     println!("end_line: {:?}\n", chunk.end_line);
+                //     log::debug!("relative_path: {:?}", chunk.relative_path);
+                //     log::debug!("lang: {:?}", chunk.lang);
+                //     log::debug!("snippet: {:?}", chunk.text);
+                //     log::debug!("start_line: {:?}", chunk.start_line);
+                //     log::debug!("end_line: {:?}\n", chunk.end_line);
                 // }
 
-                //println!("semantic search result: {:?}", result.);
+                //log::debug!("semantic search result: {:?}", result.);
                 Ok(result)
             }
             Err(err) => {
-                println!("semantic search error: {:?}", err);
+                log::debug!("semantic search error: {:?}", err);
                 Err(err)
             }
         }
@@ -98,8 +98,8 @@ impl Semantic {
         let mut results = response.result.clone();
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
 
-        println!("---------xxxxxxxxxxxxxxx----------------");
-        //println!("{:?}",results.clone());
+        log::debug!("---------xxxxxxxxxxxxxxx----------------");
+        //log::debug!("{:?}",results.clone());
 
         #[allow(unused)]
         let acc = results
@@ -111,8 +111,8 @@ impl Semantic {
                 Some((payload, score))
             })
             .map(|(payload, score)| {
-                //println!("payload: {:?}", payload);
-                //println!("score: {:?}", score);
+                //log::debug!("payload: {:?}", payload);
+                //log::debug!("score: {:?}", score);
             })
             .collect::<Vec<_>>();
 

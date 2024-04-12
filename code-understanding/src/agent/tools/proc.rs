@@ -178,7 +178,7 @@ impl Agent {
 
                 relevant_chunks.into_iter().map(move |c| {
                     if path.clone() == "server/bleep/src/indexes.rs" {
-                        println!("Inside proc: {}, {} ", c.range.start, c.range.end);
+                        log::debug!("Inside proc: {}, {} ", c.range.start, c.range.end);
                     }
                     CodeChunk {
                         path: path.clone(),
