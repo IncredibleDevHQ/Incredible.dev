@@ -23,11 +23,13 @@ use serde::{Deserialize, Serialize};
 #[serde(untagged)]
 pub enum Message {
     FunctionReturn {
+        id: Option<String>,
         role: MessageRole,
         name: String,
         content: String,
     },
     FunctionCall {
+        id: Option<String>,
         role: MessageRole,
         function_call: FunctionCall,
         content: (),
