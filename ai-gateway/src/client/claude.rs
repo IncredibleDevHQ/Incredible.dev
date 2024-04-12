@@ -34,7 +34,7 @@ pub struct ClaudeConfig {
 impl Client for ClaudeClient {
     client_common_fns!();
 
-    async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<String> {
+    async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<Message> {
         let builder = self.request_builder(client, data)?;
         send_message(builder).await
     }
