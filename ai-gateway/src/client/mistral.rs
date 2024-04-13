@@ -52,7 +52,7 @@ impl MistralClient {
     fn request_builder(&self, client: &ReqwestClient, data: SendData) -> Result<RequestBuilder> {
         let api_key = self.get_api_key().ok();
 
-        let mut body = openai_build_body(data, self.model.name.clone());
+        let mut body = openai_build_body(data, self.model.name.clone())?;
         self.model.merge_extra_fields(&mut body);
 
         let url = API_URL;
