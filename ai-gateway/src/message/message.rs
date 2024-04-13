@@ -93,16 +93,18 @@ impl Message {
         Self::new_text(MessageRole::Assistant, content)
     }
 
-    pub fn function_call(call: &FunctionCall) -> Self {
+    pub fn function_call(id: String, call: &FunctionCall) -> Self {
         Self::FunctionCall {
+            id: Some(id),
             role: MessageRole::Assistant,
             function_call: call.clone(),
             content: (),
         }
     }
 
-    pub fn function_return(name: &str, content: &str) -> Self {
+    pub fn function_return(id: String, name: &str, content: &str) -> Self {
         Self::FunctionReturn {
+            id: Some(id),
             role: MessageRole::Function.to_owned(),
             name: name.to_string(),
             content: content.to_string(),
@@ -156,7 +158,7 @@ impl AIGatewayConfig {
         functions: Option<Vec<Function>>,
         no_stream: bool,
         code_mode: bool,
-    ) -> Result<String> {
+    ) -> Result<Vec<Message>> {
         let input = Input::new(text, functions, history);
         let mut client = init_client(self)?;
         ensure_model_capabilities(client.as_mut(), input.required_capabilities())?;
