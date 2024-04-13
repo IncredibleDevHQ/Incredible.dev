@@ -62,7 +62,7 @@ impl OpenAIClient {
         let api_key = self.get_api_key()?;
         let api_base = self.get_api_base().unwrap_or_else(|_| API_BASE.to_string());
 
-        let body = openai_build_body(data, self.model.name.clone());
+        let body = openai_build_body(data, self.model.name.clone())?;
 
         let url = format!("{api_base}/chat/completions");
 
@@ -76,6 +76,145 @@ impl OpenAIClient {
 
         Ok(builder)
     }
+}
+
+// we make the open ai call and parse the response 
+// here is how a sample response looks like 
+
+// {
+//     "id": "chat_completion_123456",
+//     "object": "chat.completion",
+//     "created": 1616547890,
+//     "model": "gpt-4-turbo",
+//     "choices": [
+//         {
+//             "index": 0,
+//             "logprobs": null,
+//             "finish_reason": "length",
+//             "text": "I checked the weather for you, and ",
+//             "message": {
+//                 "role": "assistant",
+//                 "content": "It looks like it will be sunny in San Francisco today.",
+//                 "tool_calls": [
+//                     {
+//                         "id": "tool_call_789",
+//                         "type": "function",
+//                         "function": {
+//                             "name": "get_weather",
+//                             "description": "Retrieves weather information for a specified location",
+//                             "parameters": {
+//                                 "location": "San Francisco, CA",
+//                                 "date": "2024-04-10"
+//                             }
+//                         },
+//                         "result": {
+//                             "summary": "Sunny",
+//                             "temperature": "68°F",
+//                             "chance_of_rain": "10%"
+//                         }
+//                     }
+//                 ]
+//             }
+//         }
+//     ],
+//     "usage": {
+//         "prompt_tokens": 15,
+//         "completion_tokens": 45,
+//         "total_tokens": 60
+//     }
+// }
+
+pub async fn openai_send_message(builder: RequestBuilder) -> Result<Vec<Message>> {
+    let response = builder.send().await?;
+    if !response.status().is_success() {
+        let error_msg = response.text().await.unwrap_or_default();
+        bail!("Request failed: {}", error_msg);
+    }
+
+    let data: Value = response.json().await?;
+    if let Some(err_msg) = data["error"]["message"].as_str() {
+        bail!("API error: {}", err_msg);
+    }
+
+    let messages = &data["choices"][0]["message"];
+    let mut result_messages = Vec::new();
+
+    if let Some(tool_calls) = messages["tool_calls"].as_array() {
+        for tool_call in tool_calls {
+            let id = tool_call["id"].as_str().map(String::from);
+            let function = &tool_call["function"];
+            let name = function["name"]
+                .as_str()
+                .map(String::from)
+                .unwrap_or_default();
+            let arguments = function["arguments"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+
+            result_messages.push(Message::FunctionCall {
+                id,
+                role: MessageRole::Assistant,
+                function_call: FunctionCall { name, arguments },
+                content: (),
+            });
+        }
+    }
+
+    if let Some(content) = messages["content"].as_str() {
+        result_messages.push(Message::PlainText {
+            role: MessageRole::Assistant,
+            content: content.to_string(),
+        });
+    }
+
+    if result_messages.is_empty() {
+        bail!("No content or tool calls found in the response");
+    }
+
+    Ok(result_messages)
+}
+
+pub async fn openai_send_message_streaming(
+    builder: RequestBuilder,
+    handler: &mut ReplyHandler,
+) -> Result<()> {
+    let mut es = builder.eventsource()?;
+    while let Some(event) = es.next().await {
+        match event {
+            Ok(Event::Open) => {}
+            Ok(Event::Message(message)) => {
+                if message.data == "[DONE]" {
+                    break;
+                }
+                let data: Value = serde_json::from_str(&message.data)?;
+                if let Some(text) = data["choices"][0]["delta"]["content"].as_str() {
+                    handler.text(text)?;
+                }
+            }
+            Err(err) => {
+                match err {
+                    EventSourceError::InvalidStatusCode(_, res) => {
+                        let data: Value = res.json().await?;
+                        if let Some(err_msg) = data["error"]["message"].as_str() {
+                            bail!("{err_msg}");
+                        } else if let Some(err_msg) = data["message"].as_str() {
+                            bail!("{err_msg}");
+                        } else {
+                            bail!("Request failed, {data}");
+                        }
+                    }
+                    EventSourceError::StreamEnded => {}
+                    _ => {
+                        bail!("{}", err);
+                    }
+                }
+                es.close();
+            }
+        }
+    }
+
+    Ok(())
 }
 
 // Sample request containing the function call response, user and assistant message
@@ -149,7 +288,7 @@ impl OpenAIClient {
 //   "tool_choice": "auto"
 // }'
 
-pub fn build_openai_body(data: SendData, model: String) -> Result<Value> {
+pub fn openai_build_body(data: SendData, model: String) -> Result<Value> {
     let messages: Vec<Value> = data
         .messages
         .into_iter()
@@ -215,80 +354,4 @@ pub fn build_openai_body(data: SendData, model: String) -> Result<Value> {
     }
 
     Ok(body)
-}
-
-pub async fn openai_send_message_streaming(
-    builder: RequestBuilder,
-    handler: &mut ReplyHandler,
-) -> Result<()> {
-    let mut es = builder.eventsource()?;
-    while let Some(event) = es.next().await {
-        match event {
-            Ok(Event::Open) => {}
-            Ok(Event::Message(message)) => {
-                if message.data == "[DONE]" {
-                    break;
-                }
-                let data: Value = serde_json::from_str(&message.data)?;
-                if let Some(text) = data["choices"][0]["delta"]["content"].as_str() {
-                    handler.text(text)?;
-                }
-            }
-            Err(err) => {
-                match err {
-                    EventSourceError::InvalidStatusCode(_, res) => {
-                        let data: Value = res.json().await?;
-                        if let Some(err_msg) = data["error"]["message"].as_str() {
-                            bail!("{err_msg}");
-                        } else if let Some(err_msg) = data["message"].as_str() {
-                            bail!("{err_msg}");
-                        } else {
-                            bail!("Request failed, {data}");
-                        }
-                    }
-                    EventSourceError::StreamEnded => {}
-                    _ => {
-                        bail!("{}", err);
-                    }
-                }
-                es.close();
-            }
-        }
-    }
-
-    Ok(())
-}
-
-pub fn openai_build_body(data: SendData, model: String) -> Value {
-    let SendData {
-        messages,
-        functions,
-        temperature,
-        stream,
-    } = data;
-
-    let mut body = json!({
-        "model": model,
-        "messages": messages,
-    });
-
-    // Check if there are any functions provided and add them to the body.
-    if let Some(funcs) = functions {
-        // Here we assume that the functions Vec<Function> can be serialized directly.
-        // This requires that Function and any nested structs are serializable.
-        body["functions"] = json!(funcs);
-    }
-
-    // The default max_tokens of gpt-4-vision-preview is only 16, we need to make it larger
-    if model == "gpt-4-vision-preview" {
-        body["max_tokens"] = json!(4096);
-    }
-
-    if let Some(v) = temperature {
-        body["temperature"] = v.into();
-    }
-    if stream {
-        body["stream"] = true.into();
-    }
-    body
 }
