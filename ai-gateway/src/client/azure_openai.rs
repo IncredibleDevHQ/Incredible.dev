@@ -54,7 +54,7 @@ impl AzureOpenAIClient {
         let api_base = self.get_api_base()?;
         let api_key = self.get_api_key()?;
 
-        let body = openai_build_body(data, self.model.name.clone());
+        let body = openai_build_body(data, self.model.name.clone())?;
 
         let url = format!(
             "{}/openai/deployments/{}/chat/completions?api-version=2023-05-15",
