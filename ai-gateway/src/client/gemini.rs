@@ -1,6 +1,7 @@
 use super::vertexai::{build_body, send_message, send_message_streaming};
 use super::{Client, ExtraConfig, GeminiClient, Model, PromptType, SendData, TokensCountFactors};
 
+use crate::message::message::Message;
 use crate::{render::ReplyHandler, utils::PromptKind};
 
 use anyhow::Result;
@@ -31,7 +32,7 @@ pub struct GeminiConfig {
 impl Client for GeminiClient {
     client_common_fns!();
 
-    async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<String> {
+    async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<Vec<Message>> {
         let builder = self.request_builder(client, data)?;
         send_message(builder).await
     }

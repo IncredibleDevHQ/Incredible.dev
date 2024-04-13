@@ -1,7 +1,9 @@
 use super::{Client, ExtraConfig, Model, PromptType, QianwenClient, SendData, TokensCountFactors};
 
+use crate::message;
 use crate::{render::ReplyHandler, utils::PromptKind};
-use crate::message::message::Message;
+use crate::message::message::{Message, MessageRole};
+
 
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
@@ -100,7 +102,7 @@ impl QianwenClient {
     }
 }
 
-async fn send_message(builder: RequestBuilder) -> Result<String> {
+async fn send_message(builder: RequestBuilder) -> Result<Vec<Message>> {
     let data: Value = builder.send().await?.json().await?;
     check_error(&data)?;
 
@@ -108,8 +110,14 @@ async fn send_message(builder: RequestBuilder) -> Result<String> {
     let output = data["output"]["text"]
         .as_str()
         .ok_or_else(|| anyhow!("Unexpected response {data}"))?;
+    // crate plain text message and return as array 
+    let message = Message::PlainText {
+        role: MessageRole::Assistant,
+        content: output.to_string(),
+    };
 
-    Ok(output.to_string())
+    Ok(vec![message])
+
 }
 
 async fn send_message_streaming(builder: RequestBuilder, handler: &mut ReplyHandler) -> Result<()> {

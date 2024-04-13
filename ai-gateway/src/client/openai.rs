@@ -132,6 +132,7 @@ pub async fn openai_send_message(builder: RequestBuilder) -> Result<Vec<Message>
                 .to_string();
 
             messages.push(Message::FunctionCall {
+                id: id,
                 role,
                 function_call: FunctionCall { name, arguments },
                 content: (),
