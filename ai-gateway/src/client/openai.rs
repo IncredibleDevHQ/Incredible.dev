@@ -78,81 +78,143 @@ impl OpenAIClient {
     }
 }
 
-// Sample request 
-// "choices": [
+// Sample request containing the function call response, user and assistant message
+// request also includes the function calling options provided.
+// This move is to move away from the deprecated functions and use the use tool based function calling
+// ref doc: https://platform.openai.com/docs/api-reference/chat/create (Look at function calling section)
+
+// curl -X POST "https://api.example.com/v1/chat/completions" \
+// -H "Content-Type: application/json" \
+// -H "Authorization: Bearer $API_KEY" \
+// -d '{
+//   "model": "gpt-4-turbo",
+//   "messages": [
+//     {
+//       "role": "user",
+//       "content": "What\'s the weather like in Boston today?"
+//     },
+//     {
+//       "role": "assistant",
+//       "content": "Let me check that for you."
+//     },
+//     {
+//       "role": "tool",
+//       "content": [
 //         {
-//             "index": 0,
-//             "text": "Here is the information you requested:",
-//             "logprobs": null,
-//             "finish_reason": "tool_calls",
-//             "message": {
-//                 "role": "assistant",
-//                 "content": "",
-//                 "tool_calls": [
-//                     {
-//                         "id": "call_1a2b3c4d5e",
-//                         "type": "function",
-//                         "function": {
-//                             "name": "get_weather",
-//                             "arguments": "{\n  \"location\": \"San Francisco, CA\",\n  \"unit\": \"celsius\"\n}"
-//                         }
-//                     }
-//                 ]
-//             }
+//           "type": "function_call",
+//           "id": "func123",
+//           "name": "get_current_weather",
+//           "input": {
+//             "location": "Boston, MA",
+//             "unit": "celsius"
+//           }
 //         }
-//     ],
-pub async fn openai_send_message(builder: RequestBuilder) -> Result<Vec<Message>> {
-    let response = builder.send().await?;
-    if !response.status().is_success() {
-        let error_msg = response.text().await.unwrap_or_default();
-        bail!("Request failed: {}", error_msg);
-    }
+//       ]
+//     },
+//     {
+//       "role": "tool",
+//       "content": [
+//         {
+//           "type": "tool_result",
+//           "tool_use_id": "func123",
+//           "content": "The current temperature in Boston is 15°C."
+//         }
+//       ]
+//     }
+//   ],
+//   "tools": [
+//     {
+//       "type": "function",
+//       "function": {
+//         "name": "get_current_weather",
+//         "description": "Get the current weather in a given location",
+//         "parameters": {
+//           "type": "object",
+//           "properties": {
+//             "location": {
+//               "type": "string",
+//               "description": "The city and state, e.g., Boston, MA"
+//             },
+//             "unit": {
+//               "type": "string",
+//               "enum": ["celsius", "fahrenheit"],
+//               "description": "The temperature unit"
+//             }
+//           },
+//           "required": ["location", "unit"]
+//         }
+//       }
+//     }
+//   ],
+//   "tool_choice": "auto"
+// }'
 
-    let data: Value = response.json().await?;
-    if let Some(err_msg) = data["error"]["message"].as_str() {
-        bail!("API error: {}", err_msg);
-    }
-
-    let message = &data["choices"][0]["message"];
-    let role = MessageRole::Assistant;
-    let mut messages = Vec::new();
-
-    // Handling tool calls and collecting them
-    if let Some(tool_calls) = message["tool_calls"].as_array() {
-        for tool_call in tool_calls {
-            let id = tool_call["id"].as_str().map(String::from);
-            let function = &tool_call["function"];
-            let name = function["name"]
-                .as_str()
-                .map(String::from)
-                .unwrap_or_default();
-            let arguments = function["arguments"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string();
-
-            messages.push(Message::FunctionCall {
-                id: id,
+pub fn build_openai_body(data: SendData, model: String) -> Result<Value> {
+    let messages: Vec<Value> = data
+        .messages
+        .into_iter()
+        .map(|message| match message {
+            Message::FunctionReturn {
+                id,
                 role,
-                function_call: FunctionCall { name, arguments },
-                content: (),
-            });
-        }
+                name,
+                content,
+            } => {
+                json!({
+                    "role": role,
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": id.unwrap_or_default(),
+                        "content": content
+                    }]
+                })
+            }
+            Message::PlainText { role, content } => {
+                json!({
+                    "role": role,
+                    "content": content
+                })
+            }
+            _ => json!({}), // Intentionally return an empty JSON object for other cases
+        })
+        .filter(|msg| !msg.is_object() || (msg.as_object().map_or(false, |obj| !obj.is_empty())))
+        .collect();
+
+    let mut body = json!({
+        "model": model,
+        "messages": messages
+    });
+
+    // Serialize function calls according to the structure required by OpenAI
+    if let Some(functions) = data.functions {
+        let tools_json: Vec<Value> = functions
+            .iter()
+            .map(|func| {
+                json!({
+                    "type": "function",
+                    "function": {
+                        "name": func.name,
+                        "description": func.description,
+                        "parameters": {
+                            "type": func.parameters._type,
+                            "properties": func.parameters.properties,
+                            "required": func.parameters.required
+                        }
+                    }
+                })
+            })
+            .collect();
+        body["tools"] = json!(tools_json);
     }
 
-    // Handling plain text content
-    if let Some(content) = message["content"].as_str() {
-        messages.push(Message::PlainText {
-            role,
-            content: content.to_string(),
-        });
+    if let Some(v) = data.temperature {
+        body["temperature"] = json!(v);
+    }
+    if data.stream {
+        body["stream"] = json!(true);
     }
 
-    if messages.is_empty() {
-        bail!("No content or tool calls found in the response");
-    }
-
-    Ok(messages)
+    Ok(body)
 }
 
 pub async fn openai_send_message_streaming(
