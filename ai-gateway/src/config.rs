@@ -1,16 +1,12 @@
 use crate::client::{list_models, ClientConfig, Model, SendData};
 use crate::input::Input;
 use crate::message::message::{Message, MessageRole};
-use crate::render::RenderOptions;
 use crate::session::session::Session;
 use crate::utils::get_env_name;
 use std::{fs, path::Path};
 use anyhow::{anyhow, bail, Context, Result};
-use is_terminal::IsTerminal;
 use std::env;
-use std::io::stdout;
 use std::path::PathBuf;
-use syntect::highlighting::ThemeSet;
 
 const CLIENTS_FIELD: &str = "clients";
 
@@ -24,15 +20,8 @@ pub struct AIGatewayConfig {
     pub model_id: Option<String>,
     /// LLM temperature
     pub temperature: Option<f64>,
-    pub highlight: bool,
-    /// Whether to use a light theme
-    pub light_theme: bool,
     /// Whether to save the session
     pub save_session: Option<bool>,
-    /// Specify the text-wrapping mode (no, auto, <max-width>)
-    pub wrap: Option<String>,
-    /// Whether wrap code block
-    pub wrap_code: bool,
     /// Compress session if tokens exceed this value (>=1000)
     pub compress_threshold: usize,
     pub clients: Vec<ClientConfig>,
@@ -50,10 +39,6 @@ impl Default for AIGatewayConfig {
             model_id: None,
             temperature: None,
             save_session: None,
-            highlight: true,
-            light_theme: false,
-            wrap: None,
-            wrap_code: false,
             compress_threshold: 2000,
             clients: vec![ClientConfig::default()],
             session: None,
@@ -140,38 +125,6 @@ impl AIGatewayConfig {
         let mut path = Self::config_dir()?;
         path.push(name);
         Ok(path)
-    }
-
-    pub fn get_render_options(&self) -> Result<RenderOptions> {
-        let theme = if self.highlight {
-            let theme_mode = if self.light_theme { "light" } else { "dark" };
-            let theme_filename = format!("{theme_mode}.tmTheme");
-            let theme_path = Self::local_path(&theme_filename)?;
-            if theme_path.exists() {
-                let theme = ThemeSet::get_theme(&theme_path)
-                    .with_context(|| format!("Invalid theme at {}", theme_path.display()))?;
-                Some(theme)
-            } else {
-                let theme = if self.light_theme {
-                    bincode::deserialize_from(LIGHT_THEME).expect("Invalid builtin light theme")
-                } else {
-                    bincode::deserialize_from(DARK_THEME).expect("Invalid builtin dark theme")
-                };
-                Some(theme)
-            }
-        } else {
-            None
-        };
-        let wrap = if stdout().is_terminal() {
-            self.wrap.clone()
-        } else {
-            None
-        };
-        let truecolor = matches!(
-            env::var("COLORTERM").as_ref().map(|v| v.as_str()),
-            Ok("truecolor")
-        );
-        Ok(RenderOptions::new(theme, wrap, self.wrap_code, truecolor))
     }
 
     pub fn build_messages(&self, input: &Input) -> Result<Vec<Message>> {
