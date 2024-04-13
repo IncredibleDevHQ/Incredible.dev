@@ -93,8 +93,8 @@ impl ClaudeClient {
 }
 
 /// Sends a request to an API and processes the response to return a collection of Message objects.
-/// parses the response 
-/// Here is how response for function calling looks like 
+/// parses the response
+/// Here is how response for function calling looks like
 /// {
 //   "id": "msg_01Aq9w938a90dw8q",
 //   "model": "claude-3-opus-20240229",
@@ -107,7 +107,7 @@ impl ClaudeClient {
 //     },
 //     {
 //       "type": "tool_use",
-//       "id": "toolu_01A09q90qw90lq917835lq9", 
+//       "id": "toolu_01A09q90qw90lq917835lq9",
 //       "name": "get_weather",
 //       "input": {"location": "San Francisco, CA", "unit": "celsius"}
 //     }
@@ -197,59 +197,65 @@ async fn send_message_streaming(builder: RequestBuilder, handler: &mut ReplyHand
     Ok(())
 }
 
+// According to claude doc here https://docs.anthropic.com/claude/reference/messages_post
+// Note that if you want to include a system prompt, you can use the top-level system parameter
+// — there is no "system" role for input messages in the Messages API.
+// so we in the messages history sent through Send data,
+// we can include a system message as the first message in the messages array
+// then check if the first message is a system message and if it exists,
+// set it at the top-level of the body object as "system" key.
 fn build_body(data: SendData, model: String) -> Result<Value> {
-    let messages: Vec<Value> = data
-        .messages
-        .into_iter()
-        .map(|message| match message {
-            Message::FunctionReturn {
-                id,
-                role,
-                name,
-                content,
-            } => {
-                json!({
-                    "role": role,
-                    "content": [{
-                        "type": "tool_result",
-                        "tool_use_id": id.unwrap_or_default(),
-                        "content": content
-                    }]
-                })
-            }
-            Message::FunctionCall {
-                id,
-                role,
-                function_call,
-                content: _,
-            } => {
-                json!({
-                    "role": role,
-                    "content": [{
-                        "type": "tool_use",
-                        "id": id,
-                        "name": function_call.name,
-                        "input": function_call.arguments
-                    }]
-                })
-            }
-            Message::PlainText { role, content } => {
-                json!({
-                    "role": role,
-                    "content": content
-                })
-            }
-        })
-        .collect();
+    let mut messages_iter = data.messages.into_iter();
 
     let mut body = json!({
         "model": model,
-        "messages": messages
     });
 
-    // Optionally add tools, temperature, and stream settings
+    // Check if the first message is a system type and handle it accordingly
+    if let Some(first_message) = messages_iter.next() {
+        match &first_message {
+            Message::PlainText {
+                role: MessageRole::System,
+                content,
+            } => {
+                // Set the system message at the top-level
+                body["system"] = json!({ "content": content });
+            }
+            _ => {
+                // If the first message is not a system message, handle it normally
+                let first_message_value = message_to_json(&first_message);
+                body["messages"] = json!([first_message_value]);
+            }
+        }
+    }
+
+    // Process the rest of the messages
+    let remaining_messages: Vec<Value> = messages_iter.map(|msg| message_to_json(&msg)).collect();
+    if let Some(existing_messages) = body["messages"].as_array_mut() {
+        existing_messages.extend_from_slice(&remaining_messages);
+    } else {
+        body["messages"] = json!(remaining_messages);
+    }
+
     if let Some(tools) = data.functions {
-        body["tools"] = json!(tools);
+        let tools_json: Vec<Value> = tools.iter().map(|tool| {
+            json!({
+                "name": tool.name,
+                "description": tool.description,
+                "input_schema": {
+                    "type": tool.parameters._type,
+                    "properties": tool.parameters.properties.iter().map(|(key, param)| {
+                        (key.clone(), json!({
+                            "type": param._type,
+                            "description": param.description.as_ref().unwrap_or(&"".to_string()), // Directly unwrapping
+                            "items": param.items // Assume items are optional and serialized correctly
+                        }))
+                    }).collect::<serde_json::Map<String, Value>>(),
+                    "required": tool.parameters.required
+                }
+            })
+        }).collect();
+        body["tools"] = json!(tools_json);
     }
     if let Some(v) = data.temperature {
         body["temperature"] = json!(v);
@@ -259,6 +265,48 @@ fn build_body(data: SendData, model: String) -> Result<Value> {
     }
 
     Ok(body)
+}
+
+fn message_to_json(message: &Message) -> Value {
+    match message {
+        Message::FunctionReturn {
+            id,
+            role,
+            name,
+            content,
+        } => {
+            json!({
+                "role": role,
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": id.clone().unwrap_or_default(),
+                    "content": content
+                }]
+            })
+        }
+        Message::FunctionCall {
+            id,
+            role,
+            function_call,
+            content: _,
+        } => {
+            json!({
+                "role": role,
+                "content": [{
+                    "type": "tool_use",
+                    "id": id,
+                    "name": function_call.name,
+                    "input": function_call.arguments
+                }]
+            })
+        }
+        Message::PlainText { role, content } => {
+            json!({
+                "role": role,
+                "content": content
+            })
+        }
+    }
 }
 
 fn check_error(data: &Value) -> Result<()> {
