@@ -26,18 +26,12 @@ pub fn render_stream(
 ) -> Result<String> {
     let wg = WaitGroup::new();
     let wg_cloned = wg.clone();
-    let render_options = config.get_render_options()?;
     let mut stream_handler = {
         let (tx, rx) = unbounded();
         let abort_clone = abort.clone();
         spawn(move || {
             let run = move || {
-                if stdout().is_terminal() {
-                    let mut render = MarkdownRender::init(render_options)?;
-                    markdown_stream(&rx, &mut render, &abort)
-                } else {
                     raw_stream(&rx, &abort)
-                }
             };
             if let Err(err) = run() {
                 render_error(err);

@@ -5,7 +5,7 @@ use crate::{
     utils::PromptKind,
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use reqwest::{Client as ReqwestClient, RequestBuilder};
@@ -132,7 +132,6 @@ pub async fn openai_send_message(builder: RequestBuilder) -> Result<Vec<Message>
                 .to_string();
 
             messages.push(Message::FunctionCall {
-                id,
                 role,
                 function_call: FunctionCall { name, arguments },
                 content: (),

@@ -8,7 +8,6 @@ use crate::config::AIGatewayConfig;
 use crate::config_files::ensure_parent_exists;
 use crate::function_calling::{Function, FunctionCall};
 use crate::input::Input;
-use crate::render::{render_stream, MarkdownRender};
 use crate::utils::now;
 
 use serde::{Deserialize, Serialize};
@@ -23,11 +22,13 @@ use serde::{Deserialize, Serialize};
 #[serde(untagged)]
 pub enum Message {
     FunctionReturn {
+        id: Option<String>,
         role: MessageRole,
         name: String,
         content: String,
     },
     FunctionCall {
+        id: Option<String>,
         role: MessageRole,
         function_call: FunctionCall,
         content: (),
@@ -44,45 +45,15 @@ pub enum Message {
 impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Message::FunctionReturn { role, name, content } => {
-                write!(f, "[{}] Function Return: {} - {}", role, name, content)
+            Message::FunctionReturn { id, role, name, content } => {
+                write!(f, "[{}] Function Return - ID: {:?}, Name: {}, Content: {}", role, id, name, content)
             },
-            Message::FunctionCall { role, function_call, content: _ } => {
-                write!(f, "[{}] Function Call: {} with {}", role, function_call.name, function_call.arguments)
+            Message::FunctionCall { id, role, function_call, content: _ } => {
+                write!(f, "[{}] Function Call - ID: {:?}, {:?}", role, id, function_call)
             },
             Message::PlainText { role, content } => {
                 write!(f, "[{}] Plain Text: {}", role, content)
             }
-        }
-    }
-}
-
-impl From<&Message> for tiktoken_rs::ChatCompletionRequestMessage {
-    fn from(m: &Message) -> tiktoken_rs::ChatCompletionRequestMessage {
-        match m {
-            Message::PlainText { role, content } => tiktoken_rs::ChatCompletionRequestMessage {
-                role: role.to_string(),
-                content: content.clone(),
-                name: None,
-            },
-            Message::FunctionReturn {
-                role,
-                name,
-                content,
-            } => tiktoken_rs::ChatCompletionRequestMessage {
-                role: role.to_string(),
-                content: content.clone(),
-                name: Some(name.clone()),
-            },
-            Message::FunctionCall {
-                role,
-                function_call,
-                content: _,
-            } => tiktoken_rs::ChatCompletionRequestMessage {
-                role: role.to_string(),
-                content: serde_json::to_string(&function_call).unwrap(),
-                name: None,
-            },
         }
     }
 }
@@ -107,16 +78,18 @@ impl Message {
         Self::new_text(MessageRole::Assistant, content)
     }
 
-    pub fn function_call(call: &FunctionCall) -> Self {
+    pub fn function_call(id: Option<String>, call: &FunctionCall) -> Self {
         Self::FunctionCall {
+            id,
             role: MessageRole::Assistant,
             function_call: call.clone(),
             content: (),
         }
     }
 
-    pub fn function_return(name: &str, content: &str) -> Self {
+    pub fn function_return(id: Option<String>, name: &str, content: &str) -> Self {
         Self::FunctionReturn {
+            id: id,
             role: MessageRole::Function.to_owned(),
             name: name.to_string(),
             content: content.to_string(),
