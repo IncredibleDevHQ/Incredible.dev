@@ -1,7 +1,7 @@
 use super::{
     Client, ExtraConfig, Model, ModelConfig, OllamaClient, PromptType, SendData, TokensCountFactors,
 };
-use crate::message::message::Message;
+use crate::message::message::{Message, MessageRole};
 use crate::{render::ReplyHandler, utils::PromptKind};
 
 use anyhow::{anyhow, bail, Result};
@@ -27,7 +27,7 @@ pub struct OllamaConfig {
 impl Client for OllamaClient {
     client_common_fns!();
 
-    async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<String> {
+    async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<Vec<Message>> {
         let builder = self.request_builder(client, data)?;
         send_message(builder).await
     }
@@ -96,18 +96,27 @@ impl OllamaClient {
     }
 }
 
-async fn send_message(builder: RequestBuilder) -> Result<String> {
+async fn send_message(builder: RequestBuilder) -> Result<Vec<Message>> {
     let res = builder.send().await?;
     let status = res.status();
     if status != 200 {
         let text = res.text().await?;
-        bail!("{status}, {text}");
+        bail!("HTTP Error {status}: {text}");
     }
+
     let data: Value = res.json().await?;
     let output = data["message"]["content"]
         .as_str()
-        .ok_or_else(|| anyhow!("Invalid response data: {data}"))?;
-    Ok(output.to_string())
+        .ok_or_else(|| anyhow!("Invalid response data: {:?}", data))?;
+
+    // Create the PlainText message, assuming the role is 'Assistant'
+    let message = Message::PlainText {
+        role: MessageRole::Assistant,
+        content: output.to_string(),
+    };
+
+    // Wrap the message in a vector and return
+    Ok(vec![message])
 }
 
 async fn send_message_streaming(builder: RequestBuilder, handler: &mut ReplyHandler) -> Result<()> {
@@ -148,6 +157,7 @@ fn build_body(data: SendData, model: String) -> Result<Value> {
         .into_iter()
         .map(|message| match message {
             Message::FunctionReturn {
+                id,
                 role,
                 name,
                 content,
