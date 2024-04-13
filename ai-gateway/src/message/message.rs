@@ -9,7 +9,7 @@ use crate::config_files::ensure_parent_exists;
 use crate::function_calling::{Function, FunctionCall};
 use crate::input::Input;
 use crate::render::{render_stream, MarkdownRender};
-use crate::utils::{create_abort_signal, extract_block, now};
+use crate::utils::now;
 
 use serde::{Deserialize, Serialize};
 
@@ -23,13 +23,11 @@ use serde::{Deserialize, Serialize};
 #[serde(untagged)]
 pub enum Message {
     FunctionReturn {
-        id: Option<String>,
         role: MessageRole,
         name: String,
         content: String,
     },
     FunctionCall {
-        id: Option<String>,
         role: MessageRole,
         function_call: FunctionCall,
         content: (),
@@ -41,6 +39,22 @@ pub enum Message {
         role: MessageRole,
         content: String,
     },
+}
+
+impl fmt::Display for Message {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Message::FunctionReturn { role, name, content } => {
+                write!(f, "[{}] Function Return: {} - {}", role, name, content)
+            },
+            Message::FunctionCall { role, function_call, content: _ } => {
+                write!(f, "[{}] Function Call: {} with {}", role, function_call.name, function_call.arguments)
+            },
+            Message::PlainText { role, content } => {
+                write!(f, "[{}] Plain Text: {}", role, content)
+            }
+        }
+    }
 }
 
 impl From<&Message> for tiktoken_rs::ChatCompletionRequestMessage {
@@ -93,18 +107,16 @@ impl Message {
         Self::new_text(MessageRole::Assistant, content)
     }
 
-    pub fn function_call(id: String, call: &FunctionCall) -> Self {
+    pub fn function_call(call: &FunctionCall) -> Self {
         Self::FunctionCall {
-            id: Some(id),
             role: MessageRole::Assistant,
             function_call: call.clone(),
             content: (),
         }
     }
 
-    pub fn function_return(id: String, name: &str, content: &str) -> Self {
+    pub fn function_return(name: &str, content: &str) -> Self {
         Self::FunctionReturn {
-            id: Some(id),
             role: MessageRole::Function.to_owned(),
             name: name.to_string(),
             content: content.to_string(),
@@ -156,35 +168,13 @@ impl AIGatewayConfig {
         text: Option<String>,
         history: Option<Vec<Message>>,
         functions: Option<Vec<Function>>,
-        no_stream: bool,
-        code_mode: bool,
     ) -> Result<Vec<Message>> {
         let input = Input::new(text, functions, history);
         let mut client = init_client(self)?;
         ensure_model_capabilities(client.as_mut(), input.required_capabilities())?;
 
-        let output = if no_stream {
-            let output = client.send_message(input.clone()).await?;
-            let output = if code_mode && output.trim_start().starts_with("```") {
-                extract_block(&output)
-            } else {
-                output.clone()
-            };
-            if no_stream {
-                let render_options = self.get_render_options()?;
-                let mut markdown_render = MarkdownRender::init(render_options)?;
-                println!("{}", markdown_render.render(&output).trim());
-            } else {
-                println!("{}", output);
-            }
-            output
-        } else {
-            let abort = create_abort_signal();
-            render_stream(&input, client.as_ref(), self, abort)?
-        };
-        // Save the message/session
-        self.save_message(input, &output)?;
-        self.end_session()?;
+        let output = client.send_message(input.clone()).await?;
+        log::debug!("Messages: {:#?}", output);
         Ok(output)
     }
 
