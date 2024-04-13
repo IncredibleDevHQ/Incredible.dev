@@ -1,6 +1,6 @@
-use super::{ Client, ErnieClient, ExtraConfig, Model, PromptType, SendData};
+use super::{Client, ErnieClient, ExtraConfig, Model, PromptType, SendData};
 
-use crate::{render::ReplyHandler, utils::PromptKind};
+use crate::{message::message::{Message, MessageRole}, render::ReplyHandler, utils::PromptKind};
 
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
@@ -53,7 +53,7 @@ pub struct ErnieConfig {
 impl Client for ErnieClient {
     client_common_fns!();
 
-    async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<String> {
+    async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<Vec<Message>> {
         self.prepare_access_token().await?;
         let builder = self.request_builder(client, data)?;
         send_message(builder).await
@@ -132,7 +132,7 @@ impl ErnieClient {
     }
 }
 
-async fn send_message(builder: RequestBuilder) -> Result<String> {
+async fn send_message(builder: RequestBuilder) -> Result<Vec<Message>> {
     let data: Value = builder.send().await?.json().await?;
     check_error(&data)?;
 
@@ -140,7 +140,11 @@ async fn send_message(builder: RequestBuilder) -> Result<String> {
         .as_str()
         .ok_or_else(|| anyhow!("Unexpected response {data}"))?;
 
-    Ok(output.to_string())
+    let message = Message::PlainText {
+        role: MessageRole::Assistant,
+        content: output.to_string(),
+    };
+    Ok(vec![message])
 }
 
 async fn send_message_streaming(builder: RequestBuilder, handler: &mut ReplyHandler) -> Result<()> {
@@ -206,12 +210,12 @@ fn check_error(data: &Value) -> Result<()> {
 fn build_body(data: SendData, _model: String) -> Value {
     let SendData {
         mut messages,
-        functions, 
+        functions,
         temperature,
         stream,
     } = data;
 
-   // patch_system_message(&mut messages);
+    // patch_system_message(&mut messages);
 
     let mut body = json!({
         "messages": messages,
