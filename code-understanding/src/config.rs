@@ -18,7 +18,7 @@ pub struct Config {
     pub ai_gateway_config: String,
 }
 
-pub fn load_from_env() -> Result<Config, anyhow::Error> {
+pub fn load_from_env() -> Config {
     let environment = env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string());
     let env_file = format!(".env.{}", environment);
 
