@@ -7,7 +7,6 @@ use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use reqwest::{
-    multipart::{Form, Part},
     Client as ReqwestClient, RequestBuilder,
 };
 use reqwest_eventsource::{Error as EventSourceError, Event, RequestBuilderExt};
@@ -42,7 +41,7 @@ impl Client for QianwenClient {
         &self,
         client: &ReqwestClient,
         mut data: SendData,
-    ) -> Result<String> {
+    ) -> Result<Vec<Message>> {
         let api_key = self.get_api_key()?;
         let builder = self.request_builder(client, data)?;
         send_message(builder).await
@@ -169,7 +168,7 @@ fn build_body(data: SendData, model: String) -> Result<(Value, bool)> {
             },
             Message::FunctionCall { role, function_call, .. } => {
                 // Construct a description for the function call including its arguments.
-                let func_name = function_call.name.clone().unwrap_or_else(|| "Unnamed function".to_string());
+                let func_name = function_call.name.clone();
                 let call_desc = format!("Function call: {} with arguments: {}", func_name, function_call.arguments);
                 json!({
                     "role": role,
