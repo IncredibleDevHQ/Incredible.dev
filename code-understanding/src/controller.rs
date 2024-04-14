@@ -56,6 +56,7 @@ pub async fn handle_retrieve_code(
         query_id: id,
         complete: false,
         repo_name: req.repo.clone(),
+        last_function_call_id: None,
     };
 
     // first action

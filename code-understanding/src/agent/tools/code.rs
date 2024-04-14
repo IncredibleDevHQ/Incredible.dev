@@ -10,7 +10,9 @@ use log::{error, debug};
 impl Agent {
     #[instrument(skip(self))]
     pub async fn code_search(&mut self, query: &String) -> Result<String> {
+        let last_function_call_id = self.last_function_call_id.clone();
         self.update(Update::StartStep(SearchStep::Code {
+            id: last_function_call_id,
             query: query.clone(),
             response: String::new(),
         }))?;
@@ -66,7 +68,9 @@ impl Agent {
             .join("\n\n");
 
         log::debug!("response: {}", response);
+        let last_function_call_id = self.last_function_call_id.clone();
         self.update(Update::ReplaceStep(SearchStep::Code {
+            id: last_function_call_id,
             query: query.clone(),
             response: response.clone(),
         }))?;

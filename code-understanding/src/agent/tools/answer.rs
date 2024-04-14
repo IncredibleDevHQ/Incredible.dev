@@ -1,20 +1,23 @@
-use std::{collections::HashMap, mem, ops::Range};
 use anyhow::{anyhow, Context, Result};
-use common::{CodeContext, llm_gateway, prompts};
+use common::{llm_gateway, prompts, CodeContext};
 use futures::StreamExt;
 use rand::{rngs::OsRng, seq::SliceRandom};
+use std::{collections::HashMap, mem, ops::Range};
 use tracing::{debug, info, instrument, trace};
 
-use crate::{agent::{
-    exchange::{CodeChunk, FocusedChunk, Update},
-    transform,
-}, config::get_quickwit_url, search};
+use crate::{
+    agent::{
+        exchange::{CodeChunk, FocusedChunk, Update},
+        transform,
+    },
+    config::get_quickwit_url,
+    search,
+};
 
 use ai_gateway::message::message::{Message, MessageRole};
 
 use crate::agent::agent::Agent;
 use crate::agent::agent::ANSWER_MODEL;
-
 
 impl Agent {
     #[instrument(skip(self))]
@@ -170,7 +173,7 @@ impl Agent {
             .map(|(c, _)| CodeContext {
                 path: c.path.clone(),
                 hidden: false,
-                repo: self.repo_name.clone(), 
+                repo: self.repo_name.clone(),
                 branch: None,
                 ranges: vec![c.start_line..c.end_line],
             })
@@ -218,11 +221,11 @@ impl Agent {
             .rev()
             .flat_map(|e| {
                 let query = e.query().map(|q| Message::PlainText {
-                    role: MessageRole::User, 
+                    role: MessageRole::User,
                     content: q,
                 });
 
-                let conclusion = e.answer().map(|(answer, conclusion)| {
+                let conclusion = e.answer().map(|(id, answer, conclusion)| {
                     let encoded =
                         transform::encode_summarized(answer, Some(conclusion), "gpt-4-0613")
                             .unwrap();
@@ -252,7 +255,6 @@ impl Agent {
         aliases: &[usize],
         gpt_model: &str,
     ) -> Vec<CodeChunk> {
-        let search_db_url = get_quickwit_url();
         debug!(?aliases, "canonicalizing code chunks");
         log::debug!("canonicalizing code chunks: {:?}", aliases);
         /// The ratio of code tokens to context size.
@@ -284,8 +286,10 @@ impl Agent {
             .then(|(path, spans)| async move {
                 spans.sort_by_key(|c| c.start);
 
+                let search_db_url = get_quickwit_url().clone();
+
                 let lines = self_
-                    .get_file_content(&search_db_url,path)
+                    .get_file_content(&search_db_url, path)
                     .await
                     .unwrap()
                     .unwrap_or_else(|| panic!("path did not exist in the index: {path}"))
@@ -403,10 +407,7 @@ impl Agent {
 }
 
 // headroom refers to the amount of space reserved for the rest of the prompt
-fn trim_utter_history(
-    mut history: Vec<Message>,
-    headroom: usize,
-) -> Result<Vec<Message>> {
+fn trim_utter_history(mut history: Vec<Message>, headroom: usize) -> Result<Vec<Message>> {
     let mut tiktoken_msgs: Vec<tiktoken_rs::ChatCompletionRequestMessage> =
         history.iter().map(|m| m.into()).collect::<Vec<_>>();
 

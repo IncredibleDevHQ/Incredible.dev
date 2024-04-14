@@ -10,7 +10,7 @@ use common::CodeContext;
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
 pub struct Exchange {
     pub id: uuid::Uuid,
-    pub query: String, 
+    pub query: String,
     pub answer: Option<String>,
     pub answer_id: Option<String>,
     pub search_steps: Vec<SearchStep>,
@@ -34,7 +34,7 @@ pub struct Exchange {
     conclusion: Option<String>,
 
     // Final context that was used to generate the conclusion
-    pub final_context: Vec<CodeContext>
+    pub final_context: Vec<CodeContext>,
 }
 
 impl Exchange {
@@ -86,8 +86,10 @@ impl Exchange {
     ///
     /// This returns a tuple of `(full_text, conclusion)`.
     pub fn answer(&self) -> Option<(&str, &str, &str)> {
-        match (&self.answer, &self.conclusion, &self.answer_id) {
-            (Some(answer), Some(conclusion), Some(answer_id)) => Some((answer.as_str(), conclusion.as_str(), answer_id.as_str())),
+        match (&self.answer_id, &self.answer, &self.conclusion) {
+            (Some(answer_id), Some(answer), Some(conclusion)) => {
+                Some((answer_id.as_str(), answer.as_str(), conclusion.as_str()))
+            }
             _ => None,
         }
     }
@@ -149,7 +151,9 @@ impl SearchStep {
                 query: query.clone(),
                 response: "[hidden, compressed]".into(),
             },
-            Self::Proc { id, query, paths, .. } => Self::Proc {
+            Self::Proc {
+                id, query, paths, ..
+            } => Self::Proc {
                 id: id.clone(),
                 query: query.clone(),
                 paths: paths.clone(),

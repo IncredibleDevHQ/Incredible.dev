@@ -58,7 +58,7 @@ pub fn load_from_env() -> Config {
     let search_server_url =
         env::var("SEARCH_SERVER_URL").unwrap_or_else(|_| "http://localhost:3003".to_string());
 
-    Ok(Config {
+   Config {
         semantic_url,
         qdrant_api_key,
         tokenizer_path,
@@ -70,7 +70,7 @@ pub fn load_from_env() -> Config {
         semantic_collection_name,
         search_server_url,
         ai_gateway_config,
-    })
+    }
 }
 
 pub fn get_semantic_url() -> String {

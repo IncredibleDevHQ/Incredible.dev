@@ -1,3 +1,4 @@
+use log::debug;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 use std::sync::Arc;
@@ -80,7 +81,7 @@ pub struct Agent {
     pub exchanges: Vec<Exchange>,
     pub ai_gateway: AIGatewayConfig,
     pub query_id: uuid::Uuid,
-
+    pub last_function_call_id: Option<String>,
     /// Indicate whether the request was answered.
     ///
     /// This is used in the `Drop` handler, in order to track cancelled answer queries.
@@ -300,11 +301,11 @@ impl Agent {
                         message::Message::function_call(
                             *id,
                             &FunctionCall {
-                                name: Some(name.clone()),
+                                name: name.clone(),
                                 arguments,
                             },
                         ),
-                        message::Message::function_return(id, &name, &s.get_response()),
+                        message::Message::function_return(*id, &name, &s.get_response()),
                         message::Message::user(FUNCTION_CALL_INSTRUCTION),
                     ]
                 });
@@ -313,7 +314,7 @@ impl Agent {
                     // NB: We intentionally discard the summary as it is redundant.
                     Some((answer, _conclusion, answer_id)) => {
                         let encoded = transform::encode_summarized(answer, None, "gpt-3.5-turbo")?;
-                        Some(message::Message::function_return(answer_id,"none", &encoded))
+                        Some(message::Message::function_return(Some(answer_id.to_string()),"none", &encoded))
                     }
 
                     None => None,
@@ -354,12 +355,13 @@ impl Agent {
 }
 
 fn trim_history(mut history: Vec<message::Message>) -> Result<Vec<message::Message>> {
-    const HEADROOM: usize = 2048;
+    const HEADROOM: usize = 100000;
     const HIDDEN: &str = "[HIDDEN]";
 
     let mut tiktoken_msgs = history.iter().map(|m| m.into()).collect::<Vec<_>>();
 
     while tiktoken_rs::get_chat_completion_max_tokens(ANSWER_MODEL, &tiktoken_msgs)? < HEADROOM {
+        debug!("Trimming history");
         let _ = history
             .iter_mut()
             .zip(tiktoken_msgs.iter_mut())
@@ -437,7 +439,7 @@ impl Action {
     fn deserialize_gpt(call: &FunctionCall) -> Result<Self> {
         let mut map = serde_json::Map::new();
         map.insert(
-            call.name.clone().unwrap(),
+            call.name.clone(),
             serde_json::from_str(&call.arguments)?,
         );
 
