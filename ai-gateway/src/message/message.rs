@@ -45,12 +45,30 @@ pub enum Message {
 impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Message::FunctionReturn { id, role, name, content } => {
-                write!(f, "[{}] Function Return - ID: {:?}, Name: {}, Content: {}", role, id, name, content)
-            },
-            Message::FunctionCall { id, role, function_call, content: _ } => {
-                write!(f, "[{}] Function Call - ID: {:?}, {:?}", role, id, function_call)
-            },
+            Message::FunctionReturn {
+                id,
+                role,
+                name,
+                content,
+            } => {
+                write!(
+                    f,
+                    "[{}] Function Return - ID: {:?}, Name: {}, Content: {}",
+                    role, id, name, content
+                )
+            }
+            Message::FunctionCall {
+                id,
+                role,
+                function_call,
+                content: _,
+            } => {
+                write!(
+                    f,
+                    "[{}] Function Call - ID: {:?}, {:?}",
+                    role, id, function_call
+                )
+            }
             Message::PlainText { role, content } => {
                 write!(f, "[{}] Plain Text: {}", role, content)
             }
@@ -93,6 +111,58 @@ impl Message {
             role: MessageRole::Function.to_owned(),
             name: name.to_string(),
             content: content.to_string(),
+        }
+    }
+}
+
+impl From<&Message> for tiktoken_rs::ChatCompletionRequestMessage {
+    fn from(m: &Message) -> tiktoken_rs::ChatCompletionRequestMessage {
+        match m {
+            Message::PlainText { role, content } => tiktoken_rs::ChatCompletionRequestMessage {
+                role: role.to_string(),
+                content: content.clone(),
+                name: None,
+            },
+            Message::FunctionReturn {
+                id,
+                role,
+                name,
+                content,
+            } => {
+                let name_with_id = format!(
+                    "{}{}",
+                    name,
+                    id.as_ref()
+                        .map_or(String::new(), |id| format!(" (ID: {})", id))
+                );
+                tiktoken_rs::ChatCompletionRequestMessage {
+                    role: role.to_string(),
+                    content: content.clone(),
+                    name: Some(name_with_id),
+                }
+            }
+            Message::FunctionCall {
+                id,
+                role,
+                function_call,
+                content: _,
+            } => {
+                // Serialize the function_call to JSON, handle potential errors gracefully
+                let function_call_json =
+                    serde_json::to_string(&function_call).unwrap_or_else(|_| {
+                        String::from("{\"error\":\"Failed to serialize function call\"}")
+                    });
+
+                let name_with_id = id
+                    .as_ref()
+                    .map_or(String::new(), |id| format!("Function call ID: {}", id));
+
+                tiktoken_rs::ChatCompletionRequestMessage {
+                    role: role.to_string(),
+                    content: function_call_json,
+                    name: Some(name_with_id),
+                }
+            }
         }
     }
 }
