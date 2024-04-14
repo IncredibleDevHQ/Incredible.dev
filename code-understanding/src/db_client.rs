@@ -1,5 +1,5 @@
 use crate::agent::agent::{ContentDocument, FileDocument};
-use crate::config::{clone_config, get_quickwit_url, Config};
+use crate::config::{clone_config, get_quickwit_url};
 use crate::helpers::build_fuzzy_regex_filter::build_fuzzy_regex_filter;
 use crate::helpers::case_permutations::case_permutations;
 use crate::helpers::trigrams::trigrams;

@@ -10,7 +10,9 @@ use crate::agent::exchange::{SearchStep, Update};
 impl Agent {
     #[instrument(skip(self))]
     pub async fn path_search(&mut self, query: &String) -> Result<String> {
+        let last_function_call_id = self.last_function_call_id.clone();
         self.update(Update::StartStep(SearchStep::Path {
+            id: last_function_call_id,
             query: query.clone(),
             response: String::new(),
         }))?;
@@ -50,7 +52,9 @@ impl Agent {
             .collect::<Vec<_>>()
             .join("\n");
 
+        let last_function_call_id = self.last_function_call_id.clone();
         self.update(Update::ReplaceStep(SearchStep::Path {
+            id: last_function_call_id.clone(),
             query: query.clone(),
             response: response.clone(),
         }))?;

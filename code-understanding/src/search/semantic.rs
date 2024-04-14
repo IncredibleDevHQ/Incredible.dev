@@ -2,7 +2,6 @@ use thiserror::Error;
 use tracing::log::debug;
 // import hashset from collections
 use std::{
-    borrow::Cow,
     collections::{HashMap, HashSet},
     str,
 };

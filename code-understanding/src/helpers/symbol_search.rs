@@ -1,16 +1,17 @@
 use reqwest;
 use serde_json::json;
 use anyhow::Error;
-use crate::get_config;
 extern crate common;
 
 use common::models::CodeChunk;
+
+use crate::config::get_search_server_url;
 
 pub async fn symbol_search(
     query: &str,
     repo_name: &str,
 ) -> Result<Vec<CodeChunk>, Error> {
-    let base_url = &get_config().search_server_url;
+    let base_url = get_search_server_url(); 
     let namespace = repo_name;
     let client = reqwest::Client::new();
     let url = format!("{}/symbols", base_url);

@@ -27,6 +27,7 @@ impl Agent {
         debug!(?query, ?paths, "invoking proc");
 
         self.update(Update::StartStep(SearchStep::Proc {
+            id: self.last_function_call_id,
             query: query.to_string(),
             paths: paths.clone(),
             response: String::new(),
@@ -209,6 +210,7 @@ impl Agent {
             .join("\n\n");
 
         self.update(Update::ReplaceStep(SearchStep::Proc {
+            id: self.last_function_call_id,
             query: query.to_string(),
             paths,
             response: response.clone(),
