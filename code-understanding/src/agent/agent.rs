@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
-use tracing::instrument;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::instrument;
 
 use crate::{config::get_ai_gateway_config, AppState};
 use anyhow::{anyhow, Context, Result};
@@ -10,9 +10,11 @@ use anyhow::{anyhow, Context, Result};
 use common::{ai_util::call_llm, prompts};
 
 use crate::agent::exchange::{Exchange, SearchStep, Update};
-use ai_gateway::{config::AIGatewayConfig, function_calling::{Function, FunctionCall}};
 use ai_gateway::message::message::{self, MessageRole};
-
+use ai_gateway::{
+    config::AIGatewayConfig,
+    function_calling::{Function, FunctionCall},
+};
 
 use crate::agent::transform;
 // Types of repo
@@ -58,7 +60,6 @@ pub struct FileDocument {
     pub lang: Option<String>,
 }
 
-
 /// A collection of modules that each add methods to `Agent`.
 ///
 /// These methods correspond to `Action` handlers, and often have supporting methods and supporting
@@ -77,7 +78,7 @@ pub struct Agent {
     pub repo_name: String,
     pub app_state: Arc<AppState>,
     pub exchanges: Vec<Exchange>,
-    pub ai_gateway: AIGatewayConfig, 
+    pub ai_gateway: AIGatewayConfig,
     pub query_id: uuid::Uuid,
 
     /// Indicate whether the request was answered.
@@ -142,7 +143,7 @@ pub fn get_line_number(byte: usize, line_end_indices: &[usize]) -> usize {
         .position(|&line_end_byte| (line_end_byte as usize) >= byte)
         .unwrap_or(0);
 
-    return line 
+    return line;
 }
 
 impl Agent {
@@ -214,9 +215,7 @@ impl Agent {
         )
         .unwrap();
 
-        let mut history = vec![message::Message::system(&prompts::system(
-            self.paths(),
-        ))];
+        let mut history = vec![message::Message::system(&prompts::system(self.paths()))];
         history.extend(self.history()?);
 
         log::debug!("full history:\n {:?}", history);
@@ -224,12 +223,12 @@ impl Agent {
         let trimmed_history = trim_history(history.clone())?;
 
         log::debug!("trimmed history:\n {:?}", trimmed_history);
-        let llm_output = call_llm(&get_ai_gateway_config(), None, Some(trimmed_history)).await.map_err(|e| {
-            log::error!("Failed to start AI Gateway: {:?}", e);
-            e
-        });
-
-        
+        let llm_output = call_llm(&get_ai_gateway_config(), None, Some(trimmed_history))
+            .await
+            .map_err(|e| {
+                log::error!("Failed to start AI Gateway: {:?}", e);
+                e
+            });
 
         let choice = chat_completion.choices[0].clone();
         let functions_to_call = choice.message.function_call.unwrap().to_owned();
@@ -266,16 +265,21 @@ impl Agent {
                     .ok_or_else(|| anyhow!("query does not have target"))?;
 
                 let steps = e.search_steps.iter().flat_map(|s| {
-                    let (name, arguments) = match s {
-                        SearchStep::Path { query, .. } => (
+                    let (id, name, arguments) = match s {
+                        SearchStep::Path { id, query, .. } => (
+                            id,
                             "path".to_owned(),
                             format!("{{\n \"query\": \"{query}\"\n}}"),
                         ),
-                        SearchStep::Code { query, .. } => (
+                        SearchStep::Code { id, query, .. } => (
+                            id,
                             "code".to_owned(),
                             format!("{{\n \"query\": \"{query}\"\n}}"),
                         ),
-                        SearchStep::Proc { query, paths, .. } => (
+                        SearchStep::Proc {
+                            id, query, paths, ..
+                        } => (
+                            id,
                             "proc".to_owned(),
                             format!(
                                 "{{\n \"paths\": [{}],\n \"query\": \"{query}\"\n}}",
@@ -293,20 +297,23 @@ impl Agent {
                     };
 
                     vec![
-                        message::Message::function_call(&FunctionCall {
-                            name: Some(name.clone()),
-                            arguments,
-                        }),
-                        message::Message::function_return(&name, &s.get_response()),
+                        message::Message::function_call(
+                            *id,
+                            &FunctionCall {
+                                name: Some(name.clone()),
+                                arguments,
+                            },
+                        ),
+                        message::Message::function_return(id, &name, &s.get_response()),
                         message::Message::user(FUNCTION_CALL_INSTRUCTION),
                     ]
                 });
 
                 let answer = match e.answer() {
                     // NB: We intentionally discard the summary as it is redundant.
-                    Some((answer, _conclusion)) => {
+                    Some((answer, _conclusion, answer_id)) => {
                         let encoded = transform::encode_summarized(answer, None, "gpt-3.5-turbo")?;
-                        Some(message::Message::function_return("none", &encoded))
+                        Some(message::Message::function_return(answer_id,"none", &encoded))
                     }
 
                     None => None,
@@ -314,9 +321,7 @@ impl Agent {
 
                 acc.extend(
                     std::iter::once(query)
-                        .chain(vec![message::Message::user(
-                            FUNCTION_CALL_INSTRUCTION,
-                        )])
+                        .chain(vec![message::Message::user(FUNCTION_CALL_INSTRUCTION)])
                         .chain(steps)
                         .chain(answer.into_iter()),
                 );
@@ -325,7 +330,11 @@ impl Agent {
         Ok(history)
     }
 
-    pub async fn get_file_content(&self, base_url: &str, path: &str) -> Result<Option<ContentDocument>> {
+    pub async fn get_file_content(
+        &self,
+        base_url: &str,
+        path: &str,
+    ) -> Result<Option<ContentDocument>> {
         self.app_state
             .db_connection
             .get_file_from_quickwit(base_url, &self.repo_name, "relative_path", path)
@@ -344,9 +353,7 @@ impl Agent {
     }
 }
 
-fn trim_history(
-    mut history: Vec<message::Message>,
-) -> Result<Vec<message::Message>> {
+fn trim_history(mut history: Vec<message::Message>) -> Result<Vec<message::Message>> {
     const HEADROOM: usize = 2048;
     const HIDDEN: &str = "[HIDDEN]";
 
@@ -370,6 +377,7 @@ fn trim_history(
                     }
                 }
                 message::Message::FunctionReturn {
+                    id: _,
                     role: _,
                     name: _,
                     ref mut content,

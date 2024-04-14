@@ -12,6 +12,7 @@ pub struct Exchange {
     pub id: uuid::Uuid,
     pub query: String, 
     pub answer: Option<String>,
+    pub answer_id: Option<String>,
     pub search_steps: Vec<SearchStep>,
     pub paths: Vec<String>,
     pub code_chunks: Vec<CodeChunk>,
@@ -84,9 +85,9 @@ impl Exchange {
     /// Get the answer and conclusion associated with this exchange, if a conclusion has been made.
     ///
     /// This returns a tuple of `(full_text, conclusion)`.
-    pub fn answer(&self) -> Option<(&str, &str)> {
-        match (&self.answer, &self.conclusion) {
-            (Some(answer), Some(conclusion)) => Some((answer.as_str(), conclusion.as_str())),
+    pub fn answer(&self) -> Option<(&str, &str, &str)> {
+        match (&self.answer, &self.conclusion, &self.answer_id) {
+            (Some(answer), Some(conclusion), Some(answer_id)) => Some((answer.as_str(), conclusion.as_str(), answer_id.as_str())),
             _ => None,
         }
     }
@@ -115,14 +116,17 @@ impl Exchange {
 #[non_exhaustive]
 pub enum SearchStep {
     Path {
+        id: Option<String>,
         query: String,
         response: String,
     },
     Code {
+        id: Option<String>,
         query: String,
         response: String,
     },
     Proc {
+        id: Option<String>,
         query: String,
         paths: Vec<String>,
         response: String,
@@ -135,15 +139,18 @@ impl SearchStep {
     /// Used in `Exchange::compressed`.
     fn compressed(&self) -> Self {
         match self {
-            Self::Path { query, .. } => Self::Path {
+            Self::Path { id, query, .. } => Self::Path {
+                id: id.clone(),
                 query: query.clone(),
                 response: "[hidden, compressed]".into(),
             },
-            Self::Code { query, .. } => Self::Code {
+            Self::Code { id, query, .. } => Self::Code {
+                id: id.clone(),
                 query: query.clone(),
                 response: "[hidden, compressed]".into(),
             },
-            Self::Proc { query, paths, .. } => Self::Proc {
+            Self::Proc { id, query, paths, .. } => Self::Proc {
+                id: id.clone(),
                 query: query.clone(),
                 paths: paths.clone(),
                 response: "[hidden, compressed]".into(),
