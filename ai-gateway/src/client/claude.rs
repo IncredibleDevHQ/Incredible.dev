@@ -306,7 +306,7 @@ fn message_to_json(message: &Message) -> Value {
             content,
         } => {
             json!({
-                "role": role,
+                "role": "user",
                 "content": [{
                     "type": "tool_result",
                     "tool_use_id": id.clone().unwrap_or_default(),
@@ -320,13 +320,20 @@ fn message_to_json(message: &Message) -> Value {
             function_call,
             content: _,
         } => {
+            // Attempt to parse the JSON arguments.
+            let arguments_json: serde_json::Value = serde_json::from_str(&function_call.arguments)
+                .unwrap_or_else(|e| {
+                    // Log the error before returning an empty JSON object.
+                    error!("Failed to parse JSON arguments for FunctionCall, but still moving forward with empty input value: {}", e);
+                    json!({})
+                });
             json!({
                 "role": role,
                 "content": [{
                     "type": "tool_use",
                     "id": id,
                     "name": function_call.name,
-                    "input": function_call.arguments
+                    "input": arguments_json
                 }]
             })
         }

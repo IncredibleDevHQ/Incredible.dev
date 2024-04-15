@@ -17,7 +17,7 @@ pub async fn generate_tasks_and_questions(
     // append the system message to the message history
     let mut messages = Some(system_message.clone()).into_iter().collect::<Vec<_>>();
 
-    let response_messages = call_llm(&get_ai_gateway_config(), None, Some(messages.clone())).await?;
+    let response_messages = call_llm(&get_ai_gateway_config(), None, Some(messages.clone()), None).await?;
 
     let response = extract_single_plaintext_content(&response_messages)?;
     // create assistant message and add it to the messages

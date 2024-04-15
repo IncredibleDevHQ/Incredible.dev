@@ -24,10 +24,12 @@ pub async fn symbol_search(
         .await?;
 
     if response.status() != reqwest::StatusCode::OK {
+        // return error message with status code 
         return Err(Error::msg(format!(
-            "Symbol Search API request returned error:  {}",
-            response.status()
+            "Symbol search failed with status code: {:?}, Error: {:?}",
+            response.status(), response.text().await
         )));
+       
     }
 
     let search_results: Vec<CodeChunk> = response.json().await?;
