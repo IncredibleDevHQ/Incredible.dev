@@ -1,11 +1,11 @@
-use ai_gateway::{config::AIGatewayConfig, function_calling::FunctionCall, message::message::Message};
+use ai_gateway::{config::AIGatewayConfig, function_calling::{Function, FunctionCall}, message::message::Message};
 use log::debug;
 use anyhow::{Result, anyhow};
 
-pub async fn call_llm(gateway_config: &str, user_msg: Option<String>, history: Option<Vec<Message>>) -> Result<Vec<Message>> {
+pub async fn call_llm(gateway_config: &str, user_msg: Option<String>, history: Option<Vec<Message>>, functions: Option<Vec<Function>>) -> Result<Vec<Message>> {
     let mut ai_gateway_config = AIGatewayConfig::from_yaml(gateway_config)?;
     let result = ai_gateway_config
-        .use_llm(user_msg, history, None)
+        .use_llm(user_msg, history, functions)
         .await?;
 
     debug!("LLM response: {:?}", result);

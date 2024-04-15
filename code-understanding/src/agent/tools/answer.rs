@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Context, Result};
-use common::{ai_util::{call_llm, extract_single_plaintext_content}, llm_gateway, prompts, CodeContext};
+use common::{ai_util::{call_llm, extract_single_plaintext_content}, prompts, CodeContext};
 use futures::StreamExt;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{collections::HashMap, mem, ops::Range};
@@ -66,7 +66,7 @@ impl Agent {
 
         log::debug!("Answer message: {:?}", messages.clone());
 
-        let llm_output = call_llm(&get_ai_gateway_config(), None, Some(messages)).await?;
+        let llm_output = call_llm(&get_ai_gateway_config(), None, Some(messages), None).await?;
 
         let response_message = extract_single_plaintext_content(&llm_output)?;
 
