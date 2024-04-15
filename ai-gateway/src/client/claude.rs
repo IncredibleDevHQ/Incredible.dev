@@ -7,6 +7,7 @@ use crate::{render::ReplyHandler, utils::PromptKind};
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
 use futures_util::StreamExt;
+use log::error;
 use reqwest::{Client as ReqwestClient, RequestBuilder};
 use reqwest_eventsource::{Error as EventSourceError, Event, RequestBuilderExt};
 use serde::Deserialize;
@@ -76,7 +77,7 @@ impl ClaudeClient {
     fn request_builder(&self, client: &ReqwestClient, data: SendData) -> Result<RequestBuilder> {
         let api_key = self.get_api_key().ok();
 
-        let body = build_body(data, self.model.name.clone())?;
+        let body = build_body(data.clone(), self.model.name.clone())?;
 
         let url = API_BASE;
 
@@ -86,6 +87,11 @@ impl ClaudeClient {
         builder = builder.header("anthropic-version", "2023-06-01");
         if let Some(api_key) = api_key {
             builder = builder.header("x-api-key", api_key)
+        }
+        // if SendData has functions, then add header "anthropic-beta: tools-2024-04-04"
+        // https://docs.anthropic.com/claude/docs/tool-use
+        if data.functions.is_some() {
+            builder = builder.header("anthropic-beta", "tools-2024-04-04");
         }
 
         Ok(builder)
@@ -120,11 +126,17 @@ pub async fn send_message(builder: RequestBuilder) -> Result<Vec<Message>> {
         bail!("Request failed: {}", error_msg);
     }
 
-    let data: Value = response.json().await?;
-    if let Some(err_msg) = data["error"]["message"].as_str() {
-        bail!("API error: {}", err_msg);
+    let data = response.json().await;
+    if data.is_err() {
+        error!("Failed to parse claude response: {:?}", data);
+        bail!("Failed to parse response: {:?}", data);
     }
 
+    let data: Value = data.unwrap();
+    if let Some(err_msg) = data["error"]["message"].as_str() {
+        error!("Claude API error: {}", err_msg);
+        bail!("API error: {}", err_msg);
+    }
     // Initialize an empty vector to store messages
     let mut messages = Vec::new();
 
@@ -209,6 +221,7 @@ fn build_body(data: SendData, model: String) -> Result<Value> {
 
     let mut body = json!({
         "model": model,
+        "max_tokens": 4096,
     });
 
     // Check if the first message is a system type and handle it accordingly
@@ -219,7 +232,7 @@ fn build_body(data: SendData, model: String) -> Result<Value> {
                 content,
             } => {
                 // Set the system message at the top-level
-                body["system"] = json!({ "content": content });
+                body["system"] = json!(content);
             }
             _ => {
                 // If the first message is not a system message, handle it normally
@@ -238,23 +251,40 @@ fn build_body(data: SendData, model: String) -> Result<Value> {
     }
 
     if let Some(tools) = data.functions {
-        let tools_json: Vec<Value> = tools.iter().map(|tool| {
-            json!({
-                "name": tool.name,
-                "description": tool.description,
-                "input_schema": {
-                    "type": tool.parameters._type,
-                    "properties": tool.parameters.properties.iter().map(|(key, param)| {
-                        (key.clone(), json!({
-                            "type": param._type,
-                            "description": param.description.as_ref().unwrap_or(&"".to_string()), // Directly unwrapping
-                            "items": param.items // Assume items are optional and serialized correctly
-                        }))
-                    }).collect::<serde_json::Map<String, Value>>(),
-                    "required": tool.parameters.required
-                }
+        let tools_json: Vec<Value> = tools
+            .iter()
+            .map(|tool| {
+                json!({
+                    "name": tool.name,
+                    "description": tool.description,
+                    "input_schema": {
+                        "type": "object",
+                        "properties": tool.parameters.properties.iter().map(|(key, param)| {
+                            // Build the basic property JSON
+                            let mut prop_json = json!({
+                                "type": param._type,
+                                "description": param.description.as_ref().unwrap_or(&"".to_string())
+                            });
+
+                            // If specific properties need enumeration values, handle them conditionally
+                            if key == "unit" {  // Assuming 'unit' might need enum values
+                                prop_json["enum"] = json!(["celsius", "fahrenheit"]);
+                            }
+
+                            if let Some(items) = &param.items {
+                                prop_json["items"] = json!({
+                                    "type": items._type,
+                                    // More nested properties can be handled here if 'items' has further structure
+                                });
+                            }
+
+                            (key.clone(), prop_json)
+                        }).collect::<serde_json::Map<String, Value>>(),
+                        "required": tool.parameters.required
+                    }
+                })
             })
-        }).collect();
+            .collect();
         body["tools"] = json!(tools_json);
     }
     if let Some(v) = data.temperature {

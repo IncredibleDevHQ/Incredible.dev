@@ -224,11 +224,11 @@ impl Agent {
 
         log::debug!("full history:\n {:?}", history);
 
-        let trimmed_history = trim_history(history.clone())?;
+        //let trimmed_history = trim_history(history.clone())?;
 
-        log::debug!("trimmed history:\n {:?}", trimmed_history);
+        //log::debug!("trimmed history:\n {:?}", trimmed_history);
         // call the llm 
-        let llm_output = call_llm(&get_ai_gateway_config(), None, Some(trimmed_history)).await?;
+        let llm_output = call_llm(&get_ai_gateway_config(), None, Some(history), Some(functions)).await?;
 
         if let Some((function_to_call, id)) = find_first_function_call(&llm_output) {
             log::debug!("{:?} next action", function_to_call);
@@ -308,7 +308,7 @@ impl Agent {
                             },
                         ),
                         message::Message::function_return(id.clone(), &name, &s.get_response()),
-                        message::Message::user(FUNCTION_CALL_INSTRUCTION),
+                        //message::Message::user(FUNCTION_CALL_INSTRUCTION),
                     ]
                 });
 
@@ -328,7 +328,7 @@ impl Agent {
 
                 acc.extend(
                     std::iter::once(query)
-                        .chain(vec![message::Message::user(FUNCTION_CALL_INSTRUCTION)])
+                        //.chain(vec![message::Message::user(FUNCTION_CALL_INSTRUCTION)])
                         .chain(steps)
                         .chain(answer.into_iter()),
                 );

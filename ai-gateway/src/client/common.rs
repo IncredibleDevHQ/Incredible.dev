@@ -12,7 +12,7 @@ use crate::{
     utils::{prompt_input_integer, prompt_input_string, PromptKind},
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use reqwest::{Client as ReqwestClient, ClientBuilder, Proxy, RequestBuilder};
 use serde::Deserialize;
@@ -231,13 +231,25 @@ pub trait Client: Send + Sync {
     async fn send_message(&self, input: Input) -> Result<Vec<Message>> {
         let config = self.config().0;
         // Ensure `build_client` and `prepare_send_data` do not block.
-        let client = self.build_client()?;
-        let data = config.prepare_send_data(&input, false)?;
+        let client = self.build_client().map_err(|e| {
+            log::error!("Failed to build client: {:?}", e);
+            e
+        })?;
+
+        // Similarly, handle errors during data preparation.
+        let data = config.prepare_send_data(&input, false).map_err(|e| {
+            log::error!("Failed to prepare send data: {:?}", e);
+            e
+        })?;
 
         // Directly await the async operation.
-        self.send_message_inner(&client, data)
-            .await
-            .with_context(|| "Failed to get answer")
+        match self.send_message_inner(&client, data).await {
+            Ok(messages) => Ok(messages),
+            Err(e) => {
+                log::error!("Failed to send claude message: {:?}", e);
+                Err(anyhow!("Failed to get answer: {}", e))
+            }
+        }
     }
 
     fn send_message_streaming(&self, input: &Input, handler: &mut ReplyHandler) -> Result<()> {
@@ -270,7 +282,11 @@ pub trait Client: Send + Sync {
         })
     }
 
-    async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<Vec<Message>>;
+    async fn send_message_inner(
+        &self,
+        client: &ReqwestClient,
+        data: SendData,
+    ) -> Result<Vec<Message>>;
 
     async fn send_message_streaming_inner(
         &self,
@@ -292,7 +308,7 @@ pub struct ExtraConfig {
     pub connect_timeout: Option<u64>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SendData {
     pub messages: Vec<Message>,
     pub temperature: Option<f64>,

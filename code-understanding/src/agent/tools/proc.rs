@@ -87,7 +87,7 @@ impl Agent {
                 debug!(?path, "calling chat API on file");
 
                 let llm_output =
-                    call_llm(&get_ai_gateway_config(), Some(user_prompt), None).await?;
+                    call_llm(&get_ai_gateway_config(), Some(user_prompt), None, None).await?;
 
                 let response_message = extract_single_plaintext_content(&llm_output)?;
                 #[derive(
