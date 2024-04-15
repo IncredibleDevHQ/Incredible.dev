@@ -51,7 +51,7 @@ pub async fn generate_summarized_answer_for_task(
     //     .clone()
     //     .unwrap_or_else(|| "".to_string());
 
-    let llm_output = call_llm(&get_ai_gateway_config(), Some(summarization_prompt), None).await?;
+    let llm_output = call_llm(&get_ai_gateway_config(), Some(summarization_prompt), None, None).await?;
 
     let response_message = extract_single_plaintext_content(&llm_output)?;
     debug!("Summarized answer: {}", response_message);
