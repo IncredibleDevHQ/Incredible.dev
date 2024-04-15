@@ -227,6 +227,7 @@ impl Agent {
         let trimmed_history = trim_history(history.clone())?;
 
         log::debug!("trimmed history:\n {:?}", trimmed_history);
+        // call the llm 
         let llm_output = call_llm(&get_ai_gateway_config(), None, Some(trimmed_history)).await?;
 
         if let Some((function_to_call, id)) = find_first_function_call(&llm_output) {
@@ -300,13 +301,13 @@ impl Agent {
 
                     vec![
                         message::Message::function_call(
-                            *id,
+                            id.clone(),
                             &FunctionCall {
                                 name: name.clone(),
                                 arguments,
                             },
                         ),
-                        message::Message::function_return(*id, &name, &s.get_response()),
+                        message::Message::function_return(id.clone(), &name, &s.get_response()),
                         message::Message::user(FUNCTION_CALL_INSTRUCTION),
                     ]
                 });
