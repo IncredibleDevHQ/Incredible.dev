@@ -1,13 +1,19 @@
-use crate::{agent::agent::Agent, config::get_quickwit_url};
+use crate::{
+    agent::agent::Agent,
+    config::{get_ai_gateway_config, get_quickwit_url},
+};
 use anyhow::{anyhow, Context, Result};
 use futures::{stream, StreamExt};
+use log::error;
 use tiktoken_rs::CoreBPE;
 use tracing::{debug, instrument};
 
 use crate::agent::exchange::{CodeChunk, SearchStep, Update};
-use ai_gateway::message::message::Message;
 
-use common::{llm_gateway, prompts};
+use common::{
+    ai_util::{call_llm, extract_single_plaintext_content},
+    llm_gateway, prompts,
+};
 
 impl Agent {
     #[instrument(skip(self))]
@@ -16,7 +22,6 @@ impl Agent {
         const CHUNK_MERGE_DISTANCE: usize = 10;
         const MAX_TOKENS: usize = 15400;
 
-        let search_db_url = get_quickwit_url();
         let paths = path_aliases
             .iter()
             .copied()
@@ -26,8 +31,9 @@ impl Agent {
 
         debug!(?query, ?paths, "invoking proc");
 
+        let last_function_call_id = self.last_function_call_id.clone();
         self.update(Update::StartStep(SearchStep::Proc {
-            id: self.last_function_call_id,
+            id: last_function_call_id,
             query: query.to_string(),
             paths: paths.clone(),
             response: String::new(),
@@ -37,6 +43,7 @@ impl Agent {
         let self_ = &*self;
         let chunks = stream::iter(paths.clone())
             .map(|path| async move {
+                let search_db_url = get_quickwit_url();
                 tracing::debug!(?path, "reading file");
 
                 let lines = self_
@@ -76,22 +83,13 @@ impl Agent {
                 // We store the lines separately, so that we can reference them later to trim
                 // this snippet by line number.
                 let contents = lines.join("\n");
-                let prompt = prompts::file_explanation(query, &path, &contents);
-
+                let user_prompt = prompts::file_explanation(query, &path, &contents);
                 debug!(?path, "calling chat API on file");
 
-                let response = self_
-                    .llm_gateway
-                    .clone()
-                    .model("gpt-3.5-turbo-16k-0613")
-                    // Set low frequency penalty to discourage long outputs.
-                    .frequency_penalty(0.2)
-                    .chat(&[Message::system(&prompt)], None)
-                    .await?;
+                let llm_output =
+                    call_llm(&get_ai_gateway_config(), Some(user_prompt), None).await?;
 
-                let choices = response.choices[0].clone();
-                let response_message = choices.message.content.unwrap();
-
+                let response_message = extract_single_plaintext_content(&llm_output)?;
                 #[derive(
                     serde::Deserialize,
                     serde::Serialize,
@@ -177,17 +175,12 @@ impl Agent {
             .flat_map(|(relevant_chunks, path)| {
                 let alias = self.get_path_alias(&path);
 
-                relevant_chunks.into_iter().map(move |c| {
-                    if path.clone() == "server/bleep/src/indexes.rs" {
-                        log::debug!("Inside proc: {}, {} ", c.range.start, c.range.end);
-                    }
-                    CodeChunk {
-                        path: path.clone(),
-                        alias,
-                        snippet: c.code,
-                        start_line: c.range.start,
-                        end_line: c.range.end,
-                    }
+                relevant_chunks.into_iter().map(move |c| CodeChunk {
+                    path: path.clone(),
+                    alias,
+                    snippet: c.code,
+                    start_line: c.range.start,
+                    end_line: c.range.end,
                 })
             })
             .collect::<Vec<_>>();
@@ -209,8 +202,9 @@ impl Agent {
             .collect::<Vec<_>>()
             .join("\n\n");
 
+        let last_function_call_id = self.last_function_call_id.clone();
         self.update(Update::ReplaceStep(SearchStep::Proc {
-            id: self.last_function_call_id,
+            id: last_function_call_id,
             query: query.to_string(),
             paths,
             response: response.clone(),

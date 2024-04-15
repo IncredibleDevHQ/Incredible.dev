@@ -1,4 +1,3 @@
-use ai_gateway::function_calling;
 use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
@@ -235,6 +234,7 @@ impl Agent {
             let action = Action::deserialize_gpt(&function_to_call)
                 .context("failed to deserialize LLM output")?;
 
+            self.last_function_call_id = id;
             Ok(Some(action))
         } else {
             // return error if no function call is found.
