@@ -1,5 +1,5 @@
 use ai_gateway::function_calling;
-use log::debug;
+use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 use std::sync::Arc;
@@ -230,19 +230,23 @@ impl Agent {
         log::debug!("trimmed history:\n {:?}", trimmed_history);
         let llm_output = call_llm(&get_ai_gateway_config(), None, Some(trimmed_history)).await?;
 
-        let (functions_to_call, function_call_id) = find_first_function_call(&llm_output);
+        if let Some((function_to_call, id)) = find_first_function_call(&llm_output) {
+            log::debug!("{:?} next action", function_to_call);
+            let action = Action::deserialize_gpt(&function_to_call)
+                .context("failed to deserialize LLM output")?;
+
+            Ok(Some(action))
+        } else {
+            // return error if no function call is found.
+            error!("No FunctionCall found.");
+            return Err(anyhow!("No FunctionCall found."));
+        }
         // print the next action picked.
-        log::debug!("{:?} next action", functions_to_call);
 
         // log::debug!("full_history:\n {:?}\n", &history);
         //log::debug!("trimmed_history:\n {:?}\n", &trimmed_history);
         // log::debug!("last_message:\n {:?} \n", history.last());
         // log::debug!("functions:\n {:?} \n", &functions);
-
-        let action = Action::deserialize_gpt(&functions_to_call)
-            .context("failed to deserialize LLM output")?;
-
-        Ok(Some(action))
     }
 
     /// The full history of messages, including intermediate function calls
