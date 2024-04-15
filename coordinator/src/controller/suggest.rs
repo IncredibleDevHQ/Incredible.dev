@@ -1,4 +1,6 @@
-use crate::configuration::{get_code_search_url, get_code_understanding_url, get_context_generator_url, get_redis_url};
+use crate::configuration::{
+    get_code_search_url, get_code_understanding_url, get_context_generator_url, get_redis_url,
+};
 use crate::llm_ops::summarize::{
     generate_single_task_summarization_, generate_summarized_answer_for_task,
 };
@@ -49,7 +51,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
     // if the request.uuid exists, load the conversation from the conversations API
     let convo_id = request.id;
 
-    let redis_url: &str = &get_redis_url(); 
+    let redis_url: &str = &get_redis_url();
     let mut tracker = if convo_id.is_some() {
         let uuid = convo_id.clone().unwrap();
         info!(
@@ -169,6 +171,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 let questions_with_answers = get_codebase_answers_for_questions(
                     request.repo_name.clone(),
                     &task_list.clone(),
+                    false,
                 )
                 .await;
                 // update the graph with answers
@@ -237,33 +240,33 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
             ConversationProcessingStage::AnswersSummarized => {
                 // nothing more to do,return the answers.
                 debug!("All answers summarized, nothing to do!");
-                let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts()?;
+                // let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts()?;
 
-                for task in &tasks_qna_context.tasks {
-                    debug!("Code Context: {:?}", task.merged_code_contexts);
-                }
-
-                let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts()?;
-
-                let code_search_url = get_code_search_url();
                 // for task in &tasks_qna_context.tasks {
-                //     // call generate_single_task_summarization function to generate the summary for each task.
-                generate_single_task_summarization_(
-                    &request.user_query.clone(),
-                    &code_search_url,
-                    &tasks_qna_context.tasks[1].clone(),
-                )
-                .await?;
+                //     debug!("Code Context: {:?}", task.merged_code_contexts);
                 // }
 
-                let summary = generate_summarized_answer_for_task(
-                    request.user_query.clone(),
-                    &tasks_qna_context,
-                )
-                .await?;
+                // let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts()?;
+
+                // let code_search_url = get_code_search_url();
+                // for task in &tasks_qna_context.tasks {
+                //     // call generate_single_task_summarization function to generate the summary for each task.
+                // generate_single_task_summarization_(
+                //     &request.user_query.clone(),
+                //     &code_search_url,
+                //     &tasks_qna_context.tasks[1].clone(),
+                // )
+                // .await?;
+                // }
+
+                // let summary = generate_summarized_answer_for_task(
+                //     request.user_query.clone(),
+                //     &tasks_qna_context,
+                // )
+                // .await?;
 
                 // connect the summary to the graph, this will also save the summary to the redis.
-                tracker.connect_task_to_answer_summary(&tasks_qna_context, summary)?;
+                //tracker.connect_task_to_answer_summary(&tasks_qna_context, summary)?;
                 return Ok(SuggestResponse {
                     tasks: Some(tracker.get_current_tasks()?),
                     questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
@@ -274,45 +277,37 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
     }
 }
 
-/// Asynchronously retrieves code understandings for a set of questions.
-///
-/// This function makes concurrent service calls to retrieve code understandings based on
-/// provided questions and their associated IDs. It constructs a `QuestionWithAnswer` for
-/// each successful response and captures any errors encountered during the process.
+/// Retrieves answers for a set of questions by querying a code understanding service.
+/// This function can execute service calls either in parallel or sequentially based on the `parallel` flag.
 ///
 /// # Arguments
-/// * `repo_name` - The name of the repository for which the code understanding is being retrieved.
-/// * `generated_questions` - A vector of `QuestionWithIds` containing the questions and their IDs.
+/// * `repo_name` - The name of the repository to query against.
+/// * `generated_questions` - A vector of questions with associated unique identifiers.
+/// * `parallel` - A boolean flag that determines whether the network requests are sent in parallel or sequentially.
 ///
 /// # Returns
-/// A vector of `Result<QuestionWithAnswer, Error>` where each entry corresponds to the outcome
-/// (success or failure) of retrieving a code understanding for each question.
+/// Returns a vector of results, each being either a successful `QuestionWithAnswer` or an `Error`.
 async fn get_codebase_answers_for_questions(
     repo_name: String,
     generated_questions: &Vec<QuestionWithId>,
+    parallel: bool,
 ) -> Vec<Result<QuestionWithAnswer, Error>> {
+    // URL construction for the code understanding service call
     let code_understanding_service = get_code_understanding_url();
-    // Construct the URL for the code understanding service.
     let code_understanding_url = format!("{}/retrieve-code", code_understanding_service);
 
-    // Map each question to a future that represents an asynchronous service call
-    // to retrieve the code understanding.
+    // Preparing asynchronous operations for each question
     let futures_answers_for_questions: Vec<_> = generated_questions
         .iter()
         .map(|question_with_id| {
-            // Clone the URL and repository name for each service call.
             let url = code_understanding_url.clone();
             let repo_name = repo_name.clone();
-
-            // Construct the query parameters for the service call.
             let mut query_params = HashMap::new();
             query_params.insert("query".to_string(), question_with_id.text.clone());
             query_params.insert("repo".to_string(), repo_name);
 
-            // Define an asynchronous block that makes the service call, processes the response,
-            // and constructs a `QuestionWithAnswer` object.
             async move {
-                // Perform the service call.
+                // Making an asynchronous service call
                 let response: Result<CodeUnderstanding, Error> =
                     service_caller::<CodeUnderstandRequest, CodeUnderstanding>(
                         url,
@@ -322,17 +317,16 @@ async fn get_codebase_answers_for_questions(
                     )
                     .await;
 
-                // log error from response
-                if response.is_err() {
+                // Logging errors from the service call
+                if let Err(ref e) = response {
                     error!(
                         "Error fetching code understanding for question:{}, Response error: {}",
                         question_with_id.clone(),
-                        response.as_ref().err().unwrap()
+                        e
                     );
                 }
-                // Convert the service response to a `QuestionWithAnswer`.
-                // In case of success, wrap the resulting `QuestionWithAnswer` in `Ok`.
-                // In case of an error, convert the error to `anyhow::Error` using `map_err`.
+
+                // Constructing the result as `QuestionWithAnswer` from the successful response
                 response
                     .map(|answer| QuestionWithAnswer {
                         question_id: question_with_id.id,
@@ -344,8 +338,18 @@ async fn get_codebase_answers_for_questions(
         })
         .collect();
 
-    // Await all futures to complete and collect their results.
-    join_all(futures_answers_for_questions).await
+    // Determining the mode of execution based on the `parallel` flag
+    if parallel {
+        // Execute all futures in parallel
+        join_all(futures_answers_for_questions).await
+    } else {
+        // Execute futures sequentially
+        let mut results = Vec::new();
+        for future in futures_answers_for_questions {
+            results.push(future.await);
+        }
+        results
+    }
 }
 
 // TODO: Remove unused warning suppressor once the context generator is implemented
