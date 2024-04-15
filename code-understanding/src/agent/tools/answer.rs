@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Context, Result};
-use common::{llm_gateway, prompts, CodeContext};
+use common::{ai_util::{call_llm, extract_single_plaintext_content}, llm_gateway, prompts, CodeContext};
 use futures::StreamExt;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{collections::HashMap, mem, ops::Range};
@@ -10,7 +10,7 @@ use crate::{
         exchange::{CodeChunk, FocusedChunk, Update},
         transform,
     },
-    config::get_quickwit_url,
+    config::{get_ai_gateway_config, get_quickwit_url},
     search,
 };
 
@@ -50,12 +50,14 @@ impl Agent {
         let system_prompt = prompts::answer_article_prompt(aliases, &context);
         let system_message = Message::system(&system_prompt);
 
-        let history = {
-            let h = self.utter_history().collect::<Vec<_>>();
-            let system_headroom =
-                tiktoken_rs::num_tokens_from_messages(ANSWER_MODEL, &[(&system_message).into()])?;
-            trim_utter_history(h, ANSWER_HEADROOM + system_headroom)?
-        };
+        // let history = {
+        //     let h = self.utter_history().collect::<Vec<_>>();
+        //     let system_headroom =
+        //         tiktoken_rs::num_tokens_from_messages(ANSWER_MODEL, &[(&system_message).into()])?;
+        //     trim_utter_history(h, ANSWER_HEADROOM + system_headroom)?
+        // };
+
+        let history = self.utter_history().collect::<Vec<_>>();
 
         let messages = Some(system_message)
             .into_iter()
@@ -63,19 +65,10 @@ impl Agent {
             .collect::<Vec<_>>();
 
         log::debug!("Answer message: {:?}", messages.clone());
-        let response = self
-            .llm_gateway
-            .clone()
-            .model(ANSWER_MODEL)
-            .chat(&messages, None)
-            .await?;
 
-        // retrieve messages from chatcompletion.
-        let choices = response.choices[0].clone();
-        let response_message = choices.message.content.unwrap();
-        // while let Some(fragment) = stream.next().await {
-        //     let fragment: String = fragment?;
-        //     response += &fragment;
+        let llm_output = call_llm(&get_ai_gateway_config(), None, Some(messages)).await?;
+
+        let response_message = extract_single_plaintext_content(&llm_output)?;
 
         let (article, summary) = transform::decode(&response_message);
         self.update(Update::Article(article))?;
