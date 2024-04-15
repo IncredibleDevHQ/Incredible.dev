@@ -1,4 +1,6 @@
+use crate::config::get_ai_gateway_config;
 use crate::AppState;
+use ai_gateway::config::AIGatewayConfig;
 use common::models::CodeUnderstandRequest;
 use common::CodeUnderstanding;
 use std::time::Duration;
@@ -12,8 +14,6 @@ use std::sync::Arc;
 use warp::http::StatusCode;
 
 use log::error;
-extern crate common;
-use common::llm_gateway;
 
 pub async fn handle_retrieve_code(
     req: CodeUnderstandRequest,
@@ -36,24 +36,27 @@ pub async fn handle_retrieve_code(
     let mut exchanges = vec![];
     exchanges.push(Exchange::new(id, req.query.clone()));
 
-    // get the configuration from the app state
-    let configuration = &app_state.configuration;
-
-    // intialize new llm gateway.
-    let llm_gateway = llm_gateway::Client::new(&configuration.openai_url)
-        .temperature(0.0)
-        .bearer(configuration.openai_key.clone())
-        .model(&configuration.openai_model.clone());
-
     // get db client from app state
+    let ai_gateway_config = get_ai_gateway_config();
+    let ai_gateway = AIGatewayConfig::from_yaml(&ai_gateway_config);
 
+    if ai_gateway.is_err() {
+        log::error!("Error getting AI Gateway configuration");
+        return Ok(warp::reply::with_status(
+            warp::reply::json(&format!("Error: {}", "Error Initializing AI Gateway configuration")),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ));
+    }
+
+    let ai_gateway = ai_gateway.unwrap();
     let mut agent: Agent = Agent {
         app_state: app_state,
         exchanges,
-        llm_gateway,
+        ai_gateway,
         query_id: id,
         complete: false,
         repo_name: req.repo.clone(),
+        last_function_call_id: None,
     };
 
     // first action

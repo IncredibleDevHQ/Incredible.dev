@@ -1,19 +1,24 @@
+use log::{debug, error};
 use serde::{Deserialize, Serialize};
-use tracing::instrument;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::instrument;
 
-use crate::AppState;
+use crate::{config::get_ai_gateway_config, AppState};
 use anyhow::{anyhow, Context, Result};
 
-use common::prompts;
+use common::{
+    ai_util::{call_llm, find_first_function_call},
+    prompts,
+};
 
 use crate::agent::exchange::{Exchange, SearchStep, Update};
-use ai_gateway::function_calling::{Function, FunctionCall};
-use common::llm_gateway;
 use ai_gateway::message::message::{self, MessageRole};
-
+use ai_gateway::{
+    config::AIGatewayConfig,
+    function_calling::{Function, FunctionCall},
+};
 
 use crate::agent::transform;
 // Types of repo
@@ -59,7 +64,6 @@ pub struct FileDocument {
     pub lang: Option<String>,
 }
 
-
 /// A collection of modules that each add methods to `Agent`.
 ///
 /// These methods correspond to `Action` handlers, and often have supporting methods and supporting
@@ -78,9 +82,9 @@ pub struct Agent {
     pub repo_name: String,
     pub app_state: Arc<AppState>,
     pub exchanges: Vec<Exchange>,
-    pub llm_gateway: llm_gateway::Client,
+    pub ai_gateway: AIGatewayConfig,
     pub query_id: uuid::Uuid,
-
+    pub last_function_call_id: Option<String>,
     /// Indicate whether the request was answered.
     ///
     /// This is used in the `Drop` handler, in order to track cancelled answer queries.
@@ -98,7 +102,7 @@ pub struct Agent {
 impl Drop for Agent {
     fn drop(&mut self) {
         if !self.complete {
-            println!("Dropping agent");
+            log::debug!("Dropping agent");
         }
     }
 }
@@ -143,7 +147,7 @@ pub fn get_line_number(byte: usize, line_end_indices: &[usize]) -> usize {
         .position(|&line_end_byte| (line_end_byte as usize) >= byte)
         .unwrap_or(0);
 
-    return line 
+    return line;
 }
 
 impl Agent {
@@ -157,7 +161,7 @@ impl Agent {
     #[instrument(skip(self), level = "debug")]
     pub fn update(&mut self, update: Update) -> Result<()> {
         self.last_exchange_mut().apply_update(update);
-        //println!("update {:?}", update);
+        //log::debug!("update {:?}", update);
         Ok(())
     }
 
@@ -195,7 +199,7 @@ impl Agent {
 
     #[instrument(skip(self))]
     pub async fn step(&mut self, action: Action) -> Result<Option<Action>> {
-        println!("\ninside step {:?}\n", action);
+        log::debug!("\ninside step {:?}\n", action);
 
         match &action {
             Action::Query(s) => s.clone(),
@@ -215,36 +219,35 @@ impl Agent {
         )
         .unwrap();
 
-        let mut history = vec![message::Message::system(&prompts::system(
-            self.paths(),
-        ))];
+        let mut history = vec![message::Message::system(&prompts::system(self.paths()))];
         history.extend(self.history()?);
 
-        println!("full history:\n {:?}", history);
+        log::debug!("full history:\n {:?}", history);
 
-        let trimmed_history = trim_history(history.clone())?;
+        //let trimmed_history = trim_history(history.clone())?;
 
-        println!("trimmed history:\n {:?}", trimmed_history);
-        let chat_completion = self
-            .llm_gateway
-            .chat(&trim_history(history.clone())?, Some(&functions))
-            .await?;
+        //log::debug!("trimmed history:\n {:?}", trimmed_history);
+        // call the llm 
+        let llm_output = call_llm(&get_ai_gateway_config(), None, Some(history), Some(functions)).await?;
 
-        let choice = chat_completion.choices[0].clone();
-        let functions_to_call = choice.message.function_call.unwrap().to_owned();
+        if let Some((function_to_call, id)) = find_first_function_call(&llm_output) {
+            log::debug!("{:?} next action", function_to_call);
+            let action = Action::deserialize_gpt(&function_to_call)
+                .context("failed to deserialize LLM output")?;
+
+            self.last_function_call_id = id;
+            Ok(Some(action))
+        } else {
+            // return error if no function call is found.
+            error!("No FunctionCall found.");
+            return Err(anyhow!("No FunctionCall found."));
+        }
         // print the next action picked.
-        println!("{:?} next action", functions_to_call);
 
-        // println!("full_history:\n {:?}\n", &history);
-        //println!("trimmed_history:\n {:?}\n", &trimmed_history);
-        // println!("last_message:\n {:?} \n", history.last());
-        // println!("functions:\n {:?} \n", &functions);
-        // println!("raw_response:\n {:?} \n", &chat_completion);
-
-        let action = Action::deserialize_gpt(&functions_to_call)
-            .context("failed to deserialize LLM output")?;
-
-        Ok(Some(action))
+        // log::debug!("full_history:\n {:?}\n", &history);
+        //log::debug!("trimmed_history:\n {:?}\n", &trimmed_history);
+        // log::debug!("last_message:\n {:?} \n", history.last());
+        // log::debug!("functions:\n {:?} \n", &functions);
     }
 
     /// The full history of messages, including intermediate function calls
@@ -265,16 +268,21 @@ impl Agent {
                     .ok_or_else(|| anyhow!("query does not have target"))?;
 
                 let steps = e.search_steps.iter().flat_map(|s| {
-                    let (name, arguments) = match s {
-                        SearchStep::Path { query, .. } => (
+                    let (id, name, arguments) = match s {
+                        SearchStep::Path { id, query, .. } => (
+                            id,
                             "path".to_owned(),
                             format!("{{\n \"query\": \"{query}\"\n}}"),
                         ),
-                        SearchStep::Code { query, .. } => (
+                        SearchStep::Code { id, query, .. } => (
+                            id,
                             "code".to_owned(),
                             format!("{{\n \"query\": \"{query}\"\n}}"),
                         ),
-                        SearchStep::Proc { query, paths, .. } => (
+                        SearchStep::Proc {
+                            id, query, paths, ..
+                        } => (
+                            id,
                             "proc".to_owned(),
                             format!(
                                 "{{\n \"paths\": [{}],\n \"query\": \"{query}\"\n}}",
@@ -292,20 +300,27 @@ impl Agent {
                     };
 
                     vec![
-                        message::Message::function_call(&FunctionCall {
-                            name: Some(name.clone()),
-                            arguments,
-                        }),
-                        message::Message::function_return(&name, &s.get_response()),
-                        message::Message::user(FUNCTION_CALL_INSTRUCTION),
+                        message::Message::function_call(
+                            id.clone(),
+                            &FunctionCall {
+                                name: name.clone(),
+                                arguments,
+                            },
+                        ),
+                        message::Message::function_return(id.clone(), &name, &s.get_response()),
+                        //message::Message::user(FUNCTION_CALL_INSTRUCTION),
                     ]
                 });
 
                 let answer = match e.answer() {
                     // NB: We intentionally discard the summary as it is redundant.
-                    Some((answer, _conclusion)) => {
+                    Some((answer, _conclusion, answer_id)) => {
                         let encoded = transform::encode_summarized(answer, None, "gpt-3.5-turbo")?;
-                        Some(message::Message::function_return("none", &encoded))
+                        Some(message::Message::function_return(
+                            Some(answer_id.to_string()),
+                            "none",
+                            &encoded,
+                        ))
                     }
 
                     None => None,
@@ -313,9 +328,7 @@ impl Agent {
 
                 acc.extend(
                     std::iter::once(query)
-                        .chain(vec![message::Message::user(
-                            FUNCTION_CALL_INSTRUCTION,
-                        )])
+                        //.chain(vec![message::Message::user(FUNCTION_CALL_INSTRUCTION)])
                         .chain(steps)
                         .chain(answer.into_iter()),
                 );
@@ -324,10 +337,14 @@ impl Agent {
         Ok(history)
     }
 
-    pub async fn get_file_content(&self, path: &str) -> Result<Option<ContentDocument>> {
+    pub async fn get_file_content(
+        &self,
+        base_url: &str,
+        path: &str,
+    ) -> Result<Option<ContentDocument>> {
         self.app_state
             .db_connection
-            .get_file_from_quickwit(&self.repo_name, "relative_path", path)
+            .get_file_from_quickwit(base_url, &self.repo_name, "relative_path", path)
             .await
     }
 
@@ -335,7 +352,7 @@ impl Agent {
         &'a self,
         query: &str,
     ) -> impl Iterator<Item = FileDocument> + 'a {
-        println!("executing fuzzy search {}\n", query);
+        log::debug!("executing fuzzy search {}\n", query);
         self.app_state
             .db_connection
             .fuzzy_path_match(&self.repo_name, "relative_path", query, 50)
@@ -343,15 +360,14 @@ impl Agent {
     }
 }
 
-fn trim_history(
-    mut history: Vec<message::Message>,
-) -> Result<Vec<message::Message>> {
-    const HEADROOM: usize = 2048;
+fn trim_history(mut history: Vec<message::Message>) -> Result<Vec<message::Message>> {
+    const HEADROOM: usize = 100000;
     const HIDDEN: &str = "[HIDDEN]";
 
     let mut tiktoken_msgs = history.iter().map(|m| m.into()).collect::<Vec<_>>();
 
     while tiktoken_rs::get_chat_completion_max_tokens(ANSWER_MODEL, &tiktoken_msgs)? < HEADROOM {
+        debug!("Trimming history");
         let _ = history
             .iter_mut()
             .zip(tiktoken_msgs.iter_mut())
@@ -369,6 +385,7 @@ fn trim_history(
                     }
                 }
                 message::Message::FunctionReturn {
+                    id: _,
                     role: _,
                     name: _,
                     ref mut content,
@@ -427,10 +444,7 @@ impl Action {
     /// So that we can deserialize using the serde-provided "tagged" enum representation.
     fn deserialize_gpt(call: &FunctionCall) -> Result<Self> {
         let mut map = serde_json::Map::new();
-        map.insert(
-            call.name.clone().unwrap(),
-            serde_json::from_str(&call.arguments)?,
-        );
+        map.insert(call.name.clone(), serde_json::from_str(&call.arguments)?);
 
         Ok(serde_json::from_value(serde_json::Value::Object(map))?)
     }

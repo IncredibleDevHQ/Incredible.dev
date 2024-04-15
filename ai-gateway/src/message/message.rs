@@ -8,8 +8,7 @@ use crate::config::AIGatewayConfig;
 use crate::config_files::ensure_parent_exists;
 use crate::function_calling::{Function, FunctionCall};
 use crate::input::Input;
-use crate::render::{render_stream, MarkdownRender};
-use crate::utils::{create_abort_signal, extract_block, now};
+use crate::utils::now;
 
 use serde::{Deserialize, Serialize};
 
@@ -23,11 +22,13 @@ use serde::{Deserialize, Serialize};
 #[serde(untagged)]
 pub enum Message {
     FunctionReturn {
+        id: Option<String>,
         role: MessageRole,
         name: String,
         content: String,
     },
     FunctionCall {
+        id: Option<String>,
         role: MessageRole,
         function_call: FunctionCall,
         content: (),
@@ -41,32 +42,36 @@ pub enum Message {
     },
 }
 
-impl From<&Message> for tiktoken_rs::ChatCompletionRequestMessage {
-    fn from(m: &Message) -> tiktoken_rs::ChatCompletionRequestMessage {
-        match m {
-            Message::PlainText { role, content } => tiktoken_rs::ChatCompletionRequestMessage {
-                role: role.to_string(),
-                content: content.clone(),
-                name: None,
-            },
+impl fmt::Display for Message {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
             Message::FunctionReturn {
+                id,
                 role,
                 name,
                 content,
-            } => tiktoken_rs::ChatCompletionRequestMessage {
-                role: role.to_string(),
-                content: content.clone(),
-                name: Some(name.clone()),
-            },
+            } => {
+                write!(
+                    f,
+                    "[{}] Function Return - ID: {:?}, Name: {}, Content: {}",
+                    role, id, name, content
+                )
+            }
             Message::FunctionCall {
+                id,
                 role,
                 function_call,
                 content: _,
-            } => tiktoken_rs::ChatCompletionRequestMessage {
-                role: role.to_string(),
-                content: serde_json::to_string(&function_call).unwrap(),
-                name: None,
-            },
+            } => {
+                write!(
+                    f,
+                    "[{}] Function Call - ID: {:?}, {:?}",
+                    role, id, function_call
+                )
+            }
+            Message::PlainText { role, content } => {
+                write!(f, "[{}] Plain Text: {}", role, content)
+            }
         }
     }
 }
@@ -91,19 +96,73 @@ impl Message {
         Self::new_text(MessageRole::Assistant, content)
     }
 
-    pub fn function_call(call: &FunctionCall) -> Self {
+    pub fn function_call(id: Option<String>, call: &FunctionCall) -> Self {
         Self::FunctionCall {
+            id,
             role: MessageRole::Assistant,
             function_call: call.clone(),
             content: (),
         }
     }
 
-    pub fn function_return(name: &str, content: &str) -> Self {
+    pub fn function_return(id: Option<String>, name: &str, content: &str) -> Self {
         Self::FunctionReturn {
+            id: id,
             role: MessageRole::Function.to_owned(),
             name: name.to_string(),
             content: content.to_string(),
+        }
+    }
+}
+
+impl From<&Message> for tiktoken_rs::ChatCompletionRequestMessage {
+    fn from(m: &Message) -> tiktoken_rs::ChatCompletionRequestMessage {
+        match m {
+            Message::PlainText { role, content } => tiktoken_rs::ChatCompletionRequestMessage {
+                role: role.to_string(),
+                content: content.clone(),
+                name: None,
+            },
+            Message::FunctionReturn {
+                id,
+                role,
+                name,
+                content,
+            } => {
+                let name_with_id = format!(
+                    "{}{}",
+                    name,
+                    id.as_ref()
+                        .map_or(String::new(), |id| format!(" (ID: {})", id))
+                );
+                tiktoken_rs::ChatCompletionRequestMessage {
+                    role: role.to_string(),
+                    content: content.clone(),
+                    name: Some(name_with_id),
+                }
+            }
+            Message::FunctionCall {
+                id,
+                role,
+                function_call,
+                content: _,
+            } => {
+                // Serialize the function_call to JSON, handle potential errors gracefully
+                let function_call_json =
+                    serde_json::to_string(&function_call).unwrap_or_else(|_| {
+                        String::from("{\"error\":\"Failed to serialize function call\"}")
+                    });
+
+                let name_with_id = id
+                    .as_ref()
+                    .map_or(String::new(), |id| format!("Function call ID: {}", id));
+
+                tiktoken_rs::ChatCompletionRequestMessage {
+                    role: role.to_string(),
+                    content: function_call_json,
+                    name: Some(name_with_id),
+                }
+            }
         }
     }
 }
@@ -152,35 +211,13 @@ impl AIGatewayConfig {
         text: Option<String>,
         history: Option<Vec<Message>>,
         functions: Option<Vec<Function>>,
-        no_stream: bool,
-        code_mode: bool,
-    ) -> Result<String> {
+    ) -> Result<Vec<Message>> {
         let input = Input::new(text, functions, history);
         let mut client = init_client(self)?;
         ensure_model_capabilities(client.as_mut(), input.required_capabilities())?;
 
-        let output = if no_stream {
-            let output = client.send_message(input.clone()).await?;
-            let output = if code_mode && output.trim_start().starts_with("```") {
-                extract_block(&output)
-            } else {
-                output.clone()
-            };
-            if no_stream {
-                let render_options = self.get_render_options()?;
-                let mut markdown_render = MarkdownRender::init(render_options)?;
-                println!("{}", markdown_render.render(&output).trim());
-            } else {
-                println!("{}", output);
-            }
-            output
-        } else {
-            let abort = create_abort_signal();
-            render_stream(&input, client.as_ref(), self, abort)?
-        };
-        // Save the message/session
-        self.save_message(input, &output)?;
-        self.end_session()?;
+        let output = client.send_message(input.clone()).await?;
+        log::debug!("Messages: {:#?}", output);
         Ok(output)
     }
 

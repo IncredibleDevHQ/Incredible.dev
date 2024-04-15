@@ -1,5 +1,5 @@
 use super::{Client, ExtraConfig, Model, PromptType, SendData, TokensCountFactors, VertexAIClient};
-use crate::message::message::{MessageRole, Message};
+use crate::message::message::{Message, MessageRole};
 
 use crate::{render::ReplyHandler, utils::PromptKind};
 
@@ -38,7 +38,11 @@ pub struct VertexAIConfig {
 impl Client for VertexAIClient {
     client_common_fns!();
 
-    async fn send_message_inner(&self, client: &ReqwestClient, data: SendData) -> Result<String> {
+    async fn send_message_inner(
+        &self,
+        client: &ReqwestClient,
+        data: SendData,
+    ) -> Result<Vec<Message>> {
         self.prepare_access_token().await?;
         let builder = self.request_builder(client, data)?;
         send_message(builder).await
@@ -116,7 +120,7 @@ impl VertexAIClient {
     }
 }
 
-pub(crate) async fn send_message(builder: RequestBuilder) -> Result<String> {
+pub(crate) async fn send_message(builder: RequestBuilder) -> Result<Vec<Message>> {
     let res = builder.send().await?;
     let status = res.status();
     let data: Value = res.json().await?;
@@ -126,7 +130,13 @@ pub(crate) async fn send_message(builder: RequestBuilder) -> Result<String> {
     let output = data["candidates"][0]["content"]["parts"][0]["text"]
         .as_str()
         .ok_or_else(|| anyhow!("Invalid response data: {data}"))?;
-    Ok(output.to_string())
+
+    // Return the response as Vec<Message> type
+    let message = Message::PlainText {
+        role: MessageRole::Assistant,
+        content: output.to_string(),
+    };
+    Ok(vec![message])
 }
 
 pub(crate) async fn send_message_streaming(
@@ -246,8 +256,8 @@ pub(crate) fn build_body(
                     // Check if the function name is present and construct the description accordingly.
                     let func_name = function_call
                         .name
-                        .clone()
-                        .unwrap_or_else(|| "Unnamed function".to_string());
+                        .clone();
+                    
                     let call_desc = format!(
                         "Function call: {} with arguments: {}",
                         func_name, function_call.arguments

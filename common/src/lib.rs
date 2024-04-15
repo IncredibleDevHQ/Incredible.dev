@@ -8,7 +8,7 @@ pub mod llm_gateway;
 pub mod models;
 pub mod prompts;
 pub mod service_interaction;
-
+pub mod ai_util;
 pub mod task_graph;
 
 pub mod prompt_string_generator {
