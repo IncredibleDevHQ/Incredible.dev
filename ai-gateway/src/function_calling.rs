@@ -1,9 +1,8 @@
-
 use std::collections::HashMap;
 
 #[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FunctionCall {
-    pub name: Option<String>,
+    pub name: String,
     pub arguments: String,
 }
 
@@ -31,7 +30,6 @@ pub struct Parameter {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub items: Option<Box<Parameter>>,
 }
-
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct Functions {

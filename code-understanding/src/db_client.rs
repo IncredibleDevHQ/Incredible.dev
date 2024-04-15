@@ -1,12 +1,12 @@
 use crate::agent::agent::{ContentDocument, FileDocument};
-use crate::config::Config;
+use crate::config::{clone_config, get_quickwit_url};
 use crate::helpers::build_fuzzy_regex_filter::build_fuzzy_regex_filter;
 use crate::helpers::case_permutations::case_permutations;
 use crate::helpers::trigrams::trigrams;
 use crate::search;
 use common::hasher::generate_quikwit_index_name;
 use compact_str::CompactString;
-use log::{error, debug, info};
+use log::{debug, error, info};
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
@@ -51,10 +51,11 @@ struct ResultItem {
 }
 
 impl DbConnect {
-    pub async fn new(config: &Config) -> Result<Self, anyhow::Error> {
+    pub async fn new() -> Result<Self, anyhow::Error> {
+        let config = clone_config();
         let http_client = reqwest::Client::new();
 
-        let semantic = search::semantic::Semantic::initialize(config).await;
+        let semantic = search::semantic::Semantic::initialize(&config).await;
         match semantic {
             Ok(semantic) => Ok(Self {
                 semantic,
@@ -69,12 +70,13 @@ impl DbConnect {
 
     pub async fn get_file_from_quickwit(
         &self,
+        base_url: &str,
         index_name: &str,
         search_field: &str,
         search_query: &str,
     ) -> Result<Option<ContentDocument>> {
         let response_array = self
-            .search_quickwit(index_name, search_field, search_query)
+            .search_quickwit(base_url, index_name, search_field, search_query)
             .await?;
 
         #[allow(unused)]
@@ -91,13 +93,11 @@ impl DbConnect {
 
     pub async fn search_quickwit(
         &self,
+        base_url: &str,
         index_name: &str,
         search_field: &str,
         search_query: &str,
     ) -> Result<Option<ContentDocument>, Error> {
-        let configuration = Config::new().unwrap();
-        let base_url = configuration.quickwit_url.clone();
-
         let query = if !search_field.is_empty() {
             format!("{}:{}", search_field, search_query)
         } else {
@@ -174,8 +174,7 @@ impl DbConnect {
         search_query: &str,
     ) -> Result<Vec<FileDocument>, Error> {
         let client = Client::new();
-        let configuration = Config::new().unwrap();
-        let base_url = configuration.quickwit_url.clone();
+        let base_url = get_quickwit_url(); 
 
         info!("search_query {}", search_query);
 

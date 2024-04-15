@@ -1,8 +1,11 @@
 use super::{ExtraConfig, Model, OpenAIClient, PromptType, SendData, TokensCountFactors};
 
-use crate::{render::ReplyHandler, utils::PromptKind};
+use crate::{
+    function_calling::FunctionCall, message::message::MessageRole, render::ReplyHandler,
+    utils::PromptKind,
+};
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use reqwest::{Client as ReqwestClient, RequestBuilder};
@@ -59,7 +62,7 @@ impl OpenAIClient {
         let api_key = self.get_api_key()?;
         let api_base = self.get_api_base().unwrap_or_else(|_| API_BASE.to_string());
 
-        let body = openai_build_body(data, self.model.name.clone());
+        let body = openai_build_body(data, self.model.name.clone())?;
 
         let url = format!("{api_base}/chat/completions");
 
@@ -75,17 +78,101 @@ impl OpenAIClient {
     }
 }
 
-pub async fn openai_send_message(builder: RequestBuilder) -> Result<String> {
-    let data: Value = builder.send().await?.json().await?;
-    if let Some(err_msg) = data["error"]["message"].as_str() {
-        bail!("{err_msg}");
+// we make the open ai call and parse the response 
+// here is how a sample response looks like 
+
+// {
+//     "id": "chat_completion_123456",
+//     "object": "chat.completion",
+//     "created": 1616547890,
+//     "model": "gpt-4-turbo",
+//     "choices": [
+//         {
+//             "index": 0,
+//             "logprobs": null,
+//             "finish_reason": "length",
+//             "text": "I checked the weather for you, and ",
+//             "message": {
+//                 "role": "assistant",
+//                 "content": "It looks like it will be sunny in San Francisco today.",
+//                 "tool_calls": [
+//                     {
+//                         "id": "tool_call_789",
+//                         "type": "function",
+//                         "function": {
+//                             "name": "get_weather",
+//                             "description": "Retrieves weather information for a specified location",
+//                             "parameters": {
+//                                 "location": "San Francisco, CA",
+//                                 "date": "2024-04-10"
+//                             }
+//                         },
+//                         "result": {
+//                             "summary": "Sunny",
+//                             "temperature": "68°F",
+//                             "chance_of_rain": "10%"
+//                         }
+//                     }
+//                 ]
+//             }
+//         }
+//     ],
+//     "usage": {
+//         "prompt_tokens": 15,
+//         "completion_tokens": 45,
+//         "total_tokens": 60
+//     }
+// }
+
+pub async fn openai_send_message(builder: RequestBuilder) -> Result<Vec<Message>> {
+    let response = builder.send().await?;
+    if !response.status().is_success() {
+        let error_msg = response.text().await.unwrap_or_default();
+        bail!("Request failed: {}", error_msg);
     }
 
-    let output = data["choices"][0]["message"]["content"]
-        .as_str()
-        .ok_or_else(|| anyhow!("Invalid response data: {data}"))?;
+    let data: Value = response.json().await?;
+    if let Some(err_msg) = data["error"]["message"].as_str() {
+        bail!("API error: {}", err_msg);
+    }
 
-    Ok(output.to_string())
+    let messages = &data["choices"][0]["message"];
+    let mut result_messages = Vec::new();
+
+    if let Some(tool_calls) = messages["tool_calls"].as_array() {
+        for tool_call in tool_calls {
+            let id = tool_call["id"].as_str().map(String::from);
+            let function = &tool_call["function"];
+            let name = function["name"]
+                .as_str()
+                .map(String::from)
+                .unwrap_or_default();
+            let arguments = function["arguments"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+
+            result_messages.push(Message::FunctionCall {
+                id,
+                role: MessageRole::Assistant,
+                function_call: FunctionCall { name, arguments },
+                content: (),
+            });
+        }
+    }
+
+    if let Some(content) = messages["content"].as_str() {
+        result_messages.push(Message::PlainText {
+            role: MessageRole::Assistant,
+            content: content.to_string(),
+        });
+    }
+
+    if result_messages.is_empty() {
+        bail!("No content or tool calls found in the response");
+    }
+
+    Ok(result_messages)
 }
 
 pub async fn openai_send_message_streaming(
@@ -130,36 +217,141 @@ pub async fn openai_send_message_streaming(
     Ok(())
 }
 
-pub fn openai_build_body(data: SendData, model: String) -> Value {
-    let SendData {
-        messages,
-        functions,
-        temperature,
-        stream,
-    } = data;
+// Sample request containing the function call response, user and assistant message
+// request also includes the function calling options provided.
+// This move is to move away from the deprecated functions and use the use tool based function calling
+// ref doc: https://platform.openai.com/docs/api-reference/chat/create (Look at function calling section)
+
+// curl -X POST "https://api.example.com/v1/chat/completions" \
+// -H "Content-Type: application/json" \
+// -H "Authorization: Bearer $API_KEY" \
+// -d '{
+//   "model": "gpt-4-turbo",
+//   "messages": [
+//     {
+//       "role": "user",
+//       "content": "What\'s the weather like in Boston today?"
+//     },
+//     {
+//       "role": "assistant",
+//       "content": "Let me check that for you."
+//     },
+//     {
+//       "role": "tool",
+//       "content": [
+//         {
+//           "type": "function_call",
+//           "id": "func123",
+//           "name": "get_current_weather",
+//           "input": {
+//             "location": "Boston, MA",
+//             "unit": "celsius"
+//           }
+//         }
+//       ]
+//     },
+//     {
+//       "role": "tool",
+//       "content": [
+//         {
+//           "type": "tool_result",
+//           "tool_use_id": "func123",
+//           "content": "The current temperature in Boston is 15°C."
+//         }
+//       ]
+//     }
+//   ],
+//   "tools": [
+//     {
+//       "type": "function",
+//       "function": {
+//         "name": "get_current_weather",
+//         "description": "Get the current weather in a given location",
+//         "parameters": {
+//           "type": "object",
+//           "properties": {
+//             "location": {
+//               "type": "string",
+//               "description": "The city and state, e.g., Boston, MA"
+//             },
+//             "unit": {
+//               "type": "string",
+//               "enum": ["celsius", "fahrenheit"],
+//               "description": "The temperature unit"
+//             }
+//           },
+//           "required": ["location", "unit"]
+//         }
+//       }
+//     }
+//   ],
+//   "tool_choice": "auto"
+// }'
+
+pub fn openai_build_body(data: SendData, model: String) -> Result<Value> {
+    let messages: Vec<Value> = data
+        .messages
+        .into_iter()
+        .map(|message| match message {
+            Message::FunctionReturn {
+                id,
+                role,
+                name,
+                content,
+            } => {
+                json!({
+                    "role": role,
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": id.unwrap_or_default(),
+                        "content": content
+                    }]
+                })
+            }
+            Message::PlainText { role, content } => {
+                json!({
+                    "role": role,
+                    "content": content
+                })
+            }
+            _ => json!({}), // Intentionally return an empty JSON object for other cases
+        })
+        .filter(|msg| !msg.is_object() || (msg.as_object().map_or(false, |obj| !obj.is_empty())))
+        .collect();
 
     let mut body = json!({
         "model": model,
-        "messages": messages,
+        "messages": messages
     });
 
-    // Check if there are any functions provided and add them to the body.
-    if let Some(funcs) = functions {
-        // Here we assume that the functions Vec<Function> can be serialized directly.
-        // This requires that Function and any nested structs are serializable.
-        body["functions"] = json!(funcs);
+    // Serialize function calls according to the structure required by OpenAI
+    if let Some(functions) = data.functions {
+        let tools_json: Vec<Value> = functions
+            .iter()
+            .map(|func| {
+                json!({
+                    "type": "function",
+                    "function": {
+                        "name": func.name,
+                        "description": func.description,
+                        "parameters": {
+                            "type": func.parameters._type,
+                            "properties": func.parameters.properties,
+                            "required": func.parameters.required
+                        }
+                    }
+                })
+            })
+            .collect();
+        body["tools"] = json!(tools_json);
     }
 
-    // The default max_tokens of gpt-4-vision-preview is only 16, we need to make it larger
-    if model == "gpt-4-vision-preview" {
-        body["max_tokens"] = json!(4096);
+    if let Some(v) = data.temperature {
+        body["temperature"] = json!(v);
+    }
+    if data.stream {
+        body["stream"] = json!(true);
     }
 
-    if let Some(v) = temperature {
-        body["temperature"] = v.into();
-    }
-    if stream {
-        body["stream"] = true.into();
-    }
-    body
+    Ok(body)
 }

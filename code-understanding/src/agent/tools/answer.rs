@@ -1,13 +1,17 @@
-use std::{collections::HashMap, mem, ops::Range};
 use anyhow::{anyhow, Context, Result};
-use common::{CodeContext, llm_gateway, prompts};
+use common::{ai_util::{call_llm, extract_single_plaintext_content}, prompts, CodeContext};
 use futures::StreamExt;
 use rand::{rngs::OsRng, seq::SliceRandom};
+use std::{collections::HashMap, mem, ops::Range};
 use tracing::{debug, info, instrument, trace};
 
-use crate::agent::{
-    exchange::{CodeChunk, FocusedChunk, Update},
-    transform,
+use crate::{
+    agent::{
+        exchange::{CodeChunk, FocusedChunk, Update},
+        transform,
+    },
+    config::{get_ai_gateway_config, get_quickwit_url},
+    search,
 };
 
 use ai_gateway::message::message::{Message, MessageRole};
@@ -15,13 +19,13 @@ use ai_gateway::message::message::{Message, MessageRole};
 use crate::agent::agent::Agent;
 use crate::agent::agent::ANSWER_MODEL;
 
-
 impl Agent {
     #[instrument(skip(self))]
     pub async fn answer(&mut self, aliases: &[usize]) -> Result<()> {
         const ANSWER_HEADROOM: usize = 1024; // the number of tokens reserved for the answer
 
-        println!(" Aliases from LLM: {:?}", aliases);
+        let search_db_url = get_quickwit_url();
+        log::debug!(" Aliases from LLM: {:?}", aliases);
         debug!("creating article response");
 
         if aliases.len() == 1 {
@@ -31,7 +35,7 @@ impl Agent {
                 .context("invalid path alias passed")?;
 
             let doc = self
-                .get_file_content(path)
+                .get_file_content(&search_db_url, path)
                 .await?
                 .context("path did not exist")?;
 
@@ -46,32 +50,25 @@ impl Agent {
         let system_prompt = prompts::answer_article_prompt(aliases, &context);
         let system_message = Message::system(&system_prompt);
 
-        let history = {
-            let h = self.utter_history().collect::<Vec<_>>();
-            let system_headroom =
-                tiktoken_rs::num_tokens_from_messages(ANSWER_MODEL, &[(&system_message).into()])?;
-            trim_utter_history(h, ANSWER_HEADROOM + system_headroom)?
-        };
+        // let history = {
+        //     let h = self.utter_history().collect::<Vec<_>>();
+        //     let system_headroom =
+        //         tiktoken_rs::num_tokens_from_messages(ANSWER_MODEL, &[(&system_message).into()])?;
+        //     trim_utter_history(h, ANSWER_HEADROOM + system_headroom)?
+        // };
+
+        let history = self.utter_history().collect::<Vec<_>>();
 
         let messages = Some(system_message)
             .into_iter()
             .chain(history.iter().cloned())
             .collect::<Vec<_>>();
 
-        println!("Answer message: {:?}", messages.clone());
-        let response = self
-            .llm_gateway
-            .clone()
-            .model(ANSWER_MODEL)
-            .chat(&messages, None)
-            .await?;
+        log::debug!("Answer message: {:?}", messages.clone());
 
-        // retrieve messages from chatcompletion.
-        let choices = response.choices[0].clone();
-        let response_message = choices.message.content.unwrap();
-        // while let Some(fragment) = stream.next().await {
-        //     let fragment: String = fragment?;
-        //     response += &fragment;
+        let llm_output = call_llm(&get_ai_gateway_config(), None, Some(messages), None).await?;
+
+        let response_message = extract_single_plaintext_content(&llm_output)?;
 
         let (article, summary) = transform::decode(&response_message);
         self.update(Update::Article(article))?;
@@ -96,7 +93,7 @@ impl Agent {
             .to_owned()
         });
 
-        println!("\ngenerated answer\n {:?}", article);
+        log::debug!("\ngenerated answer\n {:?}", article);
 
         self.update(Update::Conclude(summary))?;
 
@@ -169,7 +166,7 @@ impl Agent {
             .map(|(c, _)| CodeContext {
                 path: c.path.clone(),
                 hidden: false,
-                repo: self.repo_name.clone(), 
+                repo: self.repo_name.clone(),
                 branch: None,
                 ranges: vec![c.start_line..c.end_line],
             })
@@ -217,11 +214,11 @@ impl Agent {
             .rev()
             .flat_map(|e| {
                 let query = e.query().map(|q| Message::PlainText {
-                    role: MessageRole::User, 
+                    role: MessageRole::User,
                     content: q,
                 });
 
-                let conclusion = e.answer().map(|(answer, conclusion)| {
+                let conclusion = e.answer().map(|(id, answer, conclusion)| {
                     let encoded =
                         transform::encode_summarized(answer, Some(conclusion), "gpt-4-0613")
                             .unwrap();
@@ -252,7 +249,7 @@ impl Agent {
         gpt_model: &str,
     ) -> Vec<CodeChunk> {
         debug!(?aliases, "canonicalizing code chunks");
-        println!("canonicalizing code chunks: {:?}", aliases);
+        log::debug!("canonicalizing code chunks: {:?}", aliases);
         /// The ratio of code tokens to context size.
         ///
         /// Making this closure to 1 means that more of the context is taken up by source code.
@@ -271,8 +268,8 @@ impl Agent {
                 .push(c.start_line..c.end_line);
         }
 
-        println!("Spans by path: ");
-        println!("{:?}", spans_by_path);
+        log::debug!("Spans by path: ");
+        log::debug!("{:?}", spans_by_path);
 
         debug!(?spans_by_path, "expanding spans");
 
@@ -282,8 +279,10 @@ impl Agent {
             .then(|(path, spans)| async move {
                 spans.sort_by_key(|c| c.start);
 
+                let search_db_url = get_quickwit_url().clone();
+
                 let lines = self_
-                    .get_file_content(path)
+                    .get_file_content(&search_db_url, path)
                     .await
                     .unwrap()
                     .unwrap_or_else(|| panic!("path did not exist in the index: {path}"))
@@ -291,9 +290,9 @@ impl Agent {
                     .lines()
                     .map(str::to_owned)
                     .collect::<Vec<_>>();
-                println!("Inside stream");
-                println!("{:?}", path);
-                println!("{:?}", lines.len());
+                log::debug!("Inside stream");
+                log::debug!("{:?}", path);
+                log::debug!("{:?}", lines.len());
 
                 (path.clone(), lines)
             })
@@ -315,11 +314,11 @@ impl Agent {
                 .flat_map(|(path, spans)| spans.iter().map(move |s| (path, s)))
                 .map(|(path, span)| {
                     // print the hashmap line_by_file and print path
-                    // println!("lines_by_file: {:?}\n", lines_by_file);
-                    //println!("path: {:?}\n", path);
-                    println!("path {:?}", path);
-                    println!("lines of code {:?}", lines_by_file.get(path).unwrap().len());
-                    println!("Current span {:?}", span);
+                    // log::debug!("lines_by_file: {:?}\n", lines_by_file);
+                    //log::debug!("path: {:?}\n", path);
+                    log::debug!("path {:?}", path);
+                    log::debug!("lines of code {:?}", lines_by_file.get(path).unwrap().len());
+                    log::debug!("Current span {:?}", span);
                     let snippet = lines_by_file.get(path).unwrap()[span.clone()].join("\n");
                     bpe.encode_ordinary(&snippet).len()
                 })
@@ -401,10 +400,7 @@ impl Agent {
 }
 
 // headroom refers to the amount of space reserved for the rest of the prompt
-fn trim_utter_history(
-    mut history: Vec<Message>,
-    headroom: usize,
-) -> Result<Vec<Message>> {
+fn trim_utter_history(mut history: Vec<Message>, headroom: usize) -> Result<Vec<Message>> {
     let mut tiktoken_msgs: Vec<tiktoken_rs::ChatCompletionRequestMessage> =
         history.iter().map(|m| m.into()).collect::<Vec<_>>();
 

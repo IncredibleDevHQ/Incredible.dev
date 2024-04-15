@@ -1,13 +1,14 @@
 use super::{Client, ExtraConfig, Model, PromptType, QianwenClient, SendData, TokensCountFactors};
 
+use crate::message;
 use crate::{render::ReplyHandler, utils::PromptKind};
-use crate::message::message::Message;
+use crate::message::message::{Message, MessageRole};
+
 
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use reqwest::{
-    multipart::{Form, Part},
     Client as ReqwestClient, RequestBuilder,
 };
 use reqwest_eventsource::{Error as EventSourceError, Event, RequestBuilderExt};
@@ -42,7 +43,7 @@ impl Client for QianwenClient {
         &self,
         client: &ReqwestClient,
         mut data: SendData,
-    ) -> Result<String> {
+    ) -> Result<Vec<Message>> {
         let api_key = self.get_api_key()?;
         let builder = self.request_builder(client, data)?;
         send_message(builder).await
@@ -101,7 +102,7 @@ impl QianwenClient {
     }
 }
 
-async fn send_message(builder: RequestBuilder) -> Result<String> {
+async fn send_message(builder: RequestBuilder) -> Result<Vec<Message>> {
     let data: Value = builder.send().await?.json().await?;
     check_error(&data)?;
 
@@ -109,8 +110,14 @@ async fn send_message(builder: RequestBuilder) -> Result<String> {
     let output = data["output"]["text"]
         .as_str()
         .ok_or_else(|| anyhow!("Unexpected response {data}"))?;
+    // crate plain text message and return as array 
+    let message = Message::PlainText {
+        role: MessageRole::Assistant,
+        content: output.to_string(),
+    };
 
-    Ok(output.to_string())
+    Ok(vec![message])
+
 }
 
 async fn send_message_streaming(builder: RequestBuilder, handler: &mut ReplyHandler) -> Result<()> {
@@ -169,7 +176,7 @@ fn build_body(data: SendData, model: String) -> Result<(Value, bool)> {
             },
             Message::FunctionCall { role, function_call, .. } => {
                 // Construct a description for the function call including its arguments.
-                let func_name = function_call.name.clone().unwrap_or_else(|| "Unnamed function".to_string());
+                let func_name = function_call.name.clone();
                 let call_desc = format!("Function call: {} with arguments: {}", func_name, function_call.arguments);
                 json!({
                     "role": role,
