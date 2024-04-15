@@ -1,3 +1,4 @@
+use ai_gateway::function_calling;
 use log::debug;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
@@ -8,7 +9,10 @@ use tracing::instrument;
 use crate::{config::get_ai_gateway_config, AppState};
 use anyhow::{anyhow, Context, Result};
 
-use common::{ai_util::call_llm, prompts};
+use common::{
+    ai_util::{call_llm, find_first_function_call},
+    prompts,
+};
 
 use crate::agent::exchange::{Exchange, SearchStep, Update};
 use ai_gateway::message::message::{self, MessageRole};
@@ -224,15 +228,9 @@ impl Agent {
         let trimmed_history = trim_history(history.clone())?;
 
         log::debug!("trimmed history:\n {:?}", trimmed_history);
-        let llm_output = call_llm(&get_ai_gateway_config(), None, Some(trimmed_history))
-            .await
-            .map_err(|e| {
-                log::error!("Failed to start AI Gateway: {:?}", e);
-                e
-            });
+        let llm_output = call_llm(&get_ai_gateway_config(), None, Some(trimmed_history)).await?;
 
-        let choice = chat_completion.choices[0].clone();
-        let functions_to_call = choice.message.function_call.unwrap().to_owned();
+        let (functions_to_call, function_call_id) = find_first_function_call(&llm_output);
         // print the next action picked.
         log::debug!("{:?} next action", functions_to_call);
 
@@ -240,7 +238,6 @@ impl Agent {
         //log::debug!("trimmed_history:\n {:?}\n", &trimmed_history);
         // log::debug!("last_message:\n {:?} \n", history.last());
         // log::debug!("functions:\n {:?} \n", &functions);
-        // log::debug!("raw_response:\n {:?} \n", &chat_completion);
 
         let action = Action::deserialize_gpt(&functions_to_call)
             .context("failed to deserialize LLM output")?;
@@ -314,7 +311,11 @@ impl Agent {
                     // NB: We intentionally discard the summary as it is redundant.
                     Some((answer, _conclusion, answer_id)) => {
                         let encoded = transform::encode_summarized(answer, None, "gpt-3.5-turbo")?;
-                        Some(message::Message::function_return(Some(answer_id.to_string()),"none", &encoded))
+                        Some(message::Message::function_return(
+                            Some(answer_id.to_string()),
+                            "none",
+                            &encoded,
+                        ))
                     }
 
                     None => None,
@@ -438,10 +439,7 @@ impl Action {
     /// So that we can deserialize using the serde-provided "tagged" enum representation.
     fn deserialize_gpt(call: &FunctionCall) -> Result<Self> {
         let mut map = serde_json::Map::new();
-        map.insert(
-            call.name.clone(),
-            serde_json::from_str(&call.arguments)?,
-        );
+        map.insert(call.name.clone(), serde_json::from_str(&call.arguments)?);
 
         Ok(serde_json::from_value(serde_json::Value::Object(map))?)
     }
