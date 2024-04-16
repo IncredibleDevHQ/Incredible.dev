@@ -7,7 +7,7 @@ pub fn generate_quikwit_index_name(namespace: &str) -> String {
     // create a hex string
     let new_index_id = format!("{:x}", md5_index_id);
     let index_name = format!("{}-{}-{}", version, repo_name, new_index_id);
-    return index_name.to_string();
+    return namespace.to_string();
 }
 
 pub fn generate_qdrant_index_name(namespace: &str) -> String {
@@ -20,5 +20,5 @@ pub fn generate_qdrant_index_name(namespace: &str) -> String {
         "{}-{}-{}-documents-symbols",
         version, repo_name, new_index_id
     );
-    return index_name.to_string();
+    return "documents_symbol".to_string();
 }

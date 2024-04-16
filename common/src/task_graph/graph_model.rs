@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 /// Represents the process of tracking tasks, subtasks, and questions within a directed graph.
 /// Each instance of `TrackProcess` maintains its own graph, root node, and unique identifier (UUID)
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TrackProcessV1 {
     pub repo: String,
     pub graph: Option<DiGraph<NodeV1, EdgeV1>>,
@@ -84,7 +84,7 @@ impl NodeV1 {
 }
 
 /// Defines the types of edges to represent relationships between nodes in the task tracking graph.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum EdgeV1 {
     // This edge connects one Conversation node to the next Conversation node as the chat progresses.
     NextConversation,
