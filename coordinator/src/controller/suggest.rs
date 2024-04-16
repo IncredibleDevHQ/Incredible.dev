@@ -4,9 +4,12 @@ use crate::configuration::{
 use crate::llm_ops::summarize::{
     generate_single_task_summarization_, generate_summarized_answer_for_task,
 };
+use tokio::sync::mpsc;
+use tokio::task;
+
 use crate::llm_ops::tasks_questions::generate_tasks_and_questions;
 use ai_gateway::message::message::Message;
-use anyhow::{Error, Result};
+use anyhow::{anyhow, Error, Result};
 use common::models::{
     CodeContextRequest, CodeUnderstandRequest, TaskList, TaskListResponseWithMessage,
 };
@@ -87,15 +90,15 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
             }
             ConversationProcessingStage::GraphNotInitialized => {
                 debug!("Graph not initialized, initializing the graph and setting the next state to GenerateTasksAndQuestions");
-                tracker.initialize_graph();
+                &tracker.initialize_graph();
                 state = ConversationProcessingStage::GenerateTasksAndQuestions;
             }
             ConversationProcessingStage::GenerateTasksAndQuestions => {
                 // get the generated questions from the LLM or the file based on the data modes
                 let generated_questions_with_llm_messages: TaskListResponseWithMessage =
                     generate_tasks_and_questions(
-                        request.user_query.clone(),
-                        request.repo_name.clone(),
+                        &request.user_query,
+                        &request.repo_name,
                     )
                     .await?;
 
@@ -137,7 +140,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 )?;
 
                 // when you ask LLM to generate tasks, subtasks and questions, it might not generate it
-                // when the user hasen't provided enough context.
+                // when the user hasn't provided enough context.
                 // for instance, if user asks something like "help me with my api",
                 // the LLM might respond with a generic response with some detail like "Can you provide more context? What specifically do you need help with regarding your API?"
                 // In this case the the systems state in the graph would transition to AwaitingUserInput
@@ -161,37 +164,49 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 debug!("Tasks and questions are generated, moving onto finding answers for the questions.");
                 tracker.print_graph_hierarchy();
                 // return the tasks, subtasks and questions.
-                let task_list = tracker.get_unanswered_questions()?;
+                let questions_list = tracker.get_unanswered_questions()?;
                 debug!(
                     "Unanswered questions fetched from task_graph: {:?}",
-                    task_list
+                    questions_list
                 );
+                let (tx, mut rx) = mpsc::channel(2);
                 // print the graph
-                //tracker.print_graph_hierarchy();
-                let questions_with_answers = get_codebase_answers_for_questions(
-                    request.repo_name.clone(),
-                    &task_list.clone(),
-                    false,
-                )
-                .await;
-                // update the graph with answers
-                // Note: this mutates the state of graph inside task process
-                tracker.extend_graph_with_answers(&questions_with_answers)?;
-                // find if any of the Result in Vec has error, if so just return the error
-                // the reason to do this is to avoid the state machine getting into an infinite loop.
-                // Imagine a scenario where there were some unanswered questions,
-                // we don't want the system to continue further until they succeed.
-                // So we update the task graph even if there some successful answers, and return error
-                // even if there was one unsuccessful answer.
-                // the client can retry, and the next time the system will continue from where it left off
-                // to retry fetching answer only for the unanswered questions.
-                let answer_err = questions_with_answers.iter().find(|x| x.is_err());
-                if let Some(err_result) = answer_err {
-                    return Err(anyhow::anyhow!(err_result
-                        .as_ref()
-                        .unwrap_err()
-                        .to_string()));
+                let question_count = questions_list.len();
+                let repo_name = request.repo_name.clone();
+                let handle = tokio::spawn(async move {
+                    if let Err(e) =
+                        get_codebase_answers_for_questions(repo_name, &questions_list, false, tx, true)
+                            .await
+                    {
+                        log::error!("Error processing questions: {:?}", e);
+                    }
+                });
+
+                // Collect answers
+                let mut answers = Vec::new();
+                while let Some(result) = rx.recv().await {
+                    match result {
+                        Ok(answer) => {
+                            debug!("Received answer: {:?}", answer);
+                            // save the answer to the graph
+                            tracker.extend_graph_with_answers(&vec![Ok(answer.clone())])?;
+                            answers.push(answer);
+                        }
+                        Err(e) => {
+                            log::error!("Error received: {:?}", e);
+                            if answers.len() != question_count {
+                                debug!("Error: Received answers count does not match the questions count.");
+                                return Err(
+                                    anyhow!("Received answers count does not match the questions count."),
+                                );
+                            }
+                            break; // Stop processing on error if needed
+                        }
+                    }
                 }
+
+                // Wait for all processing to complete
+                handle.await?;
                 state = ConversationProcessingStage::AllQuestionsAnswered;
             }
             // you start with this state because the previous conversation with the user ended
@@ -277,81 +292,82 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
     }
 }
 
-/// Retrieves answers for a set of questions by querying a code understanding service.
-/// This function can execute service calls either in parallel or sequentially based on the `parallel` flag.
-///
-/// # Arguments
-/// * `repo_name` - The name of the repository to query against.
-/// * `generated_questions` - A vector of questions with associated unique identifiers.
-/// * `parallel` - A boolean flag that determines whether the network requests are sent in parallel or sequentially.
-///
-/// # Returns
-/// Returns a vector of results, each being either a successful `QuestionWithAnswer` or an `Error`.
+// Asynchronously retrieves answers for a set of questions from a codebase,
+// optionally in parallel, and immediately tries to save each answer to Redis as it is received.
+
 async fn get_codebase_answers_for_questions(
     repo_name: String,
-    generated_questions: &Vec<QuestionWithId>,
+    generated_questions: &[QuestionWithId],
     parallel: bool,
-) -> Vec<Result<QuestionWithAnswer, Error>> {
-    // URL construction for the code understanding service call
-    let code_understanding_service = get_code_understanding_url();
-    let code_understanding_url = format!("{}/retrieve-code", code_understanding_service);
+    tx: mpsc::Sender<Result<QuestionWithAnswer, Error>>,
+    can_interrupt: bool,
+) -> Result<()> {
+    let code_understanding_url = format!("{}/retrieve-code", get_code_understanding_url());
 
-    // Preparing asynchronous operations for each question
-    let futures_answers_for_questions: Vec<_> = generated_questions
-        .iter()
-        .map(|question_with_id| {
-            let url = code_understanding_url.clone();
-            let repo_name = repo_name.clone();
-            let mut query_params = HashMap::new();
-            query_params.insert("query".to_string(), question_with_id.text.clone());
-            query_params.insert("repo".to_string(), repo_name);
-
-            async move {
-                // Making an asynchronous service call
-                let response: Result<CodeUnderstanding, Error> =
-                    service_caller::<CodeUnderstandRequest, CodeUnderstanding>(
-                        url,
-                        HttpMethod::GET,
-                        None,
-                        Some(query_params),
-                    )
-                    .await;
-
-                // Logging errors from the service call
-                if let Err(ref e) = response {
-                    error!(
-                        "Error fetching code understanding for question:{}, Response error: {}",
-                        question_with_id.clone(),
-                        e
-                    );
-                }
-
-                // Constructing the result as `QuestionWithAnswer` from the successful response
-                response
-                    .map(|answer| QuestionWithAnswer {
-                        question_id: question_with_id.id,
-                        question: question_with_id.text.clone(),
-                        answer,
-                    })
-                    .map_err(anyhow::Error::from)
-            }
-        })
-        .collect();
-
-    // Determining the mode of execution based on the `parallel` flag
     if parallel {
-        // Execute all futures in parallel
-        join_all(futures_answers_for_questions).await
+        // Parallel processing
+        join_all(generated_questions.iter().map(|question_with_id| {
+            let url = code_understanding_url.clone();
+            let repo = repo_name.clone();
+            let tx = tx.clone();
+            async move {
+                let result = handle_question(url, repo, question_with_id).await;
+                tx.send(result)
+                    .await
+                    .expect("Failed to send result to channel");
+            }
+        }))
+        .await;
     } else {
-        // Execute futures sequentially
-        let mut results = Vec::new();
-        for future in futures_answers_for_questions {
-            results.push(future.await);
+        // Sequential processing, potentially ending early on error
+        for question_with_id in generated_questions {
+            let result = handle_question(
+                code_understanding_url.clone(),
+                repo_name.clone(),
+                question_with_id,
+            )
+            .await;
+            tx.send(result)
+                .await
+                .expect("Failed to send result to channel");
+
+            // if there was only one question to process and the process can be interrupted, return early
+            if generated_questions.len() == 1 && can_interrupt {
+                return Ok(());
+            }
+            if can_interrupt {
+                return Err(anyhow!("Interrupted, processed just one question"));
+            }
         }
-        results
     }
+
+    Ok(())
 }
 
+async fn handle_question(
+    url: String,
+    repo_name: String,
+    question_with_id: &QuestionWithId,
+) -> Result<QuestionWithAnswer, Error> {
+    let mut query_params = HashMap::new();
+    query_params.insert("query".to_string(), question_with_id.text.clone());
+    query_params.insert("repo".to_string(), repo_name);
+
+    // Call the code understanding service and map the response
+    service_caller::<CodeUnderstandRequest, CodeUnderstanding>(
+        url,
+        HttpMethod::GET,
+        None,
+        Some(query_params),
+    )
+    .await
+    .map(|answer| QuestionWithAnswer {
+        question_id: question_with_id.id,
+        question: question_with_id.text.clone(),
+        answer,
+    })
+    .map_err(anyhow::Error::from)
+}
 // TODO: Remove unused warning suppressor once the context generator is implemented
 #[allow(unused)]
 async fn get_code_context(code_understanding: CodeUnderstandings) -> Result<String, anyhow::Error> {
