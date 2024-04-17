@@ -1,5 +1,10 @@
 use anyhow::{anyhow, Context, Result};
-use common::{ai_util::{call_llm, extract_single_plaintext_content}, prompts, CodeContext};
+use common::{
+    ai_util::{call_llm, extract_single_plaintext_content},
+    prompts,
+    task_graph::redis_config::get_redis_url,
+    CodeContext,
+};
 use futures::StreamExt;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{collections::HashMap, mem, ops::Range};
@@ -97,6 +102,7 @@ impl Agent {
 
         self.update(Update::Conclude(summary))?;
 
+        self.save_exchanges_to_redis(&get_redis_url())?;
         Ok(())
     }
 
@@ -312,15 +318,23 @@ impl Agent {
             let tokens = spans_by_path
                 .iter()
                 .flat_map(|(path, spans)| spans.iter().map(move |s| (path, s)))
-                .map(|(path, span)| {
-                    // print the hashmap line_by_file and print path
-                    // log::debug!("lines_by_file: {:?}\n", lines_by_file);
-                    //log::debug!("path: {:?}\n", path);
-                    log::debug!("path {:?}", path);
-                    log::debug!("lines of code {:?}", lines_by_file.get(path).unwrap().len());
-                    log::debug!("Current span {:?}", span);
-                    let snippet = lines_by_file.get(path).unwrap()[span.clone()].join("\n");
-                    bpe.encode_ordinary(&snippet).len()
+                .filter_map(|(path, span)| {
+                    // Ensure the span is valid before processing
+                    if span.start > span.end {
+                        log::warn!(
+                            "Skipping invalid span with start > end: {:?} -> {:?}",
+                            span,
+                            path
+                        );
+                        None
+                    } else {
+                        let lines = lines_by_file.get(path).unwrap();
+                        log::debug!("path {:?}", path);
+                        log::debug!("lines of code {:?}", lines.len());
+                        log::debug!("Current span {:?}", span);
+                        let snippet = lines[span.clone()].join("\n");
+                        Some(bpe.encode_ordinary(&snippet).len())
+                    }
                 })
                 .sum::<usize>();
 
