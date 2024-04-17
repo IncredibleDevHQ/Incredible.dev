@@ -40,6 +40,8 @@ pub struct CodeSpanRequest {
 pub struct CodeUnderstandRequest {
     pub query: String,
     pub repo: String,
+    pub task_id: String,
+    pub question_id: usize, 
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]

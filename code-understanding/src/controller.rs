@@ -30,6 +30,12 @@ pub async fn handle_retrieve_code(
         ));
     }
 
+    let task_id = req.task_id.clone();
+    let question_id = req.question_id.clone();
+
+    // concat task and question id as the unique id to store the exchanges
+    let exchanges_id = format!("{}_{}", task_id, question_id);
+    // check if the exchanges already exist in the redis state
     let mut action = Action::Query(req.query.clone());
     let id = uuid::Uuid::new_v4();
 
