@@ -34,13 +34,12 @@ pub async fn handle_retrieve_code(
     let question_id = req.question_id.clone();
 
     // concat task and question id as the unique id to store the exchanges
-    let exchanges_id = format!("{}_{}", task_id, question_id);
+    let query_id = format!("{}_{}", task_id, question_id);
     // check if the exchanges already exist in the redis state
     let mut action = Action::Query(req.query.clone());
-    let id = uuid::Uuid::new_v4();
 
     let mut exchanges = vec![];
-    exchanges.push(Exchange::new(id, req.query.clone()));
+    exchanges.push(Exchange::new(query_id, req.query.clone()));
 
     // get db client from app state
     let ai_gateway_config = get_ai_gateway_config();
@@ -59,7 +58,7 @@ pub async fn handle_retrieve_code(
         app_state: app_state,
         exchanges,
         ai_gateway,
-        query_id: id,
+        query_id: query_id,
         complete: false,
         repo_name: req.repo.clone(),
         last_function_call_id: None,
