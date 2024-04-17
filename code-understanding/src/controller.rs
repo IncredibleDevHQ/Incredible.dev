@@ -1,3 +1,5 @@
+use crate::agent::exchange;
+use crate::agent::exchange::load_exchanges_from_redis;
 use crate::config::get_ai_gateway_config;
 use crate::AppState;
 use ai_gateway::config::AIGatewayConfig;
@@ -36,10 +38,30 @@ pub async fn handle_retrieve_code(
     // concat task and question id as the unique id to store the exchanges
     let query_id = format!("{}_{}", task_id, question_id);
     // check if the exchanges already exist in the redis state
-    let mut action = Action::Query(req.query.clone());
+    // if it exists, then return the exchanges from the redis state
+    // otherwise assign an empty vector to exchanges
+    let exchanges = load_exchanges_from_redis( &query_id);
 
-    let mut exchanges = vec![];
-    exchanges.push(Exchange::new(query_id, req.query.clone()));
+    if exchanges.is_err() {
+        log::error!("Error loading exchanges from redis");
+        return Ok(warp::reply::with_status(
+            warp::reply::json(&format!("Error: {}", "Error loading exchanges from redis")),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ));
+    }
+    let exchanges = exchanges.unwrap();
+    // set it to true if exchanges already exists.
+
+    let mut exchange_exists = false;
+    let exchanges = match exchanges {
+        Some(exchanges) => {
+            exchange_exists = true;
+            exchanges
+        }
+        None => vec![Exchange::new(query_id.clone(), req.query.clone())],
+    };
+
+    let mut action = Action::Query(req.query.clone());
 
     // get db client from app state
     let ai_gateway_config = get_ai_gateway_config();
@@ -48,7 +70,10 @@ pub async fn handle_retrieve_code(
     if ai_gateway.is_err() {
         log::error!("Error getting AI Gateway configuration");
         return Ok(warp::reply::with_status(
-            warp::reply::json(&format!("Error: {}", "Error Initializing AI Gateway configuration")),
+            warp::reply::json(&format!(
+                "Error: {}",
+                "Error Initializing AI Gateway configuration"
+            )),
             StatusCode::INTERNAL_SERVER_ERROR,
         ));
     }
