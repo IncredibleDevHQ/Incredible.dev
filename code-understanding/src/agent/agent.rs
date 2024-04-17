@@ -83,7 +83,7 @@ pub struct Agent {
     pub app_state: Arc<AppState>,
     pub exchanges: Vec<Exchange>,
     pub ai_gateway: AIGatewayConfig,
-    pub query_id: uuid::Uuid,
+    pub query_id: String, 
     pub last_function_call_id: Option<String>,
     /// Indicate whether the request was answered.
     ///

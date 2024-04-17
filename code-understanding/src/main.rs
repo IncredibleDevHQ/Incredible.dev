@@ -1,5 +1,4 @@
 use anyhow::Result;
-use redis;
 use common::task_graph::{redis::establish_redis_connection, redis_config::get_redis_url};
 use once_cell::sync::Lazy;
 use std::sync::{Once, RwLock};
@@ -16,9 +15,9 @@ mod search;
 use std::sync::Arc;
 
 use core::result::Result::Ok;
+use redis;
 struct AppState {
     db_connection: db_client::DbConnect, // Assuming DbConnection is your database connection type
-    redis_conn: redis::Connection,
 }
 
 // initialize the app state with the configuration and database connection.
@@ -36,7 +35,6 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
         }
     }
 
-    let redis_client = establish_redis_connection(&get_redis_url())?;
 
     // create new db client.
     let db_client = match db_client::DbConnect::new().await {
@@ -48,7 +46,6 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
     };
 
     Ok(AppState {
-        redis_conn: redis_client,
         db_connection: db_client,
     })
 }
