@@ -1,4 +1,5 @@
 use crate::agent::agent::Agent;
+use crate::config::get_redis_url;
 use crate::helpers::symbol_search::symbol_search;
 
 use crate::agent::exchange::{CodeChunk, SearchStep, Update};
@@ -74,7 +75,8 @@ impl Agent {
             query: query.clone(),
             response: response.clone(),
         }))?;
-
+        // save exchanges to redis 
+        self.save_exchanges_to_redis(&get_redis_url())?;
         Ok(response)
     }
 }
