@@ -1,7 +1,16 @@
+use core::hash;
 use std::{fmt, mem};
 
 use chrono::prelude::{DateTime, Utc};
-use common::CodeContext;
+use common::{task_graph::redis::establish_redis_connection, CodeContext};
+
+use super::agent::Agent;
+use crate::{config::get_redis_url, redis};
+use crate::redis::Commands;
+
+use anyhow::{Result, anyhow};
+
+const EXCHANGES_HASH_KEY: &str = "exchange_code_understanding";
 
 /// A continually updated conversation exchange.
 ///
@@ -9,7 +18,7 @@ use common::CodeContext;
 /// conclusion from the model alongside the answer, if any.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
 pub struct Exchange {
-    pub id: uuid::Uuid,
+    pub id: String, 
     pub query: String,
     pub answer: Option<String>,
     pub answer_id: Option<String>,
@@ -37,8 +46,52 @@ pub struct Exchange {
     pub final_context: Vec<CodeContext>,
 }
 
+impl Agent {
+    // function to save the exchanges to redis
+    // this helps to resume/reply the agentic workflow on answering a question/query
+    pub fn save_exchanges_to_redis(&self, redis_url: &str) -> Result<()> {
+        let mut conn = establish_redis_connection(&get_redis_url())?;
+        let key = &self.query_id;
+        let value = serde_json::to_string(&self.exchanges)?;
+        let hash_key = EXCHANGES_HASH_KEY;
+
+        conn.hset(hash_key, key, value)?;
+        Ok(())
+    }
+}
+
+// Function to load the agent state of operations on a given question/query.
+pub fn load_exchanges_from_redis(query_id: &str) -> Result<Option<Vec<Exchange>>> {
+    let mut redis_conn  = establish_redis_connection(&get_redis_url())?;
+    let hash_key = EXCHANGES_HASH_KEY;
+
+    match redis_conn.hget::<_, _, String>(hash_key, query_id.to_string()) {
+        Ok(value) => {
+            let loaded_value = value.to_string();
+            match serde_json::from_str::<Vec<Exchange>>(&value) {
+                Ok(exchanges) => Ok(Some(exchanges)),
+                Err(e) => {
+                    // Handle JSON deserialization errors
+                    Err(anyhow!("Failed to deserialize data: {}", e))
+                }
+            }
+        },
+        Err(e) => {
+            // Using e.kind() to check the error type
+            if e.kind() == redis::ErrorKind::TypeError {
+                // Soft error: hash key or query_id does not exist
+                Ok(None)
+            } else {
+                // Hard error: likely a connection or server issue
+                Err(anyhow!("Redis error encountered: {}", e))
+            }
+        }
+    }
+}
+
+
 impl Exchange {
-    pub fn new(id: uuid::Uuid, query: String) -> Self {
+    pub fn new(id: String, query: String) -> Self {
         // generate new uuid
 
         Self {

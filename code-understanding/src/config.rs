@@ -14,6 +14,7 @@ pub struct Config {
     pub quickwit_url: String,
     pub semantic_collection_name: String,
     pub search_server_url: String,
+    pub redis_url: String,
     // String containing the yaml configuration of the AI Gateway
     pub ai_gateway_config: String,
 }
@@ -57,6 +58,7 @@ pub fn load_from_env() -> Config {
         env::var("SEMANTIC_COLLECTION_NAME").unwrap_or_else(|_| "documents".to_string());
     let search_server_url =
         env::var("SEARCH_SERVER_URL").unwrap_or_else(|_| "http://localhost:3003".to_string());
+    let redis_url = env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string());
 
    Config {
         semantic_url,
@@ -69,6 +71,7 @@ pub fn load_from_env() -> Config {
         quickwit_url,
         semantic_collection_name,
         search_server_url,
+        redis_url,
         ai_gateway_config,
     }
 }
@@ -116,6 +119,10 @@ pub fn get_search_server_url() -> String {
 // New getter for ai_gateway_config
 pub fn get_ai_gateway_config() -> String {
     CONFIG.read().unwrap().ai_gateway_config.clone()
+}
+
+pub fn get_redis_url() -> String {
+    CONFIG.read().unwrap().redis_url.clone()
 }
 
 pub fn clone_config() -> Config {

@@ -83,7 +83,7 @@ pub struct Agent {
     pub app_state: Arc<AppState>,
     pub exchanges: Vec<Exchange>,
     pub ai_gateway: AIGatewayConfig,
-    pub query_id: uuid::Uuid,
+    pub query_id: String,
     pub last_function_call_id: Option<String>,
     /// Indicate whether the request was answered.
     ///
@@ -198,21 +198,24 @@ impl Agent {
     }
 
     #[instrument(skip(self))]
-    pub async fn step(&mut self, action: Action) -> Result<Option<Action>> {
+    pub async fn step(&mut self, action: Action, exchange_exists: bool) -> Result<Option<Action>> {
         log::debug!("\ninside step {:?}\n", action);
+        if !exchange_exists {
+            match &action {
+                Action::Query(s) => s.clone(),
 
-        match &action {
-            Action::Query(s) => s.clone(),
+                Action::Answer { paths } => {
+                    self.answer(paths).await.context("answer action failed")?;
+                    return Ok(None);
+                }
 
-            Action::Answer { paths } => {
-                self.answer(paths).await.context("answer action failed")?;
-                return Ok(None);
-            }
-
-            Action::Path { query } => self.path_search(query).await?,
-            Action::Code { query } => self.code_search(query).await?,
-            Action::Proc { query, paths } => self.process_files(query, paths).await?,
-        };
+                Action::Path { query } => self.path_search(query).await?,
+                Action::Code { query } => self.code_search(query).await?,
+                Action::Proc { query, paths } => self.process_files(query, paths).await?,
+            };
+        } else {
+            debug!("exchange exists.");
+        }
 
         let functions = serde_json::from_value::<Vec<Function>>(
             prompts::functions(self.paths().next().is_some()), // Only add proc if there are paths in context
@@ -227,8 +230,14 @@ impl Agent {
         //let trimmed_history = trim_history(history.clone())?;
 
         //log::debug!("trimmed history:\n {:?}", trimmed_history);
-        // call the llm 
-        let llm_output = call_llm(&get_ai_gateway_config(), None, Some(history), Some(functions)).await?;
+        // call the llm
+        let llm_output = call_llm(
+            &get_ai_gateway_config(),
+            None,
+            Some(history),
+            Some(functions),
+        )
+        .await?;
 
         if let Some((function_to_call, id)) = find_first_function_call(&llm_output) {
             log::debug!("{:?} next action", function_to_call);

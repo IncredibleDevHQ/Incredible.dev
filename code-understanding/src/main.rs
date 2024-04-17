@@ -1,4 +1,5 @@
 use anyhow::Result;
+use common::task_graph::{redis::establish_redis_connection, redis_config::get_redis_url};
 use once_cell::sync::Lazy;
 use std::sync::{Once, RwLock};
 use config::{get_search_server_url, load_from_env, Config};
@@ -14,6 +15,7 @@ mod search;
 use std::sync::Arc;
 
 use core::result::Result::Ok;
+use redis;
 struct AppState {
     db_connection: db_client::DbConnect, // Assuming DbConnection is your database connection type
 }
@@ -32,6 +34,7 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
             return Err(anyhow::anyhow!("Search server is not running. Please start the search server first."));
         }
     }
+
 
     // create new db client.
     let db_client = match db_client::DbConnect::new().await {

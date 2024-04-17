@@ -6,6 +6,7 @@ use tracing::instrument;
 use crate::agent::agent::Agent;
 
 use crate::agent::exchange::{SearchStep, Update};
+use crate::config::get_redis_url;
 
 impl Agent {
     #[instrument(skip(self))]
@@ -58,6 +59,9 @@ impl Agent {
             query: query.clone(),
             response: response.clone(),
         }))?;
+        // save exchanges to redis 
+        self.save_exchanges_to_redis(&get_redis_url())?;
+        
         let result = "OK";
         Ok(result.to_string())
     }

@@ -36,7 +36,6 @@ impl TrackProcessV1 {
     Ok(task_process)
 }
 
-
 pub fn establish_redis_connection(url: &str) -> redis::RedisResult<redis::Connection> {
     // Attempt to establish a connection
     let client = redis::Client::open(url)?;

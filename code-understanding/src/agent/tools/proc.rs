@@ -1,6 +1,6 @@
 use crate::{
     agent::agent::Agent,
-    config::{get_ai_gateway_config, get_quickwit_url},
+    config::{get_ai_gateway_config, get_quickwit_url, get_redis_url},
 };
 use anyhow::{anyhow, Context, Result};
 use futures::{stream, StreamExt};
@@ -209,6 +209,8 @@ impl Agent {
             paths,
             response: response.clone(),
         }))?;
+        // save exchanges to redis.
+        self.save_exchanges_to_redis(&get_redis_url());
 
         Ok(response)
     }
