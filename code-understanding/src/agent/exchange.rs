@@ -1,7 +1,14 @@
+use core::hash;
 use std::{fmt, mem};
 
 use chrono::prelude::{DateTime, Utc};
-use common::CodeContext;
+use common::{task_graph::redis, CodeContext};
+
+use super::agent::Agent;
+
+use anyhow::Result;
+
+const EXCHANGES_HASH_KEY: &str = "exchange_code_understanding";
 
 /// A continually updated conversation exchange.
 ///
@@ -35,6 +42,28 @@ pub struct Exchange {
 
     // Final context that was used to generate the conclusion
     pub final_context: Vec<CodeContext>,
+}
+
+impl Agent {
+    // function to save the exchanges to redis
+    // this helps to resume/reply the agentic workflow on answering a question/query
+    pub fn save_exchanges_to_redis(&self, redis_url: &str) -> Result<()> {
+        let mut conn = self.app_state.redis_conn;
+        let key = self.query_id;
+        let value = serde_json::to_string(&self.exchanges)?;
+        let hash_key = EXCHANGES_HASH_KEY;
+
+        conn.hset(hash_key, key, value)?;
+        Ok(())
+    }
+}
+
+// function to load the agent state of operations on a given question/query.
+pub fn load_exchanges_from_redis(redis_conn: &mut redis::Connection, query_id: &str) -> Result<Vec<Exchange>> {
+    let hash_key = EXCHANGES_HASH_KEY;
+    let value: String = redis_conn.hget(hash_key, query_id)?;
+    let exchanges: Vec<Exchange> = serde_json::from_str(&value)?;
+    Ok(exchanges)
 }
 
 impl Exchange {
