@@ -249,7 +249,6 @@ mod test {
         )
     }
 
-    // https://github.com/BloopAI/bloop/issues/213
     //
     // type parameters and function parameters should belong to a scope
     // that is smaller that the function definition itself.

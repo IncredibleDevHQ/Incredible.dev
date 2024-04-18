@@ -67,7 +67,6 @@ pub fn load_exchanges_from_redis(query_id: &str) -> Result<Option<Vec<Exchange>>
 
     match redis_conn.hget::<_, _, String>(hash_key, query_id.to_string()) {
         Ok(value) => {
-            let loaded_value = value.to_string();
             match serde_json::from_str::<Vec<Exchange>>(&value) {
                 Ok(exchanges) => Ok(Some(exchanges)),
                 Err(e) => {
@@ -186,6 +185,11 @@ pub enum SearchStep {
         paths: Vec<String>,
         response: String,
     },
+    // Answer {
+    //     id: Option<String>,
+    //     aliases: Vec<usize>,
+    //     response: String,
+    // },
 }
 
 impl SearchStep {
@@ -212,6 +216,15 @@ impl SearchStep {
                 paths: paths.clone(),
                 response: "[hidden, compressed]".into(),
             },
+            // Self::Answer {
+            //     id,
+            //     aliases,
+            //     response,
+            // } => Self::Answer {
+            //     id: id.clone(),
+            //     aliases: aliases.clone(),
+            //     response: response.clone(),
+            // },
         }
     }
 
@@ -220,6 +233,7 @@ impl SearchStep {
             Self::Path { response, .. } => response.clone(),
             Self::Code { response, .. } => response.clone(),
             Self::Proc { response, .. } => response.clone(),
+            //Self::Answer { response, .. } => response.clone(),
         }
     }
 }

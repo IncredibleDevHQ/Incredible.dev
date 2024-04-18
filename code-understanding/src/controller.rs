@@ -143,6 +143,11 @@ pub async fn handle_retrieve_code(
         }
     } else {
         log::info!("Answer already exists, skipping the step function");
+        let query = agent.get_query();
+        log::info!("Query: {:?}", query);
+        //log::debug!("{:?}",agent.history().unwrap());
+
+
 
     }
     // These need to be put beind a try catch sort of setup
@@ -156,6 +161,7 @@ pub async fn handle_retrieve_code(
             ));
         }
     };
+
     let final_context = agent.get_final_anwer().final_context.clone();
     agent.complete();
 

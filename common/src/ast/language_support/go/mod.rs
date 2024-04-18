@@ -667,7 +667,6 @@ mod tests {
         )
     }
 
-    // bug report: https://www.notion.so/teambloop/Go-Bug-2a82ef59b72548f2ad51bac1ddad62b6
     #[test]
     fn bug_report_type_def_slice_type() {
         test_scopes(
@@ -720,7 +719,6 @@ mod tests {
         )
     }
 
-    // bug report: https://www.notion.so/teambloop/Go-Bug-2a82ef59b72548f2ad51bac1ddad62b6
     #[test]
     fn bug_report_rhs_declaration() {
         test_scopes(
