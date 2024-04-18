@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 use std::sync::RwLock;
 
 static REDIS_URL: Lazy<RwLock<String>> = Lazy::new(|| {
-    RwLock::new(String::from("default_redis_url")) // Default URL or leave it empty.
+    RwLock::new(String::from("redis://127.0.0.1:6379")) // Default URL or leave it empty.
 });
 
 pub fn set_redis_url(redis_url: &str) {

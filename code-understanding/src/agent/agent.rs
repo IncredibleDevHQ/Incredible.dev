@@ -169,6 +169,14 @@ impl Agent {
         self.exchanges.last().expect("answer was not set")
     }
 
+    pub fn get_query(&self) -> String {
+        self.exchanges
+            .first()
+            .expect("query was not set")
+            .query()
+            .unwrap()
+    }
+
     pub fn last_exchange(&self) -> &Exchange {
         self.exchanges.last().expect("exchange list was empty")
     }
@@ -260,7 +268,7 @@ impl Agent {
     }
 
     /// The full history of messages, including intermediate function calls
-    fn history(&self) -> Result<Vec<message::Message>> {
+    pub fn history(&self) -> Result<Vec<message::Message>> {
         const ANSWER_MAX_HISTORY_SIZE: usize = 3;
         const FUNCTION_CALL_INSTRUCTION: &str = "Call a function. Do not answer";
 
