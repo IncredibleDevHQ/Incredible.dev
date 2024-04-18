@@ -61,7 +61,7 @@ impl Agent {
         //         tiktoken_rs::num_tokens_from_messages(ANSWER_MODEL, &[(&system_message).into()])?;
         //     trim_utter_history(h, ANSWER_HEADROOM + system_headroom)?
         // };
-
+        log::debug!("system answer prompt: {:?}", system_prompt);
         let history = self.utter_history().collect::<Vec<_>>();
 
         let messages = Some(system_message)
@@ -69,12 +69,13 @@ impl Agent {
             .chain(history.iter().cloned())
             .collect::<Vec<_>>();
 
-        log::debug!("Answer message: {:?}", messages.clone());
+        //log::debug!("Answer message: {:?}", messages.clone());
 
         let llm_output = call_llm(&get_ai_gateway_config(), None, Some(messages), None).await?;
 
         let response_message = extract_single_plaintext_content(&llm_output)?;
-
+        
+        log::debug!("LLM answer response: \n\n{:?}", response_message);
         let (article, summary) = transform::decode(&response_message);
         self.update(Update::Article(article))?;
 

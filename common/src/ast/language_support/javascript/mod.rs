@@ -287,7 +287,6 @@ mod test {
         assert_eq!(ref_count, 6);
     }
 
-    // https://github.com/BloopAI/bloop/issues/213
     #[test]
     fn function_params() {
         test_scopes(
