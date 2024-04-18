@@ -7,6 +7,7 @@ use serde_json;
 impl TrackProcessV1 {
     /// Serializes and stores the TaskProcessV1 instance in Redis.
     pub fn save_task_process_to_redis(&self, redis_url: &str)  -> Result<()> {
+        log::debug!("Saving TaskProcess to Redis: {:?}", redis_url);
         let mut conn = establish_redis_connection(redis_url)?;
 
         // Use the UUID from the root node as part of the key.
@@ -38,6 +39,7 @@ impl TrackProcessV1 {
 
 pub fn establish_redis_connection(url: &str) -> redis::RedisResult<redis::Connection> {
     // Attempt to establish a connection
+    log::debug!("Connecting to Redis: {}", url);
     let client = redis::Client::open(url)?;
     let mut conn: redis::Connection = client.get_connection()?;
 

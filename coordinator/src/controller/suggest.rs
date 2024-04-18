@@ -96,11 +96,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
             ConversationProcessingStage::GenerateTasksAndQuestions => {
                 // get the generated questions from the LLM or the file based on the data modes
                 let generated_questions_with_llm_messages: TaskListResponseWithMessage =
-                    generate_tasks_and_questions(
-                        &request.user_query,
-                        &request.repo_name,
-                    )
-                    .await?;
+                    generate_tasks_and_questions(&request.user_query, &request.repo_name).await?;
 
                 debug!(
                     "Generated questions: {:?}",
@@ -173,10 +169,17 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 // print the graph
                 let question_count = questions_list.len();
                 let repo_name = request.repo_name.clone();
+                let task_id = tracker.get_root_node_uuid().unwrap();
                 let handle = tokio::spawn(async move {
-                    if let Err(e) =
-                        get_codebase_answers_for_questions(repo_name, &questions_list, false, tx, true)
-                            .await
+                    if let Err(e) = get_codebase_answers_for_questions(
+                        repo_name,
+                        task_id,
+                        &questions_list,
+                        false,
+                        tx,
+                        true,
+                    )
+                    .await
                     {
                         log::error!("Error processing questions: {:?}", e);
                     }
@@ -196,9 +199,9 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                             log::error!("Error received: {:?}", e);
                             if answers.len() != question_count {
                                 debug!("Error: Received answers count does not match the questions count.");
-                                return Err(
-                                    anyhow!("Received answers count does not match the questions count."),
-                                );
+                                return Err(anyhow!(
+                                    "Received answers count does not match the questions count."
+                                ));
                             }
                             break; // Stop processing on error if needed
                         }
@@ -297,6 +300,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
 
 async fn get_codebase_answers_for_questions(
     repo_name: String,
+    task_id: String,
     generated_questions: &[QuestionWithId],
     parallel: bool,
     tx: mpsc::Sender<Result<QuestionWithAnswer, Error>>,
@@ -309,9 +313,10 @@ async fn get_codebase_answers_for_questions(
         join_all(generated_questions.iter().map(|question_with_id| {
             let url = code_understanding_url.clone();
             let repo = repo_name.clone();
+            let task_id = task_id.clone();
             let tx = tx.clone();
             async move {
-                let result = handle_question(url, repo, question_with_id).await;
+                let result = handle_question(url, repo, question_with_id, task_id).await;
                 tx.send(result)
                     .await
                     .expect("Failed to send result to channel");
@@ -325,6 +330,7 @@ async fn get_codebase_answers_for_questions(
                 code_understanding_url.clone(),
                 repo_name.clone(),
                 question_with_id,
+                task_id.clone(),
             )
             .await;
             tx.send(result)
@@ -336,6 +342,10 @@ async fn get_codebase_answers_for_questions(
                 return Ok(());
             }
             if can_interrupt {
+                let err_result = Err(anyhow!("Interrupted, processed just one question"));
+                tx.send(err_result)
+                    .await
+                    .expect("Failed to send result to channel");
                 return Err(anyhow!("Interrupted, processed just one question"));
             }
         }
@@ -348,10 +358,13 @@ async fn handle_question(
     url: String,
     repo_name: String,
     question_with_id: &QuestionWithId,
+    task_id: String,
 ) -> Result<QuestionWithAnswer, Error> {
     let mut query_params = HashMap::new();
     query_params.insert("query".to_string(), question_with_id.text.clone());
     query_params.insert("repo".to_string(), repo_name);
+    query_params.insert("question_id".to_string(), question_with_id.id.to_string());
+    query_params.insert("task_id".to_string(), task_id.to_string());
 
     // Call the code understanding service and map the response
     service_caller::<CodeUnderstandRequest, CodeUnderstanding>(
@@ -367,6 +380,16 @@ async fn handle_question(
         answer,
     })
     .map_err(anyhow::Error::from)
+    // send a dummy answer
+    // Ok(QuestionWithAnswer{
+    //     question_id: question_with_id.id,
+    //     question: question_with_id.text.clone(),
+    //     answer: CodeUnderstanding {
+    //         context: vec![],
+    //         question: question_with_id.text.clone(),
+    //         answer: "Dummy answer".to_string(),
+    //     }
+    // })
 }
 // TODO: Remove unused warning suppressor once the context generator is implemented
 #[allow(unused)]
