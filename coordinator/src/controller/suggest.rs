@@ -6,6 +6,7 @@ use crate::llm_ops::summarize::{
 };
 use tokio::sync::mpsc;
 use tokio::task;
+use warp::reject::PayloadTooLarge;
 
 use crate::llm_ops::tasks_questions::generate_tasks_and_questions;
 use ai_gateway::message::message::Message;
@@ -147,7 +148,9 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                     debug!("Tasks and Questions not generated, awaiting more user input, returning ask_user state.");
                     // return TaskList
                     return Ok(SuggestResponse {
+                        id: tracker.get_root_node_uuid().unwrap(),
                         tasks: None,
+                        plan: None,
                         ask_user: generated_questions.ask_user.clone(),
                         questions_with_answers: None,
                     });
@@ -242,9 +245,11 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 .await?;
 
                 // connect the summary to the graph, this will also save the summary to the redis.
-                tracker.connect_task_to_answer_summary(&tasks_qna_context, summary)?;
+                tracker.connect_task_to_answer_summary(&tasks_qna_context, &summary)?;
 
                 return Ok(SuggestResponse {
+                    id: tracker.get_root_node_uuid().unwrap(),
+                    plan: Some(summary),
                     tasks: Some(tracker.get_current_tasks()?),
                     questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
                     ask_user: None,
@@ -256,6 +261,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
             }
 
             ConversationProcessingStage::AnswersSummarized => {
+                tracker.print_graph_hierarchy();
                 // nothing more to do,return the answers.
                 debug!("All answers summarized, nothing to do!");
                 // let tasks_qna_context = tracker.collect_tasks_questions_answers_contexts()?;
@@ -285,9 +291,12 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
 
                 // connect the summary to the graph, this will also save the summary to the redis.
                 //tracker.connect_task_to_answer_summary(&tasks_qna_context, summary)?;
+                let plan = tracker.get_summary()?;
                 return Ok(SuggestResponse {
+                    id: tracker.get_root_node_uuid().unwrap(),
                     tasks: Some(tracker.get_current_tasks()?),
                     questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
+                    plan: Some(plan),
                     ask_user: None,
                 });
             }
