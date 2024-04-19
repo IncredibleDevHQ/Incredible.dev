@@ -4,15 +4,15 @@ use crate::task_graph::add_node::NodeError;
 use crate::task_graph::graph_model::{EdgeV1, NodeV1, TrackProcessV1};
 use crate::task_graph::redis_config::get_redis_url;
 
-use petgraph::graph::{DiGraph, NodeIndex, EdgeIndex};
+use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
 
-
 use crate::models::{TaskDetailsWithContext, TasksQuestionsAnswersDetails};
 use crate::CodeContext;
+use anyhow::{Result, anyhow};
 
-use log::{error, debug};
+use log::{debug, error};
 
 impl TrackProcessV1 {
     /// Collects details about tasks, questions, answers, and code contexts from the graph.
@@ -118,12 +118,29 @@ impl TrackProcessV1 {
         }
         Ok(())
     }
+
+    pub fn get_summary(&self) -> Result<String> {
+        let graph = self.graph.as_ref().ok_or(NodeError::GraphNotInitialized)?;
+        let mut summary = String::new();
+        for node_index in graph.node_indices() {
+            match &graph[node_index] {
+                NodeV1::AnswerSummary(summary) => {
+                    return Ok(summary.clone());
+                }
+                _ => {}
+            }
+        }
+        Err(anyhow!(NodeError::NoSummaryFound))
+    }
+
     /// Connects the first task in the provided `TasksQuestionsAnswersDetails` to a new `AnswerSummary` node,
     /// ensuring there's only one summary node per task by removing any existing summary nodes.
+    /// The summary node is then connected to the parent conversation node of the tasks in the graph.
+    /// so tasks and plan are siblings in the graph. This method also attempts to save the updated graph to Redis.
     pub fn connect_task_to_answer_summary(
         &mut self,
         task_details: &TasksQuestionsAnswersDetails,
-        summary: String,
+        summary: &str,
     ) -> Result<(), NodeError> {
         // Check if the graph is initialized.
         let graph = self.graph.as_mut().ok_or(NodeError::GraphNotInitialized)?;
@@ -156,7 +173,7 @@ impl TrackProcessV1 {
             }
 
             // Once existing summaries are cleared, add the new AnswerSummary node.
-            let answer_summary_node = graph.add_node(NodeV1::AnswerSummary(summary));
+            let answer_summary_node = graph.add_node(NodeV1::AnswerSummary(summary.to_string()));
             graph.add_edge(
                 parent_conversation_node_id,
                 answer_summary_node,
@@ -164,10 +181,11 @@ impl TrackProcessV1 {
             );
 
             // Attempt to save the updated graph to Redis.
-            self.save_task_process_to_redis(&get_redis_url()).map_err(|e| {
-                error!("Failed to save task process to Redis: {:?}", e);
-                NodeError::RedisSaveError
-            })
+            self.save_task_process_to_redis(&get_redis_url())
+                .map_err(|e| {
+                    error!("Failed to save task process to Redis: {:?}", e);
+                    NodeError::RedisSaveError
+                })
         } else {
             Err(NodeError::NoTaskFound)
         }
