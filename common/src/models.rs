@@ -156,6 +156,7 @@ pub struct TasksQuestionsAnswersDetails {
 
 #[derive(Debug, Clone)]
 pub struct TaskDetailsWithContext {
+    // Task ID is derive from the node index in the graph.
     pub task_id: usize,
     pub task_description: String,
     pub questions: Vec<String>,
