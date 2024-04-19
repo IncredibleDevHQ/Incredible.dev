@@ -12,6 +12,11 @@ pub struct SuggestRequest {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SuggestResponse {
+    // unique identifier for the task
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    // plan for solving the task.
+    pub plan: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ask_user: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
