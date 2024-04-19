@@ -21,6 +21,7 @@ pub enum NodeError {
     InvalidQuestionNode,
     NoTaskFound,
     RedisSaveError,
+    NoSummaryFound,
 }
 
 impl fmt::Display for NodeError {
@@ -37,6 +38,7 @@ impl fmt::Display for NodeError {
             NodeError::InvalidQuestionNode => write!(f, "Invalid question node provided."),
             NodeError::NoTaskFound => write!(f, "No task found."),
             NodeError::RedisSaveError => write!(f, "Error saving the task process to Redis."),
+            NodeError::NoSummaryFound => write!(f, "No answer summary found."),
         }
     }
 }
