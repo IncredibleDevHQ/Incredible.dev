@@ -14,6 +14,7 @@ mod llm_ops;
 mod models;
 mod routes;
 mod utility;
+mod code_understanding;
 
 use core::result::Result::Ok;
 

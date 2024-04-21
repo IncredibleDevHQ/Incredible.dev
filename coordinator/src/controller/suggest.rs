@@ -1,33 +1,32 @@
+use tokio::sync::mpsc;
+
+use crate::code_understanding::get_codebase_answers_for_questions;
+use crate::llm_ops::tasks_questions::generate_tasks_and_questions;
+use ai_gateway::message::message::Message;
+use anyhow::Result;
+use common::models::{
+    CodeContextRequest, TaskList, TaskListResponseWithMessage,
+};
+
+use crate::controller::error::AgentProcessingError;
 use crate::configuration::{
-    get_code_search_url, get_code_understanding_url, get_context_generator_url, get_redis_url,
+    get_context_generator_url, get_redis_url,
 };
 use crate::llm_ops::summarize::{
     generate_single_task_summarization_, generate_summarized_answer_for_task,
 };
-use tokio::sync::mpsc;
-use tokio::task;
-use warp::reject::PayloadTooLarge;
-
-use crate::llm_ops::tasks_questions::generate_tasks_and_questions;
-use ai_gateway::message::message::Message;
-use anyhow::{anyhow, Error, Result};
-use common::models::{
-    CodeContextRequest, CodeUnderstandRequest, TaskList, TaskListResponseWithMessage,
-};
-
 use common::service_interaction::HttpMethod;
 use common::task_graph::graph_model::{
-    ConversationChain, QuestionWithAnswer, QuestionWithId, TrackProcessV1,
+    ConversationChain, TrackProcessV1,
 };
 use common::task_graph::redis::load_task_process_from_redis;
 use common::task_graph::state::ConversationProcessingStage;
-use futures::future::join_all;
 use log::{debug, error, info};
-use reqwest::{Method, StatusCode};
-use std::{collections::HashMap, convert::Infallible};
+use reqwest::StatusCode;
+use std::convert::Infallible;
 
 use crate::models::SuggestResponse;
-use common::{service_interaction::service_caller, CodeUnderstanding, CodeUnderstandings};
+use common::{service_interaction::service_caller, CodeUnderstandings};
 
 use crate::{models::SuggestRequest, CONFIG};
 
@@ -200,13 +199,25 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                         }
                         Err(e) => {
                             log::error!("Error received: {:?}", e);
-                            if answers.len() != question_count {
-                                debug!("Error: Received answers count does not match the questions count.");
-                                return Err(anyhow!(
-                                    "Received answers count does not match the questions count."
-                                ));
+                            match e {
+                                AgentProcessingError::LLMRateLimitTriggered => {
+                                    debug!("Rate limit triggered, answering one question at a time, stopping processing.");
+                                    // return question with answers in suggest response. 
+                                    return Ok(SuggestResponse {
+                                        id: tracker.get_root_node_uuid().unwrap(),
+                                        tasks: Some(tracker.get_current_tasks()?),
+                                        questions_with_answers: Some(tracker.get_current_questions_with_answers()?),
+                                        plan: None,
+                                        ask_user: None,
+                                    });
+                                }
+                                _ => {
+                                    debug!("Error: {:?}", e);
+                                    // return error 
+                                    return Err(anyhow::anyhow!("{}", e));
+                                }
                             }
-                            break; // Stop processing on error if needed
+
                         }
                     }
                 }
@@ -304,102 +315,7 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
     }
 }
 
-// Asynchronously retrieves answers for a set of questions from a codebase,
-// optionally in parallel, and immediately tries to save each answer to Redis as it is received.
 
-async fn get_codebase_answers_for_questions(
-    repo_name: String,
-    task_id: String,
-    generated_questions: &[QuestionWithId],
-    parallel: bool,
-    tx: mpsc::Sender<Result<QuestionWithAnswer, Error>>,
-    can_interrupt: bool,
-) -> Result<()> {
-    let code_understanding_url = format!("{}/retrieve-code", get_code_understanding_url());
-
-    if parallel {
-        // Parallel processing
-        join_all(generated_questions.iter().map(|question_with_id| {
-            let url = code_understanding_url.clone();
-            let repo = repo_name.clone();
-            let task_id = task_id.clone();
-            let tx = tx.clone();
-            async move {
-                let result = handle_question(url, repo, question_with_id, task_id).await;
-                tx.send(result)
-                    .await
-                    .expect("Failed to send result to channel");
-            }
-        }))
-        .await;
-    } else {
-        // Sequential processing, potentially ending early on error
-        for question_with_id in generated_questions {
-            let result = handle_question(
-                code_understanding_url.clone(),
-                repo_name.clone(),
-                question_with_id,
-                task_id.clone(),
-            )
-            .await;
-            tx.send(result)
-                .await
-                .expect("Failed to send result to channel");
-
-            // if there was only one question to process and the process can be interrupted, return early
-            if generated_questions.len() == 1 && can_interrupt {
-                return Ok(());
-            }
-            if can_interrupt {
-                let err_result = Err(anyhow!("Interrupted, processed just one question"));
-                tx.send(err_result)
-                    .await
-                    .expect("Failed to send result to channel");
-                return Err(anyhow!("Interrupted, processed just one question"));
-            }
-        }
-    }
-
-    Ok(())
-}
-
-async fn handle_question(
-    url: String,
-    repo_name: String,
-    question_with_id: &QuestionWithId,
-    task_id: String,
-) -> Result<QuestionWithAnswer, Error> {
-    let mut query_params = HashMap::new();
-    query_params.insert("query".to_string(), question_with_id.text.clone());
-    query_params.insert("repo".to_string(), repo_name);
-    query_params.insert("question_id".to_string(), question_with_id.id.to_string());
-    query_params.insert("task_id".to_string(), task_id.to_string());
-
-    // Call the code understanding service and map the response
-    service_caller::<CodeUnderstandRequest, CodeUnderstanding>(
-        url,
-        HttpMethod::GET,
-        None,
-        Some(query_params),
-    )
-    .await
-    .map(|answer| QuestionWithAnswer {
-        question_id: question_with_id.id,
-        question: question_with_id.text.clone(),
-        answer,
-    })
-    .map_err(anyhow::Error::from)
-    // send a dummy answer
-    // Ok(QuestionWithAnswer{
-    //     question_id: question_with_id.id,
-    //     question: question_with_id.text.clone(),
-    //     answer: CodeUnderstanding {
-    //         context: vec![],
-    //         question: question_with_id.text.clone(),
-    //         answer: "Dummy answer".to_string(),
-    //     }
-    // })
-}
 // TODO: Remove unused warning suppressor once the context generator is implemented
 #[allow(unused)]
 async fn get_code_context(code_understanding: CodeUnderstandings) -> Result<String, anyhow::Error> {
