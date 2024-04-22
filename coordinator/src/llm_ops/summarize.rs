@@ -78,7 +78,7 @@ pub async fn generate_single_task_summarization_(
         .model(&open_ai_model);
     let system_message = message::Message::system(&summarization_prompt);
     // append the system message to the message history
-    let mut messages = Some(system_message.clone()).into_iter().collect::<Vec<_>>();
+    let messages = Some(system_message.clone()).into_iter().collect::<Vec<_>>();
 
     let response = match llm_gateway
         .clone()
