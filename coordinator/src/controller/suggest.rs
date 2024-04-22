@@ -1,4 +1,5 @@
 use tokio::sync::mpsc;
+use rand::Rng;
 
 use crate::code_understanding::get_codebase_answers_for_questions;
 use crate::llm_ops::tasks_questions::generate_tasks_and_questions;
@@ -303,6 +304,10 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
                 // connect the summary to the graph, this will also save the summary to the redis.
                 //tracker.connect_task_to_answer_summary(&tasks_qna_context, summary)?;
                 let plan = tracker.get_summary()?;
+                // add a random delay upto 5-10 seconds to simulate the summarization process
+                let delay = rand::thread_rng().gen_range(5..10);
+                tokio::time::sleep(tokio::time::Duration::from_secs(delay)).await;
+
                 return Ok(SuggestResponse {
                     id: tracker.get_root_node_uuid().unwrap(),
                     tasks: Some(tracker.get_current_tasks()?),

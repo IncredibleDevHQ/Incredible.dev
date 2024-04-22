@@ -1,13 +1,3 @@
-## Baby bloop
-The goal of the project is to create a simple system to quickly iterate and build world's best QnA source code tool on planet! 
-In order to get to the best system possible, the speed of iteration is crucial. The current bloop system is just too bulky and slows down the innovation, 
-and thus the baby bloop was born! 
-
-## Caution
-The goal of the system until this point was to improve the answer quality, performance was not the focus.
-So I deliberately made the system very simple and dumb. No concurrrency primitives are used, everything is sequential and simple.
-Once the answer quality is improved I'll focus on improving the performance using Rust's concurrency primitives. So you could stumble upon code which is not polished.
-
 ### How to index a repo
 The repo must be git repo, since I use a git walker instead of a file system
 1. Create empty folders for the repo, qdrant and quickwit data from the project root 
@@ -28,4 +18,4 @@ The repo must be git repo, since I use a git walker instead of a file system
       - REPO_NAME=bloop-ai
 6. docker-compose up -d --build
 7. docker logs -f --tail 10  retx-rust-app-1 to tail the logs
-8. If you don't want to run the indexing, just want to spin up qdrant and tantity on the data folder for inference, just run `docker-compose up qdrant quickwit`.
+8. If you don't want to run the indexing, just want to spin up qdrant and tantivy on the data folder for inference, just run `docker-compose up qdrant quickwit`.
