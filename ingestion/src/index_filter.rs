@@ -1,4 +1,3 @@
-use log::error;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use smallvec::SmallVec;
@@ -85,7 +84,7 @@ pub fn index_filter<P: AsRef<Path>>(p: &P) -> bool {
                     .filter_map(|source| match Regex::new(source) {
                         Ok(r) => Some(r), // Compiled successfully, include in the result.
                         Err(e) => {
-                            error!("failed to compile vendor regex {:?}: {}", source, e); // Compilation failed, print an error message.
+                            println!("failed to compile vendor regex {:?}: {}", source, e); // Compilation failed, print an error message.
                             None // Exclude from the result.
                         }
                     })

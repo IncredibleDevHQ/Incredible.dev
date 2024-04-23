@@ -1,5 +1,8 @@
 use hyperpolyglot::detect_buffer;
-use std::{io::Cursor, path::Path};
+use std::{
+    io::Cursor,
+    path::Path,
+};
 
 // Detects the language of the given file.
 pub fn detect_language(path: &Path, buf: &[u8]) -> Option<&'static str> {
