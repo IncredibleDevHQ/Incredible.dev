@@ -19,6 +19,9 @@ pub fn compute_hashes(relative_path: PathBuf, buffer: &str, branch_list: &str) -
         hash.finalize().to_hex().to_string()
     };
 
+    // print hashes
+    // println!("semantic_hash: {}", semantic_hash);
+    // println!("tantivy_hash: {}", tantivy_hash);
     (semantic_hash, tantivy_hash)
 }
 
@@ -34,6 +37,10 @@ mod tests {
         let branch_list = "main";
 
         let (semantic_hash, tantivy_hash) = compute_hashes(relative_path, buffer, branch_list);
+
+        // print hashes
+        // println!("semantic_hash test: {}", semantic_hash);
+        // println!("tantivy_hash test: {}", tantivy_hash);
 
         // You should replace these with the expected values for the given input.
         let expected_semantic_hash =
