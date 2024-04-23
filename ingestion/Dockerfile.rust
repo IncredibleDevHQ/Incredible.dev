@@ -1,20 +1,51 @@
-# Use an official Rust image as a parent image
-FROM rust:1.73.0-bullseye
+# Stage 1: Build the application
+FROM debian:bookworm-slim as builder
 
-# Set the working directory in the container to /usr/src/myapp
+# Setup working directory
 WORKDIR /usr/src/myapp
 
-# Copy the local Cargo.toml, Cargo.lock, and repo directory to the container
+# Install necessary build tools and libraries
+RUN apt-get update && \
+    apt-get install -y make clang libc-dev curl cmake python3 protobuf-compiler pkg-config libssl-dev git wget build-essential && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Setup Rust environment
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Copy your source files
 COPY Cargo.toml Cargo.lock ./
 COPY repo ./repo
-COPY model ./model 
+COPY model ./model
 COPY index-config.yaml ./index-config.yaml
-# Copy the content of your local src directory to the working directory
 COPY src ./src
 
 # Build the application
-# RUN cargo build --release
+RUN cargo build --release
+RUN ls /usr/src/myapp/target/release/
 
-# Specify the command to run on container start using cargo run
-CMD ["/bin/sh", "-c", "cargo run --release -- $REPO_SUBFOLDER $REPO_NAME"]
+# Stage 2: Setup the runtime environment
+FROM debian:bookworm-slim
 
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && \
+    apt-get install -y ca-certificates libssl-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy the Rust binary and necessary libraries from the builder stage
+COPY --from=builder /usr/src/myapp/target/release/ingestion /usr/local/bin/
+COPY --from=builder /usr/src/myapp/target/release/libonnxruntime.so.* /usr/local/bin/
+COPY --from=builder /usr/src/myapp/index-config.yaml /usr/local/bin/
+
+# Set environment variables
+ENV LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH}"
+
+# Make the Rust binary executable
+RUN chmod +x /usr/local/bin/ingestion
+
+# Command to run the application
+CMD ["/usr/local/bin/ingestion", "$REPO_SUBFOLDER", "$REPO_NAME"]
