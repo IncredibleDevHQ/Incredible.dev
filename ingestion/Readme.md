@@ -7,7 +7,7 @@ The repo must be git repo, since I use a git walker instead of a file system
    2. `git clone https://github.com/BloopAI/bloop.git`
    3. `cd ..`
 3. Currently the system only indexes the main branch 
-4. The docker-compose file runs both tantity and quickwit to index the content.
+4. The docker-compose file runs both qdrant and quickwit to index the content.
 5. Open `docker-compose.yml` and set the env variables 
    1. environment:
       - REPO_SUBFOLDER=<Cloned Git repo named inside ./repo folder>
