@@ -1,12 +1,11 @@
-extern crate clap;
+use crate::semantic_index::text_range::{TextRange, Point};
+extern  crate clap;
 use clap::builder::PossibleValue;
-use common::ast::text_range::Point;
-use common::ast::text_range::TextRange;
-// use range
+// use range 
+use std::ops::Range;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::fmt::Write;
-use std::ops::Range;
 // A Chunk type, containing the plain text (borrowed from the source)
 /// and a `TextRange` with byte, line and column positions
 #[derive(Debug)]
@@ -14,6 +13,7 @@ pub struct Chunk<'a> {
     pub data: &'a str,
     pub range: TextRange,
 }
+
 
 // Parse arguments into enums.
 ///
@@ -147,6 +147,7 @@ impl Default for OverlapStrategy {
     }
 }
 
+
 /// This should take care of [CLS], [SEP] etc. which could be introduced during per-chunk tokenization
 pub const DEDUCT_SPECIAL_TOKENS: usize = 2;
 
@@ -178,6 +179,8 @@ pub fn add_token_range<'s>(
     (*last_line, *last_byte) = (start.line, start.byte);
     chunks.push(Chunk::new(&src[start_byte..end_byte], start, end));
 }
+
+
 
 /// This calculates the line and column for a given byte position. The last_line and last_byte
 /// parameters can be used to reduce the amount of searching for the line position from quadratic
