@@ -3,19 +3,15 @@ use std::error::Error;
 use std::ops::Range;
 use std::sync::Arc;
 extern crate tracing;
-use rayon::iter::IntoParallelRefIterator;
+use anyhow::Result;
+use ort::{CPUExecutionProvider, Session};
 use tracing::{debug, error, info, trace, warn};
 mod chunking;
 mod text_range;
 mod vector_payload;
 use crate::ast::symbol::{SymbolKey, SymbolMetaData, SymbolValue};
-use crate::Repository;
 use chunking::{add_token_range, point, Chunk, DEDUCT_SPECIAL_TOKENS};
 use ndarray::Axis;
-use ort::tensor::{FromArray, InputTensor, OrtOwnedTensor};
-use ort::{
-    session::SessionBuilder, Environment, ExecutionProvider, GraphOptimizationLevel, LoggingLevel,
-};
 use qdrant_client::prelude::{QdrantClient, QdrantClientConfig};
 use qdrant_client::qdrant::{PointId, PointStruct};
 use std::collections::HashMap;
@@ -43,7 +39,7 @@ pub enum SemanticError {
     #[error("ONNX runtime error")]
     OnnxRuntimeError {
         #[from]
-        error: ort::OrtError,
+        error: ort::Error,
     },
 
     #[error("semantic error")]
@@ -75,43 +71,37 @@ impl Error for CommitError {
 }
 
 impl SemanticIndex {
-    pub fn new(counter: &usize) -> Self {
-        let threads: i16 = 1;
-        let env = Environment::builder()
-            .with_name("Encode")
-            .with_log_level(LoggingLevel::Warning)
-            .with_execution_providers([ExecutionProvider::cpu()])
-            .with_telemetry(false)
-            .build()
-            .unwrap();
+    pub fn new(counter: &usize) -> Result<Self, anyhow::Error> {
+        let threads: usize = 1;
+        let env = ort::init()
+            .with_execution_providers([CPUExecutionProvider::default().build()])
+            .commit()
+            .map_err(anyhow::Error::from)?;
 
         let environment = Arc::new(env);
 
-        Self {
-            // initialize the tokenizer with ./model/tokenizer.json and turn off padding and truncation
-            tokenizer: tokenizers::Tokenizer::from_file(
-                "/Users/karthicrao/Downloads/ingestion/model/tokenizer.json",
-            )
-            .unwrap()
-            .into(),
+        // Explicitly handle the error and convert it to anyhow::Error
+        let tokenizer = tokenizers::Tokenizer::from_file(
+            "/Users/karthicrao/Downloads/ingestion/model/tokenizer.json",
+        )
+        .map_err(|e| {
+            let error_message = e.to_string(); // Extract the error message
+            log::error!("Error creating tokenizer: {}", error_message); // Optional: log the error
+            anyhow::Error::msg(error_message) // Create an anyhow::Error with the message
+        })?;
 
+        let session = Session::builder()?
+            .commit_from_file("/Users/karthicrao/Downloads/ingestion/model/model.onnx")
+            .map_err(anyhow::Error::from)?;
+
+        Ok(Self {
+            tokenizer: tokenizer.into(),
             overlap: chunking::OverlapStrategy::default(),
-
-            session: SessionBuilder::new(&environment)
-                .unwrap()
-                .with_optimization_level(GraphOptimizationLevel::Level3)
-                .unwrap()
-                .with_intra_threads(threads)
-                .unwrap()
-                .with_model_from_file(
-                    "/Users/karthicrao/Downloads/ingestion/model/model.onnx",
-                )
-                .unwrap()
-                .into(),
+            session: session.into(),
             qdrantPayload: Vec::new(),
             qdrantSymbolPayload: Vec::new(),
             counter: *counter,
-        }
+        })
     }
 
     pub fn overlap_strategy(&self) -> chunking::OverlapStrategy {
@@ -142,14 +132,17 @@ impl SemanticIndex {
             token_type_ids.iter().map(|&x| x as i64).collect(),
         )?;
 
-        let outputs = self.session.run([
-            InputTensor::from_array(inputs_ids_array.into_dyn()),
-            InputTensor::from_array(attention_mask_array.into_dyn()),
-            InputTensor::from_array(token_type_ids_array.into_dyn()),
-        ])?;
+        //let array = ndarray::Array::from_shape_vec((1,), vec![document]).unwrap();
 
-        let output_tensor: OrtOwnedTensor<f32, _> = outputs[0].try_extract().unwrap();
-        let sequence_embedding = &*output_tensor.view();
+        let outputs = self.session.run(ort::inputs![
+            ort::Value::from_array(inputs_ids_array.into_dyn())?,
+            ort::Value::from_array(attention_mask_array.into_dyn())?,
+            ort::Value::from_array(token_type_ids_array.into_dyn())?,
+        ]?)?;
+
+
+        let output_tensor = outputs[0].try_extract_tensor()?;
+        let sequence_embedding = output_tensor.view();
         let pooled = sequence_embedding.mean_axis(Axis(1)).unwrap();
         Ok(pooled.to_owned().as_slice().unwrap().to_vec())
     }
@@ -278,7 +271,7 @@ impl SemanticIndex {
                     id: Some(PointId::from(id.to_string())),
                     vectors: Some(embedder(&key.symbol).unwrap().into()),
                     payload: symbol_qdrant_meta.convert_to__qdrant_fields(),
-                }
+                };
             })
             .collect();
 
