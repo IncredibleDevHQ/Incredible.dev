@@ -627,6 +627,7 @@ impl Indexer {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init();
     // Instantiate an Indexer.
     let indexer = Indexer;
 
