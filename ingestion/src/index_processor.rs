@@ -3,8 +3,6 @@ use crate::FileFields;
 use anyhow::{anyhow, Result};
 use futures::stream::StreamExt;
 use itertools::Itertools;
-use serde::Serialize;
-use std::env;
 use std::error::Error;
 use std::fs::{self, File};
 use std::io::Write;
