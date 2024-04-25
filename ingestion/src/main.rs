@@ -566,7 +566,7 @@ impl Repository {
 
         // iterate through self.semanticPayloads and call the tokenize_and_commit function
         for payload in &self.semantic_payloads {
-            let mut index = SemanticIndex::new(&counter);
+            let mut index = SemanticIndex::new(&counter)?;
             let result = index
                 .tokenize_and_commit(
                     &payload.buffer,
@@ -585,7 +585,7 @@ impl Repository {
             println!("Counter value: {}", counter);
         }
 
-        let mut index = SemanticIndex::new(&counter);
+        let mut index = SemanticIndex::new(&counter)?;
         // send self.symbolMetaPayload to commit_symbol_metadata function to commit the metadata.
         let result = index
             .commit_symbol_metadata(&self.symbol_meta_payload, &self.qdrant_client_symbol)

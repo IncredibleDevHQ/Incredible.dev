@@ -23,8 +23,8 @@ services:
       context: .
       dockerfile: Dockerfile.rust
     environment:
-      - REPO_SUBFOLDER=bloop
-      - REPO_NAME=bloop-ai
+      - REPO_SUBFOLDER=incredible
+      - REPO_NAME=incredible
     depends_on:
       - qdrant
       - quickwit
