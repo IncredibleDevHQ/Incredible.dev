@@ -1,35 +1,34 @@
+use crate::config::{get_quickwit_url, get_yaml_config_path};
+use crate::FileFields;
 use anyhow::{anyhow, Result};
 use futures::stream::StreamExt;
 use itertools::Itertools;
 use serde::Serialize;
+use std::env;
 use std::error::Error;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
-use crate::FileFields;
 
 use crate::generate_index_schema;
 
 pub async fn process_entries(all_entries: Vec<FileFields>, repo_name: &str) {
     // println!("creating yaml schema");
-
-    let path = Path::new("/Users/karthicrao/Downloads/ingestion/index-config.yaml");
-
+    // read yaml config path from env
+    let yaml_config_path = get_yaml_config_path();
+    let path = Path::new(&yaml_config_path);
     generate_index_schema::replace_index_id_in_yaml(path, repo_name);
+    let quickwit_url = get_quickwit_url();
+    let url = &format!("{}/api/v1/indexes", &quickwit_url);
 
-    // println!("json creating");
-    let url = "http://localhost:7280/api/v1/indexes";
-    let yaml_path = format!("/Users/karthicrao/Downloads/ingestion/index-config.yaml",);
-
-    // println!("in");
-    println!("Sending first yaml to server...");
-    let response = send_yaml_to_server(&yaml_path, url).await;
+    log::debug!("Sending first yaml to server...");
+    let response = send_yaml_to_server(&get_yaml_config_path(), url).await;
     match response {
         Ok(_) => {
-            println!("Successfully sent yaml to server");
+            log::info!("Successfully sent yaml to server");
         }
         Err(e) => {
-            println!("Failed to send yaml to server: {:?}", e);
+            log::error!("Failed to send yaml to server: Aborting {:?}", e);
         }
     }
     // println!("out");
@@ -38,13 +37,13 @@ pub async fn process_entries(all_entries: Vec<FileFields>, repo_name: &str) {
     let chunks = iter.chunks(3);
     let all_entries_stream = futures::stream::iter(&chunks);
 
-   // let all_entries_stream = futures::stream::iter(&entries.iter().chunks(3));
+    // let all_entries_stream = futures::stream::iter(&entries.iter().chunks(3));
 
     all_entries_stream
         .for_each_concurrent(Some(10), |chunk| async {
             let url = format!(
-                "http://localhost:7280/api/v1/{}/ingest?commit=force",
-                repo_name
+                "{}/api/v1/{}/ingest?commit=force",
+                &quickwit_url, &repo_name
             );
 
             let json_data_vec: Result<Vec<String>, _> = chunk

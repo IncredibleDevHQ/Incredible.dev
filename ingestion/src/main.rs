@@ -1,6 +1,7 @@
 use ast::symbol::SymbolMetaData;
 // Import necessary modules from Rust's standard library
 use bincode::serialize;
+use config::get_qdrant_url;
 use futures::{executor::block_on, future::join_all};
 use qdrant_client::qdrant;
 use serde::Serialize;
@@ -9,7 +10,7 @@ use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
 use tokio;
-use uuid::Uuid;
+use clap::Parser;
 // Import the index_filter module
 mod index_filter;
 use index_filter::index_filter;
@@ -19,18 +20,15 @@ mod util;
 use std::collections::HashSet;
 use util::detect_language;
 // External crate for working with Git repositories
-
+use std::env;
+mod config;
 mod generate_index_schema;
 mod index_processor;
 
 extern crate git2;
-use blake3::Hasher;
 mod ast;
-use crate::ast::language_support;
-use crate::ast::language_support::Language;
-use crate::ast::language_support::TSLanguage;
-use crate::ast::symbol::{SymbolKey, SymbolLocations, SymbolMap, SymbolValue};
-use crate::ast::{CodeFileAST, CodeFileASTError};
+use crate::ast::symbol::{SymbolKey, SymbolLocations, SymbolValue};
+use crate::ast::CodeFileAST;
 use crate::semantic_index::{SemanticError, SemanticIndex};
 // Importing necessary types from the git2 crate
 use git2::{ObjectType, Repository as GitRepository};
@@ -56,8 +54,6 @@ pub const MAX_FILE_LEN: u64 = AVG_LINE_LEN * MAX_LINE_COUNT;
 const COLLECTION_NAME: &str = "documents";
 const COLLECTION_NAME_SYMBOLS: &str = "documents_symbol";
 const EMBEDDING_DIM: usize = 384;
-const QDRANT_URL: &str = "http://localhost:6334";
-const BRANCH_REF_STR: &str = "refs/heads/master";
 
 // data structure to represent a repository  file or directory or other.
 #[derive(Clone)]
@@ -328,11 +324,17 @@ impl Repository {
 
         let indexes_symbols = vec!["repo_name".to_string(), "symbol".to_string()];
         let git_repo = GitRepository::open(&disk_path)?;
-        let qdrant_client_chunks =
-            Some(Repository::init_qdrant_client(QDRANT_URL, COLLECTION_NAME, indexes_chunk).await?);
-        let qdrant_client_symbols = Some(
-            Repository::init_qdrant_client(QDRANT_URL, COLLECTION_NAME_SYMBOLS, indexes_symbols)
+        let qdrant_client_chunks = Some(
+            Repository::init_qdrant_client(&get_qdrant_url(), COLLECTION_NAME, indexes_chunk)
                 .await?,
+        );
+        let qdrant_client_symbols = Some(
+            Repository::init_qdrant_client(
+                &get_qdrant_url(),
+                COLLECTION_NAME_SYMBOLS,
+                indexes_symbols,
+            )
+            .await?,
         );
 
         Ok(Self {
@@ -348,13 +350,13 @@ impl Repository {
         })
     }
 
-    pub async fn traverse(&mut self, repo_name: &str) -> Result<()> {
+    pub async fn traverse(&mut self, repo_path: &str, repo_name: &str, branch: &str) -> Result<()> {
         // Find the reference to the main branch
 
         // Create a Vec to store all the RepoEntry::File entries
         let mut all_entries: Vec<FileFields> = Vec::new();
 
-        let head_ref = self.git_repo.find_reference(BRANCH_REF_STR)?;
+        let head_ref = self.git_repo.find_reference(branch)?;
         let head_commit = self.git_repo.find_commit(head_ref.target().unwrap())?;
         let tree = head_commit.tree()?;
         // let rt = tokio::runtime::Builder::new_current_thread()
@@ -530,7 +532,7 @@ impl Repository {
                         let file_fields = FileFields {
                             repo_name: repo_name.to_string(),
                             // use the disk path of the repo.
-                            repo_disk_path: "/Users/karthicrao/Downloads/ingestion/repo/".to_owned() + repo_name.to_string().as_str(),
+                            repo_disk_path: repo_path.to_string(),
                             repo_ref: String::new(),
                             lang: language.clone(),
                             relative_path: path.clone(),
@@ -612,11 +614,14 @@ impl Indexer {
         _metadata: &RepoMetadata,
         _writer: &IndexWriter,
         repo_name: String,
+        branch: &str,
     ) -> Result<()> {
         // Create a new Repository instance using the `new` method.
+        let repo_path_string = disk_path.to_str().unwrap().to_string();
         let mut repo = Repository::new(disk_path, repo_name.clone()).await?;
         // Call the traverse method to list the files in the repository.
-        repo.traverse(&repo_name.clone()).await?;
+        repo.traverse(&repo_path_string, &repo_name.clone(), branch)
+            .await?;
         // Print the disk path of the repository.
         print!("Indexing repository at path: {:?}", repo.disk_path);
         println!("Indexing repository at path: {:?}", repo.disk_path);
@@ -625,23 +630,42 @@ impl Indexer {
     }
 }
 
+
+/// Application to process repository data
+#[derive(Parser, Debug)]
+#[command(version = "0.1", about = "Index repository data", long_about = None)]
+struct Args {
+    /// Name to the repository folder inside ./repo/ directory
+    #[arg(long, help = "Sets the repository folder to process")]
+    repo_folder: String,
+
+    /// Identifier for the repository, used to later perform search and agent operations on the repo.
+    #[arg(long, help = "Sets the repository ID")]
+    repo_id: String,
+
+    #[arg(long, help = "Sets the branch to be indexed")]
+    branch: Option<String>,
+}
+
 #[tokio::main]
+
 async fn main() -> Result<()> {
     env_logger::init();
+
+    let args = Args::parse();
+
+    log::info!("Processing repository folder: {}", args.repo_folder);
+    log::info!("Using repository ID: {}", args.repo_id);
+
+    // defaults to main branch if branch is not set.
+    let branch = args.branch.unwrap_or_else(|| "refs/heads/main".to_string());
+
+    // Path to the repository
+    let repo_base_path = env::current_dir()?.join("repo").join(&args.repo_folder);
+    log::info!("Full repository path: {:?}", repo_base_path);
+
     // Instantiate an Indexer.
     let indexer = Indexer;
-
-    // read the path and repo name from the command line arguments.
-    let args: Vec<String> = std::env::args().collect();
-    let disk_path = PathBuf::from(&args[1].clone());
-    let repo_name = args[2].clone();
-
-    // append disk path to /usr/src/myapp/repo to get the full path inside the container
-    let disk_path = PathBuf::from("/Users/karthicrao/Downloads/ingestion/repo/".to_string() + disk_path.to_str().unwrap());
-
-    // let disk_path = PathBuf::from("
-    // Create a disk path pointing to a valid Git repository.
-    let disk_path = PathBuf::from(disk_path);
 
     // Instantiate some additional components of a repository.
     let metadata = RepoMetadata;
@@ -649,6 +673,6 @@ async fn main() -> Result<()> {
 
     // Use the indexer to index the repository, passing the disk path.
     indexer
-        .index_repository(disk_path, &metadata, &writer, repo_name)
+        .index_repository(repo_base_path, &metadata, &writer, args.repo_id, &branch)
         .await
 }

@@ -49,4 +49,4 @@ RUN chmod +x /app/ingestion
 ENV LD_LIBRARY_PATH="/app:${LD_LIBRARY_PATH}"
 
 # Command to run the application
-CMD ["./ingestion", "$REPO_SUBFOLDER", "$REPO_NAME"]
+CMD ["./ingestion"]
