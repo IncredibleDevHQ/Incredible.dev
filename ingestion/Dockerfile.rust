@@ -1,7 +1,6 @@
 # Stage 1: Build the application
 FROM debian:bookworm-slim as builder
 
-# Setup working directory
 WORKDIR /usr/src/myapp
 
 # Install necessary build tools and libraries
@@ -14,12 +13,13 @@ RUN apt-get update && \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Copy your source files
+# Copy your source files and .env
 COPY Cargo.toml Cargo.lock ./
 COPY repo ./repo
 COPY model ./model
 COPY index-config.yaml ./index-config.yaml
 COPY src ./src
+COPY .env ./
 
 # Build the application
 RUN cargo build --release
@@ -37,15 +37,16 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the Rust binary and necessary libraries from the builder stage
-COPY --from=builder /usr/src/myapp/target/release/ingestion /usr/local/bin/
-COPY --from=builder /usr/src/myapp/target/release/libonnxruntime.so.* /usr/local/bin/
-COPY --from=builder /usr/src/myapp/index-config.yaml /usr/local/bin/
-
-# Set environment variables
-ENV LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH}"
+COPY --from=builder /usr/src/myapp/target/release/ingestion /app/
+COPY --from=builder /usr/src/myapp/target/release/libonnxruntime.so.* /app/
+COPY --from=builder /usr/src/myapp/index-config.yaml /app/
+COPY --from=builder /usr/src/myapp/.env /app/
 
 # Make the Rust binary executable
-RUN chmod +x /usr/local/bin/ingestion
+RUN chmod +x /app/ingestion
+
+# Set environment variables
+ENV LD_LIBRARY_PATH="/app:${LD_LIBRARY_PATH}"
 
 # Command to run the application
-CMD ["/usr/local/bin/ingestion", "$REPO_SUBFOLDER", "$REPO_NAME"]
+CMD ["./ingestion"]

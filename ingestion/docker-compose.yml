@@ -23,8 +23,7 @@ services:
       context: .
       dockerfile: Dockerfile.rust
     environment:
-      - REPO_SUBFOLDER=bloop
-      - REPO_NAME=bloop-ai
+      - RUST_LOG=debug
     depends_on:
       - qdrant
       - quickwit

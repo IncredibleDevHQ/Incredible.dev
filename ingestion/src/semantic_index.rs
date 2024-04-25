@@ -10,6 +10,7 @@ mod chunking;
 mod text_range;
 mod vector_payload;
 use crate::ast::symbol::{SymbolKey, SymbolMetaData, SymbolValue};
+use crate::config::get_model_path;
 use chunking::{add_token_range, point, Chunk, DEDUCT_SPECIAL_TOKENS};
 use ndarray::Axis;
 use qdrant_client::prelude::{QdrantClient, QdrantClientConfig};
@@ -81,8 +82,15 @@ impl SemanticIndex {
         let environment = Arc::new(env);
 
         // Explicitly handle the error and convert it to anyhow::Error
+        // append tokenizer.json to the model path from get_model_path() function
+        // use path join to construct full path 
+        let tokenizer_path = std::path::PathBuf::from(get_model_path())
+        .join("tokenizer.json")
+        .to_string_lossy()
+        .to_string();
+
         let tokenizer = tokenizers::Tokenizer::from_file(
-            "/Users/karthicrao/Downloads/ingestion/model/tokenizer.json",
+            tokenizer_path
         )
         .map_err(|e| {
             let error_message = e.to_string(); // Extract the error message
@@ -90,8 +98,13 @@ impl SemanticIndex {
             anyhow::Error::msg(error_message) // Create an anyhow::Error with the message
         })?;
 
+        let onnx_path = std::path::PathBuf::from(get_model_path())
+        .join("model.onnx")
+        .to_string_lossy()
+        .to_string();
+
         let session = Session::builder()?
-            .commit_from_file("/Users/karthicrao/Downloads/ingestion/model/model.onnx")
+            .commit_from_file(onnx_path)
             .map_err(anyhow::Error::from)?;
 
         Ok(Self {
