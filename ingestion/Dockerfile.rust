@@ -41,6 +41,7 @@ COPY --from=builder /usr/src/myapp/target/release/ingestion /app/
 COPY --from=builder /usr/src/myapp/target/release/libonnxruntime.so.* /app/
 COPY --from=builder /usr/src/myapp/index-config.yaml /app/
 COPY --from=builder /usr/src/myapp/.env /app/
+COPY --from=builder /usr/src/myapp/model /app/
 
 # Make the Rust binary executable
 RUN chmod +x /app/ingestion
