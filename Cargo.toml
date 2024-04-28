@@ -4,8 +4,6 @@ members = [
     "code-search",
     "ingestion",
     "code-navigator",
-    "context-generator",
-    "modifier",
     "common",
     "coordinator",
     "ai-gateway",
