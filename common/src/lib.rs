@@ -10,7 +10,7 @@ pub mod prompts;
 pub mod service_interaction;
 pub mod ai_util;
 pub mod task_graph;
-
+pub mod tokenizer_onnx;
 pub mod prompt_string_generator {
     use std::future::Future;
     use std::pin::Pin;

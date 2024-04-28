@@ -1,17 +1,16 @@
 extern crate tokenizers;
 use std::error::Error;
 use std::ops::Range;
-use std::sync::Arc;
 extern crate tracing;
 use anyhow::Result;
-use ort::{CPUExecutionProvider, Session};
-use tracing::{debug, error, info, trace, warn};
+use ort::{CPUExecutionProvider, GraphOptimizationLevel, Session};
+use tracing::{debug, error, trace, warn};
 mod chunking;
 mod text_range;
 mod vector_payload;
-use crate::ast::symbol::{SymbolKey, SymbolMetaData, SymbolValue};
+use crate::ast::symbol::{SymbolKey, SymbolValue};
 use crate::config::get_model_path;
-use chunking::{add_token_range, point, Chunk, DEDUCT_SPECIAL_TOKENS};
+use chunking::{add_token_range, Chunk, DEDUCT_SPECIAL_TOKENS};
 use ndarray::Axis;
 use qdrant_client::prelude::{QdrantClient, QdrantClientConfig};
 use qdrant_client::qdrant::{PointId, PointStruct};
@@ -73,14 +72,6 @@ impl Error for CommitError {
 
 impl SemanticIndex {
     pub fn new(counter: &usize) -> Result<Self, anyhow::Error> {
-        let threads: usize = 1;
-        let env = ort::init()
-            .with_execution_providers([CPUExecutionProvider::default().build()])
-            .commit()
-            .map_err(anyhow::Error::from)?;
-
-        let environment = Arc::new(env);
-
         // Explicitly handle the error and convert it to anyhow::Error
         // append tokenizer.json to the model path from get_model_path() function
         // use path join to construct full path 
@@ -104,6 +95,9 @@ impl SemanticIndex {
         .to_string();
 
         let session = Session::builder()?
+            .with_execution_providers([CPUExecutionProvider::default().build()])?
+            .with_optimization_level(GraphOptimizationLevel::Level3)?
+            .with_intra_threads(4)?
             .commit_from_file(onnx_path)
             .map_err(anyhow::Error::from)?;
 
