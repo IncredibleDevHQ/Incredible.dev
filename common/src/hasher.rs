@@ -1,4 +1,5 @@
 use md5::compute;
+use crate::service_interaction;
 
 pub fn generate_quikwit_index_name(namespace: &str) -> String {
     let repo_name = namespace.split("/").last().unwrap();
@@ -20,5 +21,5 @@ pub fn generate_qdrant_index_name(namespace: &str) -> String {
         "{}-{}-{}-documents-symbols",
         version, repo_name, new_index_id
     );
-    return "documents_symbol".to_string();
+    return service_interaction::SYMBOL_COLLECTION_NAME.to_string(); 
 }

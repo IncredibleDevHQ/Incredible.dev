@@ -61,7 +61,7 @@ impl Semantic {
         Ok(Self {
             qdrant: qdrant.into(),
             tokenize_onnx: common::tokenizer_onnx::TokenizerOnnx::new()?,
-            qdrant_collection_name: config.semantic_collection_name.clone(),
+            qdrant_collection_name: common::service_interaction::DOCUMENT_COLLECTION_NAME.to_string(), 
         })
     }
 

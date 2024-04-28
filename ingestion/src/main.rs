@@ -51,8 +51,8 @@ enum FileType {
 pub const AVG_LINE_LEN: u64 = 30;
 pub const MAX_LINE_COUNT: u64 = 20000;
 pub const MAX_FILE_LEN: u64 = AVG_LINE_LEN * MAX_LINE_COUNT;
-const COLLECTION_NAME: &str = "documents";
-const COLLECTION_NAME_SYMBOLS: &str = "documents_symbol";
+static COLLECTION_NAME: &str =  common::service_interaction::DOCUMENT_COLLECTION_NAME;
+static COLLECTION_NAME_SYMBOLS: &str = common::service_interaction::SYMBOL_COLLECTION_NAME; 
 const EMBEDDING_DIM: usize = 384;
 
 // data structure to represent a repository  file or directory or other.

@@ -41,8 +41,7 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
     // load using dotenv
     dotenv().ok();
     let configuration = Configuration {
-        symbol_collection_name: env::var("SYMBOL_COLLECTION_NAME")
-            .context("SYMBOL_COLLECTION_NAME must be set")?,
+        symbol_collection_name: common::service_interaction::SYMBOL_COLLECTION_NAME.to_string(),
         semantic_db_url: env::var("SEMANTIC_DB_URL").context("SEMANTIC_DB_URL must be set")?,
         quikwit_db_url: env::var("QUICKWIT_DB_URL").context("QUICKWIT_DB_URL must be set")?,
         qdrant_api_key: env::var("QDRANT_CLOUD_API_KEY").ok(),
