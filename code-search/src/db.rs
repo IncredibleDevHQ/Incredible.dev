@@ -9,12 +9,6 @@ pub enum SemanticError {
     #[error("Qdrant initialization failed. Is Qdrant running on `qdrant-url`?")]
     QdrantInitializationError,
 
-    #[error("ONNX runtime error")]
-    OnnxRuntimeError {
-        #[from]
-        error: ort::OrtError,
-    },
-
     #[error("semantic error")]
     Anyhow {
         #[from]
