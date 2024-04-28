@@ -14,11 +14,7 @@ pub struct Config {
 }
 
 pub fn load_from_env() -> Config {
-    let environment = env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string());
-    let env_file = format!(".env.{}", environment);
-
-    info!("Loading configurations from {}", env_file);
-    dotenv::from_filename(env_file).expect("Failed to load .env file");
+    dotenv::dotenv().unwrap();
 
     // Attempt to retrieve AI gateway configuration path from environment
     let ai_gateway_config_path = env::var("AI_GATEWAY_CONFIG_PATH")

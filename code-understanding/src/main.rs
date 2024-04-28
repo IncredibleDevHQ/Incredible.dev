@@ -1,7 +1,6 @@
 use anyhow::Result;
-use common::task_graph::{redis::establish_redis_connection, redis_config::get_redis_url};
 use once_cell::sync::Lazy;
-use std::sync::{Once, RwLock};
+use std::sync::RwLock;
 use config::{get_search_server_url, load_from_env, Config};
 
 mod agent;
