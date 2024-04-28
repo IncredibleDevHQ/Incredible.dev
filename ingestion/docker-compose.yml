@@ -1,7 +1,6 @@
 version: '3'
 
 services:
-
   qdrant:
     image: "qdrant/qdrant"
     ports:
@@ -29,3 +28,11 @@ services:
       - quickwit
     volumes:
       - "./repo:/usr/src/myapp/repo"
+
+  redis-stack:
+    image: "redis/redis-stack:latest"
+    ports:
+      - "6379:6379"  # Redis server port
+      - "8001:8001"  # RedisInsight port
+    volumes:
+      - "./redisdata:/data"  # Optional: Mount a volume for Redis data persistence
