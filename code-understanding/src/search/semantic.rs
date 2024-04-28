@@ -1,3 +1,4 @@
+use common::tokenizer_onnx::{get_ort_session, get_tokenizer};
 use thiserror::Error;
 use tracing::log::debug;
 // import hashset from collections
@@ -13,8 +14,6 @@ use crate::search::payload::{Embedding, Payload};
 use std::sync::Arc;
 
 use ndarray::Axis;
-use ort::tensor::OrtOwnedTensor;
-use ort::value::Value;
 use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, LoggingLevel, SessionBuilder};
 use qdrant_client::{
     prelude::QdrantClient,
@@ -40,7 +39,7 @@ pub enum SemanticError {
     #[error("ONNX runtime error")]
     OnnxRuntimeError {
         #[from]
-        error: ort::OrtError,
+        error: ort::Error,
     },
 
     #[error("semantic error")]
@@ -71,32 +70,11 @@ impl Semantic {
         // Finalize building the Qdrant client. If this fails, the error will be propagated by `?`.
         let qdrant = qdrant_client_builder.build()?;
 
-        // Create a new environment for the ONNX session, configuring various parameters.
-        let environment = Arc::new(
-            Environment::builder()
-                .with_name("Encode")
-                .with_log_level(LoggingLevel::Warning)
-                .with_execution_providers([ExecutionProvider::CPU(Default::default())])
-                .with_telemetry(false)
-                .build()?,
-        );
-
-        // Determine the number of threads to use based on the NUM_OMP_THREADS environment variable.
-        let threads = std::env::var("NUM_OMP_THREADS")
-            .map(|v| v.parse().unwrap_or(1))
-            .unwrap_or(1);
-
         // Construct and return the new instance, initializing each field.
         Ok(Self {
             qdrant: qdrant.into(),
-            tokenizer: tokenizers::Tokenizer::from_file(&config.tokenizer_path)
-                .unwrap()
-                .into(),
-            session: SessionBuilder::new(&environment)?
-                .with_optimization_level(GraphOptimizationLevel::Level3)?
-                .with_intra_threads(threads)?
-                .with_model_from_file(&config.model_path)?
-                .into(),
+            tokenizer: get_tokenizer()?,
+            session: get_ort_session()?,
             qdrant_collection_name: config.semantic_collection_name.clone(),
         })
     }
