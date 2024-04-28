@@ -27,7 +27,7 @@ pub struct SymbolPayload {
 }
 
 impl SymbolPayload {
-    pub fn convert_to__qdrant_fields(self) -> HashMap<String, Value> {
+    pub fn convert_to_qdrant_fields(self) -> HashMap<String, Value> {
         HashMap::from([
             ("repo_name".into(), self.repo_name.into()),
             ("symbol".into(), self.symbol.into()),
@@ -66,7 +66,7 @@ pub struct Payload {
 }
 
 impl Payload {
-    pub fn convert_to__qdrant_fields(self) -> HashMap<String, Value> {
+    pub fn convert_to_qdrant_fields(self) -> HashMap<String, Value> {
         HashMap::from([
             ("lang".into(), self.lang.to_ascii_lowercase().into()),
             ("repo_name".into(), self.repo_name.into()),

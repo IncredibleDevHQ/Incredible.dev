@@ -1,7 +1,6 @@
 use crate::search::semantic::SemanticError::QdrantInitializationError;
 use anyhow::Result;
 use common::hasher::generate_qdrant_index_name;
-use log::debug;
 use std::{str, time::Duration};
 use thiserror::Error;
 
@@ -9,12 +8,7 @@ use crate::{
     parser::literal::Literal,
     search::payload::{Embedding, SymbolPayload},
 };
-use std::sync::Arc;
 
-use ndarray::Axis;
-use ort::tensor::OrtOwnedTensor;
-use ort::value::Value;
-use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, LoggingLevel, SessionBuilder};
 use qdrant_client::{
     prelude::{QdrantClient, QdrantClientConfig},
     qdrant::{
@@ -29,8 +23,7 @@ use crate::Configuration;
 pub struct Semantic {
     pub qdrant_collection_name: String,
     pub qdrant: QdrantClient,
-    pub tokenizer: tokenizers::Tokenizer,
-    pub session: ort::Session,
+    tokenizer_onnx: common::tokenizer_onnx::TokenizerOnnx,
 }
 
 #[derive(Error, Debug)]
@@ -38,12 +31,6 @@ pub enum SemanticError {
     /// Represents failure to initialize Qdrant client
     #[error("Qdrant initialization failed. Is Qdrant running on `qdrant-url`?")]
     QdrantInitializationError,
-
-    #[error("ONNX runtime error")]
-    OnnxRuntimeError {
-        #[from]
-        error: ort::OrtError,
-    },
 
     #[error("semantic error")]
     Anyhow {
@@ -80,83 +67,16 @@ impl Semantic {
         if qdrant.is_err() {
             return Err(QdrantInitializationError);
         }
-
         let qdrant = qdrant.unwrap();
-        let environment = Arc::new(
-            Environment::builder()
-                .with_name("Encode")
-                .with_log_level(LoggingLevel::Warning)
-                .with_execution_providers([ExecutionProvider::CPU(Default::default())])
-                .with_telemetry(false)
-                .build()?,
-        );
-
-        let threads = if let Ok(v) = std::env::var("NUM_OMP_THREADS") {
-            str::parse(&v).unwrap_or(1)
-        } else {
-            1
-        };
-
         Ok(Self {
             qdrant: qdrant.into(),
-            tokenizer: tokenizers::Tokenizer::from_file(config.tokenizer_path.as_str())
-                .unwrap()
-                .into(),
-            session: SessionBuilder::new(&environment)?
-                .with_optimization_level(GraphOptimizationLevel::Level3)?
-                .with_intra_threads(threads)?
-                .with_model_from_file(config.model_path)?
-                .into(),
+            tokenizer_onnx: common::tokenizer_onnx::TokenizerOnnx::new()?,
             qdrant_collection_name: config.symbol_collection_name,
         })
     }
 
     pub fn embed(&self, sequence: &str) -> anyhow::Result<Embedding> {
-        let tokenizer_output = self.tokenizer.encode(sequence, true).unwrap();
-
-        let input_ids = tokenizer_output.get_ids();
-        let attention_mask = tokenizer_output.get_attention_mask();
-        let token_type_ids = tokenizer_output.get_type_ids();
-        let length = input_ids.len();
-        println!("embedding {} tokens {:?}", length, sequence);
-
-        let inputs_ids_array = ndarray::Array::from_shape_vec(
-            (1, length),
-            input_ids.iter().map(|&x| x as i64).collect(),
-        )?;
-
-        let attention_mask_array = ndarray::Array::from_shape_vec(
-            (1, length),
-            attention_mask.iter().map(|&x| x as i64).collect(),
-        )?;
-
-        let token_type_ids_array = ndarray::Array::from_shape_vec(
-            (1, length),
-            token_type_ids.iter().map(|&x| x as i64).collect(),
-        )?;
-
-        let outputs = self.session.run(vec![
-            Value::from_array(
-                self.session.allocator(),
-                &ndarray::CowArray::from(inputs_ids_array).into_dyn(),
-            )
-            .unwrap(),
-            Value::from_array(
-                self.session.allocator(),
-                &ndarray::CowArray::from(attention_mask_array).into_dyn(),
-            )
-            .unwrap(),
-            Value::from_array(
-                self.session.allocator(),
-                &ndarray::CowArray::from(token_type_ids_array).into_dyn(),
-            )
-            .unwrap(),
-        ])?;
-
-        let output_tensor: OrtOwnedTensor<f32, _> = outputs[0].try_extract().unwrap();
-        let sequence_embedding = &*output_tensor.view();
-        let pooled = sequence_embedding.mean_axis(Axis(1)).unwrap();
-        Ok(pooled.to_owned().as_slice().unwrap().to_vec())
+        self.tokenizer_onnx.get_embedding(sequence)
     }
 
     // function to perform semantic search on the symbols.

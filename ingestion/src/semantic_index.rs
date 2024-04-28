@@ -23,8 +23,6 @@ use common::tokenizer_onnx::{Embedding, TokenizerOnnx};
 pub struct SemanticIndex {
     tokenizer_onnx: TokenizerOnnx,
     overlap: chunking::OverlapStrategy,
-    qdrantPayload: Vec<PointStruct>,
-    qdrantSymbolPayload: Vec<PointStruct>,
     counter: usize,
 }
 use crate::{COLLECTION_NAME, COLLECTION_NAME_SYMBOLS};
@@ -68,8 +66,6 @@ impl SemanticIndex {
         Ok(Self {
             tokenizer_onnx: TokenizerOnnx::new()?,
             overlap: chunking::OverlapStrategy::default(),
-            qdrantPayload: Vec::new(),
-            qdrantSymbolPayload: Vec::new(),
             counter: *counter,
         })
     }
@@ -205,7 +201,7 @@ impl SemanticIndex {
                 return PointStruct {
                     id: Some(PointId::from(id.to_string())),
                     vectors: Some(embedder(&key.symbol).unwrap().into()),
-                    payload: symbol_qdrant_meta.convert_to__qdrant_fields(),
+                    payload: symbol_qdrant_meta.convert_to_qdrant_fields(),
                 };
             })
             .collect();
@@ -282,7 +278,7 @@ impl SemanticIndex {
             let qdrant_payload = PointStruct {
                 id: Some(PointId::from(id.to_string())),
                 vectors: Some(embedder(chunk.data).unwrap().into()),
-                payload: payload.convert_to__qdrant_fields(),
+                payload: payload.convert_to_qdrant_fields(),
             };
 
             temp_payloads.push(qdrant_payload);
