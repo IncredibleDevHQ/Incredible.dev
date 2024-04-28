@@ -3,30 +3,23 @@ use thiserror::Error;
 use tracing::log::debug;
 // import hashset from collections
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap, 
     str,
 };
 // import anyhow from anyhow
 use crate::config::Config;
+use crate::search::payload::{Embedding, Payload};
 use anyhow::Result;
 use log::{error, info};
-use crate::search::payload::{Embedding, Payload};
-use std::sync::Arc;
-
-use ndarray::Axis;
-use ort::{Environment, ExecutionProvider, GraphOptimizationLevel, LoggingLevel, SessionBuilder};
 use qdrant_client::{
     prelude::QdrantClient,
-    qdrant::{
-        r#match::MatchValue, FieldCondition, Match,
-    },
+    qdrant::{r#match::MatchValue, FieldCondition, Match},
 };
 
 pub struct Semantic {
     pub qdrant_collection_name: String,
     pub qdrant: QdrantClient,
-    pub tokenizer: tokenizers::Tokenizer,
-    pub session: ort::Session,
+    pub tokenize_onnx: common::tokenizer_onnx::TokenizerOnnx,
 }
 
 #[derive(Error, Debug)]
@@ -35,12 +28,6 @@ pub enum SemanticError {
     #[allow(unused)]
     #[error("Qdrant initialization failed. Is Qdrant running on `qdrant-url`?")]
     QdrantInitializationError,
-
-    #[error("ONNX runtime error")]
-    OnnxRuntimeError {
-        #[from]
-        error: ort::Error,
-    },
 
     #[error("semantic error")]
     Anyhow {
@@ -73,58 +60,13 @@ impl Semantic {
         // Construct and return the new instance, initializing each field.
         Ok(Self {
             qdrant: qdrant.into(),
-            tokenizer: get_tokenizer()?,
-            session: get_ort_session()?,
+            tokenize_onnx: common::tokenizer_onnx::TokenizerOnnx::new()?,
             qdrant_collection_name: config.semantic_collection_name.clone(),
         })
     }
 
     pub fn embed(&self, sequence: &str) -> anyhow::Result<Embedding> {
-        let tokenizer_output = self.tokenizer.encode(sequence, true).unwrap();
-
-        let input_ids = tokenizer_output.get_ids();
-        let attention_mask = tokenizer_output.get_attention_mask();
-        let token_type_ids = tokenizer_output.get_type_ids();
-        let length = input_ids.len();
-        log::debug!("embedding {} tokens {:?}", length, sequence);
-
-        let inputs_ids_array = ndarray::Array::from_shape_vec(
-            (1, length),
-            input_ids.iter().map(|&x| x as i64).collect(),
-        )?;
-
-        let attention_mask_array = ndarray::Array::from_shape_vec(
-            (1, length),
-            attention_mask.iter().map(|&x| x as i64).collect(),
-        )?;
-
-        let token_type_ids_array = ndarray::Array::from_shape_vec(
-            (1, length),
-            token_type_ids.iter().map(|&x| x as i64).collect(),
-        )?;
-
-        let outputs = self.session.run(vec![
-            Value::from_array(
-                self.session.allocator(),
-                &ndarray::CowArray::from(inputs_ids_array).into_dyn(),
-            )
-            .unwrap(),
-            Value::from_array(
-                self.session.allocator(),
-                &ndarray::CowArray::from(attention_mask_array).into_dyn(),
-            )
-            .unwrap(),
-            Value::from_array(
-                self.session.allocator(),
-                &ndarray::CowArray::from(token_type_ids_array).into_dyn(),
-            )
-            .unwrap(),
-        ])?;
-
-        let output_tensor: OrtOwnedTensor<f32, _> = outputs[0].try_extract().unwrap();
-        let sequence_embedding = &*output_tensor.view();
-        let pooled = sequence_embedding.mean_axis(Axis(1)).unwrap();
-        Ok(pooled.to_owned().as_slice().unwrap().to_vec())
+        self.tokenize_onnx.get_embedding(sequence)
     }
 }
 
