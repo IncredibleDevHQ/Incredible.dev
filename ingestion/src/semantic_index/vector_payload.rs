@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use qdrant_client::prelude::Value;
 
-pub type Embedding = Vec<f32>;
+use common::tokenizer_onnx::Embedding;
 
 // Payload format to write and deserialize data in and from qdrant.
 #[derive(Default, Clone, Debug, serde::Deserialize, serde::Serialize)]

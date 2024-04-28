@@ -76,3 +76,4 @@ redis = "0.25.3"
 uuid = { version = "1.0", features = ["v4"] }
 ort = "2.0.0-rc.1"
 tokenizers = "0.13.3"
+ndarray = "0.15"

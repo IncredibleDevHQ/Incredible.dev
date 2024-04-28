@@ -19,7 +19,7 @@ use std::fmt;
 use text_range::{Point, TextRange};
 use thiserror::Error;
 use uuid::Uuid;
-use vector_payload::{Embedding, Payload, SymbolPayload};
+use vector_payload::{Payload, SymbolPayload};
 
 pub struct SemanticIndex {
     tokenizer: tokenizers::Tokenizer,
