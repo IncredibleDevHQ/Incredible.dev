@@ -37,6 +37,12 @@ services:
       target: code-understanding
     environment:
       - RUST_LOG=debug
+      - SEMANTIC_DB_URL="http://qdrant:6334"
+      - QUICKWIT_DB_URL="http://quickwit:7280"
+      - MODEL_DIR="/app/model"
+      - SEARCH_SERVER_URL="http://code-search:3003"
+      - REDIS_URL="redis://redis-stack:6379"
+      - AI_GATEWAY_CONFIG_PATH="./ai-config.yaml"
     ports:
       - "3002:3002"
 

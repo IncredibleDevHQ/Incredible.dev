@@ -1,4 +1,3 @@
-use common::tokenizer_onnx::{get_ort_session, get_tokenizer};
 use thiserror::Error;
 use tracing::log::debug;
 // import hashset from collections
@@ -7,7 +6,7 @@ use std::{
     str,
 };
 // import anyhow from anyhow
-use crate::config::Config;
+use crate::config::{get_model_path, Config};
 use crate::search::payload::{Embedding, Payload};
 use anyhow::Result;
 use log::{error, info};
@@ -60,7 +59,7 @@ impl Semantic {
         // Construct and return the new instance, initializing each field.
         Ok(Self {
             qdrant: qdrant.into(),
-            tokenize_onnx: common::tokenizer_onnx::TokenizerOnnx::new()?,
+            tokenize_onnx: common::tokenizer_onnx::TokenizerOnnx::new(&get_model_path())?,
             qdrant_collection_name: common::service_interaction::DOCUMENT_COLLECTION_NAME.to_string(), 
         })
     }
