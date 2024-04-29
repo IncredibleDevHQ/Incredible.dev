@@ -10,7 +10,7 @@ use crate::controller::{navigator, parentscope, span, symbol};
 use crate::db::DbConnect;
 // use crate::graph::symbol_ops;
 use crate::models::{ParentScopeRequest, SymbolSearchRequest};
-use crate::AppState;
+use crate::config::AppState;
 
 pub fn search_routes(
     app_state: Arc<AppState>,

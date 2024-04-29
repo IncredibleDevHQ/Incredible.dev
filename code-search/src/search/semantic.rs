@@ -1,4 +1,4 @@
-use crate::search::semantic::SemanticError::QdrantInitializationError;
+use crate::{config::{get_model_path, get_qdrant_api_key, get_semantic_db_url, get_symbol_collection_name}, search::semantic::SemanticError::QdrantInitializationError};
 use anyhow::Result;
 use common::hasher::generate_qdrant_index_name;
 use std::{str, time::Duration};
@@ -17,8 +17,6 @@ use qdrant_client::{
         WithVectorsSelector,
     },
 };
-
-use crate::Configuration;
 
 pub struct Semantic {
     pub qdrant_collection_name: String,
@@ -40,29 +38,29 @@ pub enum SemanticError {
 }
 
 // fetch the qdrant client
-pub async fn get_qdrant_client(config: &Configuration) -> Result<QdrantClient, SemanticError> {
+pub async fn get_qdrant_client() -> Result<QdrantClient, SemanticError> {
     // if api key is not set, then initialize the qdrant client without the api key
-    if config.qdrant_api_key.is_none() {
+    if get_qdrant_api_key().is_none() {
         let qdrant = QdrantClient::new(Some(
-            QdrantClientConfig::from_url(&config.semantic_db_url)
+            QdrantClientConfig::from_url(&get_semantic_db_url())
                 .with_timeout(Duration::from_secs(30))
                 .with_connect_timeout(Duration::from_secs(30)),
         ))?;
         return Ok(qdrant);
     }
     let qdrant = QdrantClient::new(Some(
-        QdrantClientConfig::from_url(&config.semantic_db_url)
+        QdrantClientConfig::from_url(&get_semantic_db_url())
             .with_timeout(Duration::from_secs(30))
             .with_connect_timeout(Duration::from_secs(30))
-            .with_api_key(config.qdrant_api_key.clone()),
+            .with_api_key(get_qdrant_api_key()),
     ))?;
 
     Ok(qdrant)
 }
 
 impl Semantic {
-    pub async fn initialize(config: Configuration) -> Result<Self, SemanticError> {
-        let qdrant = get_qdrant_client(&config).await;
+    pub async fn initialize() -> Result<Self, SemanticError> {
+        let qdrant = get_qdrant_client().await;
 
         if qdrant.is_err() {
             return Err(QdrantInitializationError);
@@ -70,8 +68,8 @@ impl Semantic {
         let qdrant = qdrant.unwrap();
         Ok(Self {
             qdrant: qdrant.into(),
-            tokenizer_onnx: common::tokenizer_onnx::TokenizerOnnx::new()?,
-            qdrant_collection_name: config.symbol_collection_name,
+            tokenizer_onnx: common::tokenizer_onnx::TokenizerOnnx::new(&get_model_path())?,
+            qdrant_collection_name: get_symbol_collection_name(), 
         })
     }
 

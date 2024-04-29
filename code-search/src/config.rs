@@ -17,8 +17,8 @@ pub struct Configuration {
     qdrant_api_key: Option<String>,
 }
 
-struct AppState {
-    db_connection: db::DbConnect,
+pub struct AppState {
+    pub db_connection: db::DbConnect,
 }
 
 // Create a global instance of the configuration
@@ -39,7 +39,7 @@ pub async fn initialize_config() -> anyhow::Result<AppState> {
     }
 
     let config = Configuration {
-        symbol_collection_name: "default_symbol_collection".to_string(), // Set a default or pull from env
+        symbol_collection_name: common::service_interaction::SYMBOL_COLLECTION_NAME.to_string(), // Set a default or pull from env
         semantic_db_url: env::var("SEMANTIC_DB_URL").context("SEMANTIC_DB_URL must be set")?,
         quikwit_db_url: env::var("QUICKWIT_DB_URL").context("QUICKWIT_DB_URL must be set")?,
         model_path: env::var("MODEL_PATH").context("MODEL_PATH must be set")?,
@@ -47,9 +47,9 @@ pub async fn initialize_config() -> anyhow::Result<AppState> {
     };
 
     let mut global_config = GLOBAL_CONFIG.write().expect("Failed to acquire write lock");
-    *global_config = config.clone();
+    *global_config = config;
 
-    let db_connection = db::init_db(config).await?;
+    let db_connection = db::init_db().await?;
 
     Ok(AppState {
         db_connection,
@@ -57,26 +57,26 @@ pub async fn initialize_config() -> anyhow::Result<AppState> {
 }
 
  // Getter for the symbol collection name
- pub fn symbol_collection_name() -> String {
+ pub fn get_symbol_collection_name() -> String {
     GLOBAL_CONFIG.read().unwrap().symbol_collection_name.clone()
 }
 
 // Getter for the Semantic DB URL
-pub fn semantic_db_url() -> String {
+pub fn get_semantic_db_url() -> String {
     GLOBAL_CONFIG.read().unwrap().semantic_db_url.clone()
 }
 
 // Getter for the QuickWit DB URL
-pub fn quickwit_db_url() -> String {
-    GLOBAL_CONFIG.read().unwrap().quickwit_db_url.clone()
+pub fn get_quikwit_db_url() -> String {
+    GLOBAL_CONFIG.read().unwrap().quikwit_db_url.clone()
 }
 
 // Getter for the model path
-pub fn model_path() -> String {
+pub fn get_model_path() -> String {
     GLOBAL_CONFIG.read().unwrap().model_path.clone()
 }
 
 // Getter for the Qdrant API Key
-pub fn qdrant_api_key() -> Option<String> {
+pub fn get_qdrant_api_key() -> Option<String> {
     GLOBAL_CONFIG.read().unwrap().qdrant_api_key.clone()
 }

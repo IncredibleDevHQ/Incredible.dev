@@ -16,13 +16,10 @@ use reqwest::StatusCode;
 use smallvec::SmallVec;
 
 use crate::{
-    code_navigation::{CodeNavigationContext, FileSymbols, Occurrence, OccurrenceKind, Token},
-    search::{
+    code_navigation::{CodeNavigationContext, FileSymbols, Occurrence, OccurrenceKind, Token}, config::AppState, search::{
         code_search::get_file_content,
         quikwit::{get_all_files_for_repo, search_quickwit},
-    },
-    snippet::Snipper,
-    AppState,
+    }, snippet::Snipper
 };
 
 pub async fn handle_token_info_fetcher_wrapper(
@@ -67,7 +64,6 @@ async fn handle_token_info_fetcher(
     let all_docs = match get_all_files_for_repo(
         &generate_quikwit_index_name(&request.repo_ref.clone()),
         &request.repo_ref.clone(),
-        app_state.clone(),
     )
     .await
     {
@@ -169,7 +165,7 @@ async fn search_nav(
         branch.map(|b| vec![b]),
         associated_langs.to_vec(),
     );
-    let results = match search_quickwit(&repo_ref, &query, app_state).await {
+    let results = match search_quickwit(&repo_ref, &query).await {
         Ok(results) => results,
         Err(e) => {
             return Err(anyhow!("Failed to search quickwit: {}", e));
