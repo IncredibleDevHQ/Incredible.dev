@@ -47,6 +47,9 @@ services:
       target: code-search
     environment:
       - RUST_LOG=debug
+      - SEMANTIC_DB_URL="http://qdrant:6334"
+      - QUICKWIT_DB_URL="http://quickwit:7280"
+      - MODEL_DIR="/app/model"
     ports:
       - "3003:3003"
 

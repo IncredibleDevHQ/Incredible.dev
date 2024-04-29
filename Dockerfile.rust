@@ -31,6 +31,7 @@ CMD ["./code-understanding"]
 
 FROM debian:bookworm-slim as code-search
 COPY --from=builder /usr/src/myapp/target/release/code-search /app/code-search
+COPY --from=builder /usr/src/myapp/model /app/model
 WORKDIR /app
 CMD ["./code-search"]
 
