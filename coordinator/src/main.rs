@@ -1,9 +1,10 @@
 use anyhow::Result;
 use common::ai_util::call_llm;
+use common::docker::is_running_in_docker;
 use common::task_graph::redis::establish_redis_connection;
 use configuration::Configuration;
 use std::sync::RwLock;
-use std::{env, fs};
+use std::{env, fs, process};
 
 use log::{error, info};
 use once_cell::sync::Lazy;
@@ -38,29 +39,30 @@ async fn health_check(url: &str) -> bool {
 }
 
 pub fn load_from_env() -> Configuration {
-    dotenv::dotenv().unwrap();
+    // Check if running inside Docker first
+    if !is_running_in_docker() {
+        // Try to load .env file if not in Docker
+        if dotenv::dotenv().is_err() {
+            error!("No .env file found and not running in Docker, application will exit.");
+            process::exit(1);
+        }
+    }
 
-    // Attempt to retrieve AI gateway configuration path from environment
     let ai_gateway_config_path = env::var("AI_GATEWAY_CONFIG_PATH")
         .expect("AI_GATEWAY_CONFIG_PATH environment variable is not set");
 
-    // Read the configuration file content
-    let ai_gateway_config = fs::read_to_string(&ai_gateway_config_path).expect(&format!(
-        "Failed to read AI Gateway config file at: {}",
-        ai_gateway_config_path
-    ));
+    let ai_gateway_config = fs::read_to_string(&ai_gateway_config_path)
+        .expect(&format!("Failed to read AI Gateway config file at: {}", ai_gateway_config_path));
 
-    info!("Env configuration along with AI Gateway configuration loaded successfully.");
+    info!("Environment and AI Gateway configuration loaded successfully.");
+
     Configuration {
-        code_search_url: env::var("CODE_SEARCH_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string()),
-        code_understanding_url: env::var("CODE_UNDERSTANDING_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string()),
+        code_search_url: env::var("CODE_SEARCH_URL").unwrap_or_else(|_| "http://127.0.0.1:3003".to_string()),
+        code_understanding_url: env::var("CODE_UNDERSTANDING_URL").unwrap_or_else(|_| "http://127.0.0.1:3002".to_string()),
         redis_url: env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string()),
         ai_gateway_config,
     }
 }
-
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
