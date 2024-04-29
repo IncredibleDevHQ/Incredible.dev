@@ -1,9 +1,5 @@
-use ast::symbol::SymbolMetaData;
 // Import necessary modules from Rust's standard library
-use bincode::serialize;
 use config::get_qdrant_url;
-use futures::{executor::block_on, future::join_all};
-use qdrant_client::qdrant;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::error::Error;
@@ -18,7 +14,6 @@ mod hash;
 use hash::compute_hashes;
 mod util;
 use std::collections::HashSet;
-use util::detect_language;
 // External crate for working with Git repositories
 use std::env;
 mod config;

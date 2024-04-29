@@ -1,0 +1,69 @@
+version: '3'
+
+services:
+  ingestion:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust
+      target: ingestion
+    environment:
+      - RUST_LOG=debug
+    volumes:
+      - "./repo:/usr/src/myapp/repo"
+    depends_on:
+      - qdrant
+      - quickwit
+
+  qdrant:
+    image: "qdrant/qdrant"
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - "./data/qdrant/data:/qdrant/storage"
+
+  quickwit:
+    image: "quickwit/quickwit"
+    ports:
+      - "7280:7280"
+    volumes:
+      - "./qwdata:/quickwit/qwdata"
+    command: run
+
+  code-understanding:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust
+      target: code-understanding
+    environment:
+      - RUST_LOG=debug
+    ports:
+      - "3002:3002"
+
+  code-search:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust
+      target: code-search
+    environment:
+      - RUST_LOG=debug
+    ports:
+      - "3003:3003"
+
+  coordinator:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust
+      target: coordinator
+    environment:
+      - RUST_LOG=debug
+    ports:
+      - "3004:3004"
+
+  redis-stack:
+    image: "redis/redis-stack:latest"
+    ports:
+      - "6379:6379"  # Redis server port
+      - "8001:8001"  # RedisInsight port
+    volumes:
+      - "./redisdata:/data"  # Mount a volume for Redis data persistence

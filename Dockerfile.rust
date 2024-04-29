@@ -1,0 +1,50 @@
+# Base image for building
+FROM debian:bookworm-slim as builder
+
+WORKDIR /usr/src/myapp
+
+# Install dependencies
+RUN apt-get update && apt-get install -y make clang libc-dev curl cmake python3 protobuf-compiler pkg-config libssl-dev git wget build-essential && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Set up Rust environment
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Copy source files
+COPY Cargo.toml Cargo.lock ./
+COPY repo ./repo
+COPY model ./model
+COPY index-config.yaml ./index-config.yaml
+COPY src ./src
+COPY .env ./
+
+# Build all binaries
+RUN cargo build --release
+RUN ls /usr/src/myapp/target/release/
+
+# Stage for each web service binary
+FROM debian:bookworm-slim as code-understanding
+COPY --from=builder /usr/src/myapp/target/release/code-understanding /app/code-understanding
+WORKDIR /app
+CMD ["./code-understanding"]
+
+FROM debian:bookworm-slim as code-search
+COPY --from=builder /usr/src/myapp/target/release/code-search /app/code-search
+WORKDIR /app
+CMD ["./code-search"]
+
+FROM debian:bookworm-slim as coordinator
+COPY --from=builder /usr/src/myapp/target/release/coordinator /app/coordinator
+WORKDIR /app
+CMD ["./coordinator"]
+
+FROM debian:bookworm-slim as ingestion
+COPY --from=builder /usr/src/myapp/target/release/ingestion /app/ingestion
+COPY --from=builder /usr/src/myapp/target/release/libonnxruntime.so.* /app/
+COPY --from=builder /usr/src/myapp/index-config.yaml /app/
+COPY --from=builder /usr/src/myapp/.env /app/
+COPY --from=builder /usr/src/myapp/model /app/
+WORKDIR /app
+RUN chmod +x /app/ingestion
+ENV LD_LIBRARY_PATH="/app:${LD_LIBRARY_PATH}"
+CMD ["./ingestion"]
