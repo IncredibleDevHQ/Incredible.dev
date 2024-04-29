@@ -27,7 +27,7 @@ pub fn initialize_config() {
     let config = Config {
         qdrant_url: env::var("QDRANT_URL").unwrap_or_else(|_| "http://localhost:6334".to_string()),
         quickwit_url: env::var("QUICKWIT_URL").unwrap_or_else(|_| "http://localhost:7280".to_string()),
-        yaml_config_path: env::var("YAML_CONFIG_PATH").unwrap(),
+        yaml_config_path: env::var("QUICKWIT_YAML_CONFIG_PATH").unwrap(),
         model_path: env::var("MODEL_PATH").unwrap(),
 
     };

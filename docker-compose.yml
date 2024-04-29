@@ -57,6 +57,10 @@ services:
       target: coordinator
     environment:
       - RUST_LOG=debug
+      - AI_GATEWAY_CONFIG_PATH="./ai-config.yaml"
+      - CODE_SEARCH_URL="http://code-search:3003"
+      - CODE_UNDERSTANDING_URL="http://code-understanding:3002"
+      - REDIS_URL="redis://redis-stack:6379"
     ports:
       - "3004:3004"
 

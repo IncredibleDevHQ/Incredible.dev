@@ -46,6 +46,8 @@ pub fn load_from_env() -> Configuration {
             error!("No .env file found and not running in Docker, application will exit.");
             process::exit(1);
         }
+    } else {
+        log::info!("Running coordinator in Docker.")
     }
 
     let ai_gateway_config_path = env::var("AI_GATEWAY_CONFIG_PATH")
@@ -54,15 +56,18 @@ pub fn load_from_env() -> Configuration {
     let ai_gateway_config = fs::read_to_string(&ai_gateway_config_path)
         .expect(&format!("Failed to read AI Gateway config file at: {}", ai_gateway_config_path));
 
-    info!("Environment and AI Gateway configuration loaded successfully.");
+    info!("AI Gateway configuration loaded successfully.");
 
     Configuration {
-        code_search_url: env::var("CODE_SEARCH_URL").unwrap_or_else(|_| "http://127.0.0.1:3003".to_string()),
-        code_understanding_url: env::var("CODE_UNDERSTANDING_URL").unwrap_or_else(|_| "http://127.0.0.1:3002".to_string()),
-        redis_url: env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string()),
+        code_search_url: env::var("CODE_SEARCH_URL").expect("CODE_SEARCH_URL environment variable is not set"),
+        code_understanding_url: env::var("CODE_UNDERSTANDING_URL").expect("CODE_UNDERSTANDING_URL environment variable is not set"),
+        redis_url: env::var("REDIS_URL").expect(
+            "REDIS_URL environment variable is not set"
+        ),
         ai_gateway_config,
     }
 }
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();

@@ -12,9 +12,9 @@ pub struct TokenizerOnnx {
 }
 
 impl TokenizerOnnx {
-    pub fn new() -> Result<Self> {
-        let tokenizer = get_tokenizer()?;
-        let session = get_ort_session()?;
+    pub fn new(model_path: &str) -> Result<Self> {
+        let tokenizer = get_tokenizer(model_path)?;
+        let session = get_ort_session(model_path)?;
         Ok(Self { tokenizer, session })
     }
 
@@ -56,25 +56,24 @@ impl TokenizerOnnx {
     }
 }
 
-pub fn get_tokenizer() -> Result<Tokenizer> {
+pub fn get_tokenizer(model_path: &str) -> Result<Tokenizer> {
+    // create pathbuf from the tokenizer_path
     // get current directory of the package and join model/tokenizer.json file path
-    let tokenizer_path = std::env::current_dir()?
-        .join("model")
+    let tokenizer_path = std::path::PathBuf::from(model_path)
         .join("tokenizer.json")
         .to_string_lossy()
         .to_string();
 
     let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path).map_err(|e| {
         let error_message = e.to_string(); // Extract the error message
-        log::error!("Error creating tokenizer: {}", error_message); // Optional: log the error
+        log::error!("Error creating tokenizer: {}", error_message); // log the error
         anyhow::Error::msg(error_message) // Create an anyhow::Error with the message
     })?;
     Ok(tokenizer)
 }
 
-pub fn get_ort_session() -> Result<ort::Session> {
-    let onnx_model_path = std::env::current_dir()?
-        .join("model")
+pub fn get_ort_session(model_path: &str) -> Result<ort::Session> {
+    let onnx_model_path = std::path::PathBuf::from(model_path)
         .join("model.onnx")
         .to_string_lossy()
         .to_string();

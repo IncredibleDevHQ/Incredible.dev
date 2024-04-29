@@ -15,6 +15,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY repo ./repo
 COPY model ./model
 COPY index-config.yaml ./index-config.yaml
+COPY ai-config.yaml ./ai-config.yaml
 COPY src ./src
 COPY .env ./
 
@@ -35,6 +36,7 @@ CMD ["./code-search"]
 
 FROM debian:bookworm-slim as coordinator
 COPY --from=builder /usr/src/myapp/target/release/coordinator /app/coordinator
+COPY --from=builder /usr/src/myapp/ai-config.yaml /app/
 WORKDIR /app
 CMD ["./coordinator"]
 
@@ -46,5 +48,7 @@ COPY --from=builder /usr/src/myapp/.env /app/
 COPY --from=builder /usr/src/myapp/model /app/
 WORKDIR /app
 RUN chmod +x /app/ingestion
+
+ENV QUICKWIT_YAML_CONFIG_PATH="/app/index-config.yaml"
 ENV LD_LIBRARY_PATH="/app:${LD_LIBRARY_PATH}"
 CMD ["./ingestion"]
