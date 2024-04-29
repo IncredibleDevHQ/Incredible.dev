@@ -24,6 +24,7 @@ extern crate git2;
 mod ast;
 use crate::ast::symbol::{SymbolKey, SymbolLocations, SymbolValue};
 use crate::ast::CodeFileAST;
+use crate::config::initialize_config;
 use crate::semantic_index::{SemanticError, SemanticIndex};
 // Importing necessary types from the git2 crate
 use git2::{ObjectType, Repository as GitRepository};
@@ -646,7 +647,7 @@ struct Args {
 
 async fn main() -> Result<()> {
     env_logger::init();
-
+    initialize_config(); 
     let args = Args::parse();
 
     log::info!("Processing repository folder: {}", args.repo_folder);

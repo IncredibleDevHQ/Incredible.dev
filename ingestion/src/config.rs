@@ -1,5 +1,9 @@
-use std::sync::RwLock;
 use lazy_static::lazy_static;
+use std::sync::RwLock;
+use dotenv::dotenv;
+use std::env;
+
+use common::docker::is_running_in_docker;
 
 #[derive(Debug)]
 pub struct Config {
@@ -18,18 +22,18 @@ lazy_static! {
     });
 }
 
-use std::env;
-use dotenv::dotenv;
 
 pub fn initialize_config() {
+    if !is_running_in_docker() {
+        dotenv::dotenv().expect("`dotenv` failed to load environment variables from .env file. Either configure .env or run from docker compose setup");
+    }
     dotenv().ok(); // Load environment variables from .env file if available
 
     let config = Config {
-        qdrant_url: env::var("QDRANT_URL").unwrap_or_else(|_| "http://localhost:6334".to_string()),
-        quickwit_url: env::var("QUICKWIT_URL").unwrap_or_else(|_| "http://localhost:7280".to_string()),
-        yaml_config_path: env::var("QUICKWIT_YAML_CONFIG_PATH").unwrap(),
-        model_path: env::var("MODEL_PATH").unwrap(),
-
+        qdrant_url: env::var("SEMANTIC_DB_URL").expect("`QDRANT_URL` environment variable must be set"),
+        quickwit_url: env::var("SEMANTIC_DB_URL").expect("`QUICKWIT_URL` environment variable must be set"),
+        yaml_config_path: env::var("QUICKWIT_YAML_CONFIG_PATH").expect("`YAML_CONFIG_PATH` environment variable must be set"),
+        model_path: env::var("MODEL_DIR").expect("`MODEL_PATH` environment variable must be set"),
     };
 
     let mut global_config = GLOBAL_CONFIG.write().expect("Failed to acquire write lock");

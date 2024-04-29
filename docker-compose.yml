@@ -8,6 +8,10 @@ services:
       target: ingestion
     environment:
       - RUST_LOG=debug
+      - SEMANTIC_DB_URL="http://qdrant:6334"
+      - QUICKWIT_DB_URL="http://quickwit:7280"
+      - MODEL_DIR="/app/model"
+      - QUICKWIT_YAML_CONFIG_PATH="/app/index-config.yaml"
     volumes:
       - "./repo:/usr/src/myapp/repo"
     depends_on:

@@ -7,8 +7,9 @@ mod chunking;
 mod text_range;
 mod vector_payload;
 use crate::ast::symbol::{SymbolKey, SymbolValue};
+use crate::config::get_model_path;
 use chunking::{add_token_range, Chunk, DEDUCT_SPECIAL_TOKENS};
-use qdrant_client::prelude::{QdrantClient, QdrantClientConfig};
+use qdrant_client::prelude::QdrantClient;
 use qdrant_client::qdrant::{PointId, PointStruct};
 use std::collections::HashMap;
 use std::fmt;
@@ -63,14 +64,10 @@ impl SemanticIndex {
     pub fn new(counter: &usize) -> Result<Self, anyhow::Error> {
         
         Ok(Self {
-            tokenizer_onnx: TokenizerOnnx::new()?,
+            tokenizer_onnx: TokenizerOnnx::new(&get_model_path())?,
             overlap: chunking::OverlapStrategy::default(),
             counter: *counter,
         })
-    }
-
-    pub fn overlap_strategy(&self) -> chunking::OverlapStrategy {
-        self.overlap
     }
 
     pub fn embed(&self, sequence: &str) -> anyhow::Result<Embedding> {
@@ -91,9 +88,7 @@ impl SemanticIndex {
             buffer,
             repo_name,
             path,
-            semantic_hash,
             50..256,
-            qdrant_client,
         );
 
         // Commit
@@ -181,7 +176,7 @@ impl SemanticIndex {
 
                 // create the SymbolPayload from the key and the vectors created above.
                 // this format is required by qdrant.
-                let mut symbol_qdrant_meta = SymbolPayload {
+                let symbol_qdrant_meta = SymbolPayload {
                     lang_ids: language_ids,
                     repo_name: key.repo_name.clone(),
                     symbol: key.symbol.clone(),
@@ -247,7 +242,7 @@ impl SemanticIndex {
         chunks: Vec<Chunk<'_>>,
         repo_name: &'s str,
         relative_path: &str,
-        semanticHash: &str,
+        semantic_hash: &str,
         lang_str: &str,
         qdrant_client: &Option<QdrantClient>,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -258,11 +253,10 @@ impl SemanticIndex {
             self.embed(c)
         };
         chunks.iter().for_each(|chunk| {
-            let data = format!("{repo_name}\t{relative_path}\n{}", chunk.data,);
             let payload = Payload {
                 repo_name: repo_name.to_owned(),
                 relative_path: relative_path.to_owned(),
-                content_hash: semanticHash.to_string(),
+                content_hash: semantic_hash.to_string(),
                 text: chunk.data.to_owned(),
                 lang: lang_str.to_ascii_lowercase(),
                 start_line: chunk.range.start.line as u64,
@@ -324,9 +318,7 @@ impl SemanticIndex {
         src: &'s str,
         repo_name: &'s str,
         file: &str,
-        semanticHash: &str,
         token_bounds: Range<usize>,
-        qdrant_client: &Option<QdrantClient>,
     ) -> Vec<Chunk<'s>> {
         if self.tokenizer_onnx.tokenizer.get_padding().is_some() || self.tokenizer_onnx.tokenizer.get_truncation().is_some() {
             error!(
