@@ -38,11 +38,11 @@ pub fn load_from_env() -> Config {
     let semantic_url =
         env::var("SEMANTIC_DB_URL").expect("SEMANTIC_DB_URL environment variable is not set");
     let quickwit_url =
-        env::var("QUICKWIT_URL").unwrap_or_else(|_| "http://localhost:7280".to_string());
+        env::var("QUICKWIT_DB_URL").unwrap_or_else(|_| "http://localhost:7280".to_string());
     let search_server_url =
         env::var("SEARCH_SERVER_URL").unwrap_or_else(|_| "http://localhost:3003".to_string());
     let redis_url = env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string());
-    let model_path = env::var("MODEL_PATH").expect("MODEL_PATH environment variable is not set");
+    let model_path = env::var("MODEL_DIR").expect("MODEL_DIR environment variable is not set");
 
     Config {
         qdrant_api_key,

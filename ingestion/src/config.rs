@@ -31,7 +31,7 @@ pub fn initialize_config() {
 
     let config = Config {
         qdrant_url: env::var("SEMANTIC_DB_URL").expect("`QDRANT_URL` environment variable must be set"),
-        quickwit_url: env::var("SEMANTIC_DB_URL").expect("`QUICKWIT_URL` environment variable must be set"),
+        quickwit_url: env::var("QUICKWIT_DB_URL").expect("`QUICKWIT_URL` environment variable must be set"),
         yaml_config_path: env::var("QUICKWIT_YAML_CONFIG_PATH").expect("`YAML_CONFIG_PATH` environment variable must be set"),
         model_path: env::var("MODEL_DIR").expect("`MODEL_PATH` environment variable must be set"),
     };

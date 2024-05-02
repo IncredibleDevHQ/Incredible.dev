@@ -34,6 +34,7 @@ static CONFIG: Lazy<RwLock<Configuration>> = Lazy::new(|| {
 // write a function test if the dependency services are up and running
 async fn health_check(url: &str) -> bool {
     // do async request and await for the response
+    log::debug!("Checking health of {}", url);
     let response = reqwest::get(url).await;
     response.is_ok()
 }

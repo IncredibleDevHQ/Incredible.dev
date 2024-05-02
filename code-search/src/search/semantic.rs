@@ -1,4 +1,7 @@
-use crate::{config::{get_model_path, get_qdrant_api_key, get_semantic_db_url, get_symbol_collection_name}, search::semantic::SemanticError::QdrantInitializationError};
+use crate::{
+    config::{get_model_path, get_qdrant_api_key, get_semantic_db_url, get_symbol_collection_name},
+    search::semantic::SemanticError::QdrantInitializationError,
+};
 use anyhow::Result;
 use common::hasher::generate_qdrant_index_name;
 use std::{str, time::Duration};
@@ -41,6 +44,8 @@ pub enum SemanticError {
 pub async fn get_qdrant_client() -> Result<QdrantClient, SemanticError> {
     // if api key is not set, then initialize the qdrant client without the api key
     if get_qdrant_api_key().is_none() {
+        let qdrant_db_url = get_semantic_db_url();
+        log::debug!("Connecting to Qdrant at {} without API key", qdrant_db_url);
         let qdrant = QdrantClient::new(Some(
             QdrantClientConfig::from_url(&get_semantic_db_url())
                 .with_timeout(Duration::from_secs(30))
@@ -69,7 +74,7 @@ impl Semantic {
         Ok(Self {
             qdrant: qdrant.into(),
             tokenizer_onnx: common::tokenizer_onnx::TokenizerOnnx::new(&get_model_path())?,
-            qdrant_collection_name: get_symbol_collection_name(), 
+            qdrant_collection_name: get_symbol_collection_name(),
         })
     }
 

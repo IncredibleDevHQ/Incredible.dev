@@ -1,12 +1,10 @@
-
 use anyhow::Context;
-use std::sync::RwLock;
 use lazy_static::lazy_static;
 use std::env;
+use std::sync::RwLock;
 
 use crate::db;
 use common::docker::is_running_in_docker;
-
 
 #[derive(Debug, Clone)]
 pub struct Configuration {
@@ -42,22 +40,33 @@ pub async fn initialize_config() -> anyhow::Result<AppState> {
         symbol_collection_name: common::service_interaction::SYMBOL_COLLECTION_NAME.to_string(), // Set a default or pull from env
         semantic_db_url: env::var("SEMANTIC_DB_URL").context("SEMANTIC_DB_URL must be set")?,
         quikwit_db_url: env::var("QUICKWIT_DB_URL").context("QUICKWIT_DB_URL must be set")?,
-        model_path: env::var("MODEL_PATH").context("MODEL_PATH must be set")?,
+        model_path: env::var("MODEL_DIR").context("MODEL_PATH must be set")?,
         qdrant_api_key: env::var("QDRANT_CLOUD_API_KEY").ok(), // Optional, hence `ok()`
     };
+    {
+        let mut global_config = GLOBAL_CONFIG.write().expect("Failed to acquire write lock");
+        *global_config = config.clone();
+        
+        log::debug!(
+            "Loaded configuration:
+            SymbolCollectionName: {},
+            SemanticDbUrl: {},
+            QuikwitDbUrl: {},
+            ModelPath: {}", 
+            config.symbol_collection_name,
+            config.semantic_db_url,
+            config.quikwit_db_url,
+            config.model_path,
+        );
 
-    let mut global_config = GLOBAL_CONFIG.write().expect("Failed to acquire write lock");
-    *global_config = config;
-
+    }
     let db_connection = db::init_db().await?;
 
-    Ok(AppState {
-        db_connection,
-    })
+    Ok(AppState { db_connection })
 }
 
- // Getter for the symbol collection name
- pub fn get_symbol_collection_name() -> String {
+// Getter for the symbol collection name
+pub fn get_symbol_collection_name() -> String {
     GLOBAL_CONFIG.read().unwrap().symbol_collection_name.clone()
 }
 
