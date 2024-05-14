@@ -1,6 +1,6 @@
 use anyhow::Result;
 use once_cell::sync::Lazy;
-use std::sync::RwLock;
+use std::{sync::RwLock, thread::sleep, time::Duration};
 use config::{get_search_server_url, load_from_env, Config};
 
 mod agent;
@@ -21,16 +21,28 @@ struct AppState {
 
 // initialize the app state with the configuration and database connection.
 async fn init_state() -> Result<AppState, anyhow::Error> {
-    // call the search url home route and see if the server is running. If not return a message to the user to first start the server.
     let search_url = format!("{}/", get_search_server_url());
-    let response = reqwest::get(&search_url).await;
-    match response {
-        Ok(_) => {
-            log::info!("Search server is running at {}", search_url);
-        }
-        Err(_) => {
-            log::error!("Search server is not running. Please start the search server first.");
-            return Err(anyhow::anyhow!("Search server is not running. Please start the search server first."));
+
+    // Attempt to connect to the search server with retry logic
+    let mut attempts = 0;
+    let max_attempts = 2; // Try once initially and retry once
+    while attempts < max_attempts {
+        let response = reqwest::get(&search_url).await;
+
+        match response {
+            Ok(_) => {
+                log::info!("Search server is running at {}", search_url);
+                break; // Exit the loop on success
+            }
+            Err(e) if attempts < max_attempts - 1 => {
+                log::debug!("Search server not available, waiting 5 seconds before retrying...");
+                sleep(Duration::from_secs(5)); // Wait for 5 seconds
+                attempts += 1; // Increment the retry counter
+            }
+            Err(_) => {
+                log::error!("Search server is not running after retries. Please start the search server first.");
+                return Err(anyhow::anyhow!("Search server is not running. Please start the search server first."));
+            }
         }
     }
 
