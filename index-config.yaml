@@ -1,0 +1,57 @@
+version: 0.6
+
+index_id: incredible
+
+doc_mapping:
+  field_mappings:
+    - name: repo_name
+      type: text
+      tokenizer: default
+      record: position
+      stored: true
+    - name: repo_disk_path
+      type: text
+      fast: true
+      tokenizer: raw
+    - name: relative_path
+      type: text
+      tokenizer: default
+    - name: repo_ref
+      type: text
+      fast: true
+      tokenizer: raw
+    - name: last_commit
+      type: text
+      fast: true
+      tokenizer: raw
+    - name: lang
+      type: text
+      fast: true
+      tokenizer: raw
+    - name: is_directory
+      type: bool
+    - name: avg_line_length
+      type: f64
+    - name: line_end_indices
+      type: array<u64>
+    - name: symbols
+      type: text
+      tokenizer: default
+    - name: symbol_locations
+      type: array<u64> 
+    - name: content
+      type: text
+      tokenizer: default
+      record: position
+      stored: true
+    - name: unique_hash
+      type: text
+      fast: true
+      tokenizer: raw
+
+search_settings:
+  default_search_fields: [relative_path, repo_name, content, lang, symbols]
+
+indexing_settings:
+  commit_timeout_secs: 10
+

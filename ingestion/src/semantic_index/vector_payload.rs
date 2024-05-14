@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use qdrant_client::prelude::Value;
 
-pub type Embedding = Vec<f32>;
+use common::tokenizer_onnx::Embedding;
 
 // Payload format to write and deserialize data in and from qdrant.
 #[derive(Default, Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -27,7 +27,7 @@ pub struct SymbolPayload {
 }
 
 impl SymbolPayload {
-    pub fn convert_to__qdrant_fields(self) -> HashMap<String, Value> {
+    pub fn convert_to_qdrant_fields(self) -> HashMap<String, Value> {
         HashMap::from([
             ("repo_name".into(), self.repo_name.into()),
             ("symbol".into(), self.symbol.into()),
@@ -66,7 +66,7 @@ pub struct Payload {
 }
 
 impl Payload {
-    pub fn convert_to__qdrant_fields(self) -> HashMap<String, Value> {
+    pub fn convert_to_qdrant_fields(self) -> HashMap<String, Value> {
         HashMap::from([
             ("lang".into(), self.lang.to_ascii_lowercase().into()),
             ("repo_name".into(), self.repo_name.into()),

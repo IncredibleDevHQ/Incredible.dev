@@ -49,8 +49,8 @@ pub struct Exchange {
 impl Agent {
     // function to save the exchanges to redis
     // this helps to resume/reply the agentic workflow on answering a question/query
-    pub fn save_exchanges_to_redis(&self, redis_url: &str) -> Result<()> {
-        let mut conn = establish_redis_connection(&get_redis_url())?;
+    pub fn save_exchanges_to_redis(&self, url: &str) -> Result<()> {
+        let mut conn = establish_redis_connection(url)?;
         let key = &self.query_id;
         let value = serde_json::to_string(&self.exchanges)?;
         let hash_key = EXCHANGES_HASH_KEY;

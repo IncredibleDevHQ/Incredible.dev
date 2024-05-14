@@ -4,21 +4,33 @@ use common::TokenInfoRequest;
 
 use std::convert::Infallible;
 use std::sync::Arc;
-use warp::{self, Filter};
+use warp::{self, http::Response, Filter};
 
 use crate::controller::{navigator, parentscope, span, symbol};
 use crate::db::DbConnect;
 // use crate::graph::symbol_ops;
+use crate::config::AppState;
 use crate::models::{ParentScopeRequest, SymbolSearchRequest};
-use crate::AppState;
 
 pub fn search_routes(
     app_state: Arc<AppState>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     symbol_search(app_state.clone())
+        .or(health_check())
         .or(span_code_chunk_retrieve(app_state.clone()))
         .or(parent_scope_retrieve(app_state.clone()))
         .or(token_info_fetcher(app_state.clone()))
+}
+
+fn health_check() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path::end() // Matches the root path "/"
+        .and(warp::get()) // Only responds to GET requests
+        .map(|| {
+            Response::builder()
+                .status(warp::http::StatusCode::OK)
+                .body("Hello from code search")
+                .expect("Failed to construct response")
+        })
 }
 
 /// POST /symbols
@@ -138,8 +150,7 @@ fn token_info_fetcher(
     warp::path("token_info")
         .and(warp::post())
         .and(
-            warp::body::content_length_limit(1024 * 16)
-                .and(warp::body::json::<TokenInfoRequest>()),
+            warp::body::content_length_limit(1024 * 16).and(warp::body::json::<TokenInfoRequest>()),
         )
         .and(warp::any().map(move || app_state.clone()))
         .and_then(navigator::handle_token_info_fetcher_wrapper) // Assuming you have a corresponding handler in the controller

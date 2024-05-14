@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 extern crate common;
 
+use crate::config::AppState;
 use crate::db::DbConnect;
 use crate::parser::literal::Literal;
 use crate::search::payload::{CodeExtractMeta, PathExtractMeta, SymbolPayload};
 use crate::search::ranking::rank_symbol_payloads;
-use crate::AppState;
 use common::models::CodeChunk;
 
 use anyhow::{anyhow, Error, Result};
@@ -201,9 +201,8 @@ pub async fn get_file_content(
     repo_name: &String,
     app_state: Arc<AppState>,
 ) -> Result<Option<ContentDocument>> {
-    let config = app_state.configuration.clone();
     let new_index_id = generate_quikwit_index_name(repo_name);
 
     log::debug!("fetching file content {}\n", path);
-    get_file_from_quickwit(&new_index_id, "relative_path", path, app_state).await
+    get_file_from_quickwit(&new_index_id, "relative_path", path).await
 }

@@ -7,6 +7,9 @@ use reqwest::{self, Client, Method, StatusCode, Url};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{json, Value}; // Ensure this is accessible, either defined here or imported.
 
+pub static  SYMBOL_COLLECTION_NAME: &str  = "documents_symbol";
+pub static  DOCUMENT_COLLECTION_NAME: &str  = "documents";
+
 // Async function to fetch a specific span of code from a service.
 // search_service_url: The URL of the search service where the code span should be fetched from.
 // request: The data required by the search service to find and return the desired code span, encapsulated in a CodeSpanRequest struct.

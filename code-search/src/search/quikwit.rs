@@ -1,10 +1,10 @@
-use crate::{AppState, CLIENT};
 use anyhow::{Error, Result};
 use common::ast::graph_code_pluck::ContentDocument;
 use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::sync::Arc;
+
+use crate::config::get_quikwit_db_url;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct BodyRes {
@@ -42,11 +42,8 @@ struct ResultItem {
 pub async fn get_all_files_for_repo(
     index_name: &str,
     repo_name: &str,
-    app_state: Arc<AppState>,
 ) -> Result<Vec<ContentDocument>> {
-    let config = app_state.configuration.clone();
-
-    let base_url = config.quikwit_db_url.clone();
+    let base_url = get_quikwit_db_url();
 
     let query = "*".to_string();
 
@@ -56,10 +53,11 @@ pub async fn get_all_files_for_repo(
     };
 
     let json_string = serde_json::to_string(&json_data).expect("Failed to serialize object");
-
     let url = format!("{}/api/v1/{}/search", base_url, index_name);
 
-    let response = CLIENT
+    // create http client and send request 
+    let client = reqwest::Client::new();
+    let response = client
         .post(url)
         .header("Content-Type", "application/json")
         .body(json_string)
@@ -111,14 +109,13 @@ pub async fn get_file_from_quickwit(
     index_name: &str,
     search_field: &str,
     search_query: &str,
-    app_state: Arc<AppState>,
 ) -> Result<Option<ContentDocument>> {
     let query = if !search_field.is_empty() {
         format!("{}:{}", search_field, search_query)
     } else {
         search_query.to_owned()
     };
-    let response_array = search_quickwit(index_name, &query, app_state).await?;
+    let response_array = search_quickwit(index_name, &query).await?;
     let filtered_response_array: Vec<ContentDocument> = response_array
         .into_iter()
         .filter((|doc| doc.relative_path == search_query))
@@ -139,11 +136,8 @@ pub async fn get_file_from_quickwit(
 pub async fn search_quickwit(
     index_name: &str,
     query: &str,
-    app_state: Arc<AppState>,
 ) -> Result<Vec<ContentDocument>, Error> {
-    let config = app_state.configuration.clone();
-
-    let base_url = config.quikwit_db_url.clone();
+    let base_url = get_quikwit_db_url(); 
 
     let json_data = BodyRes {
         query: query.to_string(),
@@ -151,10 +145,10 @@ pub async fn search_quickwit(
     };
 
     let json_string = serde_json::to_string(&json_data).expect("Failed to serialize object");
-
     let url = format!("{}/api/v1/{}/search", base_url, index_name);
 
-    let response = CLIENT
+    let client = reqwest::Client::new();
+    let response = client
         .post(url)
         .header("Content-Type", "application/json")
         .body(json_string)

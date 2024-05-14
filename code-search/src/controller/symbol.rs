@@ -8,9 +8,9 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use warp::{self, http::StatusCode};
 
-use crate::models::SymbolSearchRequest;
+use crate::config::{get_qdrant_api_key, get_semantic_db_url};
+use crate::{config::AppState, models::SymbolSearchRequest};
 use crate::search::code_search::code_search;
-use crate::AppState;
 use anyhow::Result;
 use reqwest;
 use serde::{Deserialize, Serialize};
@@ -29,12 +29,9 @@ pub async fn symbol_search(
     search_request: SymbolSearchRequest,
     app_state: Arc<AppState>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let config = app_state.configuration.clone();
     // Qdrant key is only set while using Qdrant Cloud, otherwise we'll be using the local Qdrant instance.
     // access the qdrant key from the app_state
-
-    let environment = config.environment.clone();
-    let qdrant_key = config.qdrant_api_key.clone();
+    let qdrant_key = get_qdrant_api_key(); 
 
     // namespace is set to repo name from the search request if the qdrant key is not set
     let namespace = generate_qdrant_index_name(&search_request.repo_name);
@@ -42,7 +39,7 @@ pub async fn symbol_search(
     // check if the collection is available, use app state to access the configuration
 
     let is_collection_available = get_collection_status(
-        config.semantic_db_url,
+        get_semantic_db_url(),
         &namespace, // &search_request.repo_name,
         qdrant_key,
     )

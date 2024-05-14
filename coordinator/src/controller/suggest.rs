@@ -6,17 +6,12 @@ use crate::llm_ops::tasks_questions::generate_tasks_and_questions;
 use ai_gateway::message::message::Message;
 use anyhow::Result;
 use common::models::{
-    CodeContextRequest, TaskList, TaskListResponseWithMessage,
+     TaskList, TaskListResponseWithMessage,
 };
 
 use crate::controller::error::AgentProcessingError;
-use crate::configuration::{
-    get_context_generator_url, get_redis_url,
-};
-use crate::llm_ops::summarize::{
-    generate_single_task_summarization_, generate_summarized_answer_for_task,
-};
-use common::service_interaction::HttpMethod;
+use crate::configuration::get_redis_url;
+use crate::llm_ops::summarize::generate_summarized_answer_for_task;
 use common::task_graph::graph_model::{
     ConversationChain, TrackProcessV1,
 };
@@ -26,10 +21,7 @@ use log::{debug, error, info};
 use reqwest::StatusCode;
 use std::convert::Infallible;
 
-use crate::models::SuggestResponse;
-use common::{service_interaction::service_caller, CodeUnderstandings};
-
-use crate::{models::SuggestRequest, CONFIG};
+use crate::models::{SuggestResponse, SuggestRequest};
 
 pub async fn handle_suggest_wrapper(
     request: SuggestRequest,
@@ -318,23 +310,4 @@ async fn handle_suggest_core(request: SuggestRequest) -> Result<SuggestResponse,
             }
         }
     }
-}
-
-
-// TODO: Remove unused warning suppressor once the context generator is implemented
-#[allow(unused)]
-async fn get_code_context(code_understanding: CodeUnderstandings) -> Result<String, anyhow::Error> {
-    let context_generator_url = get_context_generator_url();
-    let code_context_url = format!("{}/find-code-context", context_generator_url);
-    let code_context = service_caller::<CodeContextRequest, String>(
-        code_context_url,
-        HttpMethod::POST,
-        Some(CodeContextRequest {
-            qna_context: code_understanding.clone(),
-        }),
-        None,
-    )
-    .await?;
-
-    Ok(code_context)
 }

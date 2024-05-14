@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
-use crate::models::ParentScopeRequest;
+use crate::{config::AppState, models::ParentScopeRequest};
 use crate::search::code_search::get_file_content;
 use crate::utilities::util::return_byte_range_from_line_numbers;
-use crate::AppState;
 
 use common::ast::graph_code_pluck::ExtractionConfig;
 use log::{debug, error};
@@ -34,7 +33,6 @@ pub async fn parent_scope_search(
                 ))
             } else {
                 let content_doc = content.unwrap();
-                let code_file = content_doc.content.clone();
 
                 // Deserialize the symbol locations embedded in the source document.
                 let symbol_locations = content_doc.symbol_locations();

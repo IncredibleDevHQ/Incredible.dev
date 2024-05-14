@@ -1,33 +1,28 @@
-extern crate tokenizers;
 use std::error::Error;
 use std::ops::Range;
-use std::sync::Arc;
 extern crate tracing;
 use anyhow::Result;
-use ort::{CPUExecutionProvider, Session};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error,  warn};
 mod chunking;
 mod text_range;
 mod vector_payload;
-use crate::ast::symbol::{SymbolKey, SymbolMetaData, SymbolValue};
+use crate::ast::symbol::{SymbolKey, SymbolValue};
 use crate::config::get_model_path;
-use chunking::{add_token_range, point, Chunk, DEDUCT_SPECIAL_TOKENS};
-use ndarray::Axis;
-use qdrant_client::prelude::{QdrantClient, QdrantClientConfig};
+use chunking::{add_token_range, Chunk, DEDUCT_SPECIAL_TOKENS};
+use qdrant_client::prelude::QdrantClient;
 use qdrant_client::qdrant::{PointId, PointStruct};
 use std::collections::HashMap;
 use std::fmt;
 use text_range::{Point, TextRange};
 use thiserror::Error;
 use uuid::Uuid;
-use vector_payload::{Embedding, Payload, SymbolPayload};
+use vector_payload::{Payload, SymbolPayload};
+
+use common::tokenizer_onnx::{Embedding, TokenizerOnnx};
 
 pub struct SemanticIndex {
-    tokenizer: tokenizers::Tokenizer,
+    tokenizer_onnx: TokenizerOnnx,
     overlap: chunking::OverlapStrategy,
-    session: ort::Session,
-    qdrantPayload: Vec<PointStruct>,
-    qdrantSymbolPayload: Vec<PointStruct>,
     counter: usize,
 }
 use crate::{COLLECTION_NAME, COLLECTION_NAME_SYMBOLS};
@@ -36,12 +31,6 @@ pub enum SemanticError {
     /// Represents failure to initialize Qdrant client
     #[error("Qdrant initialization failed. Is Qdrant running on `qdrant-url`?")]
     QdrantInitializationError,
-
-    #[error("ONNX runtime error")]
-    OnnxRuntimeError {
-        #[from]
-        error: ort::Error,
-    },
 
     #[error("semantic error")]
     Anyhow {
@@ -73,91 +62,16 @@ impl Error for CommitError {
 
 impl SemanticIndex {
     pub fn new(counter: &usize) -> Result<Self, anyhow::Error> {
-        let threads: usize = 1;
-        let env = ort::init()
-            .with_execution_providers([CPUExecutionProvider::default().build()])
-            .commit()
-            .map_err(anyhow::Error::from)?;
-
-        let environment = Arc::new(env);
-
-        // Explicitly handle the error and convert it to anyhow::Error
-        // append tokenizer.json to the model path from get_model_path() function
-        // use path join to construct full path 
-        let tokenizer_path = std::path::PathBuf::from(get_model_path())
-        .join("tokenizer.json")
-        .to_string_lossy()
-        .to_string();
-
-        let tokenizer = tokenizers::Tokenizer::from_file(
-            tokenizer_path
-        )
-        .map_err(|e| {
-            let error_message = e.to_string(); // Extract the error message
-            log::error!("Error creating tokenizer: {}", error_message); // Optional: log the error
-            anyhow::Error::msg(error_message) // Create an anyhow::Error with the message
-        })?;
-
-        let onnx_path = std::path::PathBuf::from(get_model_path())
-        .join("model.onnx")
-        .to_string_lossy()
-        .to_string();
-
-        let session = Session::builder()?
-            .commit_from_file(onnx_path)
-            .map_err(anyhow::Error::from)?;
-
+        
         Ok(Self {
-            tokenizer: tokenizer.into(),
+            tokenizer_onnx: TokenizerOnnx::new(&get_model_path())?,
             overlap: chunking::OverlapStrategy::default(),
-            session: session.into(),
-            qdrantPayload: Vec::new(),
-            qdrantSymbolPayload: Vec::new(),
             counter: *counter,
         })
     }
 
-    pub fn overlap_strategy(&self) -> chunking::OverlapStrategy {
-        self.overlap
-    }
-
     pub fn embed(&self, sequence: &str) -> anyhow::Result<Embedding> {
-        let tokenizer_output = self.tokenizer.encode(sequence, true).unwrap();
-
-        let input_ids = tokenizer_output.get_ids();
-        let attention_mask = tokenizer_output.get_attention_mask();
-        let token_type_ids = tokenizer_output.get_type_ids();
-        let length = input_ids.len();
-        trace!("embedding {} tokens {:?}", length, sequence);
-
-        let inputs_ids_array = ndarray::Array::from_shape_vec(
-            (1, length),
-            input_ids.iter().map(|&x| x as i64).collect(),
-        )?;
-
-        let attention_mask_array = ndarray::Array::from_shape_vec(
-            (1, length),
-            attention_mask.iter().map(|&x| x as i64).collect(),
-        )?;
-
-        let token_type_ids_array = ndarray::Array::from_shape_vec(
-            (1, length),
-            token_type_ids.iter().map(|&x| x as i64).collect(),
-        )?;
-
-        //let array = ndarray::Array::from_shape_vec((1,), vec![document]).unwrap();
-
-        let outputs = self.session.run(ort::inputs![
-            ort::Value::from_array(inputs_ids_array.into_dyn())?,
-            ort::Value::from_array(attention_mask_array.into_dyn())?,
-            ort::Value::from_array(token_type_ids_array.into_dyn())?,
-        ]?)?;
-
-
-        let output_tensor = outputs[0].try_extract_tensor()?;
-        let sequence_embedding = output_tensor.view();
-        let pooled = sequence_embedding.mean_axis(Axis(1)).unwrap();
-        Ok(pooled.to_owned().as_slice().unwrap().to_vec())
+        self.tokenizer_onnx.get_embedding(sequence)
     }
 
     pub async fn tokenize_and_commit<'a>(
@@ -174,9 +88,7 @@ impl SemanticIndex {
             buffer,
             repo_name,
             path,
-            semantic_hash,
             50..256,
-            qdrant_client,
         );
 
         // Commit
@@ -264,7 +176,7 @@ impl SemanticIndex {
 
                 // create the SymbolPayload from the key and the vectors created above.
                 // this format is required by qdrant.
-                let mut symbol_qdrant_meta = SymbolPayload {
+                let symbol_qdrant_meta = SymbolPayload {
                     lang_ids: language_ids,
                     repo_name: key.repo_name.clone(),
                     symbol: key.symbol.clone(),
@@ -283,7 +195,7 @@ impl SemanticIndex {
                 return PointStruct {
                     id: Some(PointId::from(id.to_string())),
                     vectors: Some(embedder(&key.symbol).unwrap().into()),
-                    payload: symbol_qdrant_meta.convert_to__qdrant_fields(),
+                    payload: symbol_qdrant_meta.convert_to_qdrant_fields(),
                 };
             })
             .collect();
@@ -330,7 +242,7 @@ impl SemanticIndex {
         chunks: Vec<Chunk<'_>>,
         repo_name: &'s str,
         relative_path: &str,
-        semanticHash: &str,
+        semantic_hash: &str,
         lang_str: &str,
         qdrant_client: &Option<QdrantClient>,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -341,11 +253,10 @@ impl SemanticIndex {
             self.embed(c)
         };
         chunks.iter().for_each(|chunk| {
-            let data = format!("{repo_name}\t{relative_path}\n{}", chunk.data,);
             let payload = Payload {
                 repo_name: repo_name.to_owned(),
                 relative_path: relative_path.to_owned(),
-                content_hash: semanticHash.to_string(),
+                content_hash: semantic_hash.to_string(),
                 text: chunk.data.to_owned(),
                 lang: lang_str.to_ascii_lowercase(),
                 start_line: chunk.range.start.line as u64,
@@ -360,7 +271,7 @@ impl SemanticIndex {
             let qdrant_payload = PointStruct {
                 id: Some(PointId::from(id.to_string())),
                 vectors: Some(embedder(chunk.data).unwrap().into()),
-                payload: payload.convert_to__qdrant_fields(),
+                payload: payload.convert_to_qdrant_fields(),
             };
 
             temp_payloads.push(qdrant_payload);
@@ -407,11 +318,9 @@ impl SemanticIndex {
         src: &'s str,
         repo_name: &'s str,
         file: &str,
-        semanticHash: &str,
         token_bounds: Range<usize>,
-        qdrant_client: &Option<QdrantClient>,
     ) -> Vec<Chunk<'s>> {
-        if self.tokenizer.get_padding().is_some() || self.tokenizer.get_truncation().is_some() {
+        if self.tokenizer_onnx.tokenizer.get_padding().is_some() || self.tokenizer_onnx.tokenizer.get_truncation().is_some() {
             error!(
                 "This code can panic if padding and truncation are not turned off. Please make sure padding is off."
             );
@@ -422,7 +331,7 @@ impl SemanticIndex {
             println!("Skipping \"{}\" because it is too small", src);
             return Vec::new();
         }
-        let Ok(encoding) = self.tokenizer.encode(src, true) else {
+        let Ok(encoding) = self.tokenizer_onnx.tokenizer.encode(src, true) else {
             warn!("Could not encode \"{}\"", src);
             return Vec::new();
         };
@@ -435,7 +344,7 @@ impl SemanticIndex {
         }
 
         let repo_plus_file = repo_name.to_owned() + "\t" + file + "\n";
-        let repo_tokens = match self.tokenizer.encode(repo_plus_file, true) {
+        let repo_tokens = match self.tokenizer_onnx.tokenizer.encode(repo_plus_file, true) {
             Ok(encoding) => encoding.get_ids().len(),
             Err(e) => {
                 error!("failure during encoding repo + file {:?}", e);
@@ -475,6 +384,7 @@ impl SemanticIndex {
             } else if let Some(next_boundary) =
                 (start + max_boundary_tokens..next_limit).rfind(|&i| {
                     !self
+                        .tokenizer_onnx
                         .tokenizer
                         .id_to_token(ids[i + 1])
                         .map_or(false, |s| s.starts_with("##"))
@@ -517,6 +427,7 @@ impl SemanticIndex {
                 (None, None) => (mid..end_limit)
                     .find(|&i| {
                         !self
+                            .tokenizer_onnx
                             .tokenizer
                             .id_to_token(ids[i + 1])
                             .map_or(false, |s| s.starts_with("##"))

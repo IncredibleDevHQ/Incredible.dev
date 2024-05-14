@@ -1,4 +1,4 @@
-use crate::{search::semantic::Semantic, Configuration};
+use crate::{config::Configuration, search::semantic::Semantic}; 
 use reqwest::Client;
 use thiserror::Error;
 use log::{error, info};
@@ -8,12 +8,6 @@ pub enum SemanticError {
     /// Represents failure to initialize Qdrant client
     #[error("Qdrant initialization failed. Is Qdrant running on `qdrant-url`?")]
     QdrantInitializationError,
-
-    #[error("ONNX runtime error")]
-    OnnxRuntimeError {
-        #[from]
-        error: ort::OrtError,
-    },
 
     #[error("semantic error")]
     Anyhow {
@@ -27,10 +21,10 @@ pub struct DbConnect {
     pub http_client: Client,
 }
 
-pub async fn init_db(config: Configuration) -> Result<DbConnect, anyhow::Error> {
+pub async fn init_db() -> Result<DbConnect, anyhow::Error> {
     let http_client = reqwest::Client::new();
 
-    let semantic = Semantic::initialize(config).await;
+    let semantic = Semantic::initialize().await;
     match semantic {
         Ok(semantic) => {
             info!("Semantic search initialized");

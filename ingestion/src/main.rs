@@ -1,9 +1,5 @@
-use ast::symbol::SymbolMetaData;
 // Import necessary modules from Rust's standard library
-use bincode::serialize;
 use config::get_qdrant_url;
-use futures::{executor::block_on, future::join_all};
-use qdrant_client::qdrant;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::error::Error;
@@ -18,7 +14,6 @@ mod hash;
 use hash::compute_hashes;
 mod util;
 use std::collections::HashSet;
-use util::detect_language;
 // External crate for working with Git repositories
 use std::env;
 mod config;
@@ -29,6 +24,7 @@ extern crate git2;
 mod ast;
 use crate::ast::symbol::{SymbolKey, SymbolLocations, SymbolValue};
 use crate::ast::CodeFileAST;
+use crate::config::initialize_config;
 use crate::semantic_index::{SemanticError, SemanticIndex};
 // Importing necessary types from the git2 crate
 use git2::{ObjectType, Repository as GitRepository};
@@ -51,8 +47,8 @@ enum FileType {
 pub const AVG_LINE_LEN: u64 = 30;
 pub const MAX_LINE_COUNT: u64 = 20000;
 pub const MAX_FILE_LEN: u64 = AVG_LINE_LEN * MAX_LINE_COUNT;
-const COLLECTION_NAME: &str = "documents";
-const COLLECTION_NAME_SYMBOLS: &str = "documents_symbol";
+static COLLECTION_NAME: &str =  common::service_interaction::DOCUMENT_COLLECTION_NAME;
+static COLLECTION_NAME_SYMBOLS: &str = common::service_interaction::SYMBOL_COLLECTION_NAME; 
 const EMBEDDING_DIM: usize = 384;
 
 // data structure to represent a repository  file or directory or other.
@@ -651,7 +647,7 @@ struct Args {
 
 async fn main() -> Result<()> {
     env_logger::init();
-
+    initialize_config(); 
     let args = Args::parse();
 
     log::info!("Processing repository folder: {}", args.repo_folder);
