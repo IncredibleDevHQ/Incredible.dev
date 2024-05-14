@@ -1,0 +1,8 @@
+**/target
+**/*.log
+.git
+.gitignore
+**/tmp
+**/node_modules
+ai-config.yaml
+
