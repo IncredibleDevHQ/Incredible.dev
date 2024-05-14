@@ -28,7 +28,7 @@ fn health_check() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejec
         .map(|| {
             Response::builder()
                 .status(warp::http::StatusCode::OK)
-                .body("Hello from coordinator")
+                .body("Hello from code search")
                 .expect("Failed to construct response")
         })
 }
