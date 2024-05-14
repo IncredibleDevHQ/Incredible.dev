@@ -13,6 +13,7 @@ pub struct TokenizerOnnx {
 
 impl TokenizerOnnx {
     pub fn new(model_path: &str) -> Result<Self> {
+        log::debug!("Loading Tokenizer and Onnx model from {}", model_path);
         let tokenizer = get_tokenizer(model_path)?;
         let session = get_ort_session(model_path)?;
         Ok(Self { tokenizer, session })

@@ -1,6 +1,11 @@
 # Use case specific ignores
 repo/
 
+data/
+qwdata/
+redis-data/
+
+ai-config.yaml
 # Editor and IDE artifacts
 .idea/
 *.swp

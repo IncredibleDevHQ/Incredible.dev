@@ -27,6 +27,7 @@ ENV LD_LIBRARY_PATH="/usr/lib:${LD_LIBRARY_PATH}"
 # Stage for each web service binary
 FROM runtime-base as code-understanding
 COPY --from=builder /usr/src/myapp/target/release/code-understanding /app/code-understanding
+COPY --from=builder /usr/src/myapp/model /app/model
 WORKDIR /app
 CMD ["./code-understanding"]
 
@@ -45,7 +46,7 @@ CMD ["./coordinator"]
 FROM runtime-base as ingestion
 COPY --from=builder /usr/src/myapp/target/release/ingestion /app/ingestion
 COPY --from=builder /usr/src/myapp/index-config.yaml /app/
-COPY --from=builder /usr/src/myapp/model /app/
+COPY --from=builder /usr/src/myapp/model /app/model
 WORKDIR /app
 RUN chmod +x /app/ingestion
 
