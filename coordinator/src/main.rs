@@ -4,6 +4,8 @@ use common::docker::is_running_in_docker;
 use common::task_graph::redis::establish_redis_connection;
 use configuration::Configuration;
 use std::sync::RwLock;
+use std::thread::sleep;
+use std::time::Duration;
 use std::{env, fs, process};
 
 use log::{error, info};
@@ -31,12 +33,42 @@ static CONFIG: Lazy<RwLock<Configuration>> = Lazy::new(|| {
     RwLock::new(load_from_env())
 });
 
-// write a function test if the dependency services are up and running
+
+/// Performs a health check on a given URL with a retry if the first attempt fails.
+///
+/// # Arguments
+/// * `url` - The URL to check for service availability.
+///
+/// # Returns
+/// Returns `true` if the service is up and running, otherwise `false`.
 async fn health_check(url: &str) -> bool {
-    // do async request and await for the response
-    log::debug!("Checking health of {}", url);
-    let response = reqwest::get(url).await;
-    response.is_ok()
+    let max_attempts = 2; // Total attempts: 1 initial + 1 retry
+    let retry_delay = Duration::from_secs(5); // Delay 5 seconds before retry
+
+    for attempt in 1..=max_attempts {
+        log::debug!("Attempt {} to check health of {}", attempt, url);
+        match reqwest::get(url).await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    log::info!("Service at {} is up and running.", url);
+                    return true;
+                } else {
+                    log::warn!("Service at {} returned non-success status: {}", url, response.status());
+                }
+            },
+            Err(e) => {
+                log::error!("Failed to reach service at {}: {}", url, e);
+            }
+        }
+
+        if attempt < max_attempts {
+            log::debug!("Waiting for {} seconds before retrying...", retry_delay.as_secs());
+            sleep(retry_delay); // Wait for some time before the next retry
+        }
+    }
+
+    log::warn!("Service at {} is not responding after {} attempts.", url, max_attempts);
+    false // Return false if all attempts fail
 }
 
 pub fn load_from_env() -> Configuration {
