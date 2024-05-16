@@ -1,0 +1,53 @@
+# Base image for building
+FROM debian:bookworm-slim as builder
+
+WORKDIR /usr/src/myapp
+
+# Install dependencies
+RUN apt-get update && apt-get install -y make clang libc-dev curl cmake python3 protobuf-compiler pkg-config libssl-dev git wget build-essential && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Set up Rust environment
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Copy source files
+COPY ./ ./
+# Build all binaries
+RUN cargo build --release
+RUN ls /usr/src/myapp/target/release/
+
+# Base stage for runtime, used for all final service containers
+FROM debian:bookworm-slim as runtime-base
+RUN apt-get update && apt-get install -y libssl3 && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates && update-ca-certificates
+COPY --from=builder /usr/src/myapp/target/release/libonnxruntime.so.* /usr/lib/
+ENV LD_LIBRARY_PATH="/usr/lib:${LD_LIBRARY_PATH}"
+
+
+# Stage for each web service binary
+FROM runtime-base as code-understanding
+COPY --from=builder /usr/src/myapp/target/release/code-understanding /app/code-understanding
+COPY --from=builder /usr/src/myapp/model /app/model
+WORKDIR /app
+CMD ["./code-understanding"]
+
+
+FROM runtime-base as code-search
+COPY --from=builder /usr/src/myapp/target/release/code-search /app/code-search
+COPY --from=builder /usr/src/myapp/model /app/model
+WORKDIR /app
+CMD ["./code-search"]
+
+FROM runtime-base as coordinator
+COPY --from=builder /usr/src/myapp/target/release/coordinator /app/coordinator
+WORKDIR /app
+CMD ["./coordinator"]
+
+FROM runtime-base as ingestion
+COPY --from=builder /usr/src/myapp/target/release/ingestion /app/ingestion
+COPY --from=builder /usr/src/myapp/index-config.yaml /app/
+COPY --from=builder /usr/src/myapp/model /app/model
+WORKDIR /app
+RUN chmod +x /app/ingestion
+
+CMD ["./ingestion"]
