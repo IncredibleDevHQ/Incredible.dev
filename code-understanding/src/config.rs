@@ -1,9 +1,10 @@
+use anyhow::Context;
 use common::docker::is_running_in_docker;
 use log::info;
 use std::{env, fs};
 
 use crate::CONFIG;
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Config {
     pub qdrant_api_key: Option<String>,
     pub semantic_url: String,
@@ -15,12 +16,16 @@ pub struct Config {
     pub ai_gateway_config: String,
 }
 
-pub fn load_from_env() -> Config {
-    // load the .env file only if not running in Docker
-    if !is_running_in_docker() {
-        dotenv::dotenv().unwrap();
+pub fn load_from_env(env_file: Option<String>) -> Config {
+    // Load the .env file from the specified path if provided, otherwise load the default .env file
+    if let Some(env_path) = env_file {
+        dotenv::from_filename(&env_path)
+            .expect(format!("Failed to load environment variables from {}", env_path).as_str());
+        info!("Loaded environment variables from {}", env_path);
+    } else {
+        // Load the default .env file, exit if it fails
+        dotenv::dotenv().expect("Failed to load environment variables from .env file");
     }
-
     // Attempt to retrieve AI gateway configuration path from environment
     let ai_gateway_config_path = env::var("AI_GATEWAY_CONFIG_PATH")
         .expect("AI_GATEWAY_CONFIG_PATH environment variable is not set");
