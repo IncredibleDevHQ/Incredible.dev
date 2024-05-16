@@ -14,7 +14,7 @@ RUN cargo build --release --manifest-path coordinator/Cargo.toml
 FROM debian:bookworm-slim as runtime
 RUN apt-get update && apt-get install -y libssl3 ca-certificates && apt-get clean && rm -rf /var/lib/apt/lists/* && update-ca-certificates
 
-COPY –-from=builder /usr/src/myapp/coordinator/target/release/coordinator /app/coordinator
+COPY --from=builder /usr/src/myapp/coordinator/target/release/coordinator /app/coordinator
 WORKDIR /app
 
 CMD ["./coordinator"]
