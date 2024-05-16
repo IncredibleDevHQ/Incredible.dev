@@ -6,7 +6,8 @@ WORKDIR /usr/src/myapp
 # Copy specific project files for code-understanding
 COPY ../code-understanding/Cargo.toml ./code-understanding/Cargo.toml
 COPY ../code-understanding/src ./code-understanding/src
-
+COPY ../code-understanding/build.rs ./code-understanding/build.rs
+COPY ../code-understanding/languages.yml ./code-understanding/languages.yml 
 # Build code-understanding binary
 RUN cargo build --release --manifest-path code-understanding/Cargo.toml
 
