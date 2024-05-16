@@ -1,9 +1,10 @@
 use config::initialize_config;
-use log::{error, info};
-use std::sync::Arc;
+use log::error;
+use std::{env, sync::Arc};
 use warp;
 
 mod code_navigation;
+mod config;
 mod controller;
 mod db;
 mod models;
@@ -12,16 +13,31 @@ mod routes;
 mod search;
 mod snippet;
 mod utilities;
-mod config;
 
 extern crate reqwest;
-use reqwest::Client;
 
 #[tokio::main]
 async fn main() {
     env_logger::init();
-    // initialize the env configurations and database connection.
-    let app_state = initialize_config().await;
+    // Parse command line arguments
+    let args: Vec<String> = env::args().collect();
+    let mut env_file: Option<String> = None;
+
+    if args.len() > 1 {
+        for i in 1..args.len() {
+            if args[i] == "--env-file" {
+                if i + 1 < args.len() {
+                    env_file = Some(args[i + 1].clone());
+                } else {
+                    log::error!("--env-file requires a value");
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
+
+    // Initialize the env configurations and database connection
+    let app_state = initialize_config(env_file).await;
 
     // use log library to gracefully log the error and exit the application if the app_state is not initialized.
     let app_state = match app_state {
