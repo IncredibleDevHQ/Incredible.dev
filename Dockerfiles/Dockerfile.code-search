@@ -1,7 +1,7 @@
 # Query: 
 
 # Use the locally built myapp-base image for building
-FROM myapp-base as builder
+FROM base as builder
 
 WORKDIR /usr/src/myapp
 
