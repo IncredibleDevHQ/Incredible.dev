@@ -4,9 +4,9 @@ FROM base as builder
 WORKDIR /usr/src/myapp
 
 # Copy specific project files for ingestion
-COPY ./ingestion/Cargo.toml ./ingestion/Cargo.toml
-COPY ./ingestion/src ./ingestion/src
-COPY ./ingestion/Cargo.lock ./ingestion/Cargo.lock
+COPY ../ingestion/Cargo.toml ./ingestion/Cargo.toml
+COPY ../ingestion/src ./ingestion/src
+COPY ../ingestion/Cargo.lock ./ingestion/Cargo.lock
 # Build ingestion binary
 RUN cargo build --release --manifest-path ingestion/Cargo.toml
 
@@ -15,8 +15,8 @@ FROM debian:bookworm-slim as runtime
 RUN apt-get update && apt-get install -y libssl3 ca-certificates && apt-get clean && rm -rf /var/lib/apt/lists/* && update-ca-certificates
 
 COPY --from=builder /usr/src/myapp/target/release/ingestion /app/ingestion
-COPY ./index-config.yaml /app/index-config.yaml
-COPY ./model /app/model
+COPY ../index-config.yaml /app/index-config.yaml
+COPY ../model /app/model
 WORKDIR /app
 RUN chmod +x /app/ingestion
 

@@ -4,7 +4,7 @@ services:
   ingestion:
     build:
       context: .
-      dockerfile: Dockerfile.ingestion
+      dockerfile: Dockerfiles/Dockerfile.ingestion
     environment:
       - RUST_LOG=debug
       - SEMANTIC_DB_URL=http://qdrant:6334
@@ -36,7 +36,7 @@ services:
   code-understanding:
     build:
       context: .
-      dockerfile: Dockerfile.code-understanding
+      dockerfile: Dockerfiles/Dockerfile.code-understanding
     volumes:
       - /Users/karthicrao/Documents/GitHub/Incredible.dev/ai-config.yaml:/app/ai-config.yaml
     environment:
@@ -58,7 +58,7 @@ services:
   code-search:
     build:
       context: .
-      dockerfile: Dockerfile.code-search
+      dockerfile: Dockerfiles/Dockerfile.code-search
     environment:
       - RUST_LOG=debug
       - SEMANTIC_DB_URL=http://qdrant:6334
@@ -74,7 +74,7 @@ services:
   coordinator:
     build:
       context: .
-      dockerfile: Dockerfile.coordinator
+      dockerfile: Dockerfiles/Dockerfile.coordinator
     volumes:
       - /Users/karthicrao/Documents/GitHub/Incredible.dev/ai-config.yaml:/app/ai-config.yaml
     environment:

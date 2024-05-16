@@ -4,8 +4,8 @@ FROM base as builder
 WORKDIR /usr/src/myapp
 
 # Copy specific project files for coordinator
-COPY ./coordinator/Cargo.toml ./coordinator/Cargo.toml
-COPY ./coordinator/src ./coordinator/src
+COPY ../coordinator/Cargo.toml ./coordinator/Cargo.toml
+COPY ../coordinator/src ./coordinator/src
 
 # Build coordinator binary
 RUN cargo build --release --manifest-path coordinator/Cargo.toml
@@ -17,4 +17,4 @@ RUN apt-get update && apt-get install -y libssl3 ca-certificates && apt-get clea
 COPY –-from=builder /usr/src/myapp/target/release/coordinator /app/coordinator
 WORKDIR /app
 
-CMD [”./coordinator”]
+CMD ["./coordinator"]
