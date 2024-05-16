@@ -1,6 +1,5 @@
 /target
 .vscode
-Cargo.lock
 /data
 /quickwit*
 /qwdata

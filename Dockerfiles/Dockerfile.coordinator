@@ -1,0 +1,20 @@
+# Use the locally built myapp-base image for building
+FROM base as builder
+
+WORKDIR /usr/src/myapp
+
+# Copy specific project files for coordinator
+COPY ../coordinator/Cargo.toml ./coordinator/Cargo.toml
+COPY ../coordinator/src ./coordinator/src
+
+# Build coordinator binary
+RUN cargo build --release --manifest-path coordinator/Cargo.toml
+
+# Base stage for runtime
+FROM debian:bookworm-slim as runtime
+RUN apt-get update && apt-get install -y libssl3 ca-certificates && apt-get clean && rm -rf /var/lib/apt/lists/* && update-ca-certificates
+
+COPY --from=builder /usr/src/myapp/coordinator/target/release/coordinator /app/coordinator
+WORKDIR /app
+
+CMD ["./coordinator"]
