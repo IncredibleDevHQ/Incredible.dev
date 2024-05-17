@@ -3,7 +3,7 @@ use common::ai_util::call_llm;
 use common::docker::is_running_in_docker;
 use common::task_graph::redis::establish_redis_connection;
 use configuration::Configuration;
-use std::sync::RwLock;
+use std::sync::{RwLock, RwLockWriteGuard};
 use std::thread::sleep;
 use std::time::Duration;
 use std::{env, fs, process};
@@ -30,9 +30,8 @@ use crate::configuration::{
 
 static CONFIG: Lazy<RwLock<Configuration>> = Lazy::new(|| {
     // Directly load the configuration when initializing CONFIG.
-    RwLock::new(load_from_env())
+    RwLock::new(Configuration::default())
 });
-
 
 /// Performs a health check on a given URL with a retry if the first attempt fails.
 ///
@@ -53,50 +52,66 @@ async fn health_check(url: &str) -> bool {
                     log::info!("Service at {} is up and running.", url);
                     return true;
                 } else {
-                    log::warn!("Service at {} returned non-success status: {}", url, response.status());
+                    log::warn!(
+                        "Service at {} returned non-success status: {}",
+                        url,
+                        response.status()
+                    );
                 }
-            },
+            }
             Err(e) => {
                 log::error!("Failed to reach service at {}: {}", url, e);
             }
         }
 
         if attempt < max_attempts {
-            log::debug!("Waiting for {} seconds before retrying...", retry_delay.as_secs());
+            log::debug!(
+                "Waiting for {} seconds before retrying...",
+                retry_delay.as_secs()
+            );
             sleep(retry_delay); // Wait for some time before the next retry
         }
     }
 
-    log::warn!("Service at {} is not responding after {} attempts.", url, max_attempts);
+    log::warn!(
+        "Service at {} is not responding after {} attempts.",
+        url,
+        max_attempts
+    );
     false // Return false if all attempts fail
 }
 
-pub fn load_from_env() -> Configuration {
+pub fn load_from_env(env_file: Option<String>) -> Configuration {
     // Check if running inside Docker first
-    if !is_running_in_docker() {
-        // Try to load .env file if not in Docker
-        if dotenv::dotenv().is_err() {
-            error!("No .env file found and not running in Docker, application will exit.");
-            process::exit(1);
-        }
+    if is_running_in_docker() {
+        log::debug!("Running coorindator Docker container");
+    }
+
+    // load the .env file from the specified path if provided, otherwise load the default .env file
+    if let Some(env_path) = env_file {
+        dotenv::from_filename(&env_path)
+            .expect(format!("Failed to load environment variables from {}", env_path).as_str());
+        info!("Loaded environment variables from {}", env_path);
     } else {
-        log::info!("Running coordinator in Docker.")
+        dotenv::dotenv().expect("Failed to load environment variables from .env file");
     }
 
     let ai_gateway_config_path = env::var("AI_GATEWAY_CONFIG_PATH")
         .expect("AI_GATEWAY_CONFIG_PATH environment variable is not set");
 
-    let ai_gateway_config = fs::read_to_string(&ai_gateway_config_path)
-        .expect(&format!("Failed to read AI Gateway config file at: {}", ai_gateway_config_path));
+    let ai_gateway_config = fs::read_to_string(&ai_gateway_config_path).expect(&format!(
+        "Failed to read AI Gateway config file at: {}",
+        ai_gateway_config_path
+    ));
 
     info!("AI Gateway configuration loaded successfully.");
 
     Configuration {
-        code_search_url: env::var("CODE_SEARCH_URL").expect("CODE_SEARCH_URL environment variable is not set"),
-        code_understanding_url: env::var("CODE_UNDERSTANDING_URL").expect("CODE_UNDERSTANDING_URL environment variable is not set"),
-        redis_url: env::var("REDIS_URL").expect(
-            "REDIS_URL environment variable is not set"
-        ),
+        code_search_url: env::var("CODE_SEARCH_URL")
+            .expect("CODE_SEARCH_URL environment variable is not set"),
+        code_understanding_url: env::var("CODE_UNDERSTANDING_URL")
+            .expect("CODE_UNDERSTANDING_URL environment variable is not set"),
+        redis_url: env::var("REDIS_URL").expect("REDIS_URL environment variable is not set"),
         ai_gateway_config,
     }
 }
@@ -104,6 +119,31 @@ pub fn load_from_env() -> Configuration {
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
+
+    // Parse command line arguments
+    let args: Vec<String> = env::args().collect();
+    let mut env_file: Option<String> = None;
+
+    if args.len() > 1 {
+        for i in 1..args.len() {
+            if args[i] == "--env-file" {
+                if i + 1 < args.len() {
+                    env_file = Some(args[i + 1].clone());
+                } else {
+                    eprintln!("--env-file requires a value");
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
+
+    // Load configuration
+    let config = load_from_env(env_file);
+    {
+        let mut global_config: RwLockWriteGuard<Configuration> =
+            CONFIG.write().expect("Failed to acquire write lock");
+        *global_config = config;
+    }
 
     info!("Testing AI Gateway");
     let test_msg = "What LLM model are you?".to_string();

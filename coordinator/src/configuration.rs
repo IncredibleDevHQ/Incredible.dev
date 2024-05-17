@@ -1,7 +1,7 @@
 use crate::CONFIG;
 
 #[allow(unused)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Configuration {
     pub code_search_url: String,
     pub code_understanding_url: String,
