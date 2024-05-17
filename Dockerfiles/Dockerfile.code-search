@@ -20,7 +20,8 @@ FROM debian:bookworm-slim as runtime
 RUN apt-get update && apt-get install -y libssl3 ca-certificates && apt-get clean && rm -rf /var/lib/apt/lists/* && update-ca-certificates
 
 COPY --from=builder /usr/src/myapp/code-search/target/release/code-search /app/code-search
+COPY ../code-search/.env.docker /app/.env.docker
 COPY ../model /app/model
 WORKDIR /app
 
-CMD ["./code-search"]
+CMD ["./code-search","--env-file","/app/.env.docker"]

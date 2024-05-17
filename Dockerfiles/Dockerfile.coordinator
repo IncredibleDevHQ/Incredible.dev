@@ -15,6 +15,7 @@ FROM debian:bookworm-slim as runtime
 RUN apt-get update && apt-get install -y libssl3 ca-certificates && apt-get clean && rm -rf /var/lib/apt/lists/* && update-ca-certificates
 
 COPY --from=builder /usr/src/myapp/coordinator/target/release/coordinator /app/coordinator
+COPY ../coordinator/.env.docker /app/.env.docker
 WORKDIR /app
 
-CMD ["./coordinator"]
+CMD ["./coordinator","--env-file","/app/.env.docker"]
