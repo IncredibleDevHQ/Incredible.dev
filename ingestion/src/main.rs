@@ -1,4 +1,5 @@
 // Import necessary modules from Rust's standard library
+use clap::Parser;
 use config::get_qdrant_url;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -6,7 +7,6 @@ use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
 use tokio;
-use clap::Parser;
 // Import the index_filter module
 mod index_filter;
 use index_filter::index_filter;
@@ -47,8 +47,8 @@ enum FileType {
 pub const AVG_LINE_LEN: u64 = 30;
 pub const MAX_LINE_COUNT: u64 = 20000;
 pub const MAX_FILE_LEN: u64 = AVG_LINE_LEN * MAX_LINE_COUNT;
-static COLLECTION_NAME: &str =  common::service_interaction::DOCUMENT_COLLECTION_NAME;
-static COLLECTION_NAME_SYMBOLS: &str = common::service_interaction::SYMBOL_COLLECTION_NAME; 
+static COLLECTION_NAME: &str = common::service_interaction::DOCUMENT_COLLECTION_NAME;
+static COLLECTION_NAME_SYMBOLS: &str = common::service_interaction::SYMBOL_COLLECTION_NAME;
 const EMBEDDING_DIM: usize = 384;
 
 // data structure to represent a repository  file or directory or other.
@@ -626,11 +626,12 @@ impl Indexer {
     }
 }
 
-
 /// Application to process repository data
 #[derive(Parser, Debug)]
 #[command(version = "0.1", about = "Index repository data", long_about = None)]
 struct Args {
+    #[clap(long)]
+    env_file: Option<String>,
     /// Name to the repository folder inside ./repo/ directory
     #[arg(long, help = "Sets the repository folder to process")]
     repo_folder: String,
@@ -647,8 +648,8 @@ struct Args {
 
 async fn main() -> Result<()> {
     env_logger::init();
-    initialize_config(); 
     let args = Args::parse();
+    initialize_config(args.env_file);
 
     log::info!("Processing repository folder: {}", args.repo_folder);
     log::info!("Using repository ID: {}", args.repo_id);

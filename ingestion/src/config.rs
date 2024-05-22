@@ -1,11 +1,11 @@
-use lazy_static::lazy_static;
-use std::sync::RwLock;
 use dotenv::dotenv;
+use lazy_static::lazy_static;
 use std::env;
+use std::sync::RwLock;
 
 use common::docker::is_running_in_docker;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Config {
     pub qdrant_url: String,
     pub quickwit_url: String,
@@ -14,25 +14,23 @@ pub struct Config {
 }
 
 lazy_static! {
-    static ref GLOBAL_CONFIG: RwLock<Config> = RwLock::new(Config {
-        qdrant_url: String::new(),
-        quickwit_url: String::new(),
-        yaml_config_path: String::new(),
-        model_path: String::new(),
-    });
+    static ref GLOBAL_CONFIG: RwLock<Config> = RwLock::new(Config::default());
 }
 
-
-pub fn initialize_config() {
-    if !is_running_in_docker() {
-        dotenv::dotenv().expect("`dotenv` failed to load environment variables from .env file. Either configure .env or run from docker compose setup");
+pub fn initialize_config(env_file: Option<String>) {
+    if let Some(file) = env_file {
+        dotenv::from_filename(file).expect("Failed to load environment file");
+    } else {
+        dotenv().expect("Failed to load environment file");
     }
-    dotenv().ok(); // Load environment variables from .env file if available
 
     let config = Config {
-        qdrant_url: env::var("SEMANTIC_DB_URL").expect("`QDRANT_URL` environment variable must be set"),
-        quickwit_url: env::var("QUICKWIT_DB_URL").expect("`QUICKWIT_URL` environment variable must be set"),
-        yaml_config_path: env::var("QUICKWIT_YAML_CONFIG_PATH").expect("`YAML_CONFIG_PATH` environment variable must be set"),
+        qdrant_url: env::var("SEMANTIC_DB_URL")
+            .expect("`QDRANT_URL` environment variable must be set"),
+        quickwit_url: env::var("QUICKWIT_DB_URL")
+            .expect("`QUICKWIT_URL` environment variable must be set"),
+        yaml_config_path: env::var("QUICKWIT_YAML_CONFIG_PATH")
+            .expect("`YAML_CONFIG_PATH` environment variable must be set"),
         model_path: env::var("MODEL_DIR").expect("`MODEL_PATH` environment variable must be set"),
     };
 
