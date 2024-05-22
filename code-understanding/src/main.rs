@@ -1,7 +1,7 @@
 use anyhow::Result;
-use once_cell::sync::Lazy;
-use std::{sync::RwLock, thread::sleep, time::Duration};
 use config::{get_search_server_url, load_from_env, Config};
+use once_cell::sync::Lazy;
+use std::{env, sync::RwLock, thread::sleep, time::Duration};
 
 mod agent;
 mod config;
@@ -41,11 +41,12 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
             }
             Err(_) => {
                 log::error!("Search server is not running after retries. Please start the search server first.");
-                return Err(anyhow::anyhow!("Search server is not running. Please start the search server first."));
+                return Err(anyhow::anyhow!(
+                    "Search server is not running. Please start the search server first."
+                ));
             }
         }
     }
-
 
     // create new db client.
     let db_client = match db_client::DbConnect::new().await {
@@ -64,13 +65,37 @@ async fn init_state() -> Result<AppState, anyhow::Error> {
 // global configuration while RwLock is used to ensure thread safety
 // Rwlock makes reads cheap, which is important because we will be reading the configuration a lot, and never mutate it after it is set.
 static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| {
-    // Directly load the configuration when initializing CONFIG.
-    RwLock::new(load_from_env())
+    RwLock::new(Config::default())
 });
+
 
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
+    // Parse command line arguments
+    let args: Vec<String> = env::args().collect();
+    let mut env_file: Option<String> = None;
+
+    if args.len() > 1 {
+        for i in 1..args.len() {
+            if args[i] == "--env-file" {
+                if i + 1 < args.len() {
+                    env_file = Some(args[i + 1].clone());
+                } else {
+                    log::error!("--env-file requires a value");
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
+
+    // Load configuration
+    let config = load_from_env(env_file);
+    {
+        let mut global_config = CONFIG.write().expect("Failed to acquire write lock");
+        *global_config = config;
+    }
+
     // initialize the env configurations and database connection.
     let app_state = init_state().await;
 

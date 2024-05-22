@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y libssl3 ca-certificates && apt-get clea
 
 COPY --from=builder /usr/src/myapp/code-understanding/target/release/code-understanding /app/code-understanding
 COPY ../model /app/model
+COPY ../code-understanding/.env.docker /app/.env.docker
 WORKDIR /app
 
-CMD ["./code-understanding"]
+CMD ["./code-understanding","--env-file","/app/.env.docker"]

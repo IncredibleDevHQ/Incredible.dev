@@ -17,7 +17,10 @@ RUN apt-get update && apt-get install -y libssl3 ca-certificates && apt-get clea
 COPY --from=builder /usr/src/myapp/ingestion/target/release/ingestion /app/ingestion
 COPY ../index-config.yaml /app/index-config.yaml
 COPY ../model /app/model
-WORKDIR /app
+COPY ../ingestion/.env.docker /app/.env.docker
+COPY ../ingestion/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/ingestion
+RUN chmod +x /app/entrypoint.sh
+WORKDIR /app
 
-CMD ["./ingestion"]
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -31,9 +31,12 @@ lazy_static! {
 }
 
 // Function to load the configuration from the environment
-pub async fn initialize_config() -> anyhow::Result<AppState> {
-    if !is_running_in_docker() {
-        dotenv::dotenv().ok(); // Load environment variables from .env file if available
+pub async fn initialize_config(env_file: Option<String>) -> anyhow::Result<AppState> {
+    // Load the environment variables from the file if provided
+    if let Some(file) = env_file {
+        dotenv::from_filename(file).context("Failed to load environment file")?;
+    } else {
+        dotenv::dotenv().context("Failed to load environment file")?;
     }
 
     let config = Configuration {

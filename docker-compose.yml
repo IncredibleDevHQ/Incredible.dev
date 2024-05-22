@@ -5,14 +5,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfiles/Dockerfile.ingestion
-    environment:
-      - RUST_LOG=debug
-      - SEMANTIC_DB_URL=http://qdrant:6334
-      - QUICKWIT_DB_URL=http://quickwit:7280
-      - MODEL_DIR=/app/model
-      - QUICKWIT_YAML_CONFIG_PATH=/app/index-config.yaml
     volumes:
-      - "./repo:/usr/src/myapp/repo"
+      - "./repo:/app/repo"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: '4G'
+        reservations:
+          cpus: '2'
+          memory: '4G'
     depends_on:
       - qdrant
       - quickwit
@@ -39,14 +41,6 @@ services:
       dockerfile: Dockerfiles/Dockerfile.code-understanding
     volumes:
       - /Users/karthicrao/Documents/GitHub/Incredible.dev/ai-config.yaml:/app/ai-config.yaml
-    environment:
-      - RUST_LOG=debug
-      - SEMANTIC_DB_URL=http://qdrant:6334
-      - QUICKWIT_DB_URL=http://quickwit:7280
-      - MODEL_DIR=/app/model
-      - SEARCH_SERVER_URL=http://code-search:3003
-      - REDIS_URL=redis://redis-stack:6379
-      - AI_GATEWAY_CONFIG_PATH=/app/ai-config.yaml
     ports:
       - "3002:3002"
     depends_on:
@@ -59,11 +53,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfiles/Dockerfile.code-search
-    environment:
-      - RUST_LOG=debug
-      - SEMANTIC_DB_URL=http://qdrant:6334
-      - QUICKWIT_DB_URL=http://quickwit:7280
-      - MODEL_DIR=/app/model
     ports:
       - "3003:3003"
     depends_on:
@@ -77,12 +66,6 @@ services:
       dockerfile: Dockerfiles/Dockerfile.coordinator
     volumes:
       - /Users/karthicrao/Documents/GitHub/Incredible.dev/ai-config.yaml:/app/ai-config.yaml
-    environment:
-      - RUST_LOG=debug
-      - AI_GATEWAY_CONFIG_PATH=/app/ai-config.yaml
-      - CODE_SEARCH_URL=http://code-search:3003
-      - CODE_UNDERSTANDING_URL=http://code-understanding:3002
-      - REDIS_URL=redis://redis-stack:6379
     ports:
       - "3004:3004"
     depends_on:
