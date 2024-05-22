@@ -6,7 +6,15 @@ services:
       context: .
       dockerfile: Dockerfiles/Dockerfile.ingestion
     volumes:
-      - "./repo:/usr/src/myapp/repo"
+      - "./repo:/app/repo"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: '4G'
+        reservations:
+          cpus: '2'
+          memory: '4G'
     depends_on:
       - qdrant
       - quickwit

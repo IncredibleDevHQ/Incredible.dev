@@ -18,7 +18,9 @@ COPY --from=builder /usr/src/myapp/ingestion/target/release/ingestion /app/inges
 COPY ../index-config.yaml /app/index-config.yaml
 COPY ../model /app/model
 COPY ../ingestion/.env.docker /app/.env.docker
-WORKDIR /app
+COPY ../ingestion/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/ingestion
+RUN chmod +x /app/entrypoint.sh
+WORKDIR /app
 
-CMD ["./ingestion","--env-file","/app/.env.docker"]
+ENTRYPOINT ["/app/entrypoint.sh"]
