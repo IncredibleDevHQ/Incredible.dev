@@ -3,6 +3,13 @@
 Design Agent is Copyright 2026 LangChain, Inc., licensed under the Apache License 2.0
 ([LICENSE](LICENSE)).
 
+## Incredible.dev
+
+Incredible.dev is a modified version of Design Agent. Starting from upstream commit cb4dc17, it
+removes Slack, the Paper integration and the Managed Deep Agents / LangSmith hosting path, and adds
+a presenter hook, the web surface in `src/design_agent/surfaces/web/` and its app in `web/`. The
+git history and the "in this fork" sections of [CHANGELOG.md](CHANGELOG.md) list the changes.
+
 ## Provenance
 
 Design Agent is the open-source version of LangChain's internal design and motion agent
