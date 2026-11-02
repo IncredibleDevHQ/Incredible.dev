@@ -1,0 +1,13 @@
+{
+  "kind": "stat-card",
+  "colors": { "ground": "--brand-color-paper" },
+  "width": 1080,
+  "height": 1080,
+  "data": {
+    "value": 48,
+    "label": "Stills rendered per hour",
+    "baseline": { "value": 12, "label": "Up from" },
+    "change": "ratio"
+  },
+  "out": "projects/examples/stat-card.png"
+}

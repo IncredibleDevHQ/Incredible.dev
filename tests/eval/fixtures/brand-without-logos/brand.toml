@@ -1,0 +1,41 @@
+# Example Studio: a fictional design studio made for this repository. CC0-1.0; see LICENSE.
+name = "Example Studio"
+description = "A small studio that makes calm, exact visuals for software teams."
+voice = "Plain, warm and exact. Short sentences, concrete nouns, figures with units. We explain once and stop; we never hype."
+license = "CC0-1.0"
+
+[[formats]]
+slug = "linkedin-portrait"
+width = 1080
+height = 1350
+label = "LinkedIn and Instagram portrait"
+
+[[formats]]
+slug = "square"
+width = 1080
+height = 1080
+label = "Square post"
+
+[[formats]]
+slug = "landscape"
+width = 1600
+height = 900
+label = "X, blog header, link card"
+
+[[formats]]
+slug = "story"
+width = 1080
+height = 1920
+label = "Story and short video"
+
+[[formats]]
+slug = "thumbnail"
+width = 1280
+height = 720
+label = "Video thumbnail"
+
+[[formats]]
+slug = "slide"
+width = 1920
+height = 1080
+label = "Deck slide and film frame"

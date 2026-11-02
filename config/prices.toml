@@ -1,0 +1,112 @@
+# Model prices for the cost meter (src/design_agent/harness/meter.py), in USD per million tokens.
+#
+# Every figure is an estimate, copied by hand from the provider's public pricing page on `date`.
+# Providers change prices, discount batch and regional traffic, and bill some features on top; their
+# invoice is the source of truth. Re-check the page and update `date` when you change a figure.
+#
+# Fields per model:
+#   input           uncached prompt tokens
+#   output          generated tokens
+#   cache_write_5m  prompt tokens written to the cache with a 5-minute lifetime
+#   cache_write_1h  ... with a 1-hour lifetime (a provider with one write price sets both the same)
+#   cache_read      prompt tokens read from the cache
+# A `long_context` table holds the prices a request pays once its prompt (cache reads and writes
+# included) passes `above_input_tokens`. `date` and `source` may also be set on one model.
+# A dated snapshot id (`claude-opus-5-5-20261001`) and a `provider:model` id match their model here.
+
+[anthropic]
+source = "https://platform.claude.com/docs/en/about-claude/pricing"
+date = 2026-10-17
+
+[anthropic.models.claude-fable-5-1]
+input = 10.00
+output = 50.00
+cache_write_5m = 12.50
+cache_write_1h = 20.00
+cache_read = 0.25
+
+[anthropic.models.claude-opus-5-5]
+input = 4.00
+output = 20.00
+cache_write_5m = 5.00
+cache_write_1h = 8.00
+cache_read = 0.20
+
+[anthropic.models.claude-opus-5]
+input = 5.00
+output = 25.00
+cache_write_5m = 6.25
+cache_write_1h = 10.00
+cache_read = 0.50
+
+[anthropic.models.claude-sonnet-5-5]
+input = 2.00
+output = 10.00
+cache_write_5m = 2.50
+cache_write_1h = 4.00
+cache_read = 0.10
+
+[anthropic.models.claude-haiku-5-5]
+input = 0.10
+output = 0.50
+cache_write_5m = 0.125
+cache_write_1h = 0.20
+cache_read = 0.01
+
+[anthropic.models.claude-haiku-5-5.long_context]
+above_input_tokens = 100_000
+input = 0.50
+output = 2.50
+cache_write_5m = 0.625
+cache_write_1h = 1.00
+cache_read = 0.05
+
+[openai]
+source = "https://developers.openai.com/api/docs/pricing"
+date = 2026-10-17
+
+# Standard tier. OpenAI lists one cache-write price; long context starts above 272K input tokens.
+[openai.models."gpt-6.1-sol"]
+input = 2.00
+output = 10.00
+cache_write_5m = 2.50
+cache_write_1h = 2.50
+cache_read = 0.10
+
+[openai.models."gpt-6.1-sol".long_context]
+above_input_tokens = 272_000
+input = 4.00
+output = 15.00
+cache_write_5m = 5.00
+cache_write_1h = 5.00
+cache_read = 0.20
+
+[openai.models."gpt-6-sol"]
+input = 2.00
+output = 10.00
+cache_write_5m = 2.50
+cache_write_1h = 2.50
+cache_read = 0.20
+
+[openai.models."gpt-6-sol".long_context]
+above_input_tokens = 272_000
+input = 4.00
+output = 15.00
+cache_write_5m = 5.00
+cache_write_1h = 5.00
+cache_read = 0.40
+
+[openai.models."gpt-5.6-sol"]
+input = 4.00
+output = 20.00
+cache_write_5m = 5.00
+cache_write_1h = 5.00
+cache_read = 0.40
+
+[openai.models."gpt-5.6-sol".long_context]
+above_input_tokens = 272_000
+input = 8.00
+output = 30.00
+cache_write_5m = 10.00
+cache_write_1h = 10.00
+cache_read = 0.80

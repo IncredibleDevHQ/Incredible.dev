@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Render smoke</title>
+    <script src="gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #14161a;
+      }
+      #stage {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+      }
+      #title {
+        position: absolute;
+        left: 160px;
+        top: 440px;
+        margin: 0;
+        color: #f6f1e7;
+        font: 600 160px "Inter", sans-serif;
+        letter-spacing: -0.03em;
+      }
+      #bar {
+        position: absolute;
+        left: 160px;
+        top: 660px;
+        width: 1600px;
+        height: 8px;
+        background: #ff5a36;
+        transform-origin: left center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage" data-composition-id="main" data-start="0" data-duration="2" data-width="1920" data-height="1080">
+      <h1 id="title" class="clip" data-start="0" data-duration="2" data-track-index="0">Render smoke</h1>
+      <div id="bar" class="clip" data-start="0" data-duration="2" data-track-index="1"></div>
+    </div>
+    <script>
+      gsap.set("#bar", { scaleX: 0.1 });
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#title", { opacity: 0.5, y: 32 }, { opacity: 1, y: 0, duration: 1.2, ease: "power2.out" }, 0);
+      tl.to("#bar", { scaleX: 1, duration: 1.4, ease: "power2.inOut" }, 0.3);
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

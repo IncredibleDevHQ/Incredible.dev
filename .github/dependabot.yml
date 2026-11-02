@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      langchain-stack:
+        patterns:
+          - "deepagents"
+          - "managed-deepagents"
+          - "langchain*"
+          - "langgraph*"
+          - "fastmcp"
+          - "mcp"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"

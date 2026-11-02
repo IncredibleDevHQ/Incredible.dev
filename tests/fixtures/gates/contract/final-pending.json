@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "job_kind": "net-new",
+  "output": { "width": 1080, "height": 1350, "format": "png", "mode": "still" },
+  "source": { "kind": "none", "inventory": [], "allowed_additions": [], "allowed_removals": [], "allowed_changes": [] },
+  "requirements": [
+    { "id": "r1", "request": "Portrait still for the field notes post", "status": "pending", "evidence": "" }
+  ],
+  "assets": [
+    { "id": "a1", "role": "page", "required": true, "path": "brand/missing.html" }
+  ]
+}

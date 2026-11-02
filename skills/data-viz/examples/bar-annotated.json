@@ -1,0 +1,28 @@
+{
+  "kind": "bar",
+  "title": "Minutes to finish one ad set",
+  "caption": "Example Studio, median per month, 2026",
+  "colors": { "ground": "--brand-color-paper" },
+  "data": {
+    "dataset": {
+      "fields": [
+        { "name": "month", "type": "dimension" },
+        { "name": "minutes", "type": "measure", "unit": "min", "precision": 0 }
+      ],
+      "rows": [
+        { "month": "Jan", "minutes": 96 },
+        { "month": "Feb", "minutes": 88 },
+        { "month": "Mar", "minutes": 91 },
+        { "month": "Apr", "minutes": 34 },
+        { "month": "May", "minutes": 31 },
+        { "month": "Jun", "minutes": 29 }
+      ]
+    },
+    "x": "month",
+    "y": "minutes",
+    "highlight": "Apr",
+    "annotate": { "at": "Apr", "text": "One HTML page per size" }
+  },
+  "out": "projects/examples/bar-annotated.png",
+  "svgOut": "projects/examples/bar-annotated.svg"
+}

@@ -1,0 +1,36 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+config/*.toml
+!config/*.example.toml
+!config/prices.toml
+!config/vendored-skills.toml
+
+# Brand, fonts and references supplied by the operator
+private-fonts/
+workspace/brand/*
+!workspace/brand/README.md
+workspace/references/*
+!workspace/references/README.md
+workspace/projects/*
+!workspace/projects/.gitkeep
+workspace/out/
+workspace/state/
+
+# Build and tool output
+.mda/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+node_modules/
+.DS_Store
+.host-sandbox/
+.coverage
+coverage.xml
+channels/slack-icon.png

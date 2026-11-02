@@ -1,0 +1,40 @@
+# Families the brand renders with. `file` is relative to the repository root: open fonts live in
+# fonts/ (baked into the sandbox, or staged with the brand when the recipe does not bake them),
+# licensed fonts in Git-ignored private-fonts/. A required font that is missing or does not match
+# its sha256 fails `doctor` and the stager.
+
+[[fonts]]
+family = "Geist"
+weight = "100 900"
+style = "normal"
+file = "fonts/Geist-Variable.ttf"
+sha256 = "73894e0448cae90a92b6c2f8732b7bb9acb7b94c418bff559dad4a18e1de9659"
+required = true
+license = "OFL-1.1"
+
+[[fonts]]
+family = "Geist"
+weight = "100 900"
+style = "italic"
+file = "fonts/Geist-Italic-Variable.ttf"
+sha256 = "a464348abe41a6392f18d04c0ac2ad3c26619357ff5fdd76aff3059116f45e62"
+required = false
+license = "OFL-1.1"
+
+[[fonts]]
+family = "Fragment Mono"
+weight = "400"
+style = "normal"
+file = "fonts/FragmentMono-Regular.ttf"
+sha256 = "0fe011f425873c2e0fc73a189e394e340ad48d2b9a99a576bdeec75cee000460"
+required = true
+license = "OFL-1.1"
+
+[[fonts]]
+family = "Fragment Mono"
+weight = "400"
+style = "italic"
+file = "fonts/FragmentMono-Italic.ttf"
+sha256 = "c9dd3c7b24c11ba05ab1a6ec3a659c823f0e14fb26c14df0e93e82ebb60f3a25"
+required = false
+license = "OFL-1.1"

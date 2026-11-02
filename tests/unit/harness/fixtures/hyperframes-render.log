@@ -1,0 +1,74 @@
+
+◆  Rendering f → /tmp/o.mp4
+   30fps · draft · auto workers (18 cores detected)
+   GPU: browser GPU (auto-detect)
+
+[?25l│
+◇  Browser: env
+[?25h[INFO] [Render] Pipeline started {"renderJobId":"7b54cd2e-6b5f-4de4-a7a7-a587f143afb3","platform":"linux","arch":"arm64","nodeVersion":"v22.23.3","fps":{"num":30,"den":1},"format":"mp4","quality":"draft","browserGpuMode":"auto","forceScreenshot":false,"protocolTimeout":300000,"browserTimeout":120000,"pageNavigationTimeout":60000,"playerReadyTimeout":45000}
+[INFO] [Render:trace] {"renderJobId":"7b54cd2e-6b5f-4de4-a7a7-a587f143afb3","phase":"pipeline","status":"checkpoint","elapsedMs":2,"message":"started","format":"mp4","quality":"draft","browserGpuMode":"auto","forceScreenshot":false,"protocolTimeoutMs":300000,"pageNavigationTimeoutMs":60000,"playerReadyTimeoutMs":45000,"requestedWorkers":"auto"}
+[INFO] [Render:trace] {"renderJobId":"7b54cd2e-6b5f-4de4-a7a7-a587f143afb3","phase":"compile","status":"start","elapsedMs":2,"needsAlpha":false}
+  █░░░░░░░░░░░░░░░░░░░░░░░░  5%  Compiling composition
+@hf-progress {"code":"compile","pct":5}
+[INFO] Compiled composition metadata {"renderJobId":"7b54cd2e-6b5f-4de4-a7a7-a587f143afb3","entryFile":"index.html","staticDuration":2,"width":1920,"height":1080,"videoCount":0,"audioCount":0,"renderModeHints":{"recommendScreenshot":false,"reasons":[]}}
+[INFO] [Render] Low-memory render profile active: screenshot capture, auto-worker calibration skipped, pinned to 1 worker. Override with --no-low-memory-mode or PRODUCER_LOW_MEMORY_MODE=false. {"renderJobId":"7b54cd2e-6b5f-4de4-a7a7-a587f143afb3","totalMemMb":7931,"thresholdMb":8192}
+  ██░░░░░░░░░░░░░░░░░░░░░░░  10%  Extracting video frames
+@hf-progress {"code":"extract_video","pct":10}
+[INFO] [Render] No HDR sources detected, rendering SDR {"renderJobId":"7b54cd2e-6b5f-4de4-a7a7-a587f143afb3"}
+  █████░░░░░░░░░░░░░░░░░░░░  20%  Processing audio tracks
+@hf-progress {"code":"process_audio","pct":20}
+  ██████░░░░░░░░░░░░░░░░░░░  25%  Starting frame capture
+@hf-progress {"code":"start_browsers","pct":25}
+  ██████░░░░░░░░░░░░░░░░░░░  25%  Checking browser GPU
+@hf-progress {"code":"start_browsers","pct":25}
+[hyperframes] browserGpuMode probe → software (WebGL unavailable)
+[INFO] [Render] Low-memory profile, pinning to 1 capture worker (auto-worker calibration skipped). {"renderJobId":"7b54cd2e-6b5f-4de4-a7a7-a587f143afb3"}
+[INFO] streaming-encode gate {"renderJobId":"7b54cd2e-6b5f-4de4-a7a7-a587f143afb3","enabled":true,"reason":"single_worker","configFlag":true,"durationCapEnabled":false,"outputFormat":"mp4","workerCount":1,"durationSeconds":2,"maxDurationSeconds":240}
+[BrowserManager] Browser launched (HeadlessChrome/149.0.7827.0, screenshot, gl=--use-gl=angle --use-angle=swiftshader, headlessShell=true, platform=linux)
+[initSession:screenshot] page.goto start (0ms)
+[initSession:screenshot] page.goto complete (91ms)
+[HyperFrames] render runtime fps {"canonicalFps":30,"source":"render-options","rawFpsSource":"render-options","rawFps":30}
+[initSession:screenshot] GSAP proxy flush complete (106ms)
+[initSession:screenshot] pollHfReady complete (212ms)
+[initSession:screenshot] pollSubCompositionTimelines complete (ready) (215ms)
+[initSession:screenshot] applyVideoMetadataHints complete (215ms)
+[initSession:screenshot] media + fonts + tailwind ready (217ms)
+[initSession:screenshot] static-frame dedup: 12/12 predicted frame(s) reusable (outcome=verified, runs=1/1, screenshots=11, seeks=12, elapsedMs=443) (879ms)
+  ██████░░░░░░░░░░░░░░░░░░░  26%  Streaming frame 1/60
+@hf-progress {"code":"capture","done":1,"total":60,"pct":26}
+  ███████░░░░░░░░░░░░░░░░░░  31%  Streaming frame 7/60
+@hf-progress {"code":"capture","done":7,"total":60,"pct":31}
+  █████████░░░░░░░░░░░░░░░░  36%  Streaming frame 12/60
+@hf-progress {"code":"capture","done":12,"total":60,"pct":36}
+  ██████████░░░░░░░░░░░░░░░  42%  Streaming frame 18/60
+@hf-progress {"code":"capture","done":18,"total":60,"pct":42}
+  ███████████░░░░░░░░░░░░░░  46%  Streaming frame 23/60
+@hf-progress {"code":"capture","done":23,"total":60,"pct":46}
+  █████████████░░░░░░░░░░░░  52%  Streaming frame 29/60
+@hf-progress {"code":"capture","done":29,"total":60,"pct":52}
+  ██████████████░░░░░░░░░░░  57%  Streaming frame 35/60
+@hf-progress {"code":"capture","done":35,"total":60,"pct":57}
+  ███████████████░░░░░░░░░░  62%  Streaming frame 40/60
+@hf-progress {"code":"capture","done":40,"total":60,"pct":62}
+  ████████████████░░░░░░░░░  67%  Streaming frame 46/60
+@hf-progress {"code":"capture","done":46,"total":60,"pct":67}
+  ████████████████████░░░░░  80%  Streaming frame 60/60
+@hf-progress {"code":"capture","done":60,"total":60,"pct":80}
+[static-dedup] reused 12/60 frame(s) (20%), est. ~576ms saved (avg 48ms/frame)
+  ████████████████████░░░░░  80%  Encoding frame 0/60
+@hf-progress {"code":"encode","done":0,"total":60,"pct":80}
+  ██████████████████████░░░  90%  Encoding frame 60/60
+@hf-progress {"code":"encode","done":60,"total":60,"pct":90}
+  ██████████████████████░░░  90%  Assembling final video
+@hf-progress {"code":"assemble","done":0,"total":2,"pct":90}
+  ██████████████████████░░░  90%  Assembling final video
+@hf-progress {"code":"assemble","done":0,"total":2,"pct":90}
+  ████████████████████████░  99%  Assembling final video
+@hf-progress {"code":"assemble","done":2,"total":2,"pct":99}
+  █████████████████████████  100%  Render complete
+
+◇  /tmp/o.mp4
+   68.0 KB · 2.0s video · rendered in 4.1s
+   screenshot capture · software gpu · compile 0.0s · extract 0.0s · audio 0.0s · probe 0.0s · setup 0.2s · capture 3.7s · encode (during capture) 3.7s · assemble 0.1s
+   Screenshot capture (slower): BeginFrame did not run. Needs chrome-headless-shell and no --resolution upscale. Heavy compositions can stall on software GL.
+   Keep editing by chatting with Framey in the HyperFrames desktop app → https://hyperframes.dev/studio/download?os=linux

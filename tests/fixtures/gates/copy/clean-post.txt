@@ -1,0 +1,4 @@
+Example Studio now renders a still at three sizes from one HTML page.
+
+Each size is laid out again, so the headline keeps its weight in a square and a banner.
+#design

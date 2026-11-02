@@ -1,0 +1,37 @@
+name: compatibility
+
+# Weekly check that the fast-moving dependencies still satisfy the offline contract: latest
+# stable managed-deepagents and deepagents in a throwaway lock, and the latest HyperFrames CLI and
+# skills reported for review. It never commits: a failure is a signal to review the upgrade.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upgraded-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Resolve the newest compatible versions
+        run: uv lock --upgrade
+      - name: Show what changed
+        run: git --no-pager diff --stat uv.lock
+      - name: Install and test with the upgraded lock
+        run: |
+          uv sync --all-extras --dev
+          uv run ruff check .
+          uv run mypy src
+          uv run pytest -q -m "not render and not live"
+      - name: Report newer HyperFrames releases (review, never auto-merge)
+        run: |
+          echo "pinned: $(python3 -c "import json;print(json.load(open('sandbox/render/package.json'))['dependencies']['hyperframes'])")"
+          echo "latest: $(npm view hyperframes version)"
+          uv run design-agent skills sync-vendor --check-only || true

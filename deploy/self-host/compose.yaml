@@ -1,0 +1,87 @@
+# Self-hosted Design Agent: Postgres, the API (and optionally the Slack adapter), and the sandbox
+# image the agent starts render containers from.
+#
+#   cp .env.example .env    # set a model key, DESIGN_AGENT_API_TOKENS, POSTGRES_PASSWORD
+#   docker compose -f deploy/self-host/compose.yaml up --build
+#   docker compose -f deploy/self-host/compose.yaml --profile slack up --build   # with Slack
+#
+# The agent reaches the host's Docker daemon through its socket to run sandbox containers. That
+# socket is root-equivalent on the host: run this on a machine dedicated to the agent, or use
+# LangSmith sandboxes instead (DESIGN_AGENT_SANDBOX=langsmith) and remove the socket mount.
+name: design-agent
+
+services:
+  sandbox:
+    build: ../../sandbox
+    image: design-agent-sandbox:local
+    entrypoint: ["true"]
+    restart: "no"
+
+  postgres:
+    image: postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
+    environment:
+      POSTGRES_USER: design_agent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: design_agent
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U design_agent"]
+      interval: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/self-host/Dockerfile
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://design_agent:${POSTGRES_PASSWORD}@postgres:5432/design_agent
+      DESIGN_AGENT_SANDBOX: docker
+      DESIGN_AGENT_BRAND_PATH: /app/workspace/brand
+    ports:
+      - "127.0.0.1:8080:8080"
+    # The socket's group (Linux: `stat -c %g /var/run/docker.sock`; Docker Desktop: 0).
+    group_add: ["${DOCKER_GID:-0}"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../../workspace/brand:/app/workspace/brand:ro
+      - ../../private-fonts:/app/private-fonts:ro
+      - out:/app/workspace/out
+    depends_on:
+      postgres:
+        condition: service_healthy
+      sandbox:
+        condition: service_completed_successfully
+
+  slack:
+    profiles: ["slack"]
+    build:
+      context: ../..
+      dockerfile: deploy/self-host/Dockerfile
+    command: ["design-agent", "slack"]
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://design_agent:${POSTGRES_PASSWORD}@postgres:5432/design_agent
+      DESIGN_AGENT_SANDBOX: docker
+      DESIGN_AGENT_BRAND_PATH: /app/workspace/brand
+    # The socket's group (Linux: `stat -c %g /var/run/docker.sock`; Docker Desktop: 0).
+    group_add: ["${DOCKER_GID:-0}"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../../workspace/brand:/app/workspace/brand:ro
+      - ../../private-fonts:/app/private-fonts:ro
+      - out:/app/workspace/out
+    depends_on:
+      postgres:
+        condition: service_healthy
+      sandbox:
+        condition: service_completed_successfully
+
+volumes:
+  postgres:
+  out:

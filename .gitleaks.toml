@@ -1,0 +1,17 @@
+title = "Design Agent secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "SHA-256 checksums in the vendored-skill lock"
+paths = ['''(^|/)skills-lock\.json$''']
+
+[[allowlists]]
+description = """Upstream HyperFrames media-use telemetry, vendored unmodified: a public PostHog ingestion key.
+It never fires here: sandbox egress is denied and the image sets DO_NOT_TRACK=1 and HYPERFRAMES_NO_TELEMETRY=1."""
+paths = ['''(^|/)skills/media-use/scripts/lib/telemetry\.mjs$''']
+
+[[allowlists]]
+description = "Git-ignored build output (mda build, deploy staging)"
+paths = ['''(^|/)\.mda/''']

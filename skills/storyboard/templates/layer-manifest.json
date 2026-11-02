@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "canvas": {
+    "width": 1920,
+    "height": 1080
+  },
+  "safe_areas": [
+    {
+      "id": "primary-action",
+      "bounds": {
+        "x": 120,
+        "y": 80,
+        "width": 1680,
+        "height": 920
+      },
+      "contains": [
+        "subject",
+        "hero"
+      ]
+    }
+  ],
+  "layers": [
+    {
+      "id": "subject",
+      "path": "projects/example/assets/subject.png",
+      "role": "foreground subject",
+      "isolation": "separate-alpha",
+      "bounds": {
+        "x": 320,
+        "y": 220,
+        "width": 640,
+        "height": 760
+      },
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      },
+      "animate": []
+    },
+    {
+      "id": "hero",
+      "path": "projects/example/assets/hero.png",
+      "role": "animated hero object",
+      "isolation": "separate-alpha",
+      "bounds": {
+        "x": 1040,
+        "y": 360,
+        "width": 420,
+        "height": 440
+      },
+      "anchor": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "animate": [
+        "position",
+        "scale"
+      ]
+    },
+    {
+      "id": "trail",
+      "path": "projects/example/assets/trail.png",
+      "role": "attached trail",
+      "isolation": "separate-alpha",
+      "bounds": {
+        "x": 1160,
+        "y": 760,
+        "width": 180,
+        "height": 180
+      },
+      "anchor": {
+        "x": 0.5,
+        "y": 0
+      },
+      "animate": [
+        "position"
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "child": "trail",
+      "parent": "hero",
+      "child_anchor": "top-center",
+      "parent_anchor": "bottom-center"
+    }
+  ]
+}

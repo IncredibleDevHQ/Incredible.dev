@@ -1,0 +1,88 @@
+
+◆  Rendering g → /tmp/o2.mp4
+   30fps · draft · auto workers (18 cores detected)
+   GPU: browser GPU (auto-detect)
+
+[?25l│
+◒  Checking browser[1G[J◇  Browser: env
+[?25h[INFO] [Render] Pipeline started {"renderJobId":"34c8fb09-b049-4bbe-9f6d-14bf23ac7e6c","platform":"linux","arch":"arm64","nodeVersion":"v22.23.3","fps":{"num":30,"den":1},"format":"mp4","quality":"draft","browserGpuMode":"auto","forceScreenshot":false,"protocolTimeout":300000,"browserTimeout":120000,"pageNavigationTimeout":60000,"playerReadyTimeout":45000}
+[INFO] [Render:trace] {"renderJobId":"34c8fb09-b049-4bbe-9f6d-14bf23ac7e6c","phase":"pipeline","status":"checkpoint","elapsedMs":2,"message":"started","format":"mp4","quality":"draft","browserGpuMode":"auto","forceScreenshot":false,"protocolTimeoutMs":300000,"pageNavigationTimeoutMs":60000,"playerReadyTimeoutMs":45000,"requestedWorkers":"auto"}
+[INFO] [Render:trace] {"renderJobId":"34c8fb09-b049-4bbe-9f6d-14bf23ac7e6c","phase":"compile","status":"start","elapsedMs":3,"needsAlpha":false}
+  █░░░░░░░░░░░░░░░░░░░░░░░░  5%  Compiling composition
+@hf-progress {"code":"compile","pct":5}
+[INFO] Compiled composition metadata {"renderJobId":"34c8fb09-b049-4bbe-9f6d-14bf23ac7e6c","entryFile":"index.html","staticDuration":2,"width":1920,"height":1080,"videoCount":0,"audioCount":0,"renderModeHints":{"recommendScreenshot":false,"reasons":[]}}
+[INFO] [Render] Low-memory render profile active: screenshot capture, auto-worker calibration skipped, pinned to 1 worker. Override with --no-low-memory-mode or PRODUCER_LOW_MEMORY_MODE=false. {"renderJobId":"34c8fb09-b049-4bbe-9f6d-14bf23ac7e6c","totalMemMb":7931,"thresholdMb":8192}
+  ██░░░░░░░░░░░░░░░░░░░░░░░  10%  Extracting video frames
+@hf-progress {"code":"extract_video","pct":10}
+[INFO] [Render] No HDR sources detected, rendering SDR {"renderJobId":"34c8fb09-b049-4bbe-9f6d-14bf23ac7e6c"}
+  █████░░░░░░░░░░░░░░░░░░░░  20%  Processing audio tracks
+@hf-progress {"code":"process_audio","pct":20}
+  ██████░░░░░░░░░░░░░░░░░░░  25%  Starting frame capture
+@hf-progress {"code":"start_browsers","pct":25}
+  ██████░░░░░░░░░░░░░░░░░░░  25%  Checking browser GPU
+@hf-progress {"code":"start_browsers","pct":25}
+[hyperframes] browserGpuMode probe → software (WebGL unavailable)
+[INFO] [Render] Low-memory profile, pinning to 1 capture worker (auto-worker calibration skipped). {"renderJobId":"34c8fb09-b049-4bbe-9f6d-14bf23ac7e6c"}
+[INFO] streaming-encode gate {"renderJobId":"34c8fb09-b049-4bbe-9f6d-14bf23ac7e6c","enabled":true,"reason":"single_worker","configFlag":true,"durationCapEnabled":false,"outputFormat":"mp4","workerCount":1,"durationSeconds":2,"maxDurationSeconds":240}
+[BrowserManager] Browser launched (HeadlessChrome/149.0.7827.0, screenshot, gl=--use-gl=angle --use-angle=swiftshader, headlessShell=true, platform=linux)
+[initSession:screenshot] page.goto start (0ms)
+[FileServer] 404 Not Found: /gsap.min.js
+[non-blocking] Failed to load resource: the server responded with a status of 404 (Not Found)
+[initSession:screenshot] page.goto complete (58ms)
+[Browser:PAGEERROR] Cannot read properties of null (reading 'timeline')
+[HyperFrames] render runtime fps {"canonicalFps":30,"source":"render-options","rawFpsSource":"render-options","rawFps":30}
+[initSession:screenshot] GSAP proxy flush complete (72ms)
+[initSession:screenshot] pollHfReady complete (181ms)
+[FrameCapture] Sub-composition timeline wait cut short after 2150ms: script resource(s) failed to load (http://localhost:38433/gsap.min.js), so the timeline registration they carry can never arrive. Fix the script reference; the render proceeds without those animations.
+[FrameCapture] Composition(s) still waiting on the failed script: main.
+[initSession:screenshot] pollSubCompositionTimelines complete (script_failure) (2334ms)
+[FrameCapture:sub_timeline_script_failure] A sub-composition timeline script failed to load (http://localhost:38433/gsap.min.js, runtime-error:TypeError: Cannot read properties of null (reading 'timeline')) {
+  timeoutMs: 45000,
+  sources: [
+    'http://localhost:38433/gsap.min.js',
+    "runtime-error:TypeError: Cannot read properties of null (reading 'timeline')"
+  ],
+  pendingCompositionIds: [ 'main' ]
+}
+[initSession:screenshot] applyVideoMetadataHints complete (2335ms)
+[initSession:screenshot] media + fonts + tailwind ready (2338ms)
+[initSession:screenshot] static-frame dedup: disabled (no GSAP tweens (non-GSAP animation)) (2343ms)
+  ██████░░░░░░░░░░░░░░░░░░░  26%  Streaming frame 1/60
+@hf-progress {"code":"capture","done":1,"total":60,"pct":26}
+  ███████░░░░░░░░░░░░░░░░░░  31%  Streaming frame 7/60
+@hf-progress {"code":"capture","done":7,"total":60,"pct":31}
+  █████████░░░░░░░░░░░░░░░░  37%  Streaming frame 13/60
+@hf-progress {"code":"capture","done":13,"total":60,"pct":37}
+  ██████████░░░░░░░░░░░░░░░  42%  Streaming frame 19/60
+@hf-progress {"code":"capture","done":19,"total":60,"pct":42}
+  ████████████░░░░░░░░░░░░░  48%  Streaming frame 25/60
+@hf-progress {"code":"capture","done":25,"total":60,"pct":48}
+  █████████████░░░░░░░░░░░░  53%  Streaming frame 31/60
+@hf-progress {"code":"capture","done":31,"total":60,"pct":53}
+  ██████████████░░░░░░░░░░░  59%  Streaming frame 37/60
+@hf-progress {"code":"capture","done":37,"total":60,"pct":59}
+  ████████████████░░░░░░░░░  64%  Streaming frame 43/60
+@hf-progress {"code":"capture","done":43,"total":60,"pct":64}
+  █████████████████░░░░░░░░  69%  Streaming frame 48/60
+@hf-progress {"code":"capture","done":48,"total":60,"pct":69}
+  ██████████████████░░░░░░░  74%  Streaming frame 53/60
+@hf-progress {"code":"capture","done":53,"total":60,"pct":74}
+  ███████████████████░░░░░░  79%  Streaming frame 59/60
+@hf-progress {"code":"capture","done":59,"total":60,"pct":79}
+  ████████████████████░░░░░  80%  Streaming frame 60/60
+@hf-progress {"code":"capture","done":60,"total":60,"pct":80}
+  ████████████████████░░░░░  80%  Encoding frame 0/60
+@hf-progress {"code":"encode","done":0,"total":60,"pct":80}
+  ██████████████████████░░░  90%  Encoding frame 60/60
+@hf-progress {"code":"encode","done":60,"total":60,"pct":90}
+[WARN] Render completed capture with correctness warnings {"renderJobId":"34c8fb09-b049-4bbe-9f6d-14bf23ac7e6c","strictness":"best-effort","warningCodes":["sub_timeline_script_failure"],"warningReasons":[],"warningStages":[],"warningOwners":[]}
+  ██████████████████████░░░  90%  Failed: Render blocked by 1 correctness warning:
+- sub_timeline_script_failure: A sub-composition timeline script failed to load (http://localhost:38433/gsap.min.js, runtime-error:TypeError: Cannot read properties of null (reading 'timeline'))
+[INFO] [Render] Failure summary {"renderJobId":"34c8fb09-b049-4bbe-9f6d-14bf23ac7e6c","failedStage":"Encoding frame 60/60","error":"Render blocked by 1 correctness warning:\n- sub_timeline_script_failure: A sub-composition timeline script failed to load (http://localhost:38433/gsap.min.js, runtime-error:TypeError: Cannot read properties of null (reading 'timeline'))","elapsedMs":5863,"stageTimings":{"compileOnlyMs":21,"browserProbeMs":4,"compileMs":26,"videoExtractMs":0,"audioProcessMs":0,"captureMs":5830,"captureFrameMs":5689,"captureSetupMs":141,"encodeMs":5684},"isTimeout":false,"workers":"auto","protocolTimeout":300000,"observedFailedPhase":"Encoding frame 60/60","observedLastPhase":"Encoding frame 60/60","observedLastStatus":"error","browserDiagnostics":{"total":7,"errors":0,"pageErrors":1,"requestFailed":1,"httpErrors":1,"navigationStarts":1,"navigationFailures":0,"consoleErrors":0,"consoleWarnings":0},"extraction":{"videoCount":0,"extractedVideoCount":0,"totalFramesExtracted":0,"maxFramesPerVideo":0,"authoredTimedClipCount":2},"browserConsoleErrors":["[FrameCapture:NAV] page.goto start mode=screenshot timeoutMs=60000 url=http://localhost:38433/index.html","[Browser:HTTP404] GET http://localhost:38433/gsap.min.js resource=script Not Found","[Browser:REQUESTFAILED] GET http://localhost:38433/gsap.min.js resource=script error=net::ERR_ABORTED","[Browser:PAGEERROR] Cannot read properties of null (reading 'timeline')"]}
+
+✗  Render failed
+
+   Render blocked by 1 correctness warning:
+   - sub_timeline_script_failure: A sub-composition timeline script failed to load (http://localhost:38433/gsap.min.js, runtime-error:TypeError: Cannot read properties of null (reading 'timeline'))
+   Try --docker for containerized rendering
+

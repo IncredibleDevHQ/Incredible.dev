@@ -1,0 +1,57 @@
+# Families the brand renders with. `file` is relative to the repository root: open fonts live in
+# fonts/ (baked into the sandbox), licensed fonts in Git-ignored private-fonts/. A required font
+# that is missing or does not match its sha256 fails `doctor`, the stager and the deploy preflight.
+
+[[fonts]]
+family = "Fraunces"
+weight = "100 900"
+style = "normal"
+file = "fonts/Fraunces-Variable.ttf"
+sha256 = "177ff6c0f14e5550a3c624247cd1189611d4eb65d000b14944c63d967958abbb"
+required = true
+license = "OFL-1.1"
+
+[[fonts]]
+family = "Fraunces"
+weight = "100 900"
+style = "italic"
+file = "fonts/Fraunces-Italic-Variable.ttf"
+sha256 = "b24448c43702fac4ee856781d461a0dfba8d8e594b6e8e190234b75fed2c0e01"
+required = false
+license = "OFL-1.1"
+
+[[fonts]]
+family = "Inter"
+weight = "100 900"
+style = "normal"
+file = "fonts/Inter-Variable.ttf"
+sha256 = "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031"
+required = true
+license = "OFL-1.1"
+
+[[fonts]]
+family = "Inter"
+weight = "100 900"
+style = "italic"
+file = "fonts/Inter-Italic-Variable.ttf"
+sha256 = "acd98e64795781b2058f07b18475e0ecee2a0fe2b42a49e2f9e37d0d6bf66ce6"
+required = false
+license = "OFL-1.1"
+
+[[fonts]]
+family = "IBM Plex Mono"
+weight = "400"
+style = "normal"
+file = "fonts/IBMPlexMono-Regular.ttf"
+sha256 = "6a3412f058c7d8dfd9170c41e85ade48e5156ecb89356110ca57a0a27734af46"
+required = true
+license = "OFL-1.1"
+
+[[fonts]]
+family = "IBM Plex Mono"
+weight = "500"
+style = "normal"
+file = "fonts/IBMPlexMono-Medium.ttf"
+sha256 = "a9b4c49bb299e05b5f6c481e7fb5e78943d2793249a0c8874ab574a2d1ea6755"
+required = false
+license = "OFL-1.1"

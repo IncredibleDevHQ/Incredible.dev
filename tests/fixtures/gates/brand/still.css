@@ -1,0 +1,104 @@
+/* Example Studio still: one layout that recomposes for portrait, square and landscape. */
+:root {
+  --brand-color-ink: #14161a;
+  --brand-color-paper: #f6f1e7;
+  --brand-color-signal: #ff5a36;
+  --brand-color-graphite: #4a4f57;
+  --brand-color-sand: #e8dcc4;
+  --brand-font-display: "Geist", system-ui, sans-serif;
+  --brand-font-text: "Geist", system-ui, sans-serif;
+  --brand-font-mono: "Fragment Mono", "Fira Code", ui-monospace, monospace;
+  --brand-radius-md: 8px;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  background: var(--brand-color-paper);
+  color: var(--brand-color-ink);
+  font-family: var(--brand-font-text);
+  text-rendering: geometricPrecision;
+}
+
+.frame {
+  position: relative;
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100vh;
+  padding: 8vmin;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 24px;
+  overflow: hidden;
+}
+
+.eyebrow {
+  margin: 0;
+  font-family: var(--brand-font-mono);
+  font-size: 28px;
+  letter-spacing: 0;
+  color: var(--brand-color-graphite);
+}
+
+.headline {
+  margin: 0;
+  max-width: 14ch;
+  font-family: var(--brand-font-display);
+  font-weight: 600;
+  font-size: 10vmin;
+  line-height: 1;
+  color: var(--brand-color-ink);
+}
+
+.body {
+  margin: 0;
+  max-width: 28ch;
+  font-size: 32px;
+  line-height: 40px;
+  color: var(--brand-color-graphite);
+}
+
+.meta {
+  margin: 0;
+  padding: 16px 24px;
+  align-self: flex-start;
+  background: var(--brand-color-sand);
+  border-radius: var(--brand-radius-md);
+  font-size: 24px;
+  line-height: 32px;
+}
+
+.meta code {
+  font-family: var(--brand-font-mono);
+  letter-spacing: 0;
+}
+
+.signal {
+  position: absolute;
+  top: 8vmin;
+  right: 8vmin;
+  width: 18vmin;
+  height: 18vmin;
+  background: var(--brand-color-signal);
+  border-radius: var(--brand-radius-md);
+}
+
+@media (min-aspect-ratio: 3/2) {
+  .frame {
+    justify-content: center;
+    padding-right: 44vw;
+  }
+
+  .signal {
+    top: 8vmin;
+    right: 8vmin;
+    width: 30vw;
+    height: calc(100vh - 16vmin);
+  }
+}

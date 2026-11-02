@@ -1,0 +1,14 @@
+.env
+.env.*
+.venv
+.mda
+.git
+workspace/out
+workspace/state
+workspace/references
+workspace/projects
+private-fonts
+tests
+docs
+**/__pycache__
+**/node_modules

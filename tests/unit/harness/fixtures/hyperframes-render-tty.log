@@ -1,0 +1,38 @@
+
+[38;2;60;230;172m◆[39m  Rendering [38;2;60;230;172mf[39m[2m → /tmp/o.mp4[22m
+[2m   30fps · draft · auto workers (18 cores detected)[22m
+[2m   GPU: browser GPU (auto-detect)[22m
+
+[?25l[90m│[39m
+[32m◇[39m  [2mBrowser: env[22m
+[?25h[INFO] [Render] Pipeline started {"renderJobId":"dc76cc5e-c271-4608-8185-5f90835cc75a","platform":"linux","arch":"arm64","nodeVersion":"v22.23.3","fps":{"num":30,"den":1},"format":"mp4","quality":"draft","browserGpuMode":"auto","forceScreenshot":false,"protocolTimeout":300000,"browserTimeout":120000,"pageNavigationTimeout":60000,"playerReadyTimeout":45000}
+[INFO] [Render:trace] {"renderJobId":"dc76cc5e-c271-4608-8185-5f90835cc75a","phase":"pipeline","status":"checkpoint","elapsedMs":2,"message":"started","format":"mp4","quality":"draft","browserGpuMode":"auto","forceScreenshot":false,"protocolTimeoutMs":300000,"pageNavigationTimeoutMs":60000,"playerReadyTimeoutMs":45000,"requestedWorkers":"auto"}
+[INFO] [Render:trace] {"renderJobId":"dc76cc5e-c271-4608-8185-5f90835cc75a","phase":"compile","status":"start","elapsedMs":4,"needsAlpha":false}
+[2K  [35m█[39m[2m░░░░░░░░░░░░░░░░░░░░░░░░[22m  [1m5%[22m  [2mCompiling composition[22m[INFO] Compiled composition metadata {"renderJobId":"dc76cc5e-c271-4608-8185-5f90835cc75a","entryFile":"index.html","staticDuration":2,"width":1920,"height":1080,"videoCount":0,"audioCount":0,"renderModeHints":{"recommendScreenshot":false,"reasons":[]}}
+[INFO] [Render] Low-memory render profile active: screenshot capture, auto-worker calibration skipped, pinned to 1 worker. Override with --no-low-memory-mode or PRODUCER_LOW_MEMORY_MODE=false. {"renderJobId":"dc76cc5e-c271-4608-8185-5f90835cc75a","totalMemMb":7931,"thresholdMb":8192}
+[2K  [35m██[39m[2m░░░░░░░░░░░░░░░░░░░░░░░[22m  [1m10%[22m  [2mExtracting video frames[22m[INFO] [Render:trace] {"renderJobId":"dc76cc5e-c271-4608-8185-5f90835cc75a","phase":"video_extract","status":"end","elapsedMs":27,"durationMs":0,"videoCount":0}
+[INFO] [Render] No HDR sources detected, rendering SDR {"renderJobId":"dc76cc5e-c271-4608-8185-5f90835cc75a"}
+[2K  [35m█████[39m[2m░░░░░░░░░░░░░░░░░░░░[22m  [1m20%[22m  [2mProcessing audio tracks[22m[INFO] [Render:trace] {"renderJobId":"dc76cc5e-c271-4608-8185-5f90835cc75a","phase":"file_server","status":"start","elapsedMs":28,"reused":false}
+[2K  [35m██████[39m[2m░░░░░░░░░░░░░░░░░░░[22m  [1m25%[22m  [2mStarting frame capture[22m[INFO] [Render:trace] {"renderJobId":"dc76cc5e-c271-4608-8185-5f90835cc75a","phase":"file_server","status":"end","elapsedMs":32,"durationMs":4}
+[2K  [35m██████[39m[2m░░░░░░░░░░░░░░░░░░░[22m  [1m25%[22m  [2mChecking browser GPU[22m[hyperframes] browserGpuMode probe → software (WebGL unavailable)
+[INFO] [Render] Low-memory profile, pinning to 1 capture worker (auto-worker calibration skipped). {"renderJobId":"dc76cc5e-c271-4608-8185-5f90835cc75a"}
+[INFO] streaming-encode gate {"renderJobId":"dc76cc5e-c271-4608-8185-5f90835cc75a","enabled":true,"reason":"single_worker","configFlag":true,"durationCapEnabled":false,"outputFormat":"mp4","workerCount":1,"durationSeconds":2,"maxDurationSeconds":240}
+[BrowserManager] Browser launched (HeadlessChrome/149.0.7827.0, screenshot, gl=--use-gl=angle --use-angle=swiftshader, headlessShell=true, platform=linux)
+[initSession:screenshot] page.goto start (0ms)
+[initSession:screenshot] page.goto complete (66ms)
+[HyperFrames] render runtime fps {"canonicalFps":30,"source":"render-options","rawFpsSource":"render-options","rawFps":30}
+[initSession:screenshot] GSAP proxy flush complete (93ms)
+[initSession:screenshot] pollHfReady complete (202ms)
+[initSession:screenshot] pollSubCompositionTimelines complete (ready) (205ms)
+[initSession:screenshot] applyVideoMetadataHints complete (205ms)
+[initSession:screenshot] media + fonts + tailwind ready (207ms)
+[initSession:screenshot] static-frame dedup: 12/12 predicted frame(s) reusable (outcome=verified, runs=1/1, screenshots=11, seeks=12, elapsedMs=514) (930ms)
+[2K  [35m██████[39m[2m░░░░░░░░░░░░░░░░░░░[22m  [1m26%[22m  [2mStreaming frame 1/60[22m[2K  [35m███████[39m[2m░░░░░░░░░░░░░░░░░░[22m  [1m31%[22m  [2mStreaming frame 7/60[22m[2K  [35m█████████[39m[2m░░░░░░░░░░░░░░░░[22m  [1m37%[22m  [2mStreaming frame 13/60[22m[2K  [35m██████████[39m[2m░░░░░░░░░░░░░░░[22m  [1m42%[22m  [2mStreaming frame 19/60[22m[2K  [35m████████████[39m[2m░░░░░░░░░░░░░[22m  [1m48%[22m  [2mStreaming frame 25/60[22m[2K  [35m█████████████[39m[2m░░░░░░░░░░░░[22m  [1m53%[22m  [2mStreaming frame 31/60[22m[2K  [35m██████████████[39m[2m░░░░░░░░░░░[22m  [1m59%[22m  [2mStreaming frame 37/60[22m[2K  [35m████████████████[39m[2m░░░░░░░░░[22m  [1m64%[22m  [2mStreaming frame 42/60[22m[2K  [35m████████████████████[39m[2m░░░░░[22m  [1m80%[22m  [2mStreaming frame 60/60[22m[static-dedup] reused 12/60 frame(s) (20%), est. ~564ms saved (avg 47ms/frame)
+[2K  [35m████████████████████[39m[2m░░░░░[22m  [1m80%[22m  [2mEncoding frame 0/60[22m[2K  [35m██████████████████████[39m[2m░░░[22m  [1m90%[22m  [2mEncoding frame 60/60[22m[INFO] [Render:trace] {"renderJobId":"dc76cc5e-c271-4608-8185-5f90835cc75a","phase":"capture_streaming","status":"end","elapsedMs":3983,"durationMs":3785,"stagePhase":"capturing","workerCount":1,"forceScreenshot":true,"totalFrames":60,"framesCompleted":60,"captureMode":"screenshot","captureOperation":"encode"}
+[2K  [35m██████████████████████[39m[2m░░░[22m  [1m90%[22m  [2mAssembling final video[22m[2K  [35m██████████████████████[39m[2m░░░[22m  [1m90%[22m  [2mAssembling final video[22m[2K  [35m████████████████████████[39m[2m░[22m  [1m99%[22m  [2mAssembling final video[22m[INFO] [Render:trace] {"renderJobId":"dc76cc5e-c271-4608-8185-5f90835cc75a","phase":"assemble","status":"end","elapsedMs":4131,"durationMs":147,"stagePhase":"capturing","hasAudio":false,"workerCount":1,"forceScreenshot":true,"totalFrames":60,"framesCompleted":60,"captureMode":"screenshot","captureOperation":"encode"}
+[2K  [35m█████████████████████████[39m[2m[22m  [1m100%[22m  [2mRender complete[22m
+[32m◇[39m  [38;2;60;230;172m/tmp/o.mp4[39m
+   [1m68.0 KB[22m[2m · 2.0s video · rendered in 4.2s[22m
+   [2mscreenshot capture · software gpu · compile 0.0s · extract 0.0s · audio 0.0s · probe 0.0s · setup 0.2s · capture 3.8s · encode (during capture) 3.8s · assemble 0.1s[22m
+   [2mScreenshot capture (slower): BeginFrame did not run. Needs chrome-headless-shell and no --resolution upscale. Heavy compositions can stall on software GL.[22m
+   [2mKeep editing by chatting with Framey in the HyperFrames desktop app → https://hyperframes.dev/studio/download?os=linux[22m

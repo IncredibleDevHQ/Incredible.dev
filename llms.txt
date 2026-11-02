@@ -1,0 +1,33 @@
+# Design Agent
+
+> An open-source design agent for a whole company. People ask it in Slack, like they'd ask a designer, and get finished, on-brand graphics, decks, diagrams, charts and short films back. It plans the piece, builds it on its own sandbox computer (Chrome, FFmpeg, HyperFrames), checks it against the company's brand in code, and delivers the files. Built on Deep Agents; deploys to Managed Deep Agents in one command, or self-hosts with Docker. Apache 2.0.
+
+Working in a clone? Read AGENTS.md first: it maps each job (setup, brand, deploy, customize, evals, troubleshooting, updates) to a step-by-step skill in .agents/skills/.
+
+## Start
+
+- [README](https://github.com/langchain-ai/design-agent/blob/main/README.md): what it is, the five-minute demo, first request
+- [AGENTS.md](https://github.com/langchain-ai/design-agent/blob/main/AGENTS.md): instructions for coding agents, and which skill fits each job
+- [Documentation map](https://github.com/langchain-ai/design-agent/blob/main/docs/README.md): every guide by task
+
+## Skills for coding agents
+
+- [Set up](https://github.com/langchain-ai/design-agent/blob/main/.agents/skills/design-agent-onboarding/SKILL.md): install, demo, model, Paper, first request
+- [Add a brand](https://github.com/langchain-ai/design-agent/blob/main/.agents/skills/brand-onboarding/SKILL.md): build the brand pack from a guide, website, files or Paper
+- [Deploy](https://github.com/langchain-ai/design-agent/blob/main/.agents/skills/design-agent-deploy/SKILL.md): Managed Deep Agents or self-hosted, with Slack
+- [Customize](https://github.com/langchain-ai/design-agent/blob/main/.agents/skills/design-agent-customize/SKILL.md): new deliverables, rules, tools and models
+- [Evals](https://github.com/langchain-ai/design-agent/blob/main/.agents/skills/design-agent-evals/SKILL.md): measure a change before and after
+- [Troubleshoot](https://github.com/langchain-ai/design-agent/blob/main/.agents/skills/design-agent-troubleshoot/SKILL.md): doctor, connection tests, logs, traces
+- [Update](https://github.com/langchain-ai/design-agent/blob/main/.agents/skills/design-agent-update/SKILL.md): bring a fork up to date
+- LangChain's own skills, vendored: [Deep Agents](https://github.com/langchain-ai/design-agent/blob/main/.agents/skills/deep-agents-core/SKILL.md), [Managed Deep Agents](https://github.com/langchain-ai/design-agent/blob/main/.agents/skills/managed-deep-agents/SKILL.md), [LangSmith traces](https://github.com/langchain-ai/design-agent/blob/main/skills/langsmith-trace/SKILL.md), [datasets](https://github.com/langchain-ai/design-agent/blob/main/.agents/skills/langsmith-dataset/SKILL.md) and [evaluators](https://github.com/langchain-ai/design-agent/blob/main/.agents/skills/langsmith-evaluator/SKILL.md)
+
+## Reference
+
+- [CLI](https://github.com/langchain-ai/design-agent/blob/main/docs/cli.md)
+- [Architecture](https://github.com/langchain-ai/design-agent/blob/main/docs/architecture/README.md)
+- [Deploy with Managed Deep Agents](https://github.com/langchain-ai/design-agent/blob/main/docs/deploy-mda.md)
+- [Self-hosting](https://github.com/langchain-ai/design-agent/blob/main/docs/self-hosting.md)
+- [Customization](https://github.com/langchain-ai/design-agent/blob/main/docs/customization.md)
+- [Models](https://github.com/langchain-ai/design-agent/blob/main/docs/models.md)
+- [Evals](https://github.com/langchain-ai/design-agent/blob/main/docs/evals.md)
+- [Operations](https://github.com/langchain-ai/design-agent/blob/main/OPERATIONS.md)

@@ -1,0 +1,26 @@
+{
+  "kind": "cycle",
+  "colors": { "ground": "--brand-color-paper" },
+  "width": 1080,
+  "height": 1080,
+  "data": {
+    "contract": {
+      "version": 1,
+      "nodes": [
+        { "id": "brief", "label": "Brief" },
+        { "id": "storyboard", "label": "Storyboard" },
+        { "id": "render", "label": "Render" },
+        { "id": "review", "label": "Review with the team" }
+      ],
+      "edges": [
+        { "id": "brief-storyboard", "from": "brief", "to": "storyboard", "kind": "flow" },
+        { "id": "storyboard-render", "from": "storyboard", "to": "render", "kind": "flow" },
+        { "id": "render-review", "from": "render", "to": "review", "kind": "flow" },
+        { "id": "review-brief", "from": "review", "to": "brief", "kind": "feedback" }
+      ]
+    },
+    "highlight": "review",
+    "center": "One loop a day"
+  },
+  "out": "projects/examples/flywheel-cycle.png"
+}

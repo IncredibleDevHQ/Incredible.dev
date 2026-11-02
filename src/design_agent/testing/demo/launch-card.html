@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Example Studio 2.0</title>
+    <link rel="stylesheet" href="/workspace/brand/tokens.css" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+      }
+      body {
+        background: var(--brand-color-paper);
+        color: var(--brand-color-ink);
+        font-family: var(--brand-font-text);
+      }
+      .frame {
+        box-sizing: border-box;
+        width: 100vw;
+        height: 100vh;
+        padding: 8vmin;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .mark {
+        width: 12vmin;
+        height: 12vmin;
+      }
+      .headline {
+        margin: 0;
+        font-family: var(--brand-font-display);
+        font-weight: var(--brand-weight-display);
+        font-size: 13vmin;
+        line-height: 1.02;
+        letter-spacing: -0.02em;
+        max-width: 11ch;
+      }
+      .horizon {
+        height: var(--brand-stroke);
+        background: var(--brand-color-ink);
+        margin: 4vmin 0;
+      }
+      @media (min-aspect-ratio: 4/3) {
+        .headline {
+          max-width: none;
+        }
+      }
+      .line {
+        margin: 0;
+        font-size: 4.5vmin;
+        line-height: 1.3;
+        color: var(--brand-color-graphite);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="frame">
+      <img class="mark" src="/workspace/brand/logos/mark.svg" alt="Example Studio" />
+      <section>
+        <h1 class="headline">Example Studio 2.0</h1>
+        <div class="horizon"></div>
+        <p class="line">Every size, one pass.</p>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,29 @@
+{
+  "kind": "diagram",
+  "title": "How a request becomes a delivered still",
+  "data": {
+    "contract": {
+      "version": 1,
+      "nodes": [
+        { "id": "ask", "label": "Request in the thread" },
+        { "id": "brief", "label": "Brief" },
+        { "id": "html", "label": "One HTML page" },
+        { "id": "render", "label": "Render every size" },
+        { "id": "look", "label": "Look and fix" },
+        { "id": "deliver", "label": "Deliver" }
+      ],
+      "edges": [
+        { "id": "e1", "from": "ask", "to": "brief", "kind": "flow" },
+        { "id": "e2", "from": "brief", "to": "html", "kind": "flow" },
+        { "id": "e3", "from": "html", "to": "render", "kind": "flow" },
+        { "id": "e4", "from": "render", "to": "look", "kind": "flow" },
+        { "id": "e5", "from": "look", "to": "html", "kind": "feedback", "label": "fix" },
+        { "id": "e6", "from": "look", "to": "deliver", "kind": "flow" }
+      ]
+    },
+    "groups": [{ "id": "studio", "label": "In the sandbox", "nodes": ["html", "render", "look"] }],
+    "highlight": "look",
+    "direction": "right"
+  },
+  "out": "projects/examples/diagram-flow.png"
+}

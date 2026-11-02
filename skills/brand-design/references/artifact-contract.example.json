@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "job_kind": "reference-transform",
+  "output": {
+    "format": "png",
+    "width": 1080,
+    "height": 1350,
+    "mode": "light"
+  },
+  "source": {
+    "kind": "reference",
+    "inventory": [
+      {
+        "id": "source-structure",
+        "type": "layout",
+        "value": "Describe the supplied hierarchy, grouping and reading order exactly."
+      },
+      {
+        "id": "source-copy",
+        "type": "copy",
+        "value": "List every supplied string verbatim, one item per string if they are reviewed separately."
+      }
+    ],
+    "allowed_additions": [],
+    "allowed_removals": [],
+    "allowed_changes": [
+      "Translate palette and typography to the active brand pack.",
+      "Recompose spacing and scale for the requested output size."
+    ]
+  },
+  "requirements": [
+    {
+      "id": "r1",
+      "request": "Copy the person's exact requirement here, in their words.",
+      "status": "pending",
+      "evidence": "",
+      "superseded_by": "",
+      "waiver": ""
+    }
+  ],
+  "assets": [
+    {
+      "id": "reference",
+      "path": "attachments/reference.png",
+      "role": "source reference",
+      "required": false
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f6f1e7;
+        text-rendering: geometricPrecision;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+      }
+      #title {
+        position: absolute;
+        left: 160px;
+        top: 360px;
+        margin: 0;
+        color: #14161a;
+        font-family: "Geist", sans-serif;
+        font-weight: 600;
+        font-size: 120px;
+      }
+      #sub {
+        position: absolute;
+        left: 160px;
+        top: 540px;
+        margin: 0;
+        color: #4a4f57;
+        font-family: "Geist", sans-serif;
+        font-size: 44px;
+      }
+      #bar {
+        position: absolute;
+        left: 160px;
+        top: 660px;
+        width: 640px;
+        height: 16px;
+        background: #ff5a36;
+        transform-origin: left center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="3" data-width="1920" data-height="1080">
+      <h1 id="title" class="clip" data-start="0" data-duration="3" data-track-index="0">Three sizes, one page</h1>
+      <p id="sub" class="clip" data-start="0" data-duration="3" data-track-index="1">Rendered offline in the sandbox</p>
+      <div id="bar" class="clip" data-start="0" data-duration="3" data-track-index="2"></div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#title", { opacity: 0.3, y: 40 }, { opacity: 1, y: 0, duration: 1 }, 0);
+      tl.fromTo("#sub", { opacity: 0 }, { opacity: 1, duration: 0.6 }, 0.4);
+      tl.fromTo("#bar", { scaleX: 0.1 }, { scaleX: 1, duration: 1.2 }, 1.2);
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

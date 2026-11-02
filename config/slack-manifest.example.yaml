@@ -1,0 +1,41 @@
+# A Slack app for self-hosted Design Agent. Create it at api.slack.com/apps ("From a manifest"),
+# install it to your workspace, then set SLACK_BOT_TOKEN (xoxb-…) and, for Socket Mode,
+# SLACK_APP_TOKEN (xapp-…, with connections:write). For signed HTTP instead, turn socket_mode_enabled
+# off, set request_url to https://<your host>/slack/events, and set SLACK_TRANSPORT=http and
+# SLACK_SIGNING_SECRET.
+display_information:
+  name: Design Agent
+  description: On-brand design and motion from a chat thread.
+features:
+  bot_user:
+    display_name: Design Agent
+    always_online: true
+  app_home:
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read      # mentions start a turn
+      - chat:write             # replies, live progress, the footer
+      - reactions:write        # the acknowledgement on the message that started a turn
+      - files:read             # attachments people drop in the thread
+      - files:write            # delivered finals
+      - channels:history       # follow-ups in a thread while a job runs (steering)
+      - groups:history
+      - im:history             # direct messages
+      - im:read
+      - im:write
+      - users:read             # the person's timezone for the date note
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+      - message.im
+      - message.channels
+      - message.groups
+  interactivity:
+    is_enabled: false
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false

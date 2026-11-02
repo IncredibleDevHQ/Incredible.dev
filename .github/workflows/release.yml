@@ -1,0 +1,33 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Release checks (ban-list without pre-release exemptions)
+        run: |
+          uv sync --frozen --all-extras --dev
+          DESIGN_AGENT_RELEASE_CHECK=1 uv run pytest -q tests/unit/test_public_hygiene.py
+      - name: Build the wheel and sdist
+        run: uv build
+      - name: Cut the release notes from CHANGELOG.md
+        run: |
+          python3 - <<'PY'
+          import re, pathlib
+          text = pathlib.Path("CHANGELOG.md").read_text()
+          match = re.search(r"^## Unreleased\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+          pathlib.Path("RELEASE_NOTES.md").write_text(match.group(1).strip() if match else "See CHANGELOG.md.")
+          PY
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          body_path: RELEASE_NOTES.md
+          files: dist/*

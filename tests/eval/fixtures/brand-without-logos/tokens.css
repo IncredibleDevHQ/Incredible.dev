@@ -1,0 +1,23 @@
+/* Generated from tokens.json by `design-agent brand css`. Do not edit. */
+:root {
+  --brand-color-graphite: #4a4f57;
+  --brand-color-ink: #14161a;
+  --brand-color-mist: #d9dde3;
+  --brand-color-moss: #2f6b4f;
+  --brand-color-paper: #f6f1e7;
+  --brand-color-sand: #e8dcc4;
+  --brand-color-signal: #ff5a36;
+  --brand-color-sky: #8bb8e8;
+  --brand-color-white: #ffffff;
+  --brand-font-display: "Fraunces", "Georgia", serif;
+  --brand-font-mono: "IBM Plex Mono", "Fira Code", ui-monospace, monospace;
+  --brand-font-text: "Inter", system-ui, sans-serif;
+  --brand-radius-lg: 12px;
+  --brand-radius-md: 8px;
+  --brand-radius-sm: 4px;
+  --brand-space-unit: 8px;
+  --brand-stroke: 2px;
+  --brand-weight-display: 600;
+  --brand-weight-strong: 600;
+  --brand-weight-text: 400;
+}
