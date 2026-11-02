@@ -117,7 +117,9 @@ function TaskCard({ thread, turn, replies, thumbs, onOpen }: { thread: Thread; t
           ? "Stopped before finishing"
           : turn
             ? "Done"
-            : "Starting";
+            : thread.kind === "research"
+              ? "Research on the canvas"
+              : "Starting";
   return (
     <div className="task">
       <div className="task-row">

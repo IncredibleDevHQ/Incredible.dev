@@ -93,7 +93,7 @@ export function Brand() {
         }}
       >
         <Globe size={16} />
-        <input value={url} placeholder="A website, like docs.perplexity.ai" aria-label="A website to read a brand from" onChange={(e) => setUrl(e.target.value)} />
+        <input value={url} placeholder="A website, like yourcompany.com" aria-label="A website to read a brand from" onChange={(e) => setUrl(e.target.value)} />
         <button type="submit" className="btn primary" disabled={!url.trim() || busy}>
           Read its brand
         </button>

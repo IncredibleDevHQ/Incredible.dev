@@ -4,29 +4,58 @@ Developer content made from the material you already have. Bring a repository, d
 a talk or your notes, and a team of AI agents researches it, storyboards it and makes the film, the
 thumbnails, the cards and the posts, in channels you can steer and on a canvas you can review.
 
+<p align="center">
+  <img src="docs/images/flow.png" alt="The Incredible.dev canvas: a launch kit made from notes, a storyboard frame under review, and the finished film, above the five steps from material to cards and posts" width="880">
+</p>
+
 > **A new beginning.** This is the new Incredible.dev, rebuilt on an open-source agent engine. The
 > earlier video creator lives on the
 > [`archive/dev-video-creator`](https://github.com/IncredibleDevHQ/Incredible.dev/tree/archive/dev-video-creator)
 > branch.
 
-## What it does
+## How it flows
 
-- **Channels and threads.** A message in a channel becomes a task: a lead agent with its own
-  helpers and its own computer. Replies steer the work while it runs, and Stop ends it at its next
-  step.
-- **A canvas of assets.** Each task is a flow on the channel's canvas: what it started from, then
-  each piece of work (a storyboard, a film, thumbnails, social cards, a deck, a chart), linked to
-  what it was made from. People approve a board, pin notes to a frame or ask for changes, and the
-  agent answers with a new version.
-- **Templates.** Launch kit, Explainer, Post to social, Ad set, Pitch pack, Social pack and Talk to
-  clips each place a set of linked assets for a common job.
-- **Research from your code.** A research frame asks local coding agents (Claude Code, Codex, Kimi
-  Code) about your repositories. Their answers become notes that record where each came from, and
-  notes feed new assets.
-- **Brands.** Read a brand from a website, or keep a brand pack, and choose which one each channel
-  uses.
-- **Films in code.** Video is built with [HyperFrames](https://hyperframes.heygen.com): a film is a
-  web page on a timeline, so a change is an edit and a re-render.
+### 1. Start from your material
+
+Ask in a channel and attach what you have, or place a template: Launch kit, Explainer, Post to
+social, Ad set, Pitch pack, Social pack or Talk to clips.
+
+![Seven templates, each a set of linked assets for a common job](docs/images/templates.png)
+
+### 2. Research your code
+
+A research frame asks local coding agents (Claude Code, Codex, Kimi Code) about your repository.
+Keep any passage of an answer as a note: each note records where it came from, and notes feed what
+gets made.
+
+![A research frame: the repository, an agent's answer citing files, and the notes kept from it](docs/images/research.png)
+
+### 3. Storyboard, then sign off
+
+Films start as a storyboard. Pin a note to a frame and the next version answers it; approve when
+it's right.
+
+![A storyboard frame under review, with a note answered in the second version and the frame approved](docs/images/storyboard.png)
+
+### 4. The film and everything around it
+
+The film is built in code with [HyperFrames](https://hyperframes.heygen.com), then thumbnails,
+social cards and GIFs, each linked on the canvas to what it was made from.
+
+![A launch kit on the canvas: the source note, the storyboard, the teaser, thumbnails, social cards and a GIF](docs/images/canvas.png)
+
+### 5. Steer it in a thread
+
+Every task is a thread with its own lead agent and computer. Reply to steer the work, approve a
+preview, or stop it.
+
+![A channel and a task's thread: the storyboard approved, then the film passing its checks](docs/images/thread.png)
+
+## Your brand on everything
+
+Read a brand from a website, or keep a brand pack, and choose which one each channel uses.
+
+![The brand page: read a brand from a website, and the sample pack's colours and type](docs/images/brands.png)
 
 ## Run it locally
 
