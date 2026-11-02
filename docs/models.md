@@ -41,7 +41,7 @@ runs on the portable path (all features that do not depend on the provider).
 | --- | --- | --- |
 | `anthropic:claude-opus-5-5`, `claude-fable-5-1`, `claude-sonnet-5-5` | provider tool search | efforts `low`…`max`; adaptive thinking; 5 m / 1 h cache |
 | `anthropic:claude-haiku-5-5` | provider tool search | no effort parameter; good for `look` and the selector |
-| `openai:gpt-6.1-sol`, `gpt-6-sol`, `gpt-5.6-sol` | provider tool search | Responses API; reasoning effort |
+| `openai:gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-sol`, `gpt-5.6-sol` | provider tool search | Responses API; reasoning effort |
 | `google_genai:gemini-3.6-flash` | bounded selector | no provider-side tool search |
 | anything else, the gateway's shared route, or a base URL | bounded selector | no provider-feature claims |
 

@@ -1,4 +1,4 @@
-"""Small CLI commands: brand init, fonts verify, sandbox use, test db."""
+"""Small CLI commands: brand init, fonts verify, test db."""
 
 from __future__ import annotations
 
@@ -49,17 +49,6 @@ def test_fonts_verify_catches_a_family_the_file_does_not_carry(project: Path) ->
     result = CliRunner().invoke(cli.main, ["fonts", "verify"])
     assert result.exit_code == 1
     assert 'says family "Geist Display", the file says "Geist"' in result.output
-
-
-def test_sandbox_use_points_local_runs_at_a_snapshot(project: Path) -> None:
-    assert (
-        CliRunner().invoke(cli.main, ["sandbox", "use", "design-agent-computer-abc"]).exit_code == 0
-    )
-    env = (project / ".env").read_text()
-    assert (
-        "DESIGN_AGENT_SANDBOX=langsmith" in env
-        and "DESIGN_AGENT_SANDBOX_SNAPSHOT=design-agent-computer-abc" in env
-    )
 
 
 def test_test_db_writes_and_removes_a_row(project: Path) -> None:

@@ -56,10 +56,10 @@ def test_unknown_keys_and_multiline_values_are_refused(project: Path) -> None:
 
 
 def test_generate_fills_secrets_once(project: Path) -> None:
-    assert generate(project, ["PAPER_BRIDGE_TOKEN"]) == ["PAPER_BRIDGE_TOKEN"]
-    first = read_env(project)["PAPER_BRIDGE_TOKEN"]
-    assert len(first) >= 32 and generate(project, ["PAPER_BRIDGE_TOKEN"]) == []
-    assert read_env(project)["PAPER_BRIDGE_TOKEN"] == first
+    assert generate(project, ["POSTGRES_PASSWORD"]) == ["POSTGRES_PASSWORD"]
+    first = read_env(project)["POSTGRES_PASSWORD"]
+    assert len(first) >= 32 and generate(project, ["POSTGRES_PASSWORD"]) == []
+    assert read_env(project)["POSTGRES_PASSWORD"] == first
 
 
 def test_a_comment_after_an_empty_value_is_not_the_value(tmp_path: Path) -> None:

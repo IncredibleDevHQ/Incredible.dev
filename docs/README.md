@@ -12,17 +12,14 @@ which one fits.
 | [CLI](cli.md) | every `design-agent` command |
 | [Models](models.md) | providers, the LangSmith Gateway, roles, effort, cost |
 | [Customization](customization.md) | brand packs, instructions, runtime skills, learning, MCP servers |
-| [Integrations](integrations.md) | Notion, Linear, GitHub, Figma and other MCP servers, per person or shared |
-| [Paper](partners/paper.md) | the shared canvas: local, bridged and off |
+| [Integrations](integrations.md) | GitHub and your own MCP servers, with credentials from the host |
 | [HyperFrames](partners/hyperframes.md) | the video engine and its vendored skills |
 
 ## Run it for your team
 
 | Guide | Covers |
 | --- | --- |
-| [Deploy with MDA](deploy-mda.md) | publishing the sandbox, what ships, deploying, verifying |
-| [Self-hosting](self-hosting.md) | Docker Compose, the HTTP API, your own Slack app, security |
-| [Paper hosted worker](partners/paper-hosted-worker.md) | Paper Desktop on a server for a deployed agent |
+| [Self-hosting](self-hosting.md) | Docker Compose, the HTTP API, security |
 | [Operations](../OPERATIONS.md) | configuration, the sandbox, costs, troubleshooting, upgrades, backups |
 
 ## Know it's working
@@ -39,7 +36,7 @@ which one fits.
 | [Architecture](architecture/README.md) | the assembly, the lead and helpers, context, the sandbox, checks, keys |
 | [Orchestration](architecture/orchestration.md) | background helpers, wake-ups, restarts, pipelines |
 | [Context and failures](architecture/context-and-failures.md) | what the model sees, caching, cost, failure boundaries |
-| [Surfaces](architecture/surfaces.md) | Slack progress and steering, the API, the CLI |
+| [Surfaces](architecture/surfaces.md) | the presenter hook, the API, the CLI |
 | [Upstream](upstream.md) | seams we work around and what we've asked for |
 | [Official links](sources/official-links.md) | primary documentation for every external contract |
 

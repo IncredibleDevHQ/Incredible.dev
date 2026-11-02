@@ -1,9 +1,10 @@
 """A `[quiet]` reply on a real agent graph: no loop, and where the platform posts every scheduled
-run's reply (MDA's schedule delivery, an `after_agent` hook installed ahead of the authored ones),
-what it posts is the status line, never the marker or an earlier reply."""
+run's reply (a schedule delivery, an `after_agent` hook installed ahead of the authored ones), what
+it posts is the status line, never the marker or an earlier reply."""
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from langchain.agents import create_agent
@@ -11,12 +12,13 @@ from langchain.agents.middleware import AgentMiddleware, AgentState
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.runtime import Runtime
 
-from design_agent.middleware.quiet import SENTINEL_MARK, QuietReplyMiddleware
+from design_agent.harness.tasks import REGISTRY, TaskRecord
+from design_agent.middleware.quiet import SENTINEL_MARK, QuietReplyMiddleware, running_status
 from design_agent.testing.scripted_model import ScriptedChatModel, reply
 
 
 class NewestTextDelivery(AgentMiddleware[AgentState[Any], Any, Any]):
-    """Stands in for MDA's schedule delivery: posts the newest non-empty assistant text."""
+    """Stands in for a platform's schedule delivery: posts the newest non-empty assistant text."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -71,3 +73,24 @@ async def test_a_watchdog_turn_with_work_running_ends_without_a_model_call() -> 
     )
     assert model.call_count == 0
     assert delivery.posted == ["Still working: act 2 (20 min)."]
+
+
+def test_the_quiet_status_names_the_running_work() -> None:
+    thread = "quiet-status"
+    assert running_status(thread) == "Nothing new since my last message."
+    record = TaskRecord(
+        id="t-quiet1",
+        thread_id=thread,
+        effort="xhigh",
+        label="the final render",
+        wave=None,
+        started_at=time.time() - 7 * 60,
+    )
+    REGISTRY[record.id] = record
+    try:
+        assert (
+            running_status(thread)
+            == "Still working: the final render (7 min). I'll post when it lands."
+        )
+    finally:
+        REGISTRY.pop(record.id, None)

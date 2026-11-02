@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from design_agent.surfaces.slack.phrasebook import phrase, services, todo_status
+from design_agent.surfaces.phrasebook import phrase, services, todo_status
 
 SERVERS = services(["paper", "exa", "docs", "acmestudio"])
 
@@ -69,8 +69,21 @@ def test_writes_and_edits_name_the_kind_of_thing_made() -> None:
             "cd /workspace/projects/launch && npx hyperframes render --out out/cut.mp4",
             "Rolling the render",
         ),
+        ("npx hyperframes@0.8.158 render --quality draft", "Rolling the render"),
+        (
+            "npx hyperframes lint . && npx hyperframes render --output ../hf.mp4",
+            "Rolling the render",
+        ),
         ("npx hyperframes lint", "Checking the work"),
+        # The build loop's gate is a check, never a render: a long build must not read as one.
+        (
+            "cd /workspace/projects/teaser && npx hyperframes check . --snapshots",
+            "Checking the work",
+        ),
         ("npx hyperframes snapshot --at 1.0", "Shooting stills"),
+        ("npx hyperframes preview --background", "Opening the preview"),
+        ("npx hyperframes catalog --query 'a calm reveal' --json", "Browsing the catalog"),
+        ("npx hyperframes auth status", "Wiring up the build"),
         ("ffmpeg -i in.mov -vf scale=1080:-2 out.mp4", "Cutting the footage"),
         ("node /workspace/tools/brand-lint.mjs scene.html", "Checking the work"),
         ("d2 flywheel.d2 flywheel.svg", "Drawing the diagram"),

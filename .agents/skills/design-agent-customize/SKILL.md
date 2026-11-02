@@ -23,12 +23,11 @@ asset after it follows:
 Start with the graphic the team asks for every week.
 
 1. Read two skills close to it (`skills/stills/`, `skills/thumbnails/`) and `skills/design-wiki/SKILL.md`.
-2. Create `skills/<name>/SKILL.md` as a real folder one level deep (MDA does not follow symlinks
-   there). Frontmatter: `name` is the folder; `description` says when to use it, in the words
-   people use when they ask. Body: what good looks like, sizes, steps, the checks to run. Put depth
-   in `references/` and keep the body small. Text only: binary files (fonts, images) go in
-   `skill-binaries/<name>/`, because Context Hub takes only UTF-8 text; the stager puts them back
-   beside the skill in the sandbox.
+2. Create `skills/<name>/SKILL.md` as a real folder one level deep. Frontmatter: `name` is the
+   folder; `description` says when to use it, in the words people use when they ask. Body: what
+   good looks like, sizes, steps, the checks to run. Put depth in `references/` and keep the body
+   small. Text only: binary files (fonts, images) go in `skill-binaries/<name>/`; the stager puts
+   them back beside the skill in the sandbox.
 3. No brand facts, colours or libraries from a CDN in the skill: the brand pack supplies them.
 4. `uv run pytest -q tests/unit/test_taste_skills.py tests/unit/test_media_skills.py` checks
    frontmatter, size, links, and that every tool, script and check it names exists.
@@ -48,12 +47,9 @@ sibling skill of ours, or send the change upstream.
 
 ## Tools
 
-- **MCP servers:** copy `config/mcp.example.toml` to `config/mcp.toml` and declare servers. Locally,
-  header values come from the environment (`headers_env`); on MDA a server that needs credentials
-  names a workspace connection (`connection`), owned by the deployment or each person (`owner`).
-  The example file has presets for Notion, Linear, GitHub, Figma and others
-  ([integrations](../../../docs/integrations.md)). MDA serves HTTP and SSE only. Paper is configured
-  with `PAPER_*`, not here ([Paper](../../../docs/partners/paper.md)).
+- **MCP servers:** copy `config/mcp.example.toml` to `config/mcp.toml` and declare servers (HTTP,
+  SSE or a local app's stdio). Header values come from the host environment (`headers_env`)
+  ([integrations](../../../docs/integrations.md)).
 - **Media keys:** `OPENAI_API_KEY` (images), `ELEVENLABS_API_KEY` (voice, music, sound effects),
   `GROQ_API_KEY` (transcription).
 - **A new host tool** is code in `src/design_agent/tools/`: keys stay on the host and results drop

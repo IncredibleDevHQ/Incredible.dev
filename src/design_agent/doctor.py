@@ -19,7 +19,6 @@ from design_agent.models.registry import ModelConfigurationError, ToolDisclosure
 
 Status = Literal["ok", "warn", "fail"]
 PACKAGES = (
-    "managed-deepagents",
     "deepagents",
     "langchain",
     "langgraph",
@@ -31,26 +30,6 @@ PROVIDER_KEYS = {
     "openai": "openai_api_key",
     "google_genai": "google_api_key",
 }
-#: Keys a self-hosted install reads. `mda deploy` forwards every `.env` key but LangSmith's as a
-#: deployment secret, so these must not sit in the `.env` an MDA deploy runs from.
-SELF_HOSTED_KEYS = (
-    "SLACK_BOT_TOKEN",
-    "SLACK_APP_TOKEN",
-    "SLACK_SIGNING_SECRET",
-    "DATABASE_URL",
-    "POSTGRES_PASSWORD",
-    "DESIGN_AGENT_API_TOKENS",
-)
-#: MDA refuses a source archive over 200 MB; renders under `workspace/out/` are archived too.
-RENDERS_WARN_BYTES = 150 * 1024 * 1024
-MDA_FILES = (
-    "agent.py",
-    "identity.py",
-    "instructions.md",
-    "channels/slack.py",
-    "sandbox/__init__.py",
-    "sandbox/setup.sh",
-)
 
 
 @dataclass(frozen=True)
@@ -159,17 +138,6 @@ def _check_sandbox(settings: Settings) -> Check:
         return Check(
             "sandbox", "warn", "host mode: renderers run on this machine (development only)"
         )
-    if settings.sandbox == "langsmith" or (
-        settings.sandbox == "auto" and settings.sandbox_snapshot
-    ):
-        ok = settings.langsmith_api_key is not None and bool(settings.sandbox_snapshot)
-        return Check(
-            "sandbox",
-            "ok" if ok else "fail",
-            "LangSmith snapshot "
-            + (settings.sandbox_snapshot or "not set")
-            + ("" if settings.langsmith_api_key else "; LANGSMITH_API_KEY missing"),
-        )
     from design_agent.runtime.sandbox.docker import DockerSandboxRunner
 
     available, reason = DockerSandboxRunner(image=settings.sandbox_image).available()
@@ -189,75 +157,6 @@ def _check_node() -> Check:
         if node
         else "Node not on PATH: gate unit tests skip; the sandbox has its own Node",
     )
-
-
-def _check_mda_project(root: Path) -> Check:
-    from design_agent.runtime.sandbox.publish import declared_base
-
-    missing = [p for p in MDA_FILES if not (root / p).is_file()]
-    if missing:
-        return Check("mda-project", "warn", "missing " + ", ".join(missing))
-    if declared_base(root) == "docker_image":
-        return Check(
-            "mda-project",
-            "warn",
-            "declarations present; publish the sandbox snapshot before an MDA deploy (`sandbox publish`)",
-        )
-    return Check(
-        "mda-project", "ok", "declarations present; sandbox declares the published snapshot"
-    )
-
-
-def _check_mda_deploy(root: Path) -> Check:
-    """What would make a plain `mda deploy` of this checkout fail or ship the wrong thing."""
-    from dotenv import dotenv_values
-
-    from design_agent.skills_lock import is_text, verify
-
-    problems: list[str] = []
-    warnings: list[str] = []
-    binary = [
-        path.relative_to(root).as_posix()
-        for path in sorted((root / "skills").rglob("*"))
-        if path.is_file() and not is_text(path)
-    ]
-    if binary:
-        problems.append(
-            f"Context Hub takes only UTF-8 text: move {', '.join(binary[:3])} to skill-binaries/"
-        )
-    if not verify(root).ok:
-        warnings.append("vendored skills differ from skills-lock.json (`skills verify`)")
-    env_file = root / ".env"
-    env = dotenv_values(env_file) if env_file.is_file() else {}
-    forwarded = [key for key in SELF_HOSTED_KEYS if (env.get(key) or "").strip()]
-    if forwarded:
-        warnings.append(
-            f"`mda deploy` would ship {', '.join(forwarded)} as deployment secrets; "
-            "deploy from an .env without self-hosting keys"
-        )
-    out = root / "workspace" / "out"
-    size = sum(p.stat().st_size for p in out.rglob("*") if p.is_file()) if out.is_dir() else 0
-    if size > RENDERS_WARN_BYTES:
-        warnings.append(
-            f"workspace/out holds {size // (1024 * 1024)} MB of renders, which `mda deploy` "
-            "archives (200 MB limit): clear old ones"
-        )
-    status: Status = "fail" if problems else "warn" if warnings else "ok"
-    detail = "; ".join(problems + warnings) or "ready for `mda deploy`"
-    return Check("mda-deploy", status, detail)
-
-
-def _check_paper(settings: Settings) -> Check:
-    from design_agent.tools.paper import PaperConfigError, paper_server
-
-    if settings.paper_mode == "off":
-        return Check("paper", "ok", "off: boards render in the sandbox")
-    try:
-        server = paper_server(settings, runtime="local")
-    except PaperConfigError as error:
-        return Check("paper", "fail", str(error))
-    where = server.url if server is not None and server.url else "stdio `paper mcp`"
-    return Check("paper", "ok", f"{settings.paper_mode} via {where}")
 
 
 def _check_mcp(root: Path) -> Check:
@@ -286,10 +185,7 @@ def run_checks(settings: Settings, root: Path) -> list[Check]:
         _check_brand(settings, root),
         _check_sandbox(settings),
         _check_node(),
-        _check_mda_project(root),
-        _check_mda_deploy(root),
         _check_mcp(root),
-        _check_paper(settings),
     ]
 
 

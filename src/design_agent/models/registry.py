@@ -108,6 +108,7 @@ CAPABILITY_REGISTRY: dict[str, ModelCapabilities] = {
     # No effort parameter: a fast, cheap model for `look` and the tool selector.
     "anthropic:claude-haiku-5-5": _claude(None, efforts=frozenset()),
     "openai:gpt-6.1-sol": _openai("medium"),
+    "openai:gpt-6.1-terra": _openai("medium"),
     "openai:gpt-6-sol": _openai("medium"),
     "openai:gpt-5.6-sol": _openai("medium"),
     "google_genai:gemini-3.6-flash": ModelCapabilities(

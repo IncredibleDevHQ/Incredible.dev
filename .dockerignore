@@ -1,7 +1,6 @@
 .env
 .env.*
 .venv
-.mda
 .git
 workspace/out
 workspace/state

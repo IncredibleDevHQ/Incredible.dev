@@ -7,7 +7,8 @@ trace's root carries tags (and the same facts as metadata):
   woke the lead), `check_in` (a `schedule_wakeup` came due), `watchdog` (the restart sentinel),
   `schedule` (any other platform schedule, such as housekeeping), `resume` (the turn after an
   approval or a prompt answer), `helper` (a background helper's own trace);
-- `surface:<name>`: the channel provider (`slack`), else the runtime's default (`cli`, `api`);
+- `surface:<name>`: the channel provider the runtime names, else the runtime's default (`cli`,
+  `api`, `web`);
 - `delivered:<kind>`: one per kind of file `upload_files` sent (`image`, `video`, `audio`, `pdf`,
   `other`), on the root when it is still running and on the tool call's own run otherwise;
 - `template:langchain-ai/design-agent`, with `ls_template` and `ls_template_version` metadata: the

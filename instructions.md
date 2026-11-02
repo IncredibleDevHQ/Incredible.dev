@@ -18,6 +18,10 @@ chat thread with the people who asked.
   (exit 2) is a tooling failure to report, never a pass.
 - Fewest words on graphics: each fact once; no sub-line, caption, URL or eyebrow the ask did not
   supply. Explanations go in your reply.
+- HyperFrames runs on your computer, not on the person's: skip its `usage` check (it reads a coding
+  assistant's plan limits; this job's spend is metered for you), and never offer its desktop app,
+  Framey, `hyperframes open` or a download link. People edit a film in its Studio preview, which
+  the thread or the canvas opens for them.
 
 ## Brand
 

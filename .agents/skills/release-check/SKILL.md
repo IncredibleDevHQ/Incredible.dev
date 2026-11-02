@@ -19,6 +19,5 @@ maintainers' call.
    component, `NOTICE.md` is current, and `skills-lock.json` names each upstream license.
 5. Docs: every link resolves (`uv run pytest -q tests/unit/test_docs_links.py`), README quick start
    works from a clean clone, `CHANGELOG.md` has the release.
-6. `uv run mda build` from a clean checkout; inspect `.mda/build` and `.mda/__contexthub__`.
-7. Human gates (SPEC §24): partner reviews (HyperFrames, Paper), legal review, sample-brand and
-   gallery review. Record who signed off outside the repository.
+6. Human gates (SPEC §24): partner review (HyperFrames), legal review, sample-brand and gallery
+   review. Record who signed off outside the repository.

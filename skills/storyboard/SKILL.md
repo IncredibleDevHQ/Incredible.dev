@@ -92,8 +92,8 @@ If someone cannot picture a framing, draw it instead of writing more prose: a sk
 real copy at its intended scale or a labelled placeholder box per cell. Ship one story with the
 reasoning visible; three options that share a flaw read as three more misses.
 
-When Paper is connected and people want to nudge the board, draft it there as well (`paper-design`);
-the thread still gets the sheet.
+When the canvas is connected, publish the board there as well (`canvas`); the thread always gets
+the sheet.
 
 ## 4. Sign-off, then build
 

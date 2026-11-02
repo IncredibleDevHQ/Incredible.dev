@@ -26,13 +26,15 @@ from design_agent.middleware.watch_tools import WATCHES
 from design_agent.runtime.profiles import RuntimeProfile
 from design_agent.runtime.sandbox import SandboxBinding, select_binding
 from design_agent.runtime.waker.local import InProcessWaker
+from design_agent.surfaces.presenter import Presenter
 from design_agent.tools.delivery import DeliveryAdapter, LocalOutputAdapter
 from design_agent.tools.mcp import McpServer
+from design_agent.workspace.manifest import BrandFor
 
 Replies = Callable[[str, str], None]
 
 GRAPH_NAME = "design-agent"
-#: deepagents' own ceiling, as on MDA; `StepBudgetMiddleware` wraps a turn up just before it.
+#: deepagents' own ceiling; `StepBudgetMiddleware` wraps a turn up just before it.
 DEFAULT_RECURSION_LIMIT = 9_999
 
 
@@ -42,13 +44,13 @@ def local_profile(
     out_dir: Path,
     services: BackgroundServices | None = None,
     *,
-    slack: Any = None,
+    presenter: Presenter | None = None,
     surface: str = "cli",
     delivery: DeliveryAdapter | None = None,
 ) -> RuntimeProfile:
     return RuntimeProfile(
         name="local",
-        slack=slack,
+        presenter=presenter,
         surface=surface,
         project_root=project_root,
         backend_for=binding.backend_for,
@@ -106,7 +108,7 @@ class LocalRuntime:
         self, message: str, *, thread_id: str, configurable: Mapping[str, Any] | None = None
     ) -> list[BaseMessage]:
         """Run one turn and return the messages it added. `configurable` carries what a surface
-        knows about the request (the Slack adapter's event)."""
+        knows about the request."""
         async with self._lock(thread_id):
             return await self._turn(thread_id, message, configurable)
 
@@ -200,9 +202,10 @@ def build_local_runtime(
     store: Any | None = None,
     mcp_servers: Sequence[McpServer] = (),
     mcp_tools: Sequence[BaseTool] = (),
-    slack: Any = None,
+    presenter: Presenter | None = None,
     surface: str = "cli",
     delivery: DeliveryAdapter | None = None,
+    brand_for: BrandFor | None = None,
 ) -> LocalRuntime:
     """Select the sandbox, assemble the components, compile the graph and wire the waker.
 
@@ -223,7 +226,7 @@ def build_local_runtime(
     waker = InProcessWaker(run_turn, store=store)
     services = BackgroundServices(waker=waker, capture_target=waker.capture)
     profile = local_profile(
-        project_root, chosen, out, services, slack=slack, surface=surface, delivery=delivery
+        project_root, chosen, out, services, presenter=presenter, surface=surface, delivery=delivery
     )
     components = build_agent_components(
         settings=settings,
@@ -232,6 +235,7 @@ def build_local_runtime(
         role_models=role_models,
         mcp_servers=mcp_servers,
         mcp_tools=mcp_tools,
+        brand_for=brand_for,
     )
     runtime = LocalRuntime(
         settings=settings,

@@ -20,7 +20,6 @@ _SECRET = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD)$|^DATABASE_URL$|_TOKENS$")
 #: Keys `generate` may fill with a random value, and how.
 GENERATED = {
     "DESIGN_AGENT_API_TOKENS": lambda: f"{secrets.token_urlsafe(32)}:me",
-    "PAPER_BRIDGE_TOKEN": lambda: secrets.token_urlsafe(48),
     "POSTGRES_PASSWORD": lambda: secrets.token_urlsafe(24),
 }
 

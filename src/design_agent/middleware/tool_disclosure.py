@@ -4,7 +4,7 @@ Every tool stays registered with the graph; this changes what the model sees on 
 what it may run. Approval (`interrupt_on`) and policy act on a tool call's name, not its schema, so
 a deferred tool is gated exactly as a bound one is. Selection is not authorization.
 
-The rule is evaluated per request against `request.tools`, because Managed Deep Agents appends
+The rule is evaluated per request against `request.tools`, because a platform can append
 connector tools at runtime: a tool named `{server}_{tool}` for a declared MCP server
 (`tools/mcp.py`) is disclosed on demand; host tools and the framework's own are always bound.
 

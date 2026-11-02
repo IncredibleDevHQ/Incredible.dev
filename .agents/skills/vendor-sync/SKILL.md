@@ -23,8 +23,7 @@ every pin with its upstream's newest release (HyperFrames) or `main` commit (Lan
    unlicensed fonts and bundled libraries. Upstream skills carry their own `.gitignore`s:
    `git add -f` any locked file they hide (`test_git_tracks_every_locked_file` names them).
 4. Rebuild and prove: `uv run design-agent sandbox build`, `sandbox test`,
-   `uv run pytest -q -m render`, `uv run design-agent demo`. MDA deployments need
-   `sandbox publish` again, since the recipe changed.
+   `uv run pytest -q -m render`, `uv run design-agent demo`.
 
 ## LangSmith and Deep Agents skills
 

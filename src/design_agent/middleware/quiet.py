@@ -1,16 +1,16 @@
 """`[quiet]`: a wake-up turn with nothing worth saying.
 
-A wake-up's reply is posted by whoever started the turn, and the runtimes differ in what they
-can leave unsaid:
+A wake-up's reply is posted by whoever started the turn, and runtimes differ in what they can
+leave unsaid:
 
-- Local and self-hosted runtimes post a wake-up's reply themselves and drop a reply of exactly
+- The local and self-hosted runtimes post a wake-up's reply themselves and drop a reply of exactly
   `[quiet]` (`harness.notices.should_post`). Nothing here is needed for that.
-- Managed Deep Agents 0.9.3 posts a scheduled run's reply from its own `after_agent` hook, which it
-  installs ahead of every authored middleware, so it runs last and cannot be skipped: a jump to
-  "end" from an `after_agent` hook re-enters the `after_agent` chain in langchain 1.4, and the
-  hook posts the newest non-empty assistant text in the thread, so an empty reply would repost an
-  earlier one. On that runtime a final `[quiet]` is rewritten, in code, into one line about the
-  work still running (`status`), which is what the person sees instead of a bare marker.
+- A platform that posts every scheduled run's reply from its own `after_agent` hook, installed
+  ahead of every authored middleware, cannot be skipped: a jump to "end" from an `after_agent` hook
+  re-enters the `after_agent` chain in langchain 1.4, and such a hook posts the newest non-empty
+  assistant text in the thread, so an empty reply would repost an earlier one. There a final
+  `[quiet]` is rewritten, in code, into one line about the work still running (`status`, from
+  `RuntimeProfile.quiet_status`), which is what the person sees instead of a bare marker.
 
 A restart watchdog (sentinel) turn on a thread whose work still runs in this process has nothing
 to report either: it ends before the model is called, with `[quiet]`, which the above handles.

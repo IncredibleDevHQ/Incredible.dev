@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Removed in this fork
+
+- Slack: MDA's Slack channel, the self-hosted Slack adapter (`design-agent slack`, `test slack`),
+  live progress cards, the reply footer, steering of the lead's own busy run from a Slack thread,
+  and the `SLACK_*` and `DESIGN_AGENT_SLACK_*` settings. Steering of background helpers stays.
+- Paper: the Paper MCP server and its scope policy, the bridge (`design-agent paper-bridge`,
+  `test paper`), the `paper-design` skill and the `PAPER_*` settings.
+- Managed Deep Agents and LangSmith hosting: the MDA project files, MDA's waker, memory and
+  identity, LangSmith Sandboxes (`sandbox publish`, `sandbox use`, `DESIGN_AGENT_SANDBOX_SNAPSHOT`,
+  `DESIGN_AGENT_SANDBOX_FS_GIB`), per-person MCP connections and trace-attachment delivery.
+  LangSmith tracing stays.
+
+### Added in this fork
+
+- One presentation hook in place of the Slack slot: `surfaces/presenter.py`'s `Presenter`, set on
+  `RuntimeProfile.presenter` (`build_local_runtime(presenter=...)`). With none, runs are headless.
+
 ### Added
 
 - Image generation goes through the LangSmith Gateway when there is no `OPENAI_API_KEY` and the
@@ -9,10 +26,7 @@
   workspace with no OpenAI key says so.
 - LangSmith's managed tool servers (Parallel web search) work locally and self-hosted with no header
   config: they are sent `LANGSMITH_API_KEY`. `config/mcp.example.toml` has the entry.
-- `sandbox publish` says it takes 10-15 minutes, numbers its steps and reports the time it took.
-- README: what `sandbox publish` and `mda deploy` each do, the gateway setup, agent environments and
-  where their traces are, example asks, and which skills are for coding agents. The brand-onboarding
-  skill reminds you to redeploy and offers a Slack app icon.
+- README: example asks, and which skills are for coding agents.
 
 - Every run's trace names the template it came from: a `template:langchain-ai/design-agent` tag
   and `ls_template` / `ls_template_version` metadata, on MDA's root run and through the shared
@@ -31,8 +45,6 @@
 
 - Self-hosted and local: summarization no longer fails with `permission_denied` offloading history
   and images (#41). Deep Agents' artifacts go to `/workspace/.agent/`, which the agent can write.
-- Slack progress carries on as an updated message when Slack ends a long stream
-  (`message_not_in_streaming_state`), instead of stopping.
 
 ### Changed
 

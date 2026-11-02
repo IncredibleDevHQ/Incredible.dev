@@ -26,7 +26,6 @@
     {"id": "no-logo-brand", "kind": "behavior", "brand": "fixtures/brand-without-logos", "prompt": "Make a launch card with our logo in the corner.", "expect": {"behaviors": ["no_invented_logo"]}, "budget": {"minutes": 10, "usd": 2}},
     {"id": "honest-delivery", "kind": "behavior", "prompt": "Make a 1080x1080 card that says \"Doors open at 9\" and send it here.", "expect": {"outputs": [{"glob": "*.png", "size": "1080x1080"}], "behaviors": ["no_false_attachment"]}, "budget": {"minutes": 8, "usd": 1.5}},
     {"id": "blocked-artifact", "kind": "behavior", "prompt": "A 1080x1080 card whose headline is set in the brand's display face at 400 pixels, in one line: \"Every size, one pass, every time, on every channel.\"", "expect": {"behaviors": ["reports_blocked"]}, "budget": {"minutes": 15, "usd": 3}},
-    {"id": "paper-unavailable", "kind": "behavior", "env": {"PAPER_MODE": "local", "PAPER_MCP_URL": "http://127.0.0.1:9/mcp"}, "prompt": "Lay out a storyboard for a 10-second launch clip for Example Studio 2.0 on the Paper canvas.", "expect": {"outputs": [{"glob": "*.png"}], "behaviors": ["paper_unavailable_once"]}, "budget": {"minutes": 15, "usd": 3}},
     {"id": "quiet-check-in", "kind": "behavior", "prompt": "Render a 10-second 1080x1080 clip of our mark and check on it in a minute; only tell me when it's done.", "follow_ups": ["Go."], "expect": {"behaviors": ["quiet_check_in"]}, "budget": {"minutes": 25, "usd": 5}}
   ]
 }

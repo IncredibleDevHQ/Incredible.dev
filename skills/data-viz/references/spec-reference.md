@@ -100,4 +100,4 @@ stat card's strings, a waterfall's total); `fonts`, `audit {colours, texts}`, `o
 {width, height, bytes}`.
 
 The SVG names the brand families rather than embedding them: it renders correctly where the brand
-fonts are installed (the sandbox, Paper with the brand fonts). Deliver the PNG; keep the SVG for edits.
+fonts are installed (the sandbox). Deliver the PNG; keep the SVG for edits.

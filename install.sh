@@ -23,7 +23,7 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 if [ -e "$DIR" ]; then
-  [ -f "$DIR/agent.py" ] && [ -d "$DIR/.git" ] || fail "$DIR already exists and is not a Design Agent checkout."
+  [ -f "$DIR/instructions.md" ] && [ -d "$DIR/.git" ] || fail "$DIR already exists and is not a Design Agent checkout."
   say "Updating $DIR"
   git -C "$DIR" pull --ff-only
 else
@@ -36,13 +36,13 @@ say "Installing dependencies"
 
 cat <<EOF
 
-Installed in $DIR. To put it in your team's Slack with Managed Deep Agents:
+Installed in $DIR. Next, with Docker running:
 
   cd $DIR
-  uv run design-agent config set LANGSMITH_API_KEY=lsv2_... ANTHROPIC_API_KEY=sk-ant-...
-  uv run design-agent sandbox publish   # once per workspace: the agent's computer
-  uv run mda deploy
+  uv run design-agent sandbox build     # the agent's computer, as a local image
+  uv run design-agent demo              # no keys needed
+  uv run design-agent config set ANTHROPIC_API_KEY=sk-ant-...
+  uv run design-agent doctor
 
-Or open $DIR in Claude Code, Codex or Cursor and say "Deploy it to our Slack."
-To try it locally first, with Docker and no keys: uv run design-agent sandbox build && uv run design-agent demo
+To run it for a team, see docs/self-hosting.md.
 EOF

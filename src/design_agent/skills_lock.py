@@ -1,15 +1,14 @@
 """Vendored upstream skills: the lock, verification and the vendoring sync.
 
-Skills for the deployed agent keep their upstream names at `skills/<name>/` (MDA discovers skills
-one level deep); skills for coding agents sit at `.agents/skills/<name>/`. Both are byte-identical
-to their upstream at its pinned commit. `skills-lock.json` records each upstream's repository,
-commit and license, every vendored file's sha256 under `skills` (runtime) or `agent_skills`
-(coding agents), and files deliberately left out with the reason. MDA syncs `skills/` to Context
-Hub, which takes only UTF-8 text, so a runtime skill's binary files (fonts, images) are vendored to
-`skill-binaries/<name>/` instead and listed under `binaries`; the workspace stager puts them back
-beside the skill in the sandbox, and a plain `mda deploy` works. CI fails if a vendored file
-differs, an unlisted file appears, or an excluded file is present. Local routing and guidance live
-in our own sibling skills and summaries, never as edits.
+Skills for the deployed agent keep their upstream names at `skills/<name>/`, one level deep;
+skills for coding agents sit at `.agents/skills/<name>/`. Both are byte-identical to their upstream
+at its pinned commit. `skills-lock.json` records each upstream's repository, commit and license,
+every vendored file's sha256 under `skills` (runtime) or `agent_skills` (coding agents), and files
+deliberately left out with the reason. `skills/` holds only UTF-8 text, so a runtime skill's
+binary files (fonts, images) are vendored to `skill-binaries/<name>/` instead and listed under
+`binaries`; the workspace stager puts them back beside the skill in the sandbox. CI fails if a
+vendored file differs, an unlisted file appears, or an excluded file is present. Local routing and
+guidance live in our own sibling skills and summaries, never as edits.
 """
 
 from __future__ import annotations
@@ -102,7 +101,6 @@ UPSTREAMS: dict[str, Upstream] = {
             "deep-agents-core",
             "deep-agents-memory",
             "deep-agents-orchestration",
-            "managed-deep-agents",
         ),
     ),
 }

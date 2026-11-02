@@ -1,22 +1,19 @@
-"""File delivery: `upload_files` outside MDA, and the exactly-once ledger around any delivery.
+"""File delivery: `upload_files`, and the exactly-once ledger around it.
 
-On Managed Deep Agents the Slack channel brings its own `upload_files` tool and drops it from runs
-without a channel (the API, Studio); those runs get this one through `UploadFallbackMiddleware`,
-which attaches the files to the call's LangSmith run. Every other runtime gets this one too, with
-the same name, arguments and replies, so the prompt and skills read the same everywhere. Delivery
-adapters decide where files go: the CLI copies them to `workspace/out/`, the self-hosted Slack
-adapter uploads them to the thread.
+Every runtime gets this `upload_files`, with the same name, arguments and replies, so the prompt
+and skills read the same everywhere. Delivery adapters decide where files go: the CLI and the API
+copy them to `workspace/out/<thread>/`, and a surface can bring its own
+(`build_local_runtime(delivery=...)`).
 
-`DeliveryLedgerMiddleware` wraps whichever `upload_files` the run has. It records each delivered
-file's sha256 in the project's `DELIVERY.json` and drops files already delivered in this thread,
-so a retry never sends twice; it records nothing unless the upload reported success.
+`DeliveryLedgerMiddleware` wraps the run's `upload_files`. It records each delivered file's sha256
+in the project's `DELIVERY.json` and drops files already delivered in this thread, so a retry
+never sends twice; it records nothing unless the upload reported success.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-import mimetypes
 import posixpath
 import re
 import shlex
@@ -24,7 +21,7 @@ import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, Protocol, cast
+from typing import Annotated, Any, Protocol
 
 from deepagents.backends.protocol import BackendProtocol
 from langchain.agents.middleware import AgentMiddleware
@@ -72,35 +69,6 @@ class LocalOutputAdapter:
             (folder / item.name).write_bytes(item.content)
 
 
-#: LangSmith refuses larger attachments, and skips a name with a period in it.
-TRACE_ATTACHMENT_BYTES = 100 * 1024 * 1024
-TRACE_NOTE = (
-    "This run has no chat channel: `upload_files` attaches files to this run in LangSmith, where "
-    "the person opens them from the trace or Studio. Say so when you deliver."
-)
-
-
-class TraceAttachmentAdapter:
-    """Delivery for Managed Deep Agents runs without a channel: each file goes on the upload
-    call's own run, which the tracer sends as the call ends, so a long job holds nothing."""
-
-    def deliver(self, thread_id: str, files: Sequence[DeliveredFile]) -> None:  # noqa: ARG002
-        from langsmith.run_helpers import get_current_run_tree
-        from langsmith.schemas import Attachment, Attachments
-
-        run = get_current_run_tree()
-        if run is None:
-            raise RuntimeError("this run is not traced")
-        if any(len(item.content) > TRACE_ATTACHMENT_BYTES for item in files):
-            raise ValueError("a file is over the LangSmith attachment limit")
-        # A run being written holds attachments to send (`Attachments`), not read-back info.
-        attachments = cast("Attachments", run.attachments)
-        for item in files:
-            mime = mimetypes.guess_type(item.name)[0] or "application/octet-stream"
-            attachments[re.sub(r"[^A-Za-z0-9_-]", "_", item.name)] = Attachment(mime, item.content)
-        run.add_metadata({"delivered": [item.name for item in files]})
-
-
 def workspace_path(path: str) -> str:
     """A normalized absolute path under /workspace, or ValueError."""
     candidate = path if path.startswith("/") else f"{WORKSPACE}/{path}"
@@ -121,7 +89,7 @@ def build_upload_tool(
     backend_for: Callable[[Any], BackendProtocol | None],
     thread_id_for: Callable[[Any], str],
 ) -> BaseTool:
-    """`upload_files(paths)` for runtimes without MDA's Slack channel."""
+    """`upload_files(paths)`: the run's workspace files, sent through `adapter`."""
 
     def upload_files(
         paths: Annotated[list[str], Field(min_length=1, max_length=MAX_FILES)],
@@ -332,72 +300,3 @@ class DeliveryLedgerMiddleware(AgentMiddleware[Any, Any, Any]):
                     posixpath.basename(p) for p in already
                 )
         return result
-
-
-def _tool_name(tool: Any) -> str | None:
-    if isinstance(tool, dict):
-        name = tool.get("name") or (tool.get("function") or {}).get("name")
-        return name if isinstance(name, str) else None
-    return getattr(tool, "name", None)
-
-
-class UploadFallbackMiddleware(AgentMiddleware[Any, Any, Any]):
-    """Managed Deep Agents: when the platform drops its `upload_files` from a run (no Slack
-    channel), offer `tool` under the same name and run calls to it there.
-
-    MDA's channel middleware wraps every authored one, so the tools a model call sees here already
-    say whether the platform's upload is available. The answer is kept per thread for the tool
-    calls that follow, and refreshed on each model call."""
-
-    def __init__(self, tool: BaseTool, *, thread_id_for: Callable[[Any], str]) -> None:
-        super().__init__()
-        self._tool = tool
-        self._thread_id_for = thread_id_for
-        self._fallback: dict[str, bool] = {}
-
-    @property
-    def name(self) -> str:
-        return "DesignAgentUploadFallback"
-
-    def _prepare(self, request: Any) -> Any:
-        from langchain_core.messages import SystemMessage
-
-        missing = UPLOAD_TOOL not in {_tool_name(t) for t in request.tools}
-        thread = self._thread_id_for(request.runtime)
-        self._fallback[thread] = missing
-        if len(self._fallback) > 512:
-            self._fallback.pop(next(iter(self._fallback)))
-        if not missing:
-            return request
-        blocks = list(request.system_message.content_blocks if request.system_message else [])
-        blocks.append({"type": "text", "text": TRACE_NOTE})
-        return request.override(
-            tools=[*request.tools, self._tool], system_message=SystemMessage(content_blocks=blocks)
-        )
-
-    def wrap_model_call(self, request: Any, handler: Callable[[Any], Any]) -> Any:
-        return handler(self._prepare(request))
-
-    async def awrap_model_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
-        return await handler(self._prepare(request))
-
-    def _route(self, request: ToolCallRequest) -> ToolCallRequest:
-        if request.tool_call.get("name") == UPLOAD_TOOL and self._fallback.get(
-            self._thread_id_for(request.runtime)
-        ):
-            return request.override(tool=self._tool)
-        return request
-
-    def wrap_tool_call(
-        self,
-        request: ToolCallRequest,
-        handler: Callable[[ToolCallRequest], ToolMessage | Command[Any]],
-    ) -> ToolMessage | Command[Any]:
-        return handler(self._route(request))
-
-    async def awrap_tool_call(
-        self,
-        request: ToolCallRequest,
-        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
-    ) -> ToolMessage | Command[Any]:
-        return await handler(self._route(request))

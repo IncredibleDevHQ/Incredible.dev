@@ -47,8 +47,8 @@ One row per shot, on top of the beat sheet's fields:
 **Look plates are look targets, not layouts.** A builder matches a plate's light, material, depth and
 palette and redraws everything else in the brand. Label them on the sheet ("look, not frame").
 
-When Paper is connected, mirror the HTML poses onto the canvas so the team can nudge them (the Paper
-skill, `paper-design`). The thread always gets the rendered sheet, whether or not Paper is connected.
+When the canvas is connected, publish the board there as well (`canvas`); the thread always gets
+the sheet.
 
 **The sheet**: frames of the film's aspect in a 3×3 or 4×3 grid, at most 1,500 px on the long edge so
 every page stays legible after the review downscale (`review-thumb.mjs --sheet`); under each frame its
@@ -95,5 +95,5 @@ Then `upload_files` the sheet pages (and the PDF), and put the ask in the reply:
 > Frames 4 and 7 are look plates: the light and material, not the layout.
 > Once you approve, I'll cut the animatic on the music (~35 min); timing locks after that.
 
-Keep in `storyboard/`: the approved sheets, the frame HTML, the plates, and the Paper file and artboard
-references if there is a canvas copy. They are the spec the builders measure against.
+Keep in `storyboard/`: the approved sheets, the frame HTML and the plates. They are the spec the
+builders measure against.

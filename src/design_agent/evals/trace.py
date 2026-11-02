@@ -24,7 +24,7 @@ class Call:
 
 
 #: How a turn the person did not start opens: the inbox's notice (`harness.notices`), and the
-#: marker MDA's waker adds (`runtime.waker`).
+#: wake marker (`runtime.waker`).
 WOKEN = re.compile(r"^\[Runtime notice, not from the user\]|<wake key=")
 
 

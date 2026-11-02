@@ -17,7 +17,7 @@ use them; a role you leave out is measured from the palette.
 Fonts: each family in `fonts.toml` points at an open font in `fonts/` or a licensed file in
 `private-fonts/` (Git-ignored), and `family` is the name inside the file (`fonts verify` checks it).
 Web formats work: `tokens.css` declares `.woff2` and `.woff` faces with `@font-face`. Licensed fonts
-reach the sandbox as deployment files (MDA) or a read-only mount (self-hosted), never through Git.
+reach the sandbox through the stager (self-hosted: a read-only mount), never through Git.
 
 ## Instructions and skills
 
@@ -29,8 +29,8 @@ brand setup, deploy, evals); `skills/` is what the agent itself reads at work.
 - `skills/<name>/SKILL.md` are workflows the agent opens when a job needs them. Add one for a
   format your team makes often (a newsletter header, a conference kit): a one-line "when to use"
   description, steps, sizes, the gates to run, and links to `references/` for depth. Keep the
-  folder to text: MDA syncs it to Context Hub, which takes only UTF-8, so a skill's fonts or
-  images go in `skill-binaries/<name>/` and reach the sandbox beside the skill.
+  folder to text: a skill's fonts or images go in `skill-binaries/<name>/` and reach the sandbox
+  beside the skill.
 - Rules come with evidence or are phrased as defaults; brand facts belong in the brand pack, not
   in skills.
 
@@ -51,15 +51,11 @@ where people must not see each other's requests ([SECURITY.md](../SECURITY.md#tr
 
 ## MCP servers
 
-[Integrations](integrations.md) sets up the hosted ones (Notion, Linear, GitHub, Figma and more) in
-a few commands. Copy `config/mcp.example.toml` to `config/mcp.toml` and declare servers there. Every runtime names
-their tools `{server}_{tool}`; the agent discovers them on demand, so many servers do not crowd its
-context. Locally, header values come from your environment (`headers_env`); on MDA a server that
-needs credentials names a workspace connection (`connection`), owned by the deployment or by each
-person (`owner`). A local app's own server can run
-over stdio (`transport = "stdio"` with a `command`) locally and self-hosted; MDA serves HTTP and SSE
-only and leaves it out. A server that fails to load or errors leaves the rest working. Paper is
-configured with `PAPER_*` instead ([Paper](partners/paper.md)), so do not declare a `paper` server.
+[Integrations](integrations.md) walks through it. Copy `config/mcp.example.toml` to
+`config/mcp.toml` and declare servers there. Their tools are named `{server}_{tool}`; the agent
+discovers them on demand, so many servers do not crowd its context. Header values come from your
+environment (`headers_env`). A local app's own server can run over stdio (`transport = "stdio"`
+with a `command`). A server that fails to load or errors leaves the rest working.
 
 ## Settings
 

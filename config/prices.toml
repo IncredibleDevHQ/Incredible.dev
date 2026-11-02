@@ -81,6 +81,24 @@ cache_write_5m = 5.00
 cache_write_1h = 5.00
 cache_read = 0.20
 
+# On 2026-10-31 the page listed a 30-minute and a 12-hour write. The engine asks for no extended
+# retention, so both fields hold the 30-minute price, as in the rows above.
+[openai.models."gpt-6.1-terra"]
+date = 2026-10-31
+input = 1.00
+output = 5.00
+cache_write_5m = 1.25
+cache_write_1h = 1.25
+cache_read = 0.05
+
+[openai.models."gpt-6.1-terra".long_context]
+above_input_tokens = 272_000
+input = 2.00
+output = 7.50
+cache_write_5m = 2.50
+cache_write_1h = 2.50
+cache_read = 0.10
+
 [openai.models."gpt-6-sol"]
 input = 2.00
 output = 10.00

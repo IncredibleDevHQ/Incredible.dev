@@ -2,8 +2,7 @@
 
     DESIGN_AGENT_LIVE_TESTS=1 uv run pytest -q -m live tests/live
 
-Each test needs its own key and skips without it. They cost cents, except the LangSmith sandbox
-check, which bills a few minutes of sandbox time.
+Each test needs its own key and skips without it. They cost cents.
 """
 
 from __future__ import annotations
@@ -97,12 +96,3 @@ async def test_voiceover_writes_audio(tmp_path: Path) -> None:
         },
     )
     assert (tmp_path / "sb/workspace/projects/live/vo.mp3").stat().st_size > 1000, result
-
-
-def test_a_langsmith_sandbox_from_the_published_snapshot_passes_the_probe() -> None:
-    needs("LANGSMITH_API_KEY", "DESIGN_AGENT_SANDBOX_SNAPSHOT")
-    from design_agent.runtime.sandbox.langsmith import LangSmithSandboxPool
-
-    backend = LangSmithSandboxPool(Settings()).backend("live-probe")  # idles out on its own TTL
-    result = backend.execute("/opt/design-agent/probe/probe.sh", timeout=900)
-    assert result.exit_code == 0, result.output[-2000:]

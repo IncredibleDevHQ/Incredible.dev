@@ -34,13 +34,6 @@
         "SKILL.md": "e8b2b2b575b9882aaef280478ffe2b2a5bdf0d6793e9b506e947bc63d1f71e33"
       },
       "upstream": "langsmith-skills"
-    },
-    "managed-deep-agents": {
-      "excluded": {},
-      "files": {
-        "SKILL.md": "fe1020c6727002aaade34ec23ca0ebab9c9b455b59a3ac0b50485059c566c200"
-      },
-      "upstream": "langchain-skills"
     }
   },
   "skills": {

@@ -14,8 +14,5 @@ so an update never touches them. The team's own skills and instruction edits can
 3. Merge `upstream/main` into the person's branch. In conflicts, keep their skills and instruction
    edits and take upstream's code; ask when a conflict touches both.
 4. `uv sync`, `uv run design-agent doctor`, `uv run pytest -q`, `uv run design-agent skills verify`.
-5. If `sandbox/setup.sh` changed: `uv run design-agent sandbox build && uv run design-agent sandbox test`;
-   for Managed Deep Agents, also `uv run design-agent sandbox publish` (the snapshot name follows the
-   recipe's hash).
-6. Try the update on a test copy (`uv run mda deploy --name design-agent-test`), then
-   deploy the team's agent after a yes ([design-agent-deploy](../design-agent-deploy/SKILL.md)).
+5. If `sandbox/setup.sh` changed: `uv run design-agent sandbox build && uv run design-agent sandbox test`.
+6. Redeploy the team's agent after a yes ([design-agent-deploy](../design-agent-deploy/SKILL.md)).

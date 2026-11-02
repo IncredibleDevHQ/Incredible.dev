@@ -11,16 +11,19 @@ import gzip
 import hashlib
 import io
 import json
+import logging
 import tarfile
-from collections.abc import Iterator
+import threading
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from design_agent.brand.schema import BrandPack, render_tokens_css
+from design_agent.brand.schema import BrandPack, BrandPackError, load_brand_pack, render_tokens_css
+
+_LOGGER = logging.getLogger(__name__)
 
 WORKSPACE = PurePosixPath("/workspace")
-#: Where a deployed project keeps skills' binary files: MDA syncs `skills/` to Context Hub, which
-#: takes only UTF-8 text (`deploy.stage` moves them here).
+#: Where skills' binary files live, so `skills/` holds only UTF-8 text (`skills_lock`).
 SKILL_BINARIES = "skill-binaries"
 #: Fonts the sandbox recipe bakes, by sha256, so the stager never uploads them again.
 BAKED_FONT_SHA256 = frozenset(
@@ -144,7 +147,7 @@ def build_manifest(project_root: Path, brand: BrandPack) -> Manifest:
             for path in _files(root, skill):
                 rel = path.relative_to(skill).as_posix()
                 assets.append(_asset(path, WORKSPACE / "skills" / skill.name / rel))
-    # Skills' binary files live here, because Context Hub takes only UTF-8 text (skills_lock).
+    # Skills' binary files live here, outside `skills/` (skills_lock).
     binaries = root / SKILL_BINARIES
     if binaries.is_dir():
         for path in _files(root, binaries):
@@ -185,3 +188,46 @@ def build_manifest(project_root: Path, brand: BrandPack) -> Manifest:
         required_families=brand.required_families(),
         generated=tuple(generated),
     )
+
+
+#: The brand pack a thread's work wears (its folder), as the surface knows it; None for the
+#: process's own pack.
+BrandFor = Callable[[str], Path | None]
+
+
+class ManifestBook:
+    """The workspace each thread is staged with: the process's own manifest, or one built from the
+    brand pack its surface gives the thread (a channel's brand), built once per version of that
+    pack. A pack that no longer loads falls back to the process's own, logged, never silent."""
+
+    def __init__(self, project_root: Path, default: Manifest, brand_for: BrandFor) -> None:
+        self._root = project_root
+        self._default = default
+        self._brand_for = brand_for
+        self._built: dict[tuple[Path, tuple[int, int]], Manifest] = {}
+        self._lock = threading.Lock()
+
+    def for_thread(self, thread_id: str) -> Manifest:
+        folder = self._brand_for(thread_id)
+        if folder is None or not (folder / "brand.toml").is_file():
+            return self._default
+        key = (folder.resolve(), _version(folder))
+        with self._lock:
+            built = self._built.get(key)
+            if built is not None:
+                return built
+            try:
+                manifest = build_manifest(
+                    self._root, load_brand_pack(folder, project_root=self._root)
+                )
+            except (BrandPackError, ManifestError):
+                _LOGGER.exception("brand pack %s does not stage; using the default", folder)
+                return self._default
+            self._built[key] = manifest
+            return manifest
+
+
+def _version(folder: Path) -> tuple[int, int]:
+    """A pack's version, by its files: the newest change and how many there are."""
+    stamps = [p.stat().st_mtime_ns for p in folder.rglob("*") if p.is_file()]
+    return (max(stamps, default=0), len(stamps))

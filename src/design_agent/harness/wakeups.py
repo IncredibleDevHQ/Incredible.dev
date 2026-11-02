@@ -8,8 +8,8 @@ ledger, so a restart fires it late rather than never.
 A due check-in is a `WAKEUP_DUE` event: the inbox wakes the lead with the note, together with
 whatever else is waiting for it.
 
-Deep Agents has no self-scheduled wake-up. A host whose runtime keeps durable schedules (MDA's
-one-time schedules) can also route check-ins through `Waker.schedule`.
+Deep Agents has no self-scheduled wake-up. A host whose runtime keeps durable schedules can also
+route check-ins through `Waker.schedule`.
 """
 
 from __future__ import annotations

@@ -87,11 +87,12 @@ genuinely theirs (tone, risk). When seeing the options would help, render them (
 ## 3. Storyboard, then approval (20-40 min)
 
 Follow `storyboard` and [references/storyboard.md](references/storyboard.md): poses from real HTML at
-the target size, tied to the grid; look plates from `image-generation` where the concept is a look;
-an editable copy on the Paper canvas when it is connected (the Paper skill, `paper-design`). Have a
-critic ([briefs/critic.md](briefs/critic.md), `xhigh`) check the board against the brief before you
-send it. Send the contact sheet, the shot list with verbatim copy, the music plan, and one line on
-what locks once they approve. Wait for approval: a note now costs a minute, after production an hour.
+the target size, tied to the grid; look plates from `image-generation` where the concept is a look.
+When the canvas is connected, publish the board there as well (`canvas`); the thread always gets
+the sheet. Have a critic ([briefs/critic.md](briefs/critic.md), `xhigh`) check the board against
+the brief before you send it. Send the contact sheet, the shot list with verbatim copy, the music
+plan, and one line on what locks once they approve. Wait for approval: a note now costs a minute,
+after production an hour.
 
 ## 4. Animatic, then approval (20-45 min)
 

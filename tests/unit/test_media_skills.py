@@ -1,7 +1,7 @@
 """The media-pipeline runtime skills: format, script hygiene and pure logic, offline.
 
 Covers skills/{image-ops, gif-edit, visual-verify, film-breakdown, data-viz, stills, thumbnails,
-image-generation, sound, storyboard, paper-design}. Rendering is covered by tests/render/test_media_render.py.
+image-generation, sound, storyboard}. Rendering is covered by tests/render/test_media_render.py.
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ SKILLS = (
     "image-generation",
     "sound",
     "storyboard",
-    "paper-design",
 )
 NODE = shutil.which("node")
 FIXTURES = ROOT / "tests" / "fixtures" / "media"

@@ -36,13 +36,13 @@ def test_the_script_parses() -> None:
 
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
-def test_it_clones_syncs_and_points_at_mda_deploy(tmp_path: Path) -> None:
+def test_it_clones_syncs_and_points_at_the_next_steps(tmp_path: Path) -> None:
     result = _run(tmp_path)
     assert result.returncode == 0, result.stderr
     target = tmp_path / "design-agent"
-    assert (target / "agent.py").is_file()
+    assert (target / "instructions.md").is_file()
     assert (tmp_path / "uv.log").read_text().split() == [str(target), "sync"]
-    assert "uv run mda deploy" in result.stdout
+    assert "uv run design-agent sandbox build" in result.stdout
     assert not (target / ".env").exists()
     again = _run(tmp_path)
     assert again.returncode == 0, again.stderr

@@ -7,8 +7,8 @@ the agent's side of them:
   for this run, detached from the turn. It returns at once, so the lead replies with an ETA and
   its turn ends. The helper's config is the lead's minus LangGraph's per-run internals, so it works
   in the thread's own sandbox with the thread's files.
-- **The lead is woken** through the runtime's `Waker` (MDA one-time schedules on the thread; the
-  self-hosted and local runners queue a run in-process) when a helper finishes, fails or was
+- **The lead is woken** through the runtime's `Waker` (the self-hosted and local runners queue a
+  run in-process) when a helper finishes, fails or was
   interrupted by a restart, when a watched job fails, stalls or finishes, and when a check-in comes
   due. A helper's `report_progress` note waits for the lead's next turn unless it is urgent or the
   lead asked to follow that task closely. A reply of exactly `[quiet]` posts nothing, or one
@@ -84,7 +84,7 @@ CHECK_IN_MARK = "<check-in"
 
 CaptureTarget = Callable[[Any], Awaitable[WakeTarget | None]]
 #: Told when a thread gains or loses background work (`active`), so an adapter can keep a
-#: restart watchdog such as MDA's sentinel check-in.
+#: restart watchdog (a sentinel check-in).
 Watchdog = Callable[[WakeTarget, bool], Awaitable[None]]
 #: Called at the start of every lead turn with the runtime and messages (a waker confirming that
 #: the turn it scheduled started).

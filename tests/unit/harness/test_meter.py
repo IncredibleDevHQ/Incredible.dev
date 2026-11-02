@@ -228,9 +228,13 @@ def test_the_meter_sums_a_thread_per_role_too() -> None:
 
 def test_every_listed_price_names_its_date_and_public_source() -> None:
     assert DEFAULT_PRICES_PATH == Path(__file__).resolve().parents[3] / "config" / "prices.toml"
-    assert {"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "gpt-6.1-sol"} <= set(
-        PRICES
-    )
+    assert {
+        "claude-opus-5-5",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
+        "gpt-6.1-sol",
+        "gpt-6.1-terra",
+    } <= set(PRICES)
     for model, price in PRICES.items():
         assert price.provider in ("anthropic", "openai"), model
         assert price.source.startswith("https://") and price.date, model

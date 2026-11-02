@@ -56,8 +56,7 @@ The sandbox has no network. Copy what a composition loads next to it: GSAP from
 `/opt/design-agent/render/node_modules/gsap/dist/gsap.min.js`, the brand's `tokens.css` and logos
 from `/workspace/brand/`. Upstream HyperFrames examples load libraries from a CDN; that fails here.
 
-## Paper
+## Canvas
 
-When Paper is connected and the work is something people will want to nudge (layouts,
-storyboards, thumbnails), draft it on the canvas as well (`paper-design`). The thread always gets
-an image people can approve, whether or not Paper is connected.
+When the canvas is connected, publish the board there as well (`canvas`); the thread always gets
+the sheet. When the thread names canvas assets (`as_…`), file each one's work under its id.

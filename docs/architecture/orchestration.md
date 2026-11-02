@@ -6,9 +6,9 @@ its turn as soon as work is running and is woken when something happens. The cod
 work is the harness in `src/design_agent/harness/`.
 
 The harness imports only the standard library, `langchain`, `langchain_core` and `langgraph`. It
-never imports MDA, Slack or a sandbox client. Hosts plug in through three small protocols in
-`harness/protocols.py`, so the same primitives run under Managed Deep Agents, the self-hosted
-runtime, a plain Deep Agents graph, and the unit tests.
+never imports a runtime, a surface or a sandbox client. Hosts plug in through three small protocols
+in `harness/protocols.py`, so the same primitives run under the local and self-hosted runtimes, a
+plain Deep Agents graph, and the unit tests.
 
 | Protocol | What the host provides |
 | --- | --- |
@@ -46,12 +46,8 @@ how each helper ended, what is still running, and the likely next step. A lead t
 for any other reason (a message from the person) carries whatever is still waiting, so the lead is
 not woken again for news it already has.
 
-A reply of exactly `[quiet]` means there is nothing worth saying. Locally and self-hosted, the
-runtime posts wake-up replies itself and drops it. On MDA every scheduled run's reply is posted by
-MDA's schedule delivery, an `after_agent` hook installed ahead of every authored middleware, so it
-runs last and cannot be skipped (and an empty reply would make it repost an earlier one). There
-`QuietReplyMiddleware` rewrites a final `[quiet]` into one line about the work still running
-("Still working: act 2 (12 min)."). The upstream ask: let a scheduled run end without a post.
+A reply of exactly `[quiet]` means there is nothing worth saying. The runtime posts wake-up
+replies itself and drops it.
 
 A wake-up counts as delivered only when the waker's `WakeReceipt` says the lead's run started. A
 failure, or a receipt with `delivered=False`, is retried after 10 s, 1 min and 5 min with
@@ -59,27 +55,10 @@ whatever landed meanwhile. After the last retry the events are held for the lead
 wake-up carries a `dedupe_key` built from the thread and the batch's event ids, so a retry of a
 batch that did start a run can be recognised by the adapter.
 
-Adapters live outside the harness. Self-hosted, the waker enqueues a run in the API process with a
-Postgres timer table for check-ins (SPEC §7.4). On MDA it uses public one-time runtime schedules on
-the current thread (`runtime/waker/mda.py`), with these constraints from managed-deepagents 0.9.4:
-
-- **Latency.** A schedule's `at` must be at least a minute ahead and is rounded up to the next
-  whole minute, so a wake-up lands 60–120 s after the event, plus the scheduler's own lag. The
-  inbox coalesces meanwhile, so one wake-up carries everything that happened. Measuring the lag
-  needs a deployment; the upstream ask is a public "start a run on this thread now" API.
-- **Delivery receipt.** The woken run's first hook writes the wake key to the deployment store;
-  the waker polls for it for up to five minutes before it counts the wake-up delivered.
-- **Who can schedule.** Only a run's own runtime can create a schedule, for that run's thread. The
-  waker keeps each thread's latest `runtime.schedules`, so after a restart a thread has none until
-  a run happens on it.
-- **Restarts.** While a thread has background work, it holds one sentinel schedule 15 minutes
-  ahead, which the process pushes forward every five minutes. It fires only once that process is
-  gone; the sentinel turn sweeps the ledger at once, so its reply says what the restart stopped.
-  If it fires while the work still runs (a postponement failed), the turn ends without a model call.
-- **Ownership and caps.** Agent-owned same-thread schedules need a channel binding; runs without
-  one (Studio, the API) schedule as the caller. Each owner holds at most `MDA_MAX_AGENT_SCHEDULES`
-  (default 20) unexpired schedules; a thread uses one sentinel plus its pending wake-ups and
-  check-ins.
+Adapters live outside the harness. The in-process waker (`runtime/waker/local.py`) starts the woken
+turn in the same process (the CLI's or the API's), after any turn the person has running on the
+thread. Check-ins are timers there, kept in the store too, so a restart re-arms them and one whose
+time passed while the process was down fires at once (SPEC §7.4).
 
 ## Background helpers and restarts
 
@@ -93,7 +72,8 @@ holds how the helper ended until the lead has been told. `ledger.sweep` finds re
 heartbeat is more than three minutes old: a helper still marked running is published as
 `task.interrupted`, and one that ended but was never delivered is published as a normal finish.
 Check-ins the lead scheduled (`harness/wakeups.py`) live in the ledger too, so one a restart
-swallowed fires late rather than never.
+swallowed fires late rather than never. The self-hosted API sweeps at startup and then every 15
+minutes (`runtime/maintenance.py`).
 
 ## Durable helpers
 
@@ -198,7 +178,7 @@ by a person. The rendered list is headed as untrusted notes the next job weighs,
 
 | Primitive | Upstream today | Plan |
 | --- | --- | --- |
-| Background helpers on the lead's sandbox | Deep Agents async subagents run as server runs on their own threads; MDA does not build them yet | migrate when MDA runs async subagents on the lead's sandbox, then delete the in-process runner |
+| Background helpers on the lead's sandbox | Deep Agents async subagents run as server runs on their own threads | migrate when async subagents can run on the lead's sandbox, then delete the in-process runner |
 | Durable transcripts | server runs are checkpointed; in-process subagents are not | keep the stub rules if replay still needs them |
-| Wake-ups | Deep Agents notifies a parent when a same-deployment async subagent finishes | becomes the native path for helper results once async subagents ship in MDA |
+| Wake-ups | Deep Agents notifies a parent when a same-deployment async subagent finishes | becomes the native path for helper results once helpers are async subagents |
 | Event bus, attention rule, watchers, detached jobs, pipelines, looks, meter | none | candidates to upstream as they are |

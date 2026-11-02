@@ -1,7 +1,7 @@
 name: compatibility
 
 # Weekly check that the fast-moving dependencies still satisfy the offline contract: latest
-# stable managed-deepagents and deepagents in a throwaway lock, and the latest HyperFrames CLI and
+# stable deepagents and LangChain packages in a throwaway lock, and the latest HyperFrames CLI and
 # skills reported for review. It never commits: a failure is a signal to review the upgrade.
 on:
   schedule:

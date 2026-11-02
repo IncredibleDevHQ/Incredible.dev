@@ -318,17 +318,6 @@ def _reports_blocked(_task: Task, trace: Trace) -> Grade:
     )
 
 
-@behavior("paper_unavailable_once")
-def _paper_unavailable_once(_task: Task, trace: Trace) -> Grade:
-    mentions = sum(1 for reply in trace.replies if "paper" in reply.lower())
-    delivered = bool(_delivered(trace))
-    return Grade(
-        "Paper unavailable said once",
-        mentions == 1 and delivered,
-        f"{mentions} mention(s); delivered: {delivered}",
-    )
-
-
 @behavior("quiet_check_in")
 def _quiet_check_in(_task: Task, trace: Trace) -> Grade:
     # A woken turn that delivers is the news the person asked for; one that delivers nothing is a

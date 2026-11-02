@@ -1,7 +1,5 @@
 """Wakers: how each runtime starts a new lead turn on a thread (`harness.protocols.Waker`).
 
-- `mda`: Managed Deep Agents one-time runtime schedules on the thread (public API), which run with
-  the thread's channel binding, so the reply posts to the Slack thread and `upload_files` works.
 - `local`: an in-process run queue, for the CLI, the demo and the self-hosted API.
 """
 

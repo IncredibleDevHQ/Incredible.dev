@@ -54,8 +54,6 @@ NOT_TOOLS = frozenset(
         "max_colors",  # an ffmpeg filter option
     }
 )
-#: Skills another slice owns; the router already names them.
-PENDING_SKILLS = frozenset({"paper-design"})
 #: kebab-case words in code spans that are not skills, gates or scripts.
 NOT_SKILLS = frozenset(
     {
@@ -222,7 +220,7 @@ def test_every_script_and_gate_named_exists(doc: Path) -> None:
 
 @pytest.mark.parametrize("doc", MARKDOWN, ids=_id)
 def test_every_skill_or_gate_in_code_names_exists(doc: Path) -> None:
-    known = skill_names() | gate_names() | PENDING_SKILLS | NOT_SKILLS
+    known = skill_names() | gate_names() | NOT_SKILLS
     known |= {Path(name).stem for name in script_basenames()}
     spans = {span.strip() for span in CODE_SPAN.findall(_prose(doc))}
     names = {span for span in spans if KEBAB.match(span) and not span.startswith("data-")}

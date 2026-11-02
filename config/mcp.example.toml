@@ -2,81 +2,23 @@
 # config/mcp.toml (Git-ignored) and uncomment what you want. docs/integrations.md walks through it.
 # Names are lowercase letters and digits; tools are named `{server}_{tool}`.
 #
-# On Managed Deep Agents a server signs in through a workspace connection (`connection`):
-#   owner = "user"   each person signs in to their own account the first time a request needs it
-#                    (MDA posts a connect link). Create the connection once with
-#                    `uv run mda connections create <connection> --mcp <url>`.
-#   owner = "agent"  one account for everyone. Create it and sign in now with
-#                    `uv run mda connections create <connection> --mcp <url> --authorize`.
-# Locally and self-hosted, a server sends headers read from the host environment (`headers_env`)
-# instead, and per-person servers are left out. Header values never enter the sandbox.
+# A server sends headers read from the host environment (`headers_env`: header -> env var). Header
+# values never enter the sandbox.
 
-# --- LangSmith managed tools ---------------------------------------------------------------------
+# --- LangSmith managed tools -------------------------------------------------------------------
 
-# Web search (Parallel), run by LangSmith. No credentials to set: MDA authenticates it, and locally
-# and self-hosted it is sent your LANGSMITH_API_KEY. Outside GCP US, use your region's API host.
+# Web search (Parallel), run by LangSmith. No credentials to set: it is sent your LANGSMITH_API_KEY.
+# Outside GCP US, use your region's API host.
 # [servers.parallel]
 # url = "https://api.smith.langchain.com/v1/managed-tools/servers/parallel/mcp"
 
-# --- Hosted integrations (official MCP servers, OAuth) ------------------------------------------
+# --- Hosted integrations -----------------------------------------------------------------------
 
-# Notion: pages, databases and comments (briefs, launch docs, content calendars).
-# [servers.notion]
-# url = "https://mcp.notion.com/mcp"
-# connection = "notion"
-# owner = "user"
-
-# Linear: issues, projects and comments (design requests, specs).
-# [servers.linear]
-# url = "https://mcp.linear.app/mcp"
-# connection = "linear"
-# owner = "user"
-
-# GitHub: repositories, pull requests and issues (release notes, PR explainers).
-# Locally, a personal access token works too: headers_env = { Authorization = "GITHUB_MCP_AUTHORIZATION" }
-# with GITHUB_MCP_AUTHORIZATION="Bearer <token>".
+# GitHub: repositories, pull requests and issues (release notes, PR explainers). A personal access
+# token, with GITHUB_MCP_AUTHORIZATION="Bearer <token>" in .env.
 # [servers.github]
 # url = "https://api.githubcopilot.com/mcp/"
-# connection = "github"
-# owner = "user"
-
-# Figma: frames, components and variables from design files. Figma admits only clients in its MCP
-# catalog to the remote server; check yours is listed.
-# [servers.figma]
-# url = "https://mcp.figma.com/mcp"
-# connection = "figma"
-# owner = "user"
-
-# Atlassian: Jira issues and Confluence pages (Cloud only).
-# [servers.atlassian]
-# url = "https://mcp.atlassian.com/v1/mcp"
-# connection = "atlassian"
-# owner = "user"
-
-# Asana: tasks and projects. Asana's v2 server takes only clients registered in its developer
-# console, not automatic registration, so its connection needs a registered client first.
-# [servers.asana]
-# url = "https://mcp.asana.com/v2/mcp"
-# connection = "asana"
-# owner = "user"
-
-# Canva: designs and brand assets. Access to Canva's server is limited; check it is open to you.
-# [servers.canva]
-# url = "https://mcp.canva.com/mcp"
-# connection = "canva"
-# owner = "user"
-
-# Webflow: sites, CMS collections and pages.
-# [servers.webflow]
-# url = "https://mcp.webflow.com/mcp"
-# connection = "webflow"
-# owner = "user"
-
-# Box: files and folders a person can already open. A Box admin enables MCP first.
-# [servers.box]
-# url = "https://mcp.box.com"
-# connection = "box"
-# owner = "user"
+# headers_env = { Authorization = "GITHUB_MCP_AUTHORIZATION" }
 
 # --- Your own servers ---------------------------------------------------------------------------
 
@@ -84,15 +26,12 @@
 # [servers.docs]
 # url = "https://docs.example.com/mcp"
 # transport = "http"                                # or "sse"
-# connection = "docs-token"                         # MDA: a workspace connection holding its credentials
-# headers_env = { Authorization = "DOCS_MCP_AUTHORIZATION" }   # local and self-hosted
+# headers_env = { Authorization = "DOCS_MCP_AUTHORIZATION" }
 # include_tools = ["search"]
 # timeout = 30
 # always_shown = false
 #
-# A local app's own stdio server (local and self-hosted only; MDA leaves it out):
+# A local app's own stdio server:
 # [servers.notes]
 # transport = "stdio"
 # command = ["notes-app", "mcp"]
-#
-# Paper is configured with PAPER_* in .env (docs/partners/paper.md), not here.

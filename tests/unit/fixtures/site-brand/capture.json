@@ -1,0 +1,457 @@
+{
+ "url": "https://docs.perplexity.ai",
+ "finalUrl": "https://docs.perplexity.ai/docs/getting-started/overview",
+ "host": "docs.perplexity.ai",
+ "meta": {
+  "title": "Overview - Perplexity",
+  "siteName": "Perplexity",
+  "description": "Perplexity API Platform - build with the Orchestrator, Agent, Search, Embeddings, and Decisions APIs. Real-time, web-wide research and Q&A capabilities for your products.",
+  "themeColor": ""
+ },
+ "palette": [
+  "#EEEEEE",
+  "#121516",
+  "#F7F7F8",
+  "#707070",
+  "#FFFFFF",
+  "#F8F8F8",
+  "#1A6872",
+  "#545658",
+  "#000000",
+  "#0A0A0A",
+  "#9F9F9F",
+  "#DBDDDE",
+  "#171717",
+  "#111417",
+  "#505050",
+  "#35BDC8",
+  "#22808C",
+  "#252526",
+  "#DFDFDF",
+  "#E0E0E0",
+  "#00BC7D",
+  "#2CA0AB",
+  "#2F6FAE",
+  "#B05F2E"
+ ],
+ "stats": [
+  {
+   "hex": "#121516",
+   "count": 295,
+   "bgCount": 4,
+   "interactiveBg": 2,
+   "areaBg": 3,
+   "textCount": 291,
+   "maxArea": 418391
+  },
+  {
+   "hex": "#545658",
+   "count": 106,
+   "bgCount": 0,
+   "interactiveBg": 0,
+   "areaBg": 0,
+   "textCount": 106,
+   "maxArea": 0
+  },
+  {
+   "hex": "#707070",
+   "count": 72,
+   "bgCount": 2,
+   "interactiveBg": 0,
+   "areaBg": 0,
+   "textCount": 70,
+   "maxArea": 0
+  },
+  {
+   "hex": "#000000",
+   "count": 71,
+   "bgCount": 0,
+   "interactiveBg": 0,
+   "areaBg": 0,
+   "textCount": 71,
+   "maxArea": 0
+  },
+  {
+   "hex": "#0A0A0A",
+   "count": 18,
+   "bgCount": 0,
+   "interactiveBg": 0,
+   "areaBg": 0,
+   "textCount": 18,
+   "maxArea": 0
+  },
+  {
+   "hex": "#9F9F9F",
+   "count": 17,
+   "bgCount": 3,
+   "interactiveBg": 0,
+   "areaBg": 0,
+   "textCount": 14,
+   "maxArea": 256
+  },
+  {
+   "hex": "#F7F7F8",
+   "count": 10,
+   "bgCount": 4,
+   "interactiveBg": 2,
+   "areaBg": 2,
+   "textCount": 6,
+   "maxArea": 1600640
+  },
+  {
+   "hex": "#FFFFFF",
+   "count": 15,
+   "bgCount": 3,
+   "interactiveBg": 0,
+   "areaBg": 1,
+   "textCount": 12,
+   "maxArea": 196704
+  },
+  {
+   "hex": "#171717",
+   "count": 11,
+   "bgCount": 0,
+   "interactiveBg": 0,
+   "areaBg": 0,
+   "textCount": 11,
+   "maxArea": 0
+  },
+  {
+   "hex": "#35BDC8",
+   "count": 2,
+   "bgCount": 2,
+   "interactiveBg": 2,
+   "areaBg": 0,
+   "textCount": 0,
+   "maxArea": 6813
+  },
+  {
+   "hex": "#6B7280",
+   "count": 7,
+   "bgCount": 0,
+   "interactiveBg": 0,
+   "areaBg": 0,
+   "textCount": 7,
+   "maxArea": 0
+  },
+  {
+   "hex": "#505050",
+   "count": 5,
+   "bgCount": 0,
+   "interactiveBg": 0,
+   "areaBg": 0,
+   "textCount": 5,
+   "maxArea": 0
+  },
+  {
+   "hex": "#1A6872",
+   "count": 2,
+   "bgCount": 2,
+   "interactiveBg": 1,
+   "areaBg": 1,
+   "textCount": 0,
+   "maxArea": 105171
+  },
+  {
+   "hex": "#3F3F3F",
+   "count": 4,
+   "bgCount": 0,
+   "interactiveBg": 0,
+   "areaBg": 0,
+   "textCount": 4,
+   "maxArea": 0
+  }
+ ],
+ "grounds": [
+  {
+   "hex": "#F7F7F8",
+   "votes": 19
+  },
+  {
+   "hex": "#F8F8F8",
+   "votes": 4
+  },
+  {
+   "hex": "#1A6872",
+   "votes": 3
+  },
+  {
+   "hex": "#121516",
+   "votes": 2
+  }
+ ],
+ "roles": {
+  "ground": "#F7F7F8",
+  "text": "#121516",
+  "accent": "#1A6872",
+  "second": "#00BC7D"
+ },
+ "fonts": {
+  "display": "GT Standard",
+  "body": "GT Standard",
+  "mono": "GT Standard Mono",
+  "seen": [
+   "GT Standard",
+   "GT Standard Mono"
+  ],
+  "faces": 56,
+  "loaded": []
+ },
+ "fontFiles": [],
+ "logo": {
+  "png": "logos/logo.png",
+  "svg": "logos/logo.svg",
+  "width": 165,
+  "height": 24,
+  "label": "light logo"
+ },
+ "symbol": {
+  "png": "logos/symbol.png",
+  "width": 192,
+  "height": 192
+ },
+ "shape": {
+  "headlines": [
+   {
+    "level": 2,
+    "text": "Documentation Index",
+    "size": 28,
+    "weight": 500,
+    "tracking": "-0.56px",
+    "family": "GT Standard"
+   },
+   {
+    "level": 3,
+    "text": "Getting Started",
+    "size": 22,
+    "weight": 500,
+    "tracking": "-0.44px",
+    "family": "GT Standard"
+   },
+   {
+    "level": 3,
+    "text": "Orchestrator API",
+    "size": 22,
+    "weight": 500,
+    "tracking": "-0.44px",
+    "family": "GT Standard"
+   },
+   {
+    "level": 3,
+    "text": "Agent API",
+    "size": 22,
+    "weight": 500,
+    "tracking": "-0.44px",
+    "family": "GT Standard"
+   },
+   {
+    "level": 3,
+    "text": "Search API",
+    "size": 22,
+    "weight": 500,
+    "tracking": "-0.44px",
+    "family": "GT Standard"
+   },
+   {
+    "level": 3,
+    "text": "Embeddings API",
+    "size": 22,
+    "weight": 500,
+    "tracking": "-0.44px",
+    "family": "GT Standard"
+   },
+   {
+    "level": 3,
+    "text": "Decisions API",
+    "size": 22,
+    "weight": 500,
+    "tracking": "-0.44px",
+    "family": "GT Standard"
+   },
+   {
+    "level": 3,
+    "text": "Perplexity SDK",
+    "size": 22,
+    "weight": 500,
+    "tracking": "-0.44px",
+    "family": "GT Standard"
+   },
+   {
+    "level": 3,
+    "text": "Admin & Management",
+    "size": 22,
+    "weight": 500,
+    "tracking": "-0.44px",
+    "family": "GT Standard"
+   },
+   {
+    "level": 3,
+    "text": "Resources",
+    "size": 22,
+    "weight": 500,
+    "tracking": "-0.44px",
+    "family": "GT Standard"
+   },
+   {
+    "level": 2,
+    "text": "Try Our APIs",
+    "size": 20,
+    "weight": 600,
+    "tracking": "-0.4px",
+    "family": "GT Standard"
+   },
+   {
+    "level": 2,
+    "text": "Available APIs",
+    "size": 20,
+    "weight": 600,
+    "tracking": "-0.4px",
+    "family": "GT Standard"
+   }
+  ],
+  "controls": [
+   {
+    "text": "Docs",
+    "background": "#121516",
+    "color": "#252526",
+    "radius": 100,
+    "weight": 400,
+    "height": 35
+   },
+   {
+    "text": "Get Started",
+    "background": "#1A6872",
+    "color": "#F7F7F8",
+    "radius": 8,
+    "weight": 500,
+    "height": 32
+   },
+   {
+    "text": "SearchCtrl K",
+    "background": "#F7F7F8",
+    "color": "#545658",
+    "radius": 12,
+    "weight": 300,
+    "height": 36
+   },
+   {
+    "text": "Overview",
+    "background": "#121516",
+    "color": "#121516",
+    "radius": 8,
+    "weight": 400,
+    "height": 30
+   },
+   {
+    "text": "Get Started",
+    "background": "#35BDC8",
+    "color": "#121516",
+    "radius": 9999,
+    "weight": 500,
+    "height": 45
+   },
+   {
+    "text": "Get Your API Key",
+    "background": "#35BDC8",
+    "color": "#121516",
+    "radius": 9999,
+    "weight": 500,
+    "height": 45
+   },
+   {
+    "text": "Search The Web",
+    "background": "#FFFFFF",
+    "color": "#FFFFFF",
+    "radius": 8,
+    "weight": 300,
+    "height": 40
+   }
+  ],
+  "buttonRadii": [
+   100,
+   8,
+   12,
+   8,
+   9999,
+   9999,
+   8
+  ],
+  "cards": [
+   {
+    "radius": 12,
+    "shadow": "",
+    "background": "#121516",
+    "border": null
+   },
+   {
+    "radius": 6,
+    "shadow": "",
+    "background": "#121516",
+    "border": null
+   },
+   {
+    "radius": 6,
+    "shadow": "",
+    "background": "#F7F7F8",
+    "border": null
+   },
+   {
+    "radius": 14,
+    "shadow": "",
+    "background": "#FFFFFF",
+    "border": null
+   },
+   {
+    "radius": 14,
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(59, 130, 246,",
+    "background": null,
+    "border": null
+   },
+   {
+    "radius": 6,
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(59, 130, 246,",
+    "background": null,
+    "border": null
+   },
+   {
+    "radius": 4,
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(59, 130, 246,",
+    "background": null,
+    "border": null
+   },
+   {
+    "radius": 12,
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.1) 0px 4px 6px -1px, rgba(0, 0, 0, 0",
+    "background": null,
+    "border": "#DBDDDE"
+   },
+   {
+    "radius": 12,
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.1) 0px 4px 6px -1px, rgba(0, 0, 0, 0",
+    "background": null,
+    "border": "#DBDDDE"
+   },
+   {
+    "radius": 12,
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.1) 0px 4px 6px -1px, rgba(0, 0, 0, 0",
+    "background": null,
+    "border": "#DBDDDE"
+   },
+   {
+    "radius": 12,
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.1) 0px 4px 6px -1px, rgba(0, 0, 0, 0",
+    "background": null,
+    "border": "#DBDDDE"
+   },
+   {
+    "radius": 12,
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.1) 0px 4px 6px -1px, rgba(0, 0, 0, 0",
+    "background": null,
+    "border": "#DBDDDE"
+   }
+  ]
+ },
+ "firstScreen": "first-screen.jpg",
+ "warnings": [],
+ "_comment": "A trimmed read of a docs site (2026-11-01) with its marks redrawn as plain shapes."
+}

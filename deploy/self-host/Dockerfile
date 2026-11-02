@@ -1,5 +1,5 @@
-# The self-hosted agent: the HTTP API and the Slack adapter run from this image. Renders run in
-# separate sandbox containers (sandbox/Dockerfile) that the agent starts through the Docker socket.
+# The self-hosted agent: the HTTP API runs from this image. Renders run in separate sandbox
+# containers (sandbox/Dockerfile) that the agent starts through the Docker socket.
 FROM ghcr.io/astral-sh/uv:0.12.9@sha256:8b940d3a9d65bed080436972241af2e21c84b5e8c9193f7014ed71479ee795ff AS uv
 FROM docker:27.5.1-cli@sha256:851f91d241214e7c6db86513b270d58776379aacc5eb9c4a87e5b47115e3065c AS docker-cli
 
@@ -10,7 +10,7 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PROJECT_ENVIRONMENT=/opt/venv PAT
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
-RUN uv sync --frozen --no-dev --extra self-host --extra slack
+RUN uv sync --frozen --no-dev --extra self-host
 COPY instructions.md NOTICE.md ./
 COPY config ./config
 COPY skills ./skills

@@ -36,10 +36,6 @@ jobs:
         run: uv run --frozen python scripts/sync_sandbox_recipe.py --check
       - name: Vendored skills match skills-lock.json
         run: uv run --frozen design-agent skills verify
-      - name: MDA definition import smoke
-        run: uv run --frozen python -c "import agent; print(agent.agent.config['name'])"
-      - name: MDA compiles the project as it is (what `mda deploy` ships)
-        run: uv run --frozen mda build .
 
   render:
     runs-on: ubuntu-latest

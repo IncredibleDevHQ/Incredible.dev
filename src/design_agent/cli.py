@@ -7,7 +7,6 @@ import json
 import shutil
 import subprocess
 import sys
-import time
 import uuid
 from pathlib import Path
 
@@ -85,7 +84,6 @@ async def _ask(
     from design_agent.runtime.local import build_local_runtime, final_text
     from design_agent.runtime.persistence import open_persistence, workspace_of
     from design_agent.tools.mcp import load_mcp_tools, servers_for_runtime
-    from design_agent.tools.paper import PaperPolicy, admit_paper_tools
 
     settings = Settings()
     if needed := missing_model_key(settings):
@@ -103,7 +101,6 @@ async def _ask(
             f"MCP server {name} is unavailable this run ({reason}); the rest works.", err=True
         )
     servers = [s for s in servers if s.name not in loaded.failed]
-    loaded.tools = admit_paper_tools(loaded.tools, PaperPolicy.from_settings(settings))
     meter = Meter()
     async with open_persistence(settings, workspace_of(settings, root)) as (checkpointer, store):
         runtime = build_local_runtime(
@@ -277,7 +274,7 @@ def config_set(pairs: tuple[str, ...]) -> None:
 @config.command("generate")
 @click.argument("names", nargs=-1, required=True)
 def config_generate(names: tuple[str, ...]) -> None:
-    """Fill random secrets (DESIGN_AGENT_API_TOKENS, PAPER_BRIDGE_TOKEN, POSTGRES_PASSWORD)."""
+    """Fill random secrets (DESIGN_AGENT_API_TOKENS, POSTGRES_PASSWORD)."""
     from design_agent.envfile import EnvFileError, generate
 
     try:
@@ -366,33 +363,9 @@ def eval_run(
     click.echo(f"Report: {write_report(results, tasks, out_root) / 'README.md'}")
 
 
-@main.command(
-    "paper-bridge",
-    context_settings={
-        "ignore_unknown_options": True,
-        "allow_extra_args": True,
-        "help_option_names": [],
-    },
-)
-@click.pass_context
-def paper_bridge(ctx: click.Context) -> None:
-    """Serve this machine's Paper Desktop to a remote agent behind a bearer token (`--help`)."""
-    from design_agent.paper_bridge.__main__ import main as bridge_main
-
-    sys.exit(bridge_main(list(ctx.args)))
-
-
-@main.command("slack")
-def slack_command() -> None:
-    """Run the self-hosted Slack app (Socket Mode by default; see docs/self-hosting.md)."""
-    from design_agent.surfaces.slack.bolt_app import serve as serve_slack
-
-    asyncio.run(serve_slack(_root(), Settings()))
-
-
 @main.group()
 def sandbox() -> None:
-    """Build, test and publish the designer's computer."""
+    """Build and test the designer's computer."""
 
 
 @sandbox.command("build")
@@ -509,46 +482,6 @@ if __name__ == "__main__":
     main()
 
 
-@sandbox.command("publish")
-@click.option("--fs-gib", default=16, show_default=True, help="Filesystem size of the snapshot.")
-@click.option("--yes", is_flag=True, help="Publish without asking.")
-def sandbox_publish(fs_gib: int, yes: bool) -> None:
-    """Build the computer as a LangSmith snapshot and declare it in sandbox/__init__.py."""
-    from langsmith.sandbox import SandboxClient
-
-    from design_agent.runtime.sandbox.publish import PublishError, declare_snapshot, publish
-
-    settings = Settings()
-    if settings.langsmith_api_key is None:
-        click.echo(
-            "LANGSMITH_API_KEY is not set; publishing needs your LangSmith workspace.", err=True
-        )
-        sys.exit(1)
-    if not yes and not click.confirm(
-        f"This builds a {fs_gib} GiB snapshot in your LangSmith workspace (sandbox time is billed). Continue?"
-    ):
-        sys.exit(1)
-    click.echo(
-        "Building the agent's computer. This takes about 10-15 minutes; leave it running. It is "
-        "only the sandbox image, once per workspace: `uv run mda deploy` deploys the agent itself."
-    )
-    started = time.monotonic()
-    client = SandboxClient(api_key=settings.langsmith_api_key.get_secret_value())
-    try:
-        published = publish(client, _root(), fs_gib=fs_gib, say=click.echo)
-    except PublishError as error:
-        click.echo(f"Not published: {error}", err=True)
-        sys.exit(1)
-    declare_snapshot(_root(), published.snapshot_name)
-    minutes = round((time.monotonic() - started) / 60)
-    click.echo(
-        f"Published {published.snapshot_name} in {minutes} min; sandbox/__init__.py now declares it."
-    )
-    click.echo(
-        f"Local and self-hosted LangSmith sandboxes: DESIGN_AGENT_SANDBOX_SNAPSHOT={published.snapshot_name}"
-    )
-
-
 @brand.command("init")
 @click.option("--force", is_flag=True, help="Replace an existing workspace/brand/.")
 def brand_init(force: bool) -> None:
@@ -616,21 +549,9 @@ def fonts_verify() -> None:
     sys.exit(1 if problems else 0)
 
 
-@sandbox.command("use")
-@click.argument("snapshot")
-def sandbox_use(snapshot: str) -> None:
-    """Use LangSmith sandboxes from a published snapshot for local and self-hosted runs."""
-    from design_agent.envfile import write_env
-
-    write_env(
-        _root(), {"DESIGN_AGENT_SANDBOX": "langsmith", "DESIGN_AGENT_SANDBOX_SNAPSHOT": snapshot}
-    )
-    click.echo(f"Local and self-hosted runs now clone {snapshot} (DESIGN_AGENT_SANDBOX=langsmith).")
-
-
 @main.group("test")
 def connectivity() -> None:
-    """Check connections with real calls: model, sandbox, Paper, Slack, database. Costs cents."""
+    """Check connections with real calls: model, sandbox, database. Costs cents."""
 
 
 @connectivity.command("model")
@@ -661,50 +582,6 @@ def test_sandbox() -> None:
         f"sandbox: {'ok' if result.exit_code == 0 else 'failed'}: {result.output.strip()[-300:]}"
     )
     sys.exit(0 if result.exit_code == 0 else 1)
-
-
-@connectivity.command("paper")
-def test_paper() -> None:
-    from design_agent.tools.mcp import load_mcp_tools
-    from design_agent.tools.paper import PaperConfigError, paper_server
-
-    try:
-        server = paper_server(Settings(), runtime="local")
-    except PaperConfigError as error:
-        click.echo(f"paper: {error}", err=True)
-        sys.exit(1)
-    if server is None:
-        click.echo("paper: off")
-        return
-    loaded = asyncio.run(load_mcp_tools([server]))
-    if loaded.failed:
-        click.echo(f"paper: not reachable ({loaded.failed[server.name]})", err=True)
-        sys.exit(1)
-    click.echo(f"paper: ok, {len(loaded.tools)} tools")
-
-
-@connectivity.command("slack")
-def test_slack() -> None:
-    from design_agent.surfaces.slack.client import SlackClient, SlackError
-
-    settings = Settings()
-    if settings.slack_bot_token is None:
-        click.echo("slack: SLACK_BOT_TOKEN is not set (self-hosted Slack only)", err=True)
-        sys.exit(1)
-
-    async def check() -> str:
-        client = SlackClient(settings.slack_bot_token.get_secret_value())  # type: ignore[union-attr]
-        try:
-            identity = await client.identity()
-            return f"ok, bot {identity.user_id} in team {identity.team_id}"
-        finally:
-            await client.aclose()
-
-    try:
-        click.echo(f"slack: {asyncio.run(check())}")
-    except SlackError as error:
-        click.echo(f"slack: {error.code}", err=True)
-        sys.exit(1)
 
 
 @connectivity.command("db")

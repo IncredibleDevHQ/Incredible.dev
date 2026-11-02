@@ -1,6 +1,6 @@
 """What a long-running self-hosted process does in the background: stop idle sandbox containers
-every minute (their volumes stay) and sweep what a restart killed every 15 minutes, as MDA's
-housekeeping schedule does there. Started next to the API or the Slack adapter."""
+every minute (their volumes stay) and sweep what a restart killed every 15 minutes. Started next to
+the API or another long-running surface."""
 
 from __future__ import annotations
 

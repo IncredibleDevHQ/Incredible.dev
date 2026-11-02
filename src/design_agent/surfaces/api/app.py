@@ -1,6 +1,6 @@
 """The self-hosted HTTP API: one process runs the agent, its helpers, wake-ups and housekeeping.
 
-Not the LangGraph Agent Server protocol; a small surface for your own tools and the Slack adapter:
+Not the LangGraph Agent Server protocol; a small surface for your own tools:
 
 - `POST /threads/{thread_id}/messages` `{"text": "..."}` runs one turn and returns the reply, the
   files delivered on the thread so far, and whether background work is still running.
@@ -40,7 +40,6 @@ from design_agent.runtime import maintenance
 from design_agent.runtime.local import LocalRuntime, build_local_runtime, final_text
 from design_agent.runtime.persistence import open_persistence, workspace_of
 from design_agent.tools.mcp import load_mcp_tools, servers_for_runtime
-from design_agent.tools.paper import PaperPolicy, admit_paper_tools
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -129,7 +128,6 @@ def create_app(
         servers = servers_for_runtime(project_root, settings, "self_hosted")
         loaded = await load_mcp_tools(servers)
         servers = [s for s in servers if s.name not in loaded.failed]
-        loaded.tools = admit_paper_tools(loaded.tools, PaperPolicy.from_settings(settings))
         async with open_persistence(settings, workspace_of(settings, project_root)) as (
             checkpointer,
             store,

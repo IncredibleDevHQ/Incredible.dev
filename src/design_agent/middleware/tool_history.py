@@ -74,7 +74,7 @@ _NO_REFERENCES_TEXT = "No matching tools are available."
 # unanswered function call. A bad tool schema (`tools.N...`) or a policy refusal matches none.
 _HISTORY_ERROR_MARKERS = ("messages.", "tool reference", "tool_use", "tool_result", "input[")
 #: How many threads' "repair up front" flags one process remembers. The graph is compiled once
-#: per process in MDA, so the flag is scoped by thread, not by middleware instance.
+#: per process, so the flag is scoped by thread, not by middleware instance.
 _REPAIRING_THREADS = 512
 
 
@@ -313,7 +313,7 @@ class StaleHistoryError(RuntimeError):
     """The provider rejects this thread's history, and the one deeper repair did not fix it.
 
     Fixed text, raised `from None`: the provider's message is recorded on the failed model call in
-    the trace, and must never reach the model or the Slack thread.
+    the trace, and must never reach the model or the thread.
     """
 
     def __init__(self) -> None:
@@ -356,7 +356,7 @@ class ToolHistoryMiddleware(AgentMiddleware):
     """Send a history the provider accepts; repair and retry once if it still refuses.
 
     Register it innermost, after anything that changes the tool list, so it compares history
-    with the final tool list. MDA compiles the graph once per process, so the "repair already
+    with the final tool list. The graph is compiled once per process, so the "repair already
     needed" flag is kept per thread (bounded): a thread that needed the deep repair gets it up
     front on its later calls instead of a 400 on each, and no other thread pays for it.
     """

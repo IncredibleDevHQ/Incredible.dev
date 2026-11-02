@@ -1,4 +1,4 @@
-"""Where threads, checkpoints and the store live outside MDA.
+"""Where threads, checkpoints and the store live.
 
 Self-hosted deployments set `DATABASE_URL` (Postgres): LangGraph's Postgres checkpointer and store
 hold the conversations and everything the harness keeps in the store (helper ledger, transcripts,

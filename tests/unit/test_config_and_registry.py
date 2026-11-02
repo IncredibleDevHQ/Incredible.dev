@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from deepagents.middleware.summarization import compute_summarization_defaults
 
 from design_agent.config import ModelSpec, Settings
 from design_agent.models.cache import CachedChatAnthropic
@@ -115,6 +116,24 @@ def test_anthropic_model_is_built_with_registry_behavior() -> None:
     assert model.thinking == {"type": "adaptive"}  # type: ignore[attr-defined]
 
 
+def test_a_model_newer_than_its_package_takes_its_profile_from_the_registry() -> None:
+    terra = build_chat_model(
+        settings(model="openai:gpt-6.1-terra", openai_api_key="sk-test"), "lead"
+    )
+    assert terra.use_responses_api is True  # type: ignore[attr-defined]
+    assert terra.reasoning == {"effort": "medium"}  # type: ignore[attr-defined]
+    assert terra.profile == {
+        "max_input_tokens": 1_050_000,
+        "image_inputs": True,
+        "tool_calling": True,
+        "max_output_tokens": 128_000,
+    }
+    # So Deep Agents summarizes at a share of the window, not at its fixed 170k-token fallback.
+    assert compute_summarization_defaults(terra)["trigger"] == ("fraction", 0.85)
+    sol = build_chat_model(settings(model="openai:gpt-6.1-sol", openai_api_key="sk-test"), "lead")
+    assert sol.profile is not None and sol.profile.get("name") == "GPT-6.1 Sol"
+
+
 def test_base_url_requires_a_named_key(monkeypatch: pytest.MonkeyPatch) -> None:
     s = settings(model="openai:gpt-6-sol", model_base_url="https://llm.example/v1")
     with pytest.raises(ModelConfigurationError, match="MODEL_API_KEY_ENV"):
@@ -128,6 +147,17 @@ def test_base_url_requires_a_named_key(monkeypatch: pytest.MonkeyPatch) -> None:
     assert build_chat_model(s, "lead").openai_api_base == "https://llm.example/v1"  # type: ignore[attr-defined]
 
 
+#: Registry models the installed provider package does not know yet, with what the release that
+#: does publishes. langchain-openai 1.7.3 knows gpt-6.1-terra but needs langchain-core 1.7.
+NEWER_THAN_PACKAGE: dict[str, dict[str, object]] = {
+    "openai:gpt-6.1-terra": {
+        "image_inputs": True,
+        "max_input_tokens": 1_050_000,
+        "max_output_tokens": 128_000,
+    },
+}
+
+
 @pytest.mark.parametrize(
     "model_id", sorted(k for k in CAPABILITY_REGISTRY if k.startswith(("anthropic:", "openai:")))
 )
@@ -138,6 +168,9 @@ def test_registry_agrees_with_installed_provider_profiles(model_id: str) -> None
     else:
         from langchain_openai.data._profiles import _PROFILES
     profile = _PROFILES.get(model)
+    if model_id in NEWER_THAN_PACKAGE:
+        assert profile is None, f"the package knows {model_id} now: drop it from NEWER_THAN_PACKAGE"
+        profile = NEWER_THAN_PACKAGE[model_id]
     assert profile is not None, f"{model_id} is not a model the installed package knows"
     caps = CAPABILITY_REGISTRY[model_id]
     assert caps.vision == bool(profile.get("image_inputs"))
@@ -159,16 +192,3 @@ def test_brand_path_falls_back_to_the_sample_brand(tmp_path) -> None:  # type: i
     (tmp_path / "workspace/brand").mkdir(parents=True)
     (tmp_path / "workspace/brand/brand.toml").write_text("name = 'x'\n")
     assert settings().resolved_brand_path(tmp_path) == tmp_path / "workspace/brand"
-
-
-@pytest.mark.parametrize("name", ["Design Agent", "Design Agent Test", "design-agent_2.0", "A"])
-def test_a_slack_name_mda_accepts_is_accepted(name: str) -> None:
-    assert settings(slack_name=name).slack_name == name
-
-
-@pytest.mark.parametrize(
-    "name", ["Design Agent (test)", " Design Agent", "Design Agent-", "Design!"]
-)
-def test_a_slack_name_mda_would_reject_fails_before_the_deploy(name: str) -> None:
-    with pytest.raises(ValueError, match="slack_name"):
-        settings(slack_name=name)

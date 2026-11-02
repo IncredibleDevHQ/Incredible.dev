@@ -1,15 +1,14 @@
 """The housekeeping run: sweep, tidy, end in code before any model call.
 
-A deployment-level schedule (`schedules/housekeeping.py` on MDA; the self-hosted process runs the
-same sweep on a timer) starts a run whose whole prompt is `<housekeeping>`. This middleware, first
-in the list, recognizes it in `before_agent` and:
+A deployment-level schedule can start a run whose whole prompt is `<housekeeping>` (the self-hosted
+process runs the same sweep on a timer, `runtime/maintenance.py`). This middleware, first in the
+list, recognizes it in `before_agent` and:
 
 - sweeps the ledger (`BackgroundServices.sweep`): helpers, watches and pipelines a restart killed
   are published as interrupted, and finished work whose notice a restart swallowed is published
-  again, so each thread's lead hears of it on its next turn (on MDA a thread's own sentinel
-  schedule is what wakes it; a housekeeping run cannot schedule into another thread);
-- deletes this agent's expired one-time schedules (wake-ups, check-ins, sentinels), which no
-  longer count against the per-owner cap but would otherwise pile up in listings;
+  again, so each thread's lead hears of it on its next turn;
+- where the runtime keeps schedules (`runtime.schedules`), deletes this agent's expired one-time
+  schedules (wake-ups, check-ins, sentinels), which would otherwise pile up in listings;
 
 then ends the run with a one-line summary that no channel receives. A person who types the marker
 gets the same: a sweep and no model call, which is harmless.
@@ -30,7 +29,7 @@ from design_agent.middleware.quiet import latest_human
 _LOGGER = logging.getLogger(__name__)
 
 MARK = "<housekeeping>"
-#: Agent-owned schedules this agent creates carry this metadata key (`runtime/waker/mda.py`).
+#: Schedules this agent creates carry this metadata key.
 METADATA_KEY = "design_agent"
 
 

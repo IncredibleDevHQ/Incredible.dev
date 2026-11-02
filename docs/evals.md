@@ -8,7 +8,7 @@ Two kinds, both in `tests/eval/tasks.json` and both graded without a model judgi
   graphic, a 45-second launch film with voiceover, a GIF, a generated plate, a crop.
 - **Behaviors** (SPEC §20.4), source-blind: a vague ask (at most two questions, otherwise decide),
   exact copy and fewest words, no invented logo when the brand has none, no claimed attachment
-  without an upload, reporting a blocked artifact, Paper unavailable said once, quiet check-ins.
+  without an upload, reporting a blocked artifact, quiet check-ins.
   Storyboard-first, gates-before-render and `look` over hoarded frames are checked on the film and
   restyle tasks.
 

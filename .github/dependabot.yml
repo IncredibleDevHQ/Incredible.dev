@@ -8,7 +8,6 @@ updates:
       langchain-stack:
         patterns:
           - "deepagents"
-          - "managed-deepagents"
           - "langchain*"
           - "langgraph*"
           - "fastmcp"

@@ -19,7 +19,6 @@ Behavior = Literal[
     "no_invented_logo",
     "no_false_attachment",
     "reports_blocked",
-    "paper_unavailable_once",
     "quiet_check_in",
 ]
 

@@ -19,7 +19,6 @@ workspace/out/
 workspace/state/
 
 # Build and tool output
-.mda/
 .venv/
 __pycache__/
 *.py[cod]
@@ -33,4 +32,10 @@ node_modules/
 .host-sandbox/
 .coverage
 coverage.xml
-channels/slack-icon.png
+
+# Creative House: the web app's own data, and the app's build
+workspace/house/
+workspace/brands/
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo

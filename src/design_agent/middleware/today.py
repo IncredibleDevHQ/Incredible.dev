@@ -11,8 +11,8 @@ every request. Written before the model call, it lands after every `before_agent
 that replaces the history (a resumed helper's restored transcript) cannot drop it. It is a human
 message because langchain-anthropic folds system messages into the one system prompt.
 
-Whose timezone: the lead decides once per turn through `zone_for` (the Slack adapter reads the
-person's profile; otherwise the deployment's `DESIGN_AGENT_TIMEZONE`) and keeps it in
+Whose timezone: the lead decides once per turn through `zone_for` (a surface that knows the
+person's zone passes it; otherwise the deployment's `DESIGN_AGENT_TIMEZONE`) and keeps it in
 `today_zone`. A subagent reads its lead's and never hands it back: deepagents copies a finished
 subagent's state to its lead, and two parallel `task` calls would write it twice in one step,
 which LangGraph refuses. A zone that cannot be read is UTC, and the note says so.

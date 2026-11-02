@@ -8,10 +8,8 @@ from typing import Literal
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-RuntimeName = Literal["local", "mda", "self_hosted"]
-SandboxChoice = Literal["auto", "mda", "langsmith", "docker", "host"]
-PaperMode = Literal["off", "local", "bridged"]
-SlackTransport = Literal["socket_mode", "http"]
+RuntimeName = Literal["local", "self_hosted"]
+SandboxChoice = Literal["auto", "docker", "host"]
 CacheTtl = Literal["5m", "1h", "off"]
 
 DEFAULT_MODEL_SPEC = "anthropic:claude-opus-5-5"
@@ -106,17 +104,19 @@ class Settings(BaseSettings):
     # Runtime and the designer's computer
     runtime: RuntimeName = "local"
     sandbox: SandboxChoice = "auto"
-    sandbox_snapshot: str | None = None
     sandbox_image: str = DEFAULT_SANDBOX_IMAGE
     sandbox_vcpus: int = Field(default=8, ge=1, le=64)
     sandbox_mem_gib: int = Field(default=16, ge=1, le=256)
-    sandbox_fs_gib: int = Field(default=16, ge=2, le=512)
     sandbox_idle_ttl_seconds: int = Field(default=600, ge=60)
     sandbox_egress_allow: str = ""
-    """Comma-separated hosts the sandbox may reach at run time; everything else is denied."""
+    """Comma-separated hosts a sandbox with an egress proxy may reach; everything else is denied.
+    The Docker sandbox has no network, so it reaches none of them."""
     max_parallel_builders: int = Field(default=3, ge=1, le=16)
     job_budget_usd: float | None = Field(default=None, gt=0)
     workspace_root: Path = Path("workspace")
+    research_roots: str = "~/Documents/code"
+    """Comma-separated folders the web app's research looks in for the person's repositories
+    (each git repository up to two levels down can be researched, read-only, on this computer)."""
 
     # Brand
     brand_path: Path = Path("workspace/brand")
@@ -130,35 +130,13 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr | None = Field(default=None, validation_alias=_alias("GROQ_API_KEY"))
     exa_api_key: SecretStr | None = Field(default=None, validation_alias=_alias("EXA_API_KEY"))
 
-    # Paper
-    paper_mode: PaperMode = Field(default="off", validation_alias=_alias("PAPER_MODE"))
-    paper_mcp_url: str | None = Field(default=None, validation_alias=_alias("PAPER_MCP_URL"))
-    paper_bridge_token: SecretStr | None = Field(
-        default=None, validation_alias=_alias("PAPER_BRIDGE_TOKEN")
-    )
-    paper_brand_file_id: str | None = Field(
-        default=None, validation_alias=_alias("PAPER_BRAND_FILE_ID")
-    )
-    paper_drafts_file_id: str | None = Field(
-        default=None, validation_alias=_alias("PAPER_DRAFTS_FILE_ID")
-    )
-    paper_team_id: str | None = Field(default=None, validation_alias=_alias("PAPER_TEAM_ID"))
-    paper_allow_deletes: bool = Field(default=False, validation_alias=_alias("PAPER_ALLOW_DELETES"))
-    paper_allow_token_writes: bool = Field(
-        default=False, validation_alias=_alias("PAPER_ALLOW_TOKEN_WRITES")
-    )
-    paper_allow_reorg: bool = Field(default=False, validation_alias=_alias("PAPER_ALLOW_REORG"))
-    paper_allow_generation: bool = Field(
-        default=False, validation_alias=_alias("PAPER_ALLOW_GENERATION")
-    )
-
-    # Behavior switches
+    # Behavior switches (the runtime's presenter reads progress, footer and steering)
     enable_progress: bool = True
     enable_footer: bool = True
     enable_steering: bool = True
     trace_host: str | None = None
-    """LangSmith UI host for the footer's trace link (for example https://smith.langchain.com).
-    Unset, the footer has no link: a trace URL names the workspace, project and run."""
+    """LangSmith UI host for a footer's trace link (for example https://smith.langchain.com).
+    Unset, a footer has no link: a trace URL names the workspace, project and run."""
     enable_learning: bool = True
     enable_traces: bool = True
     """`list_traces` and `read_trace`: the agent reads every thread's traces in its own LangSmith
@@ -173,33 +151,7 @@ class Settings(BaseSettings):
     mcp_max_tools: int = Field(default=8, ge=1, le=64)
     """For models without native tool search: MCP tools a selector may expose per call."""
 
-    # MDA Slack appearance
-    # MDA's own rule for a Slack app name; checked here so a bad name fails before a deploy does.
-    slack_name: str = Field(
-        default="Content Studio",
-        max_length=35,
-        pattern=r"^[A-Za-z0-9_.](?:[A-Za-z0-9 _.\-]*[A-Za-z0-9_.])?$",
-    )
-    slack_description: str = Field(
-        default="On-brand design and motion from a chat thread.", max_length=139
-    )
-    slack_background_color: str | None = None
-    slack_trigger_on_all_messages: bool = False
-    slack_allow_bot_triggers: bool = False
-
     # Self-hosted
-    slack_bot_token: SecretStr | None = Field(
-        default=None, validation_alias=_alias("SLACK_BOT_TOKEN")
-    )
-    slack_app_token: SecretStr | None = Field(
-        default=None, validation_alias=_alias("SLACK_APP_TOKEN")
-    )
-    slack_signing_secret: SecretStr | None = Field(
-        default=None, validation_alias=_alias("SLACK_SIGNING_SECRET")
-    )
-    slack_transport: SlackTransport = Field(
-        default="socket_mode", validation_alias=_alias("SLACK_TRANSPORT")
-    )
     database_url: SecretStr | None = Field(default=None, validation_alias=_alias("DATABASE_URL"))
     api_tokens: SecretStr | None = None
     api_host: str = "127.0.0.1"
@@ -216,13 +168,7 @@ class Settings(BaseSettings):
         "learning_model",
         "model_base_url",
         "model_api_key_env",
-        "sandbox_snapshot",
-        "slack_background_color",
         "trace_host",
-        "paper_mcp_url",
-        "paper_brand_file_id",
-        "paper_drafts_file_id",
-        "paper_team_id",
         "job_budget_usd",
         "anthropic_api_key",
         "openai_api_key",
@@ -232,10 +178,6 @@ class Settings(BaseSettings):
         "elevenlabs_api_key",
         "groq_api_key",
         "exa_api_key",
-        "paper_bridge_token",
-        "slack_bot_token",
-        "slack_app_token",
-        "slack_signing_secret",
         "database_url",
         "api_tokens",
         mode="before",
@@ -269,6 +211,9 @@ class Settings(BaseSettings):
             if sep and token and caller:
                 result[token] = caller
         return result
+
+    def research_folders(self) -> list[Path]:
+        return [Path(p.strip()).expanduser() for p in self.research_roots.split(",") if p.strip()]
 
     def resolved_brand_path(self, root: Path) -> Path:
         """The active brand pack: the configured folder when it has a pack, else the sample brand."""

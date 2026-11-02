@@ -4,7 +4,8 @@ A job (a launch film, a render, a batch of thumbnails) runs for minutes to hours
 helpers and watchers, ends its turn, and is woken by what happens. These primitives make that
 cheap, visible and durable. Each module is one primitive; each publishes or consumes
 `harness.events.Event`s and depends only on the small protocols in `harness.protocols`, never on
-MDA, Slack or a sandbox client, so the same code runs under every runtime profile and in tests.
+a runtime, a surface or a sandbox client, so the same code runs under every runtime profile and in
+tests.
 
 Core (the event spine):
 - `events`: the `Event` type, the in-process `BUS`, and the store-backed `EventLog`.

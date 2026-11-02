@@ -57,8 +57,6 @@ RULES: tuple[Rule, ...] = (
         "NOTICE.md",
         "README.md",
         "docs/assets/readme/*",
-        "src/design_agent/config.py",
-        ".env.example",
     ),
     _rule("internal repository", r"(?i)langchain[-_]media"),
     _rule(

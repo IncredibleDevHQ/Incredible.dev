@@ -49,8 +49,7 @@ def test_lint_skips_exactly_the_vendored_skills() -> None:
 
 
 def test_runtime_skills_are_utf8_text() -> None:
-    """MDA syncs `skills/` to Context Hub, which refuses anything else, so a plain `mda deploy`
-    fails on one binary file. Binary skill files live in `skill-binaries/<skill>/`."""
+    """`skills/` holds only text; binary skill files live in `skill-binaries/<skill>/`."""
     binary = [
         path.relative_to(ROOT).as_posix()
         for path in sorted((ROOT / "skills").rglob("*"))

@@ -6,7 +6,7 @@ readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
-keywords = ["design", "motion", "deep-agents", "langchain", "hyperframes", "paper", "slack"]
+keywords = ["design", "motion", "deep-agents", "langchain", "hyperframes"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -18,14 +18,12 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "managed-deepagents>=0.9.4,<0.10",
     "deepagents>=0.7.28,<0.8",
-    # `langchain.mcp.MCPAdapter` is the MCP client MDA itself uses; the extra brings FastMCP.
+    # `langchain.mcp.MCPAdapter` is the MCP client; the extra brings FastMCP.
     "langchain[mcp]>=1.4.6,<1.5",
     "langchain-core>=1.6.12,<1.7",
     "langgraph>=1.2.16,<1.3",
     "langsmith>=0.14.11,<0.15",
-    # MDA builds install core dependencies only, so both default providers live here.
     "langchain-anthropic>=1.7.6,<2",
     "langchain-openai>=1.7.2,<2",
     "httpx>=0.28.1,<1",
@@ -36,7 +34,7 @@ dependencies = [
     "jsonschema>=4.23,<5",
     # Image clamp, contact sheets and the look tool's resize.
     "pillow>=12,<14",
-    # Self-hosted API, Paper bridge and the optional local setup console.
+    # The self-hosted API.
     "fastapi>=0.115,<1",
     "uvicorn>=0.35,<1",
     "langgraph-checkpoint-sqlite>=3.1.2,<4",
@@ -60,7 +58,6 @@ self-host = [
     "psycopg[binary,pool]>=3.2,<4",
     "uvicorn[standard]>=0.35,<1",
 ]
-slack = ["slack-bolt>=1.30,<2", "slack-sdk>=3.45,<4", "aiohttp>=3.9,<4"]
 # Extra model providers. Each adds a `provider:` prefix for DESIGN_AGENT_MODEL.
 google = ["langchain-google-genai>=4,<5"]
 groq = ["langchain-groq>=1,<2"]
@@ -79,9 +76,6 @@ dev = [
 requires = ["uv_build>=0.10,<0.14"]
 build-backend = "uv_build"
 
-[tool.mda]
-python-version = "3.13"
-
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
@@ -98,13 +92,11 @@ target-version = "py311"
 # list equal to the lock's.
 extend-exclude = [
   ".venv",
-  ".mda",
   ".agents/skills/deep-agents-core",
   ".agents/skills/deep-agents-memory",
   ".agents/skills/deep-agents-orchestration",
   ".agents/skills/langsmith-dataset",
   ".agents/skills/langsmith-evaluator",
-  ".agents/skills/managed-deep-agents",
   "skills/embedded-captions",
   "skills/faceless-explainer",
   "skills/general-video",

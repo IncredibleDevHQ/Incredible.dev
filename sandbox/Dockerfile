@@ -1,5 +1,5 @@
-# The designer's computer as an image: the published-snapshot path, the local Docker sandbox
-# runner and CI all build this file, which only runs the same recipe MDA bakes.
+# The designer's computer as an image: the local Docker sandbox runner, the self-hosted stack and
+# CI all build this file, which only runs the recipe in setup.sh.
 # Build: docker build -t design-agent-sandbox sandbox/  (linux/amd64 and linux/arm64)
 FROM node:22.23.3-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
 COPY setup.sh /tmp/design-agent-setup.sh

@@ -29,25 +29,18 @@ from design_agent.middleware.background import (
     helper_store,
 )
 from design_agent.middleware.budget import JobBudgetMiddleware
-from design_agent.middleware.footer import Footers, ReplyFooterMiddleware
 from design_agent.middleware.guards import disclosure_for, model_guards
 from design_agent.middleware.housekeeping import HousekeepingMiddleware
 from design_agent.middleware.learning_tools import LearningToolsMiddleware
 from design_agent.middleware.look import LookMiddleware
 from design_agent.middleware.looks_tools import LooksToolsMiddleware, sandbox_exec_for
 from design_agent.middleware.meter import StaggerMiddleware
-from design_agent.middleware.paper_scope import PaperScopeMiddleware
 from design_agent.middleware.pipeline_tools import PipelineToolsMiddleware
-from design_agent.middleware.progress import HelperProgressMiddleware, ThreadProgressMiddleware
 from design_agent.middleware.quiet import QuietReplyMiddleware
 from design_agent.middleware.skill_list import load_summaries
-from design_agent.middleware.steering import (
-    HelperSteeringMiddleware,
-    LeadSteeringMiddleware,
-    SteeringToolsMiddleware,
-)
+from design_agent.middleware.steering import HelperSteeringMiddleware, SteeringToolsMiddleware
 from design_agent.middleware.today import TodayMiddleware, ZoneFor, fixed_zone
-from design_agent.middleware.tracing import RunTagsMiddleware, TraceLinks, template_marker
+from design_agent.middleware.tracing import RunTagsMiddleware, template_marker
 from design_agent.middleware.watch_tools import WatchToolsMiddleware
 from design_agent.middleware.workspace import WorkspaceStagerMiddleware
 from design_agent.models.factory import Role, build_chat_model, resolve_model
@@ -56,20 +49,13 @@ from design_agent.pipelines import PIPELINES
 from design_agent.runtime.profiles import RuntimeProfile
 from design_agent.runtime.sandbox.docker import current_thread_id
 from design_agent.subagents import build_subagents
-from design_agent.surfaces.slack.phrasebook import services
-from design_agent.tools.delivery import (
-    DeliveryLedgerMiddleware,
-    UploadFallbackMiddleware,
-    build_upload_tool,
-)
+from design_agent.tools.delivery import DeliveryLedgerMiddleware, build_upload_tool
 from design_agent.tools.fetch import build_fetch_tool
 from design_agent.tools.mcp import McpServer
 from design_agent.tools.media import build_media_tools
-from design_agent.tools.paper import SERVER as PAPER
-from design_agent.tools.paper import PaperPolicy
 from design_agent.tools.projects import build_project_tools
 from design_agent.tools.traces import build_trace_tools
-from design_agent.workspace.manifest import Manifest, build_manifest
+from design_agent.workspace.manifest import BrandFor, Manifest, ManifestBook, build_manifest
 
 SKILLS_ROOT = "/skills/"
 
@@ -116,13 +102,15 @@ def build_agent_components(
     mcp_servers: Sequence[McpServer] = (),
     mcp_tools: Sequence[BaseTool] = (),
     zone_for: ZoneFor | None = None,
+    brand_for: BrandFor | None = None,
 ) -> AgentComponents:
     """Model, tools, middleware, subagents and policy for every runtime.
 
     `model` replaces the lead's model and `role_models` the models of `look` and the helpers (keyed
     by role or effort), for the scripted demo and the tests. `mcp_servers` are the declared MCP
-    servers (their tools reach the graph as `mcp_tools` locally, or from the platform on MDA).
-    `zone_for` decides whose timezone a turn's date note is in (default: `DESIGN_AGENT_TIMEZONE`).
+    servers, whose tools reach the graph as `mcp_tools`. `zone_for` decides whose timezone a
+    turn's date note is in (default: `DESIGN_AGENT_TIMEZONE`). `brand_for` gives a thread its own
+    brand pack (a surface's channel brand); without it every thread wears the configured pack.
     """
     root = runtime.project_root
     brand = load_brand_pack(settings.resolved_brand_path(root), project_root=root)
@@ -153,37 +141,16 @@ def build_agent_components(
             settings, "tool_selector", project_root=root
         )
 
-    paper = (
-        PaperPolicy.from_settings(settings) if any(s.name == PAPER for s in mcp_servers) else None
-    )
-
     def guards(
         role: str, *, lead_agent: bool, disclosure: Any
     ) -> list[AgentMiddleware[Any, Any, Any]]:
-        # Paper's policy sits outside disclosure, so search only ever sees admitted Paper tools.
-        scope: list[AgentMiddleware[Any, Any, Any]] = (
-            [
-                PaperScopeMiddleware(
-                    paper,
-                    backend_for=runtime.backend_for,
-                    local_exports=settings.paper_mode == "local",
-                )
-            ]
-            if paper
-            else []
+        return model_guards(
+            role=role,
+            lead=lead_agent,
+            summaries=summaries,
+            disclosure=disclosure_for(disclosure, mcp_servers, selector, settings.mcp_max_tools),
+            servers=mcp_servers,
         )
-        return [
-            *scope,
-            *model_guards(
-                role=role,
-                lead=lead_agent,
-                summaries=summaries,
-                disclosure=disclosure_for(
-                    disclosure, mcp_servers, selector, settings.mcp_max_tools
-                ),
-                servers=mcp_servers,
-            ),
-        ]
 
     # Housekeeping first: its run ends in `before_agent`, before staging touches the sandbox.
     # Quiet next, so its after_agent runs last of ours and rewrites a final `[quiet]` after every
@@ -193,22 +160,12 @@ def build_agent_components(
         QuietReplyMiddleware(
             lambda thread: bool(running(thread)), current_thread_id, runtime.quiet_status
         ),
-        WorkspaceStagerMiddleware(manifest, runtime.staging_for),
-        DeliveryLedgerMiddleware(runtime.backend_for, thread_id_for=runtime.thread_id_for),
-        *(
-            [
-                UploadFallbackMiddleware(
-                    build_upload_tool(
-                        adapter=runtime.fallback_delivery,
-                        backend_for=runtime.backend_for,
-                        thread_id_for=runtime.thread_id_for,
-                    ),
-                    thread_id_for=runtime.thread_id_for,
-                )
-            ]
-            if runtime.delivery is None and runtime.fallback_delivery is not None
-            else []
+        WorkspaceStagerMiddleware(
+            manifest,
+            runtime.staging_for,
+            ManifestBook(root, manifest, brand_for).for_thread if brand_for else None,
         ),
+        DeliveryLedgerMiddleware(runtime.backend_for, thread_id_for=runtime.thread_id_for),
         TodoListMiddleware(),
         TodayMiddleware(zone_for=zone_for or fixed_zone(settings.timezone)),
         RunTagsMiddleware(
@@ -216,23 +173,12 @@ def build_agent_components(
             template=template_marker() if settings.template_telemetry else None,
         ),
     ]
-    slack = runtime.slack
-    servers = services([s.name for s in mcp_servers])
-    if slack is not None:
+    if runtime.presenter is not None:
         # Steering reads follow-ups before progress draws the turn; both sit outside the model
         # guards, so a retried call shows as one step and a boundary's line counts as the reply.
-        if settings.enable_steering:
-            middleware.append(LeadSteeringMiddleware(slack, backend_for=runtime.backend_for))
-        if settings.enable_progress:
-            middleware.append(
-                ThreadProgressMiddleware(slack, servers=servers, steering=settings.enable_steering)
-            )
-        if settings.enable_footer:
-            traces = TraceLinks(settings.trace_host) if settings.trace_host else None
-            inbox = runtime.services.inbox if runtime.services is not None else None
-            middleware.append(
-                ReplyFooterMiddleware(slack, footers=Footers(traces=traces, inbox=inbox))
-            )
+        middleware.extend(
+            runtime.presenter.lead_middleware(settings=settings, services=runtime.services)
+        )
     subagents: list[SubAgent] = []
     if runtime.services is not None:
         background = BackgroundTaskMiddleware(runtime.services)
@@ -272,8 +218,8 @@ def build_agent_components(
                 TodayMiddleware(),
                 StaggerMiddleware(stagger),
                 *(
-                    [HelperProgressMiddleware(slack, servers=servers)]
-                    if slack is not None and settings.enable_progress
+                    runtime.presenter.helper_middleware(settings=settings)
+                    if runtime.presenter is not None
                     else []
                 ),
                 *guards(role, lead_agent=False, disclosure=helper_disclosure),

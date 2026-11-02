@@ -15,4 +15,4 @@ output has an original, permissively licensed brand to render. Released under CC
 
 To use your own brand, copy this folder to `workspace/brand/` (Git-ignored), edit it, and run
 `uv run design-agent brand validate`. The brand-onboarding coding-agent skill
-(`.agents/skills/brand-onboarding/`) can draft it from a guide, a website or a Paper file.
+(`.agents/skills/brand-onboarding/`) can draft it from a guide, a website or files.

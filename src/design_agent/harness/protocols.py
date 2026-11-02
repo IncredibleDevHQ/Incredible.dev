@@ -1,13 +1,13 @@
 """The interfaces between harness primitives and whatever hosts them.
 
-Primitives depend on these small protocols, never on MDA, Slack or a sandbox client directly, so the
-same primitive runs under Managed Deep Agents, the self-hosted runtime, a plain Deep Agents graph,
-or a unit test with a fake.
+Primitives depend on these small protocols, never on a runtime, a surface or a sandbox client
+directly, so the same primitive runs under the self-hosted runtime, the local one, a plain Deep
+Agents graph, or a unit test with a fake.
 
 - `HelperRunner`: start a helper (a subagent) in the background, or run one and await its report.
 - `SandboxExec`: run a shell command where the work lives (the thread's sandbox backend).
-- `Waker`: start a new lead turn on a thread now, or schedule one for later (SPEC §7.4). The MDA
-  adapter uses one-time runtime schedules; the self-hosted adapter enqueues a run in-process.
+- `Waker`: start a new lead turn on a thread now, or schedule one for later (SPEC §7.4). The
+  local and self-hosted adapter enqueues a run in-process.
 """
 
 from __future__ import annotations

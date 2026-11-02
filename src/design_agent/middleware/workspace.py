@@ -20,6 +20,7 @@ from typing import Any, Protocol
 from deepagents.backends.protocol import ExecuteResponse
 from langchain.agents.middleware import AgentMiddleware, AgentState
 from langchain_core.messages import HumanMessage
+from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
 from design_agent.workspace.manifest import Manifest
@@ -45,7 +46,7 @@ class StagingTarget(Protocol):
 
 
 class BackendTarget:
-    """Stage through a Deep Agents sandbox backend (MDA's `runtime.backend`, LangSmith, host)."""
+    """Stage through a Deep Agents sandbox backend (the host backend, or any other)."""
 
     def __init__(self, backend: Any) -> None:
         self._backend = backend
@@ -119,15 +120,20 @@ class WorkspaceStagerMiddleware(AgentMiddleware[AgentState[Any], Any, Any]):
     """Stage the workspace before the lead's first model call of each run.
 
     `target_for` resolves the staging target from the run's runtime on every run; nothing per-run
-    is kept on the instance.
+    is kept on the instance. `manifest_for`, when given, picks the manifest by the run's thread (a
+    surface that gives each channel its own brand pack); otherwise every thread gets `manifest`.
     """
 
     def __init__(
-        self, manifest: Manifest, target_for: Callable[[Runtime[Any]], StagingTarget | None]
+        self,
+        manifest: Manifest,
+        target_for: Callable[[Runtime[Any]], StagingTarget | None],
+        manifest_for: Callable[[str], Manifest] | None = None,
     ) -> None:
         super().__init__()
         self._manifest = manifest
         self._target_for = target_for
+        self._manifest_for = manifest_for
 
     @property
     def name(self) -> str:
@@ -151,16 +157,32 @@ class WorkspaceStagerMiddleware(AgentMiddleware[AgentState[Any], Any, Any]):
         }
 
     def before_agent(self, state: AgentState[Any], runtime: Runtime[Any]) -> dict[str, Any] | None:  # noqa: ARG002 - hook signature
+        return self._stage(runtime, _thread_id())
+
+    async def abefore_agent(
+        self,
+        state: AgentState[Any],  # noqa: ARG002 - hook signature
+        runtime: Runtime[Any],
+    ) -> dict[str, Any] | None:
+        # The thread is read here, in the run's own context, before the work leaves for a thread.
+        return await asyncio.to_thread(self._stage, runtime, _thread_id())
+
+    def _stage(self, runtime: Runtime[Any], thread_id: str) -> dict[str, Any] | None:
         target = self._target_for(runtime)
         if target is None:
             return None
         try:
-            stage(target, self._manifest)
+            manifest = self._manifest_for(thread_id) if self._manifest_for else self._manifest
+            stage(target, manifest)
         except Exception as error:  # noqa: BLE001 - reported to the model, never silent
             return self._note(error)
         return None
 
-    async def abefore_agent(
-        self, state: AgentState[Any], runtime: Runtime[Any]
-    ) -> dict[str, Any] | None:
-        return await asyncio.to_thread(self.before_agent, state, runtime)
+
+def _thread_id() -> str:
+    """The thread of the run in progress, from the LangGraph run config."""
+    try:
+        configurable = get_config().get("configurable") or {}
+    except RuntimeError:
+        return "local"
+    return str(configurable.get("thread_id") or "local")

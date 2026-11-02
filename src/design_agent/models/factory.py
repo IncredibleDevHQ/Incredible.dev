@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 from dotenv import dotenv_values
 from langchain_core.language_models import BaseChatModel
+from langchain_core.language_models.model_profile import ModelProfile
 
 from design_agent.config import ModelSpec, Settings
 from design_agent.models.registry import (
@@ -160,7 +161,7 @@ def _anthropic(
         kwargs.setdefault("thinking", {"type": "adaptive"})
     if resolved.max_output_tokens is not None:
         kwargs.setdefault("max_tokens", resolved.max_output_tokens)
-    return CachedChatAnthropic(model=resolved.spec.model, **kwargs)
+    return _with_profile(CachedChatAnthropic(model=resolved.spec.model, **kwargs), resolved.caps)
 
 
 def _openai(settings: Settings, resolved: ResolvedModel, kwargs: dict[str, Any]) -> BaseChatModel:
@@ -173,7 +174,24 @@ def _openai(settings: Settings, resolved: ResolvedModel, kwargs: dict[str, Any])
         kwargs.setdefault("reasoning", {"effort": resolved.effort})
     if resolved.max_output_tokens is not None:
         kwargs.setdefault("max_completion_tokens", resolved.max_output_tokens)
-    return ChatOpenAI(model=resolved.spec.model, **kwargs)
+    return _with_profile(ChatOpenAI(model=resolved.spec.model, **kwargs), resolved.caps)
+
+
+def _with_profile(model: BaseChatModel, caps: ModelCapabilities) -> BaseChatModel:
+    """A model newer than its installed provider package has no profile there, and Deep Agents
+    then summarizes at a fixed 170k tokens rather than at a share of the context window. A
+    verified registry entry stands in until the package catches up."""
+    if model.profile or not caps.verified or caps.context_window is None:
+        return model
+    profile: ModelProfile = {
+        "max_input_tokens": caps.context_window,
+        "image_inputs": caps.vision,
+        "tool_calling": caps.tool_calling,
+    }
+    if caps.max_output_tokens is not None:
+        profile["max_output_tokens"] = caps.max_output_tokens
+    model.profile = profile
+    return model
 
 
 def gateway_key(settings: Settings) -> str:

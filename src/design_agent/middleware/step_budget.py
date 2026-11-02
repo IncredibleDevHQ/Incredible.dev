@@ -2,8 +2,8 @@
 
 LangGraph counts steps against `recursion_limit` and raises out of whichever node is running when
 it is reached; the run then ends with nothing to show, though its renders sit in the sandbox.
-deepagents compiles every graph with `recursion_limit=9_999` and MDA sets none, so a turn takes the
-steps its work needs; this only ends it gracefully when the ceiling is a few steps away. Helpers
+deepagents compiles every graph with `recursion_limit=9_999`, so a turn takes the steps its work
+needs; this only ends it gracefully when the ceiling is a few steps away. Helpers
 are their own graph runs and wrap up the same way, reporting to the lead.
 
 The wrap-up is one more model call with tools off and a runtime notice, so the model says what is

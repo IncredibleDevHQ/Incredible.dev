@@ -1,11 +1,10 @@
 """The Docker sandbox runner: one container per thread, built from `sandbox/Dockerfile`.
 
 Only this module touches the Docker socket; containers never see it. Each thread gets a container
-and a named volume mounted at `/workspace`, so files survive an idle stop while processes do not,
-as on Managed Deep Agents. Containers run with no network (default-deny egress), all capabilities
-dropped and a pids limit. The agent's commands run as the image's unprivileged `node` user
-(uid 1000); staging runs as root, so the staged brand pack, gates and skill copies are read-only
-to the agent.
+and a named volume mounted at `/workspace`, so files survive an idle stop while processes do not.
+Containers run with no network (default-deny egress), all capabilities dropped and a pids limit.
+The agent's commands run as the image's unprivileged `node` user (uid 1000); staging runs as root,
+so the staged brand pack, gates and skill copies are read-only to the agent.
 
 `DockerSandboxBackend` is the one backend instance a compiled graph holds: Deep Agents takes a
 backend instance, not a factory, so each call resolves the current thread's container from the
