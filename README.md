@@ -8,8 +8,7 @@ thumbnails, the cards and the posts, in channels you can steer and on a canvas y
   <img src="docs/images/flow.png" alt="The Incredible.dev canvas: a launch kit made from notes, a storyboard frame under review, and the finished film, above the five steps from material to cards and posts" width="880">
 </p>
 
-> **A new beginning.** This is the new Incredible.dev, rebuilt on an open-source agent engine. The
-> earlier video creator lives on the
+> **A new beginning.** This is the new Incredible.dev. The earlier video creator lives on the
 > [`archive/dev-video-creator`](https://github.com/IncredibleDevHQ/Incredible.dev/tree/archive/dev-video-creator)
 > branch.
 
@@ -77,17 +76,16 @@ so don't expose it on a network.
 
 ## How it's built
 
-- **The engine** is [Design Agent](https://github.com/langchain-ai/design-agent), LangChain's
-  open-source design agent built on [Deep Agents](https://github.com/langchain-ai/deepagents)
-  (Apache 2.0): the lead and its helpers, a Docker sandbox per thread, skills, checks and the cost
-  meter. We removed its Slack, Paper and hosted-deploy parts.
-- **The surface** is ours: the server in `src/design_agent/surfaces/web/` (API, live events, store,
-  canvas tools, research, brands) and the app in `web/` (React, Vite, TypeScript). It plugs in
-  through one presenter hook, `src/design_agent/surfaces/presenter.py`.
+- **The agents.** Each task gets a lead agent that plans and hands work to helper agents, a Docker
+  sandbox of its own, skills for each kind of work, and checks it runs on its renders (brand,
+  motion, output). A cost meter tracks every run.
+- **The app.** The server in `src/design_agent/surfaces/web/` (API, live events, store, canvas
+  tools, research, brands) and the web app in `web/` (React, Vite, TypeScript), plugged in through
+  one presenter hook, `src/design_agent/surfaces/presenter.py`.
 
 More: [architecture](docs/architecture/README.md) · [instructions.md](instructions.md) ·
 [skills/](skills/) · [customization](docs/customization.md) · [changelog](CHANGELOG.md).
 
 ## License
 
-[Apache 2.0](LICENSE). [NOTICE.md](NOTICE.md) credits Design Agent and the components it vendors.
+[Apache 2.0](LICENSE). Third-party notices are in [NOTICE.md](NOTICE.md).
