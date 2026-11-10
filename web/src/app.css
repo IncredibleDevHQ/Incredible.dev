@@ -24,7 +24,7 @@
   --line-soft: #242d28;
   --line-strong: #4d5c54;
   --focus-line: #4a6b58;
-  --flow: #3b4942;
+  --flow: #4f5e56;
   --ink: #e8ede9;
   --ink-2: #bac5be;
   --muted: #8e9b93;
@@ -45,10 +45,14 @@
   color-scheme: dark;
 }
 
-/* Light: paper under white cards, the same greens a shade deeper so words on them still read. */
 .review, .studio, .viewer { color: var(--ink); }
 
-:root[data-theme="light"] {
+/* Light: paper under white cards, the same greens a shade deeper so words on them still read.
+   A card keeps that paper and ink on the dark canvas too, the way Figma's frames and Miro's cards
+   keep their own fills on a dark board: the canvas and the chrome go dark, the work does not.
+   A card that is only planned or skipped stays an outline on its frame. */
+:root[data-theme="light"],
+:root:not([data-theme="light"]) .node:not([data-status="planned"], [data-status="skipped"]) {
   --bg: #efece5;
   --surface: #f9f8f4;
   --raised: #ffffff;
@@ -76,6 +80,10 @@
   --scrim: rgba(24, 31, 27, 0.32);
   --wash: rgba(20, 27, 23, 0.035);
   color-scheme: light;
+}
+/* Paper on the dark canvas casts a deeper shadow. */
+:root:not([data-theme="light"]) .node:not([data-status="planned"], [data-status="skipped"]) {
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 14px 32px rgba(0, 0, 0, 0.42);
 }
 
 * { box-sizing: border-box; }
@@ -361,8 +369,8 @@ button { cursor: pointer; }
 .flow-lines path.waiting { stroke-dasharray: 5 6; }
 .flow-lines path.lit { stroke: var(--green); }
 .flow-empty { margin: 14px 0 0; color: var(--muted); }
-.node { position: relative; border-radius: 16px; background: var(--raised); border: 1px solid var(--line); box-shadow: var(--card-shadow); }
-.node[data-status="planned"], .node[data-status="skipped"] { background: transparent; border-style: dashed; box-shadow: none; }
+.node { position: relative; border-radius: 16px; background: var(--raised); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--card-shadow); }
+.node[data-status="planned"], .node[data-status="skipped"] { background: transparent; border-style: dashed; border-color: var(--line-strong); box-shadow: none; }
 .node[data-status="skipped"] { opacity: 0.6; }
 .node[data-status="blocked"] { border-color: var(--red-soft); }
 .node-head { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 8px 12px; }
