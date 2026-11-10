@@ -305,7 +305,8 @@ function Place({ template, channelId, from, frame, onPlaced }: { template: Templ
         </span>
         <button type="button" className="btn primary" disabled={!ready || busy} onClick={() => void place()}>
           <LayoutTemplate />
-          Place on the canvas
+          {/* A link is read before the task starts, which takes a moment. */}
+          {busy && /https?:\/\//.test(text) ? "Reading the page…" : "Place on the canvas"}
         </button>
       </footer>
     </div>

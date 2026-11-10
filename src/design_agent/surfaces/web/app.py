@@ -15,6 +15,8 @@ runtime), the store of channels, messages and boards, and this API:
 - what the canvas can ask for: `GET /api/catalog` (the kinds of work and the templates),
   `POST /api/threads/{id}/assets` (one more asset in a task),
   `POST /api/channels/{id}/templates` (a template, as a new task or onto a finished asset)
+- links in what someone sends the agent (a new task, a template's material, a reply) are read
+  first and go with it as files (`pages.py`): a page as its article's words, a PDF as itself
 - a film's final look: `GET /api/threads/{id}/preview/{port}` (its Studio on the thread's
   computer, through a local port: `preview.py`), `POST /api/assets/{id}/render` (signed off);
   a draft's sign-off: `POST /api/assets/{id}/approve`
@@ -69,7 +71,7 @@ from design_agent.surfaces.web.hub import Hub
 from design_agent.surfaces.web.presenter import WebDelivery, WebPresenter
 from design_agent.surfaces.web.preview import PreviewError
 from design_agent.surfaces.web.site_brand import SiteBrandError
-from design_agent.surfaces.web.store import Store
+from design_agent.surfaces.web.store import CONVERSATION, Store
 from design_agent.tools.mcp import load_mcp_tools, servers_for_runtime
 
 MAX_UPLOADS = 10
@@ -242,6 +244,13 @@ def create_app(
             raise HTTPException(status_code=404, detail="no such thread")
         return thread
 
+    async def linked(text: str, me: str) -> list[str]:
+        """The pages and PDFs linked in what someone sends the agent, read and kept as files."""
+        try:
+            return await host.read_links(text, by=me)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
     # -- the workspace -----------------------------------------------------------------------
 
     @app.get("/api/session")
@@ -295,12 +304,13 @@ def create_app(
     ) -> dict[str, Any]:
         if store.channel(channel_id) is None:
             raise HTTPException(status_code=404, detail="no such channel")
+        read = await linked(body.text, me) if body.to_agent else []
         return host.post(
             channel_id=channel_id,
             author_id=me,
             text=body.text,
             to_agent=body.to_agent,
-            file_ids=body.files,
+            file_ids=[*body.files, *read],
             kind=body.kind,
         )
 
@@ -324,13 +334,15 @@ def create_app(
         found = thread_or_404(thread_id)
         if body.answers:
             host.answered(body.answers, by=me, text=body.text)
+        asks = body.to_agent and found["task"] and found["kind"] != CONVERSATION
+        read = await linked(body.text, me) if asks else []
         try:
             return host.post(
                 channel_id=found["channel_id"],
                 author_id=me,
                 text=body.text,
                 to_agent=body.to_agent,
-                file_ids=body.files,
+                file_ids=[*body.files, *read],
                 thread_id=thread_id,
             )
         except ValueError as error:
@@ -477,13 +489,16 @@ def create_app(
     ) -> dict[str, Any]:
         if store.channel(channel_id) is None:
             raise HTTPException(status_code=404, detail="no such channel")
+        # Started from what someone brings, the links in it are read first.
+        material = not body.from_asset and not body.from_frame
+        read = await linked(body.text, me) if material else []
         try:
             message = host.place_template(
                 channel_id,
                 body.template,
                 by=me,
                 text=body.text,
-                file_ids=body.files,
+                file_ids=[*body.files, *read],
                 from_asset=body.from_asset or None,
                 from_frame=body.from_frame or None,
             )
