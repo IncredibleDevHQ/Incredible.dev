@@ -34,6 +34,12 @@ export function Sidebar() {
       <div className="side-top">
         <img src="/house.svg" alt="" />
         <strong>Creative House</strong>
+        {/* The demo's agent is scripted: it says so, so its sample work is never taken for the real thing. */}
+        {session?.demo && (
+          <span className="chip demo-chip" title="A scripted agent makes the same sample work, whatever you bring. No AI runs and nothing costs.">
+            Demo
+          </span>
+        )}
       </div>
       <div className="side-nav">
         {nav("needs", "Needs you", <BellDot />, needs)}

@@ -181,6 +181,7 @@ function Place({ template, channelId, from, frame, onPlaced }: { template: Templ
   const tasks = useHouse((s) => s.canvas[channelId]) ?? [];
   const channel = useHouse((s) => s.channels.find((c) => c.id === channelId));
   const worn = useHouse((s) => s.brands.find((b) => b.slug === (channel?.brand || "default")));
+  const demo = useHouse((s) => s.session?.demo);
   const notesOf = tasks.find((t) => t.thread.id === frame);
   const canvas = tasks.flatMap((task) =>
     task.assets
@@ -299,7 +300,9 @@ function Place({ template, channelId, from, frame, onPlaced }: { template: Templ
         )}
       </section>
       <footer className="tpl-foot">
-        <span className="faint">{worn ? `It wears ${worn.name}. ` : ""}The agent starts on it right away.</span>
+        <span className="faint">
+          {demo ? "Demo: the scripted agent makes the same sample work, not from what you bring." : `${worn ? `It wears ${worn.name}. ` : ""}The agent starts on it right away.`}
+        </span>
         <button type="button" className="btn primary" disabled={!ready || busy} onClick={() => void place()}>
           <LayoutTemplate />
           Place on the canvas
