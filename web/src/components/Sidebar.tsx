@@ -1,8 +1,9 @@
 // The workspace: where people are needed, what the agent works with, and the channels.
-import { BellDot, Cpu, Hash, Palette, Plus, Sparkles } from "lucide-react";
+import { BellDot, Cpu, Hash, Moon, Palette, Plus, Sparkles, Sun } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api";
 import { useHouse, type Page } from "../store";
+import { useTheme } from "../theme";
 import { Avatar } from "../ui";
 
 export function Sidebar() {
@@ -88,6 +89,7 @@ export function Sidebar() {
               ))}
           </div>
         )}
+        <ThemeSwitch />
         <button type="button" className="whoami" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>
           <Avatar person={me} />
           <span>
@@ -97,6 +99,23 @@ export function Sidebar() {
         </button>
       </div>
     </nav>
+  );
+}
+
+// Light or dark, both named and in sight on every page, the one in use pressed.
+function ThemeSwitch() {
+  const [theme, setTheme] = useTheme();
+  return (
+    <div className="seg theme-switch" role="group" aria-label="Appearance">
+      <button type="button" aria-pressed={theme === "light"} onClick={() => setTheme("light")}>
+        <Sun />
+        Light
+      </button>
+      <button type="button" aria-pressed={theme === "dark"} onClick={() => setTheme("dark")}>
+        <Moon />
+        Dark
+      </button>
+    </div>
   );
 }
 
