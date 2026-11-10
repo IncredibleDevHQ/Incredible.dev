@@ -12,6 +12,7 @@ import { useHouse } from "../store";
 import { Avatar, FileList, FooterLine, KindIcon, makesOf, StatusChip } from "../ui";
 import { columnsOf, Lines, useLines, type Edge } from "./Flow";
 import { EMPTY_RESEARCH, NOTES_NODE, ResearchColumns, researchEdges, researching, ResearchStart } from "./Research";
+import { ChannelStart } from "./Start";
 import { Templates } from "./Templates";
 
 type Camera = { x: number; y: number; z: number };
@@ -20,11 +21,12 @@ const SOURCE = "source";
 // What something on the canvas can be made from: a signed-off, delivered or dropped asset.
 const READY = new Set(["approved", "done", "skipped"]);
 // Pointer and wheel events from these belong to them, not to the canvas's pan and zoom.
-const OWN_POINTER = "button, a, video, audio, textarea, input, label, .tf, .picker, .pop";
-const OWN_WHEEL = ".tf video, .picker, .pop";
+const OWN_POINTER = "button, a, video, audio, textarea, input, label, .tf, .picker, .pop, .canvas-start";
+const OWN_WHEEL = ".tf video, .picker, .pop, .canvas-start";
 
 export function Canvas({ channelId }: { channelId: string }) {
   const tasks = useHouse((s) => s.canvas[channelId]);
+  const channel = useHouse((s) => s.channels.find((c) => c.id === channelId));
   const picking = useHouse((s) => s.picking);
   const pickTemplate = useHouse((s) => s.pickTemplate);
   const view = useRef<HTMLDivElement>(null);
@@ -116,18 +118,18 @@ export function Canvas({ channelId }: { channelId: string }) {
       <div className="world" ref={world} style={{ transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.z})` }}>
         {tasks?.map((task) => <TaskFrame key={task.thread.id} task={task} />)}
       </div>
-      <div className="canvas-bar">
-        <button type="button" className="btn" aria-expanded={Boolean(starting)} onClick={(e) => setStarting(starting ? null : e.currentTarget)}>
-          <Telescope />
-          Research
-        </button>
-        {!empty && (
+      {!empty && (
+        <div className="canvas-bar">
+          <button type="button" className="btn" aria-expanded={Boolean(starting)} onClick={(e) => setStarting(starting ? null : e.currentTarget)}>
+            <Telescope />
+            Research
+          </button>
           <button type="button" className="btn" aria-expanded={Boolean(picking)} onClick={() => pickTemplate(picking ? null : {})}>
             <LayoutTemplate />
             Templates
           </button>
-        )}
-      </div>
+        </div>
+      )}
       {starting && (
         <ResearchStart
           channelId={channelId}
@@ -159,10 +161,15 @@ export function Canvas({ channelId }: { channelId: string }) {
           <Maximize />
         </button>
       </div>
-      {(empty || picking) && (
+      {/* An empty canvas starts where an empty chat does: the brand, then research or material. */}
+      {empty && !picking && channel && (
+        <div className="canvas-start">
+          <ChannelStart channel={channel} />
+        </div>
+      )}
+      {picking && (
         <Templates
           channelId={channelId}
-          inline={empty && !picking}
           onPlaced={() => {
             moved.current = false;
           }}

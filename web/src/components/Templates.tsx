@@ -1,6 +1,6 @@
 // Templates on the canvas: predefined sets of assets wired together for a common job (a launch
-// kit, a post turned into social). An empty canvas opens on them; a task's finished asset offers
-// the ones that start from it. Placing one sets its assets up as a task, from what you bring
+// kit, a post turned into social). An empty channel's start opens them; a task's finished asset
+// offers the ones that start from it. Placing one sets its assets up as a task, from what you bring
 // (files, a link, notes) or from something already on the canvas, and the agent starts on it.
 import { ArrowLeft, BadgeCheck, LayoutTemplate, Paperclip, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -12,7 +12,7 @@ import { columnsOf, Lines, useLines, type Edge } from "./Flow";
 const FINISHED = new Set(["done", "approved"]);
 const START = "start";
 
-export function Templates({ channelId, inline, onPlaced }: { channelId: string; inline: boolean; onPlaced: () => void }) {
+export function Templates({ channelId, onPlaced }: { channelId: string; onPlaced: () => void }) {
   const templates = useHouse((s) => s.catalog.templates);
   const picking = useHouse((s) => s.picking);
   const pickTemplate = useHouse((s) => s.pickTemplate);
@@ -32,7 +32,7 @@ export function Templates({ channelId, inline, onPlaced }: { channelId: string; 
   }, [chosen, picking?.template, pickTemplate]);
 
   return (
-    <div className={`picker ${inline ? "inline" : ""}`} role="dialog" aria-modal={!inline} aria-label="Templates">
+    <div className="picker" role="dialog" aria-modal="true" aria-label="Templates">
       <div className="picker-panel">
         <header className="picker-head">
           {chosen && !picking?.template && (
@@ -40,12 +40,10 @@ export function Templates({ channelId, inline, onPlaced }: { channelId: string; 
               <ArrowLeft />
             </button>
           )}
-          <h2>{chosen ? chosen.title : inline ? "Start from a template" : "Templates"}</h2>
-          {!inline && (
-            <button type="button" className="icon-btn" aria-label="Close" onClick={() => pickTemplate(null)}>
-              <X />
-            </button>
-          )}
+          <h2>{chosen ? chosen.title : "Templates"}</h2>
+          <button type="button" className="icon-btn" aria-label="Close" onClick={() => pickTemplate(null)}>
+            <X />
+          </button>
         </header>
         {chosen ? (
           <Place
@@ -61,19 +59,16 @@ export function Templates({ channelId, inline, onPlaced }: { channelId: string; 
             }}
           />
         ) : (
-          <>
-            <div className="tpl-grid">
-              {templates.map((t) => (
-                <button type="button" className="tpl" key={t.id} onClick={() => setSelected(t.id)}>
-                  <TemplateFlow template={t} />
-                  <b>{t.title}</b>
-                  <small>{t.line}</small>
-                  <span className="tpl-from">From {t.starts.charAt(0).toLowerCase() + t.starts.slice(1)}</span>
-                </button>
-              ))}
-            </div>
-            {inline && <p className="picker-foot">Or ask the agent in the chat; what it makes lands here.</p>}
-          </>
+          <div className="tpl-grid">
+            {templates.map((t) => (
+              <button type="button" className="tpl" key={t.id} onClick={() => setSelected(t.id)}>
+                <TemplateFlow template={t} />
+                <b>{t.title}</b>
+                <small>{t.line}</small>
+                <span className="tpl-from">From {t.starts.charAt(0).toLowerCase() + t.starts.slice(1)}</span>
+              </button>
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -133,6 +128,8 @@ function TemplateFlow({ template, large, start = "Source" }: { template: Templat
 // frame's notes), then the agent starts on it.
 function Place({ template, channelId, from, frame, onPlaced }: { template: Template; channelId: string; from?: string; frame?: string; onPlaced: () => void }) {
   const tasks = useHouse((s) => s.canvas[channelId]) ?? [];
+  const channel = useHouse((s) => s.channels.find((c) => c.id === channelId));
+  const worn = useHouse((s) => s.brands.find((b) => b.slug === (channel?.brand || "default")));
   const notesOf = tasks.find((t) => t.thread.id === frame);
   const canvas = tasks.flatMap((task) =>
     task.assets
@@ -251,7 +248,7 @@ function Place({ template, channelId, from, frame, onPlaced }: { template: Templ
         )}
       </section>
       <footer className="tpl-foot">
-        <span className="faint">The agent starts on it right away.</span>
+        <span className="faint">{worn ? `It wears ${worn.name}. ` : ""}The agent starts on it right away.</span>
         <button type="button" className="btn primary" disabled={!ready || busy} onClick={() => void place()}>
           <LayoutTemplate />
           Place on the canvas

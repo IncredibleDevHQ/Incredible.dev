@@ -546,7 +546,7 @@ function Lineage({ steps }: { steps: Note["lineage"] }) {
 }
 
 // Starting research from the canvas: which repository, which agent, and the first question.
-export function ResearchStart({ channelId, anchor, onClose }: { channelId: string; anchor: HTMLElement; onClose: () => void }) {
+export function ResearchStart({ channelId, anchor, onClose, onStarted }: { channelId: string; anchor: HTMLElement; onClose: () => void; onStarted?: () => void }) {
   const options = useHouse((s) => s.research);
   const box = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
@@ -568,10 +568,22 @@ export function ResearchStart({ channelId, anchor, onClose }: { channelId: strin
       .catch(say);
   }, []);
 
+  // Below its button, moved up as far as it must to stay on screen, again whenever it grows (the
+  // repositories arrive after it opens).
   useLayoutEffect(() => {
-    const r = anchor.getBoundingClientRect();
-    const width = box.current?.offsetWidth ?? 380;
-    setPlace({ top: r.bottom + 8, left: Math.max(12, Math.min(window.innerWidth - width - 12, r.left)) });
+    const placeIt = () => {
+      const r = anchor.getBoundingClientRect();
+      const width = box.current?.offsetWidth ?? 380;
+      const height = box.current?.offsetHeight ?? 480;
+      setPlace({
+        top: Math.max(12, Math.min(r.bottom + 8, window.innerHeight - 12 - height)),
+        left: Math.max(12, Math.min(window.innerWidth - width - 12, r.left)),
+      });
+    };
+    placeIt();
+    const watch = new ResizeObserver(placeIt);
+    if (box.current) watch.observe(box.current);
+    return () => watch.disconnect();
   }, [anchor]);
 
   // The search takes the keyboard once the card is placed (a hidden field can't be focused).
@@ -600,6 +612,7 @@ export function ResearchStart({ channelId, anchor, onClose }: { channelId: strin
     setBusy(true);
     try {
       await api.openResearch(channelId, { repo, harness, question: question.trim() });
+      onStarted?.();
       onClose();
     } catch (error) {
       say(error);
