@@ -136,7 +136,14 @@ export const useHouse = create<State>((set, get) => ({
   },
 
   async openChannel(id, mode) {
-    set({ page: "channel", channelId: id, mode: mode ?? get().mode, frameId: null });
+    // The rail only ever shows this channel's work: a thread open from another channel closes.
+    set((s) => ({
+      page: "channel",
+      channelId: id,
+      mode: mode ?? s.mode,
+      frameId: null,
+      threadId: s.threadId && s.threads[s.threadId]?.channel_id === id ? s.threadId : null,
+    }));
     const listing = await api.channelMessages(id);
     set((s) => ({
       roots: { ...s.roots, [id]: listing.roots },
