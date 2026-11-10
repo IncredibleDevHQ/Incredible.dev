@@ -92,6 +92,18 @@ def test_every_template_wires_slots_that_can_be_made_from_their_sources() -> Non
             assert slot.brief.endswith("."), (chosen.id, slot.key)
 
 
+def test_every_template_says_what_you_get_and_its_shapes() -> None:
+    # A template's card draws each piece at its shape and lists what the person gets.
+    for chosen in catalog.TEMPLATES:
+        assert any(not s.gate for s in chosen.slots), chosen.id
+        for slot in chosen.slots:
+            assert slot.gets and not slot.gets.endswith("."), (chosen.id, slot.key)
+            assert slot.shape, (chosen.id, slot.key)
+            for shape in slot.shape:
+                width, height = shape.split(":")
+                assert float(width) > 0 and float(height) > 0, (chosen.id, slot.key, shape)
+
+
 # -- asking for work ------------------------------------------------------------------------------
 
 

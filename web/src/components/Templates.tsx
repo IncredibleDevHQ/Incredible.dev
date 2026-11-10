@@ -4,20 +4,40 @@
 // (files, a link, notes) or from something already on the canvas, and the agent starts on it.
 import { ArrowLeft, BadgeCheck, LayoutTemplate, Paperclip, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { api, type FileView, type Template } from "../api";
+import { api, type BrandPackView, type FileView, type Template } from "../api";
+import { useFaces } from "../kit";
 import { useHouse } from "../store";
 import { KindIcon, makesOf } from "../ui";
 import { columnsOf, Lines, useLines, type Edge } from "./Flow";
+import { lookOf, TemplateCover } from "./TemplateCover";
 
 const FINISHED = new Set(["done", "approved"]);
 const START = "start";
+// Brand packs already read, so covers draw at once the next time the gallery opens.
+const packs = new Map<string, BrandPackView>();
+const sentence = (words: string) => words.charAt(0).toUpperCase() + words.slice(1);
 
 export function Templates({ channelId, onPlaced }: { channelId: string; onPlaced: () => void }) {
   const templates = useHouse((s) => s.catalog.templates);
   const picking = useHouse((s) => s.picking);
   const pickTemplate = useHouse((s) => s.pickTemplate);
+  const channel = useHouse((s) => s.channels.find((c) => c.id === channelId));
   const [selected, setSelected] = useState<string | null>(picking?.template ?? null);
   const chosen = templates.find((t) => t.id === selected);
+  // Covers draw in the brand the channel wears, in its own faces.
+  const slug = channel?.brand || "default";
+  const [pack, setPack] = useState<BrandPackView | null>(packs.get(slug) ?? null);
+  useEffect(() => {
+    void api
+      .brandPack(slug)
+      .then((read) => {
+        packs.set(slug, read);
+        setPack(read);
+      })
+      .catch(() => undefined);
+  }, [slug]);
+  const type = useFaces(pack);
+  const look = useMemo(() => lookOf(pack), [pack]);
 
   useEffect(() => setSelected(picking?.template ?? null), [picking?.template]);
 
@@ -33,7 +53,8 @@ export function Templates({ channelId, onPlaced }: { channelId: string; onPlaced
 
   return (
     <div className="picker" role="dialog" aria-modal="true" aria-label="Templates">
-      <div className="picker-panel">
+      <div className="picker-panel" style={type.vars}>
+        <style>{type.css}</style>
         <header className="picker-head">
           {chosen && !picking?.template && (
             <button type="button" className="icon-btn" aria-label="All templates" onClick={() => setSelected(null)}>
@@ -59,16 +80,46 @@ export function Templates({ channelId, onPlaced }: { channelId: string; onPlaced
             }}
           />
         ) : (
-          <div className="tpl-grid">
-            {templates.map((t) => (
-              <button type="button" className="tpl" key={t.id} onClick={() => setSelected(t.id)}>
-                <TemplateFlow template={t} />
-                <b>{t.title}</b>
-                <small>{t.line}</small>
-                <span className="tpl-from">From {t.starts.charAt(0).toLowerCase() + t.starts.slice(1)}</span>
-              </button>
-            ))}
-          </div>
+          <>
+            {look.name && channel && (
+              <p className="picker-lede">
+                Shown in {look.name}, the brand #{channel.name} wears.
+              </p>
+            )}
+            <div className="tpl-grid">
+              {templates.map((t, i) => {
+                const first = t.slots.find((s) => s.gate);
+                return (
+                  <button type="button" className="tpl" key={t.id} onClick={() => setSelected(t.id)}>
+                    <TemplateCover template={t} look={look} tint={i} />
+                    <span className="tpl-text">
+                      <b>{t.title}</b>
+                      <span className="tpl-gets" aria-label="What you get">
+                        {t.slots
+                          .filter((s) => !s.gate)
+                          .map((s) => (
+                            <span className="tpl-get" key={s.key}>
+                              <KindIcon kind={s.kind} size={13} />
+                              {s.gets || s.title}
+                            </span>
+                          ))}
+                      </span>
+                      {first && (
+                        <span className="tpl-gate">
+                          <BadgeCheck size={13} />
+                          {first.gets ? `${sentence(first.gets)}.` : `${first.title} signed off first.`}
+                        </span>
+                      )}
+                      <span className="tpl-from">
+                        <Paperclip size={12} />
+                        From {t.starts.charAt(0).toLowerCase() + t.starts.slice(1)}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     </div>

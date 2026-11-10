@@ -5,8 +5,9 @@
 // from. Every value comes from the pack the engine stages; nothing here is made up but the
 // sample frames' placeholder words.
 import { Check, CircleAlert, ExternalLink, Globe, Palette, RotateCcw } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { api, type BrandPackView, type BrandSummary, type ColourRole } from "../api";
+import { contrast, luminance, onColour, pick, rolesOf, useFaces } from "../kit";
 import { useHouse } from "../store";
 import "../brand.css";
 
@@ -17,7 +18,6 @@ const ROLE_WORDS: Record<ColourRole, [string, string]> = {
   muted: ["Muted", "Secondary text and labels."],
   rule: ["Rule", "Lines, dividers and quiet fields."],
 };
-const GENERIC = new Set(["serif", "sans-serif", "monospace", "cursive", "system-ui", "ui-serif", "ui-sans-serif", "ui-monospace", "ui-rounded", "emoji", "math"]);
 const host = (url: string) => url.replace(/^https?:\/\//, "").split("/")[0];
 
 export function Brand() {
@@ -133,7 +133,7 @@ function Kit({ pack, here }: { pack: BrandPackView; here?: { id: string; name: s
   const { channels } = useHouse();
   const loadBrands = useHouse((s) => s.loadBrands);
   const type = useFaces(pack);
-  const roles = Object.fromEntries(pack.roles.map((r) => [r.role, r.value])) as Partial<Record<ColourRole, string>>;
+  const roles = rolesOf(pack);
   const used = channels.filter((c) => (c.brand || "default") === pack.slug);
   const usedHere = here ? (here.brand || "default") === pack.slug : true;
   const mark = pick(pack.logos, "mark", false) ?? pick(pack.logos, "lockup", false);
@@ -519,53 +519,4 @@ function Prose({ text }: { text: string }) {
 
 function inline(text: string): ReactNode[] {
   return text.split(/(`[^`]+`)/).map((part, i) => (part.startsWith("`") && part.endsWith("`") ? <code key={i}>{part.slice(1, -1)}</code> : part.replace(/\*\*/g, "")));
-}
-
-// -- helpers -------------------------------------------------------------------------------------
-
-function pick(logos: BrandPackView["logos"], prefix: string, dark: boolean) {
-  return logos.find((l) => l.name.startsWith(prefix) && /reversed|white|on-dark|dark-bg/i.test(l.name) === dark);
-}
-
-// The pack's faces as @font-face rules under names of their own, and the stacks that use them.
-function useFaces(pack: BrandPackView) {
-  return useMemo(() => {
-    const alias = (family: string) => `kit-${pack.slug}-${family.replace(/\W+/g, "-")}`;
-    const css = pack.faces
-      .map((f) => `@font-face{font-family:"${alias(f.family)}";src:url("${f.url}");font-weight:${f.weight};font-style:${f.style};font-display:swap}`)
-      .join("\n");
-    const loaded = new Set(pack.faces.map((f) => f.family));
-    const stack = (names: string[] = [], fallback: string) => {
-      const listed = names.map((name) => (GENERIC.has(name) ? name : `"${name}"`));
-      const own = names[0] && loaded.has(names[0]) ? [`"${alias(names[0])}"`] : [];
-      return [...own, ...listed].join(", ") || fallback;
-    };
-    const display = stack(pack.stacks.display, "var(--font)");
-    const text = stack(pack.stacks.text, "var(--font)");
-    const mono = stack(pack.stacks.mono, "var(--mono)");
-    const vars = { "--kit-display": display, "--kit-text": text, "--kit-mono": mono } as CSSProperties;
-    return { css, display, text, mono, vars };
-  }, [pack]);
-}
-
-function channel(hex: string, i: number) {
-  return parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255;
-}
-
-function luminance(hex: string) {
-  if (!/^#[0-9a-f]{6}$/i.test(hex)) return 1;
-  const [r, g, b] = [0, 1, 2].map((i) => {
-    const c = channel(hex, i);
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-function contrast(a: string, b: string) {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-  return (hi + 0.05) / (lo + 0.05);
-}
-
-function onColour(hex: string) {
-  return contrast("#ffffff", hex) >= contrast("#111111", hex) ? "#ffffff" : "#111111";
 }

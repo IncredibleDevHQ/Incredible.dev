@@ -131,7 +131,9 @@ export type Capability = {
   accepts: string[];
   takes: string[];
 };
-export type Slot = { key: string; kind: string; title: string; brief: string; sources: string[]; gate: boolean };
+// One piece of a template: what it is, what it is made from, what the person gets, and the shape
+// of each piece it makes ("16:9", "9:16", "210:297" for a page).
+export type Slot = { key: string; kind: string; title: string; brief: string; sources: string[]; gate: boolean; gets: string; shape: string[] };
 export type Template = { id: string; title: string; line: string; starts: string; starts_from: string[]; slots: Slot[] };
 export type Catalog = { capabilities: Capability[]; templates: Template[] };
 export type AssetStatus = "planned" | "making" | "review" | "changes" | "approved" | "done" | "blocked" | "skipped";

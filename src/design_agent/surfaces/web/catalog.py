@@ -55,6 +55,11 @@ class Slot:
     sources: tuple[str, ...] = ()
     #: The team signs it off before anything is made from it.
     gate: bool = False
+    #: What the person gets, in a few words, as a template's card lists it.
+    gets: str = ""
+    #: The shape of each piece its card draws ("16:9", "9:16", "1.91:1", "210:297" for a page): a
+    #: set of sizes, or the same shape as many times as it makes (two thumbnails, a carousel).
+    shape: tuple[str, ...] = ("16:9",)
 
 
 @dataclass(frozen=True)
@@ -240,6 +245,7 @@ TEMPLATES: tuple[Template, ...] = (
                 "Storyboard",
                 "Three to five beats for a 15-second teaser.",
                 gate=True,
+                gets="a storyboard you sign off first",
             ),
             Slot(
                 "teaser",
@@ -247,6 +253,7 @@ TEMPLATES: tuple[Template, ...] = (
                 "Teaser",
                 "15 seconds at 1920×1080, built from the approved storyboard.",
                 ("board",),
+                gets="15-second teaser",
             ),
             Slot(
                 "thumbs",
@@ -254,14 +261,25 @@ TEMPLATES: tuple[Template, ...] = (
                 "Thumbnails",
                 "Two arms, each a different bet, from the teaser's real frames.",
                 ("teaser",),
+                gets="2 thumbnails",
+                shape=("16:9", "16:9"),
             ),
-            Slot("gif", "gif", "GIF", "A 6-second loop of the payoff, under 5 MB.", ("teaser",)),
+            Slot(
+                "gif",
+                "gif",
+                "GIF",
+                "A 6-second loop of the payoff, under 5 MB.",
+                ("teaser",),
+                gets="6-second GIF",
+            ),
             Slot(
                 "cards",
                 "still",
                 "Social cards",
                 "LinkedIn 1200×627, X 1600×900 and square 1080×1080, in the storyboard's look.",
                 ("board",),
+                gets="3 social cards",
+                shape=("1.91:1", "16:9", "1:1"),
             ),
         ),
     ),
@@ -278,6 +296,7 @@ TEMPLATES: tuple[Template, ...] = (
                 "Storyboard",
                 "The argument as beats, one line of narration each.",
                 gate=True,
+                gets="a storyboard you sign off first",
             ),
             Slot(
                 "video",
@@ -285,14 +304,25 @@ TEMPLATES: tuple[Template, ...] = (
                 "Explainer",
                 "60 to 90 seconds at 1920×1080, built from the approved storyboard.",
                 ("board",),
+                gets="60–90 second video",
             ),
-            Slot("thumbs", "thumbs", "Thumbnails", "Two arms for an A/B test.", ("video",)),
+            Slot(
+                "thumbs",
+                "thumbs",
+                "Thumbnails",
+                "Two arms for an A/B test.",
+                ("video",),
+                gets="2 thumbnails",
+                shape=("16:9", "16:9"),
+            ),
             Slot(
                 "short",
                 "video",
                 "Vertical short",
                 "The strongest 20 seconds at 1080×1920, laid out again for the phone, never cropped.",
                 ("video",),
+                gets="20-second vertical short",
+                shape=("9:16",),
             ),
         ),
     ),
@@ -308,6 +338,7 @@ TEMPLATES: tuple[Template, ...] = (
                 "genimg",
                 "Hero art",
                 "One illustration of the post's idea, no words or logos.",
+                gets="Hero art",
             ),
             Slot(
                 "cards",
@@ -315,9 +346,25 @@ TEMPLATES: tuple[Template, ...] = (
                 "Social cards",
                 "The post's headline over the art: LinkedIn, X and square.",
                 ("art",),
+                gets="3 social cards",
+                shape=("1.91:1", "16:9", "1:1"),
             ),
-            Slot("carousel", "still", "Carousel", "Five 1080×1350 slides, one point each."),
-            Slot("stat", "chart", "Stat card", "The post's most telling number."),
+            Slot(
+                "carousel",
+                "still",
+                "Carousel",
+                "Five 1080×1350 slides, one point each.",
+                gets="5-slide carousel",
+                shape=("4:5", "4:5", "4:5"),
+            ),
+            Slot(
+                "stat",
+                "chart",
+                "Stat card",
+                "The post's most telling number.",
+                gets="Stat card",
+                shape=("1:1",),
+            ),
         ),
     ),
     Template(
@@ -327,13 +374,23 @@ TEMPLATES: tuple[Template, ...] = (
         "A product page or brief",
         (MATERIAL, "image"),
         (
-            Slot("looks", "looks", "Looks", "Three directions; the team picks one.", gate=True),
+            Slot(
+                "looks",
+                "looks",
+                "Looks",
+                "Three directions; the team picks one.",
+                gate=True,
+                gets="three looks you pick one from first",
+                shape=("1:1",),
+            ),
             Slot(
                 "ads",
                 "still",
                 "Ads",
                 "The picked look at 1080×1080, 1080×1350, 1200×627 and 300×250.",
                 ("looks",),
+                gets="Ads in 4 sizes",
+                shape=("1:1", "4:5", "1.91:1", "6:5"),
             ),
             Slot(
                 "motion",
@@ -341,6 +398,8 @@ TEMPLATES: tuple[Template, ...] = (
                 "Animated ad",
                 "A 4-second loop of the square ad, under 1 MB.",
                 ("ads",),
+                gets="4-second animated ad",
+                shape=("1:1",),
             ),
         ),
     ),
@@ -351,15 +410,32 @@ TEMPLATES: tuple[Template, ...] = (
         "Notes, a doc or a spreadsheet",
         (MATERIAL, "doc"),
         (
-            Slot("charts", "chart", "Charts", "The two or three numbers the pitch rests on."),
+            Slot(
+                "charts",
+                "chart",
+                "Charts",
+                "The two or three numbers the pitch rests on.",
+                gets="2–3 charts",
+                shape=("16:9", "16:9"),
+            ),
             Slot(
                 "deck",
                 "deck",
                 "Deck",
                 "Eight to ten 16:9 slides as a PDF, using the charts.",
                 ("charts",),
+                gets="8–10 slide deck",
+                shape=("16:9", "16:9"),
             ),
-            Slot("onepager", "still", "One-pager", "A one-page PDF in the deck's look.", ("deck",)),
+            Slot(
+                "onepager",
+                "still",
+                "One-pager",
+                "A one-page PDF in the deck's look.",
+                ("deck",),
+                gets="One-pager",
+                shape=("210:297",),
+            ),
         ),
     ),
     Template(
@@ -369,10 +445,31 @@ TEMPLATES: tuple[Template, ...] = (
         "A finished video on the canvas",
         ("video",),
         (
-            Slot("thumbs", "thumbs", "Thumbnails", "Two arms from the video's real frames."),
-            Slot("gif", "gif", "GIF", "A 6-second loop of the payoff."),
-            Slot("short", "video", "Vertical short", "1080×1920, laid out again for the phone."),
-            Slot("cards", "still", "Social cards", "LinkedIn, X and square, in the video's look."),
+            Slot(
+                "thumbs",
+                "thumbs",
+                "Thumbnails",
+                "Two arms from the video's real frames.",
+                gets="2 thumbnails",
+                shape=("16:9", "16:9"),
+            ),
+            Slot("gif", "gif", "GIF", "A 6-second loop of the payoff.", gets="6-second GIF"),
+            Slot(
+                "short",
+                "video",
+                "Vertical short",
+                "1080×1920, laid out again for the phone.",
+                gets="Vertical short",
+                shape=("9:16",),
+            ),
+            Slot(
+                "cards",
+                "still",
+                "Social cards",
+                "LinkedIn, X and square, in the video's look.",
+                gets="3 social cards",
+                shape=("1.91:1", "16:9", "1:1"),
+            ),
         ),
     ),
     Template(
@@ -382,15 +479,30 @@ TEMPLATES: tuple[Template, ...] = (
         "A talk recording",
         (MATERIAL, "video"),
         (
-            Slot("clip", "captions", "Captioned clip", "The talk's strongest minute, captioned."),
+            Slot(
+                "clip",
+                "captions",
+                "Captioned clip",
+                "The talk's strongest minute, captioned.",
+                gets="1-minute captioned clip",
+            ),
             Slot(
                 "thumbs",
                 "thumbs",
                 "Thumbnails",
                 "Two arms with the speaker's real frame.",
                 ("clip",),
+                gets="2 thumbnails",
+                shape=("16:9", "16:9"),
             ),
-            Slot("quotes", "still", "Quote cards", "Three quotes, word for word, at 1080×1350."),
+            Slot(
+                "quotes",
+                "still",
+                "Quote cards",
+                "Three quotes, word for word, at 1080×1350.",
+                gets="3 quote cards",
+                shape=("4:5", "4:5", "4:5"),
+            ),
         ),
     ),
 )

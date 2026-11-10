@@ -549,15 +549,54 @@ button { cursor: pointer; }
 
 /* Templates: a picker over the canvas. */
 .picker { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; padding: 72px 24px 24px; background: var(--scrim); backdrop-filter: blur(3px); overflow: auto; }
-.picker-panel { width: min(1120px, 100%); max-height: 100%; overflow: auto; padding: 18px 20px 20px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); cursor: default; }
-.picker-head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.picker-panel { width: min(1120px, 100%); max-height: 100%; overflow: auto; padding: 0 20px 20px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); cursor: default; }
+/* The heading stays put while the gallery scrolls under it. */
+.picker-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 18px 0 12px; background: var(--surface); }
+.picker-lede { margin: -4px 0 14px; color: var(--muted); font-size: 13px; }
 .picker-head h2 { flex: 1; margin: 0; font-size: 18px; letter-spacing: -0.01em; }
 .tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
-.tpl { display: grid; gap: 4px; align-content: start; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); text-align: left; color: var(--ink); }
-.tpl:hover { border-color: var(--line-strong); }
-.tpl b { font-size: 15px; font-weight: 650; margin-top: 8px; }
-.tpl small { color: var(--ink-2); font-size: 13px; }
-.tpl-from { color: var(--faint); font-size: 12px; }
+/* A template card: a cover of what it makes, drawn in the channel's brand, then what you get,
+   what you sign off first, and what it starts from. */
+.tpl { display: grid; align-content: start; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); text-align: left; color: var(--ink); transition: border-color 0.15s, transform 0.15s; }
+.tpl:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+.tpl-text { display: grid; gap: 8px; padding: 12px 14px 14px; }
+.tpl b { font-size: 15px; font-weight: 650; }
+.tpl-gets { display: flex; flex-wrap: wrap; gap: 5px; }
+.tpl-get { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px 2px 6px; border-radius: 999px; background: var(--sunk); border: 1px solid var(--line-soft); color: var(--ink-2); font-size: 12px; white-space: nowrap; }
+.tpl-get svg { flex: none; color: var(--muted); }
+.tpl-gate, .tpl-from { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.tpl-gate { color: var(--amber); }
+.tpl-from { color: var(--faint); }
+.tpl-gate svg, .tpl-from svg { flex: none; }
+.cover { position: relative; display: block; aspect-ratio: 16 / 10; overflow: hidden; border-bottom: 1px solid var(--line-soft); container-type: inline-size; }
+.piece { position: absolute; display: flex; align-items: stretch; }
+/* A sheet's own corners measure against the cover; what is inside it, against the sheet. */
+.sheet { position: relative; display: block; flex: none; height: 100%; overflow: hidden; border-radius: 1.2cqw; container-type: inline-size; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 8px 18px rgba(0, 0, 0, 0.12); }
+.sheet-mark { position: absolute; top: 7cqw; left: 7cqw; height: 9cqw; max-width: 42%; object-fit: contain; object-position: left center; }
+.sheet-copy { position: absolute; left: 7cqw; right: 7cqw; bottom: 8cqw; display: grid; gap: 4cqw; }
+.sheet-copy strong { font-size: 9.5cqw; line-height: 1.05; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheet-line { display: block; height: 4.5cqw; border-radius: 2cqw; opacity: 0.8; }
+.sheet-rule { display: block; width: 36%; height: 1.6cqw; border-radius: 1cqw; }
+.sheet-pill { display: block; width: 34%; height: 7cqw; margin-top: 2cqw; border-radius: 4cqw; }
+.sheet-play { position: absolute; left: 50%; top: 44%; display: grid; place-items: center; width: 17cqw; height: 17cqw; border-radius: 50%; transform: translate(-50%, -50%); }
+.sheet-play svg { width: 46%; height: 46%; margin-left: 8%; fill: currentColor; }
+.sheet-head { position: absolute; left: 50%; top: 20%; width: 20cqw; height: 20cqw; border-radius: 50%; transform: translateX(-50%); opacity: 0.9; }
+.sheet-shoulders { position: absolute; left: 50%; bottom: 0; width: 48cqw; height: 34%; border-radius: 50% 50% 0 0 / 70% 70% 0 0; transform: translateX(-50%); opacity: 0.9; }
+.sheet-caption { position: absolute; left: 16cqw; right: 16cqw; bottom: 7cqw; display: grid; justify-items: center; padding: 2.6cqw 3cqw; border-radius: 2cqw; }
+.sheet-badge { position: absolute; top: 7cqw; left: 7cqw; display: grid; place-items: center; width: 17cqw; height: 17cqw; border-radius: 4cqw; font-size: 11cqw; font-weight: 700; line-height: 1; }
+.sheet-loop { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 2cqw; font-size: 12cqw; font-weight: 700; }
+.sheet-loop svg { width: 28cqw; height: 28cqw; }
+.sheet-stat { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 6cqw; }
+.sheet-stat strong { font-size: 30cqw; line-height: 1; }
+.sheet-title { position: absolute; top: 8cqw; left: 7cqw; right: 7cqw; display: grid; }
+.sheet-bars { position: absolute; left: 8cqw; right: 8cqw; bottom: 8cqw; height: 50%; display: flex; align-items: flex-end; gap: 4cqw; border-bottom: 0.8cqw solid; }
+.sheet-bars i { flex: 1; border-radius: 1.5cqw 1.5cqw 0 0; }
+.sheet-blob { position: absolute; border-radius: 50%; opacity: 0.92; }
+.sheet-blob.b0 { left: 10cqw; top: 14%; width: 46cqw; height: 46cqw; }
+.sheet-blob.b1 { left: 42cqw; top: 36%; width: 34cqw; height: 34cqw; }
+.sheet-blob.b2 { left: 70cqw; top: 10%; width: 22cqw; height: 22cqw; }
+.sheet-band { position: absolute; left: 0; right: 0; top: 0; height: 17%; }
+.sheet-text { position: absolute; left: 10cqw; right: 10cqw; top: 25%; display: grid; gap: 5cqw; }
 .tpl-flow { display: block; box-sizing: content-box; padding: 12px; border-radius: 10px; background: var(--sunk); overflow: hidden; }
 .tpl-flow-inner { position: relative; display: flex; gap: 14px; align-items: flex-start; width: max-content; transform-origin: 0 0; }
 .tpl-flow.large { padding: 18px; overflow: auto; }
