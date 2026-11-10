@@ -550,6 +550,7 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
   const options = useHouse((s) => s.research);
   const box = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
+  const ask = useRef<HTMLTextAreaElement>(null);
   const [query, setQuery] = useState("");
   const [repo, setRepo] = useState("");
   const [harness, setHarness] = useState<HarnessId>("claude");
@@ -568,28 +569,23 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
       .catch(say);
   }, []);
 
-  // Below its button, moved up as far as it must to stay on screen, again whenever it grows (the
-  // repositories arrive after it opens).
+  // Below its button, moved up as far as it must to stay on screen. Its list keeps one height, so
+  // the card never grows or moves while someone searches and picks.
   useLayoutEffect(() => {
-    const placeIt = () => {
-      const r = anchor.getBoundingClientRect();
-      const width = box.current?.offsetWidth ?? 380;
-      const height = box.current?.offsetHeight ?? 480;
-      setPlace({
-        top: Math.max(12, Math.min(r.bottom + 8, window.innerHeight - 12 - height)),
-        left: Math.max(12, Math.min(window.innerWidth - width - 12, r.left)),
-      });
-    };
-    placeIt();
-    const watch = new ResizeObserver(placeIt);
-    if (box.current) watch.observe(box.current);
-    return () => watch.disconnect();
+    const r = anchor.getBoundingClientRect();
+    const width = box.current?.offsetWidth ?? 380;
+    const height = box.current?.offsetHeight ?? 480;
+    setPlace({
+      top: Math.max(12, Math.min(r.bottom + 8, window.innerHeight - 12 - height)),
+      left: Math.max(12, Math.min(window.innerWidth - width - 12, r.left)),
+    });
   }, [anchor]);
 
-  // The search takes the keyboard once the card is placed (a hidden field can't be focused).
+  // The search takes the keyboard once, when the card is placed (a hidden field can't be focused).
+  const placed = Boolean(place);
   useEffect(() => {
-    if (place) search.current?.focus();
-  }, [place]);
+    if (placed) search.current?.focus();
+  }, [placed]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -607,6 +603,19 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
 
   const wanted = query.trim().toLowerCase();
   const shown = (options?.repos ?? []).filter((r) => r.name.toLowerCase().includes(wanted));
+  const folder = /[/~]/.test(query);
+  const chosen = folder && repo === query.trim() ? query.trim().split("/").filter(Boolean).pop() : options?.repos.find((r) => r.path === repo)?.name;
+  // A search that hides the picked repository picks its first match instead, so what will be read
+  // is always in sight; picking one, by click or Enter, moves on to the question.
+  const find = (text: string) => {
+    setQuery(text);
+    const matches = (options?.repos ?? []).filter((r) => r.name.toLowerCase().includes(text.trim().toLowerCase()));
+    if (!/[/~]/.test(text) && matches.length && !matches.some((r) => r.path === repo)) setRepo(matches[0].path);
+  };
+  const choose = (path: string) => {
+    setRepo(path);
+    ask.current?.focus();
+  };
   const start = async () => {
     if (!repo || !question.trim() || busy) return;
     setBusy(true);
@@ -631,20 +640,32 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
       <h3>Research a repository</h3>
       <label className="repo-find">
         <Search size={14} />
-        <input ref={search} value={query} placeholder="Find a repository" aria-label="Find a repository" onChange={(e) => setQuery(e.target.value)} />
+        <input
+          ref={search}
+          value={query}
+          placeholder="Find a repository"
+          aria-label="Find a repository"
+          onChange={(e) => find(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            if (folder) choose(query.trim());
+            else if (repo) ask.current?.focus();
+          }}
+        />
       </label>
       <div className="repo-list" role="listbox" aria-label="Repositories">
         {!options && <p className="muted">Looking for repositories…</p>}
-        {options && !shown.length && !/[/~]/.test(query) && <p className="muted">No repository matches. Type a folder's path to research one inside a repository.</p>}
-        {/[/~]/.test(query) && (
-          <button type="button" role="option" aria-selected={repo === query.trim()} title={query.trim()} onClick={() => setRepo(query.trim())}>
+        {options && !shown.length && !folder && <p className="muted">No repository matches. Type a folder's path to research one inside a repository.</p>}
+        {folder && (
+          <button type="button" role="option" aria-selected={repo === query.trim()} title={query.trim()} onClick={() => choose(query.trim())}>
             <FolderOpen size={14} />
             <b>{query.trim().split("/").filter(Boolean).pop()}</b>
             <small>this folder</small>
           </button>
         )}
         {shown.map((r) => (
-          <button type="button" role="option" aria-selected={repo === r.path} key={r.path} title={r.path} onClick={() => setRepo(r.path)}>
+          <button type="button" role="option" aria-selected={repo === r.path} key={r.path} title={r.path} onClick={() => choose(r.path)}>
             <GitBranch size={14} />
             <b>{r.name}</b>
             <small>{r.branch}</small>
@@ -653,9 +674,10 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
       </div>
       <Agents value={harness} onChange={setHarness} known={options?.harnesses} named />
       <textarea
+        ref={ask}
         rows={3}
         value={question}
-        placeholder="What should it find out?"
+        placeholder={chosen ? `What should it find out about ${chosen}?` : "What should it find out?"}
         aria-label="The first question"
         onChange={(e) => setQuestion(e.target.value)}
         onKeyDown={(e) => {

@@ -533,7 +533,8 @@ button { cursor: pointer; }
 .research-start h3 { margin: 2px 2px 8px; font-size: 13px; color: var(--ink); }
 .repo-find { display: flex; align-items: center; gap: 7px; padding: 6px 9px; margin-bottom: 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); color: var(--muted); }
 .repo-find input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink); }
-.repo-list { display: grid; gap: 1px; max-height: 210px; overflow: auto; margin-bottom: 4px; }
+/* One height whatever the search shows, so the card holding it never moves under a pick. */
+.repo-list { display: grid; align-content: start; gap: 1px; height: 210px; overflow: auto; margin-bottom: 4px; }
 .repo-list p { margin: 6px 4px; font-size: 13px; }
 .repo-list button { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 6px 8px; border: 0; border-radius: 9px; background: none; color: var(--ink); text-align: left; }
 .repo-list button b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
