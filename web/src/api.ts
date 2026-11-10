@@ -242,12 +242,15 @@ export type BrandSummary = {
   name: string;
   colors: { name: string; value: string }[];
   logo: string;
+  ground: string;
   source: string;
   read: string;
   sample: boolean;
   channels: string[];
 };
 export type BrandRead = { url: string; status: "reading" | "ready" | "failed"; slug?: string; message?: string; brand?: BrandSummary };
+export type ColourRole = "ground" | "ink" | "accent" | "muted" | "rule";
+export type TypeRole = "display" | "text" | "mono";
 export type BrandPackView = Omit<BrandView, "logos"> & {
   slug: string;
   logos: { name: string; url: string }[];
@@ -255,6 +258,18 @@ export type BrandPackView = Omit<BrandView, "logos"> & {
   read: string;
   reference: string;
   stand_ins?: Record<string, string>;
+  description: string;
+  voice_line: string;
+  license_note: string;
+  formats: { slug: string; width: number; height: number; label: string }[];
+  roles: { role: ColourRole; name: string; value: string }[];
+  palette: { name: string; value: string }[];
+  series: string[];
+  faces: { family: string; style: string; weight: string; file: string; url: string }[];
+  stacks: Partial<Record<TypeRole, string[]>>;
+  shape: { radius: string[]; pill: string; stroke: string; space: string; weights: Partial<Record<"display" | "text" | "strong", string>>; tracking: string };
+  rules: string[];
+  banned: string[];
 };
 export type ComputerView = {
   sandbox: string | null;
