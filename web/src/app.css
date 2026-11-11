@@ -201,8 +201,10 @@ button { cursor: pointer; }
 .start-brand .brand-select { flex: none; width: 240px; }
 /* affectUI's parts in the house's colours: their own rules sit in a style React hoists into the
    head, which :root outranks. A brand's logo sits on paper, so a dark mark reads on dark too. */
-:root :is(.ui-sel, .ui-tf, .ui-ta, .ui-progress) {
+:root :is(.ui-sel, .ui-tf, .ui-ta, .ui-progress, .ui-tl) {
   --aui-success: var(--green);
+  --ui-tl-ray: var(--green);
+  --ui-tl-done: var(--green);
   --ui-tf-text: var(--ink-2);
   --ui-tf-wash: var(--sunk);
   --ui-ta-text: var(--ink-2);
@@ -535,15 +537,20 @@ button { cursor: pointer; }
 .agents.named { flex-wrap: wrap; margin: 4px 0 8px; }
 .agents.named button { padding: 4px 10px 4px 4px; font-size: 13px; }
 .conv .node-head b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.35; }
+/* A click anywhere on a conversation opens it beside the canvas: the pointer (or a key on its
+   buttons) firms its edge, and the one that's open keeps a green one. */
+.conv { cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
+.conv:hover, .conv:has(:focus-visible) { border-color: var(--focus-line); box-shadow: 0 0 0 3px rgba(74, 187, 123, 0.14), var(--card-shadow); }
 .conv[data-status="working"] { border-color: var(--focus-line); }
 .conv[data-status="failed"] { border-color: var(--red-soft); }
+.conv[data-open] { border-color: var(--green); box-shadow: 0 0 0 3px rgba(74, 187, 123, 0.26), var(--card-shadow); }
+.conv-working { justify-self: start; }
 .conv-quote, .msg-quote, .conv-follow { display: flex; gap: 6px; margin: 0; font-size: 12.5px; color: var(--muted); }
 .conv-quote svg, .msg-quote svg, .conv-follow svg { flex: none; margin-top: 2px; }
 .conv-quote span, .conv-follow span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .conv-quote span { font-style: italic; }
 .conv-follow { color: var(--ink-2); }
 .msg-quote { margin: 2px 0 4px; font-style: italic; }
-.conv-step::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: var(--green); vertical-align: 1px; animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.25; } }
 .conv-answer { max-height: 210px; overflow: hidden; font-size: 13px; line-height: 1.5; color: var(--ink-2); mask-image: linear-gradient(to bottom, #000 70%, transparent); cursor: text; }
 .conv-answer h1, .conv-answer h2, .conv-answer h3, .conv-answer h4 { font-size: 13.5px; }

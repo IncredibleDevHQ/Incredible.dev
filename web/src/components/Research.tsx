@@ -10,6 +10,7 @@ import { api, type CanvasTask, type Conversation, type Harness, type HarnessId, 
 import { useHouse } from "../store";
 import { AgentMark, Rich } from "../ui";
 import { columnsOf, type Edge } from "./Flow";
+import { ThinkingLoader } from "./ThinkingLoader";
 
 export const RESEARCH_NODE = "research";
 export const NOTES_NODE = "notes";
@@ -164,7 +165,7 @@ function Agents({ value, onChange, known, named }: { value: HarnessId; onChange:
 }
 
 // One conversation: its question, what the agent is doing, the start of its answer (a passage of
-// which can be kept or explored), and a way into the whole of it.
+// which can be kept or explored), and a way into the whole of it: Open, or a click on the card.
 function ConversationCard({
   frameId,
   conversation: c,
@@ -177,6 +178,7 @@ function ConversationCard({
   onHot: (id: string | null) => void;
 }) {
   const openThread = useHouse((s) => s.openThread);
+  const open = useHouse((s) => s.threadId === c.id);
   const answer = useRef<HTMLDivElement>(null);
   const working = c.status === "working";
   const keptWhole = notes.some((n) => n.message_id === c.answer_id && n.text === c.answer);
@@ -187,19 +189,28 @@ function ConversationCard({
       say(error);
     }
   };
+  // A click on the card opens the conversation beside the canvas, unless it lands on one of the
+  // card's own controls or ends a passage's selection (which gets Keep and Explore instead).
+  const openFrom = (e: React.MouseEvent<HTMLElement>) => {
+    const target = e.target as Element;
+    if (e.detail > 1 || !e.currentTarget.contains(target) || target.closest("button, a")) return;
+    if (!window.getSelection()?.isCollapsed) return;
+    void openThread(c.id);
+  };
   return (
     <article
       className="node conv"
       data-node={c.id}
       data-status={c.status}
+      data-open={open || undefined}
       aria-label={c.question}
+      onClick={openFrom}
       onMouseEnter={() => onHot(c.id)}
       onMouseLeave={() => onHot(null)}
     >
       <header className="node-head">
         <AgentMark mark={c.harness} size="sm" />
         <b title={c.question}>{c.question}</b>
-        {working && <span className="spin" aria-label="Researching" />}
       </header>
       <div className="node-body">
         {c.quote && (
@@ -208,7 +219,7 @@ function ConversationCard({
             <span>“{c.quote}”</span>
           </p>
         )}
-        {working && <p className="node-line conv-step">{c.step || "Starting"}</p>}
+        {working && <ThinkingLoader className="conv-working" size="sm" phases={[c.step || "Starting"]} />}
         {c.answer && c.follow_up && (
           <p className="conv-follow" title={c.follow_up}>
             <MessageSquare size={13} />
