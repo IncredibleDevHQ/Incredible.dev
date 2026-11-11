@@ -196,15 +196,11 @@ button { cursor: pointer; }
    ways in (research or material), one action each. */
 .start { width: min(720px, calc(100% - 48px)); margin: 9vh auto 24px; padding: 22px 22px 18px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--frame-shadow); }
 .start h2 { margin: 0 0 6px; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
-.start-brand { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; color: var(--ink-2); font-size: 13.5px; }
-.start-brand b { color: var(--ink); font-weight: 600; }
-.start-brand .linkish { margin-left: auto; font-size: 13px; white-space: nowrap; }
-.start-mark { display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 6px; overflow: hidden; background: #f6f1e7; color: #14161a; }
-.start-mark img { max-width: 18px; max-height: 18px; object-fit: contain; }
-.start-mark svg { width: 14px; height: 14px; }
+.start-brand { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; color: var(--ink-2); font-size: 13.5px; }
+.start-brand .brand-select { flex: none; width: 240px; }
 /* affectUI's parts in the house's colours: their own rules sit in a style React hoists into the
-   head, which :root outranks. */
-:root :is(.ui-tf, .ui-progress) {
+   head, which :root outranks. A brand's logo sits on paper, so a dark mark reads on dark too. */
+:root :is(.ui-sel, .ui-tf, .ui-progress) {
   --aui-success: var(--green);
   --ui-tf-text: var(--ink-2);
   --ui-tf-wash: var(--sunk);
@@ -219,7 +215,10 @@ button { cursor: pointer; }
   --aui-focus: var(--green);
   --aui-danger: var(--red);
   --aui-font: var(--font);
+  --ui-sel-glow: var(--green-soft);
+  --ui-sel-shadow-menu: var(--shadow);
 }
+:root .brand-select .ui-sel__icon > img { border-radius: 4px; background: #f6f1e7; object-fit: contain; }
 /* Reading a brand from a website: the address, then the read as it goes. */
 .read-brand { width: min(820px, 100%); margin: 0 auto; }
 .read-back { display: inline-flex; align-items: center; gap: 5px; margin: 0 0 14px; font-size: 13px; }
