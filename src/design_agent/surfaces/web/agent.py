@@ -1399,11 +1399,8 @@ class AgentHost:
         return kept
 
     def _material_label(self, words: str, file_ids: Sequence[str]) -> str:
-        # A page read from a link reads by its title.
         names = [
-            Path(str(f["name"])).stem if f["origin"] == "link" else str(f["name"])
-            for f in (self.store.file(i) for i in file_ids)
-            if f is not None
+            self._file_label(f) for f in (self.store.file(i) for i in file_ids) if f is not None
         ]
         if names:
             more = len(names) - 2
@@ -1411,6 +1408,22 @@ class AgentHost:
         if re.fullmatch(r"https?://\S+", words):
             return _short_link(words)
         return "my notes"
+
+    def _file_label(self, row: Row) -> str:
+        # A page read from a link goes by its own title (its first line), quoted; a file kept's
+        # name can't carry all of a title.
+        if row["origin"] != "link":
+            return str(row["name"])
+        try:
+            with (self.files_dir / str(row["rel_path"])).open("rb") as kept:
+                first = kept.read(1024).decode("utf-8", errors="replace").split("\n", 1)[0]
+        except OSError:
+            first = ""
+        title = (first[2:].strip() if first.startswith("# ") else "") or Path(str(row["name"])).stem
+        # Short enough, cut at a word, that a thread's title keeps both quotes.
+        if len(title) > 55:
+            title = title[:55].rsplit(" ", 1)[0].rstrip(" :,;-") + "…"
+        return f"“{title}”"
 
     def mark_asset(self, thread_id: str, asset_id: str, *, status: str, note: str) -> str:
         """`canvas_update_asset`: where an asset stands, as the agent says it."""

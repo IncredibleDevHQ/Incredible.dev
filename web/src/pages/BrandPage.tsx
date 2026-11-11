@@ -289,7 +289,7 @@ function Kit({ pack, here }: { pack: BrandPackView; here?: { id: string; name: s
 
       {(pack.reference || pack.source) && (
         <Section n={next()} title="Source" tag={pack.source ? host(pack.source) : undefined}>
-          <div className="source">
+          <div className="kit-source">
             {pack.reference && (
               <a className="source-shot" href={pack.reference} target="_blank" rel="noreferrer">
                 <span className="source-bar">

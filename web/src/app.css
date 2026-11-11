@@ -99,7 +99,7 @@ button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 /* affectUI's fields show focus on their own rounded edge, so the text inside them gets no ring. */
-.ui-tf__input:focus-visible { outline: none; }
+:is(.ui-tf__input, .ui-ta__input):focus-visible { outline: none; }
 .mono { font-family: var(--mono); }
 .muted { color: var(--muted); }
 .faint { color: var(--faint); }
@@ -200,11 +200,15 @@ button { cursor: pointer; }
 .start-brand .brand-select { flex: none; width: 240px; }
 /* affectUI's parts in the house's colours: their own rules sit in a style React hoists into the
    head, which :root outranks. A brand's logo sits on paper, so a dark mark reads on dark too. */
-:root :is(.ui-sel, .ui-tf, .ui-progress) {
+:root :is(.ui-sel, .ui-tf, .ui-ta, .ui-progress) {
   --aui-success: var(--green);
   --ui-tf-text: var(--ink-2);
   --ui-tf-wash: var(--sunk);
+  --ui-ta-text: var(--ink-2);
+  --ui-ta-wash: var(--sunk);
+  --ui-ta-readonly: var(--sunk);
   --ui-tf-edge-focus: var(--focus-line);
+  --ui-ta-edge-focus: var(--focus-line);
   --ui-pg-track: var(--sunk);
   --aui-ink: var(--ink);
   --aui-muted: var(--muted);
@@ -408,6 +412,8 @@ button { cursor: pointer; }
 .tf-running { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 10px 22px; border-bottom: 1px solid var(--line-soft); color: var(--ink-2); font-size: 13px; }
 .tf-running > span { display: inline-flex; align-items: center; gap: 8px; }
 .tf-running b { font-variant-numeric: tabular-nums; color: var(--green); }
+/* The demo's note: as wide as the frame, never widening it. */
+.tf-demo { contain: inline-size; margin: 0; padding: 9px 22px; border-bottom: 1px solid var(--line-soft); background: var(--amber-soft); color: var(--amber); font-size: 13px; font-weight: 550; }
 
 /* A task's work as a flow: its source, then each asset in columns, with lines from what it is
    made from. Lines are dim at rest, dashed while the asset waits, green for the card in hand. */
@@ -433,6 +439,23 @@ button { cursor: pointer; }
 .node-brief { margin: 0; font-size: 13px; color: var(--ink-2); }
 .node .files { margin-top: 0; }
 .source-words { margin: 0; color: var(--ink-2); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+/* A page read from a link, as the page it is: its site, its title, a line of it and how much was
+   read. It opens the words kept; the arrow opens the page itself. */
+.page-card { position: relative; }
+.page-main {
+  display: grid; gap: 6px; width: 100%; padding: 11px 40px 11px 12px; border: 1px solid var(--line-soft); border-radius: 12px;
+  background: var(--surface); color: var(--ink); text-align: left; transition: border-color 0.12s;
+}
+.page-main:hover { border-color: var(--line-strong); }
+.page-site { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; color: var(--muted); }
+.page-site svg { width: 14px; height: 14px; flex: none; }
+.page-title { font-size: 14px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.page-line { font-size: 12.5px; line-height: 1.45; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.page-read { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.page-read svg { width: 13px; height: 13px; color: var(--green); }
+.page-out { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--muted); }
+.page-out:hover { background: var(--sunk); color: var(--ink); }
+.page-out svg { width: 15px; height: 15px; }
 .port {
   position: absolute; right: -14px; top: 9px; z-index: 2; display: grid; place-items: center; width: 28px; height: 28px; padding: 0;
   border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); opacity: 0; transition: opacity 0.12s;
@@ -488,8 +511,8 @@ button { cursor: pointer; }
 .pop-head { display: flex; align-items: center; gap: 8px; padding: 0 2px 6px; }
 .pop-head svg { color: var(--muted); }
 .pop-line { margin: 0 8px 8px; font-size: 13px; color: var(--muted); }
-.pop textarea, .tpl-place textarea { display: block; width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); resize: vertical; outline: none; line-height: 1.5; }
-.pop textarea:focus, .tpl-place textarea:focus { border-color: var(--focus-line); }
+.pop textarea { display: block; width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); resize: vertical; outline: none; line-height: 1.5; }
+.pop textarea:focus { border-color: var(--focus-line); }
 .pop-actions { display: flex; justify-content: flex-end; padding: 8px 0 0; }
 
 /* Research: a repository's questions as conversation trees, and the notes kept from them. */

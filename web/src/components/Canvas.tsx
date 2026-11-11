@@ -7,17 +7,17 @@
 import { ArrowLeft, Check, LayoutTemplate, Maximize, MessageSquare, Minus, Paperclip, Play, Plus, Send, Telescope } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api, type Asset, type Board, type CanvasTask, type Capability, type FileView, type FrameView, type Material, type Work } from "../api";
+import { api, type Asset, type Board, type CanvasTask, type Capability, type FileView, type FrameView, type Work } from "../api";
 import { useHouse } from "../store";
 import { Avatar, FileList, FooterLine, KindIcon, makesOf, StatusChip } from "../ui";
 import { columnsOf, Lines, useLines, type Edge } from "./Flow";
 import { EMPTY_RESEARCH, NOTES_NODE, ResearchColumns, researchEdges, researching, ResearchStart } from "./Research";
+import { SOURCE, SourceNode } from "./Source";
 import { ChannelStart } from "./Start";
 import { Templates } from "./Templates";
 
 type Camera = { x: number; y: number; z: number };
 const cameras: Record<string, Camera> = {};
-const SOURCE = "source";
 // What something on the canvas can be made from: a signed-off, delivered or dropped asset.
 const READY = new Set(["approved", "done", "skipped"]);
 // Pointer and wheel events from these belong to them, not to the canvas's pan and zoom.
@@ -182,6 +182,7 @@ export function Canvas({ channelId }: { channelId: string }) {
 function TaskFrame({ task }: { task: CanvasTask }) {
   const people = useHouse((s) => s.people);
   const openThread = useHouse((s) => s.openThread);
+  const demo = useHouse((s) => s.session?.demo);
   const [adding, setAdding] = useState<HTMLElement | null>(null);
   const { thread, work } = task;
   const titles = new Set(task.assets.map((a) => a.title));
@@ -215,6 +216,8 @@ function TaskFrame({ task }: { task: CanvasTask }) {
           </button>
         </div>
       </header>
+      {/* The demo's sample is the same whatever was brought: said where that work shows. */}
+      {demo && <p className="tf-demo">Demo: a scripted agent makes the same sample work whatever you bring, so this isn't made from your source.</p>}
       {running.length > 0 && <Running work={running} />}
       <TaskFlow task={task} />
       {adding && <MakeMenu task={task} anchor={adding} onClose={() => setAdding(null)} />}
@@ -295,27 +298,6 @@ function TaskFlow({ task }: { task: CanvasTask }) {
         </div>
       )}
     </div>
-  );
-}
-
-// What the task started from: the files someone brought and their words (a link, notes, the ask).
-function SourceNode({ material }: { material: Material }) {
-  const [first, ...rest] = material.text.split("\n");
-  // A template's first line names it (the frame's title says so); the material is what follows.
-  const words = rest.join("\n").trim() || (material.files.length ? "" : first);
-  return (
-    <article className="node source" data-node={SOURCE} aria-label="What this started from">
-      <header className="node-head">
-        <span className="node-icon">
-          <Paperclip size={16} />
-        </span>
-        <b>Source</b>
-      </header>
-      <div className="node-body">
-        {material.files.length > 0 && <FileList files={material.files} title="Source" />}
-        {words && <p className="source-words">{words}</p>}
-      </div>
-    </article>
   );
 }
 

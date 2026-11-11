@@ -85,6 +85,18 @@ async def test_a_linked_page_is_kept_as_markdown_after_its_redirect() -> None:
     assert "Iceberg brings forty years" in words
 
 
+async def test_a_back_link_above_the_pages_heading_is_left_out() -> None:
+    page = f"""<html><head><title>How Iceberg brought 40 years of database wisdom</title></head>
+<body><main><p><a href="/blog">Back to Blog</a></p>
+<h1>How Iceberg brought 40 years of database wisdom</h1><p>By the data team</p><p>{WORDS}</p>
+</main></body></html>"""
+    read = await pages.read_link(POST, resolver=public, transport=serve({POST: html(page)}))
+    assert read.content.decode().startswith(
+        f"# How Iceberg brought 40 years of database wisdom\n\nRead from {POST}\n\n"
+        "By the data team\n\nIceberg brings"
+    )
+
+
 async def test_a_linked_pdf_is_kept_as_itself() -> None:
     pdf = httpx.Response(200, headers={"content-type": "application/pdf"}, content=b"%PDF-1.7 x")
     read = await pages.read_link(
@@ -128,10 +140,29 @@ async def test_a_template_started_from_a_link_works_from_the_page(host: AgentHos
     message = host.place_template(channel, "explainer", by="you", text=POST, file_ids=read)
     thread = host.store.thread(message["thread_id"])
     assert thread is not None
-    assert thread["title"] == "Explainer from How Iceberg brought 40 years of database wisdom"
+    assert thread["title"] == "Explainer from “How Iceberg brought 40 years of database wisdom”"
     (kept,) = message["data"]["files"]
     assert kept["name"] == "How Iceberg brought 40 years of database wisdom.md"
     assert kept["origin"] == "link"
+
+
+async def test_a_frame_from_a_page_goes_by_its_own_title_cut_at_a_word(host: AgentHost) -> None:
+    title = (
+        "From Data Swamps to Reliable Data Systems: How Iceberg Brought 40 Years of Database "
+        "Wisdom to Data Lakes"
+    )
+    page = (
+        f"<html><head><title>{title}</title></head><body><main><p>{WORDS}</p></main></body></html>"
+    )
+    host.link_transport = serve({POST: html(page)})
+    channel = str(host.store.channels()[0]["id"])
+    read = await host.read_links(POST, by="you")
+    message = host.place_template(channel, "explainer", by="you", text=POST, file_ids=read)
+    thread = host.store.thread(message["thread_id"])
+    assert thread is not None
+    assert thread["title"] == (
+        "Explainer from “From Data Swamps to Reliable Data Systems: How Iceberg…”"
+    )
 
 
 async def test_a_link_brought_alone_must_be_read_but_beside_notes_it_may_not(

@@ -9,7 +9,9 @@ import { useFaces } from "../kit";
 import { useHouse } from "../store";
 import { KindIcon, makesOf } from "../ui";
 import { columnsOf, Lines, useLines, type Edge } from "./Flow";
+import { linksIn, siteOf } from "./Source";
 import { lookOf, TemplateCover } from "./TemplateCover";
+import { TextArea } from "./TextArea";
 
 const FINISHED = new Set(["done", "approved"]);
 const START = "start";
@@ -196,6 +198,15 @@ function Place({ template, channelId, from, frame, onPlaced }: { template: Templ
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const ready = frame ? true : mode === "canvas" ? Boolean(source) : Boolean(text.trim() || files.length);
+  // A link brought is read before the agent starts: which pages, said as it is pasted.
+  const links = linksIn(text);
+  const sites = [...new Set(links.slice(0, 3).map(siteOf).filter(Boolean))].join(", ");
+  const reads =
+    links.length === 1
+      ? `Reads the page at ${sites || "that link"}; the agent starts from its words.`
+      : links.length > 1
+        ? `Reads ${links.length > 3 ? "the first 3 links" : `${links.length} pages`} (${sites}); the agent starts from their words.`
+        : undefined;
 
   const attach = async (list: FileList | null) => {
     if (!list?.length) return;
@@ -224,6 +235,9 @@ function Place({ template, channelId, from, frame, onPlaced }: { template: Templ
     } finally {
       setBusy(false);
     }
+  };
+  const send = () => {
+    if (ready && !busy) void place();
   };
 
   return (
@@ -255,7 +269,7 @@ function Place({ template, channelId, from, frame, onPlaced }: { template: Templ
         {frame ? (
           <>
             <p className="muted">The notes of “{notesOf?.thread.title ?? "the research"}”: {notesOf?.research?.notes.length ?? 0} kept.</p>
-            <textarea rows={2} value={text} placeholder="Anything it should know? (optional)" aria-label="Anything it should know?" onChange={(e) => setText(e.target.value)} />
+            <TextArea minRows={2} maxRows={6} value={text} placeholder="Anything it should know? (optional)" aria-label="Anything it should know?" onSubmitShortcut={send} onChange={(e) => setText(e.target.value)} />
           </>
         ) : mode === "material" ? (
           <div
@@ -266,7 +280,7 @@ function Place({ template, channelId, from, frame, onPlaced }: { template: Templ
               void attach(e.dataTransfer.files);
             }}
           >
-            <textarea rows={4} value={text} placeholder="Paste a link or your notes" aria-label="Paste a link or your notes" onChange={(e) => setText(e.target.value)} />
+            <TextArea minRows={3} maxRows={10} value={text} placeholder="Paste a link or your notes" aria-label="Paste a link or your notes" hint={reads} onSubmitShortcut={send} onChange={(e) => setText(e.target.value)} />
             <div className="drop-row">
               <button type="button" className="btn" onClick={() => input.current?.click()}>
                 <Paperclip />
@@ -293,7 +307,7 @@ function Place({ template, channelId, from, frame, onPlaced }: { template: Templ
                 </label>
               ))}
             </div>
-            <textarea rows={2} value={text} placeholder="Anything it should know? (optional)" aria-label="Anything it should know?" onChange={(e) => setText(e.target.value)} />
+            <TextArea minRows={2} maxRows={6} value={text} placeholder="Anything it should know? (optional)" aria-label="Anything it should know?" onSubmitShortcut={send} onChange={(e) => setText(e.target.value)} />
           </>
         ) : (
           <p className="muted">{template.starts}. Nothing like that is on this canvas yet.</p>
@@ -303,7 +317,7 @@ function Place({ template, channelId, from, frame, onPlaced }: { template: Templ
         <span className="faint">
           {demo ? "Demo: the scripted agent makes the same sample work, not from what you bring." : `${worn ? `It wears ${worn.name}. ` : ""}The agent starts on it right away.`}
         </span>
-        <button type="button" className="btn primary" disabled={!ready || busy} onClick={() => void place()}>
+        <button type="button" className="btn primary" disabled={!ready || busy} onClick={send}>
           <LayoutTemplate />
           {/* A link is read before the task starts, which takes a moment. */}
           {busy && /https?:\/\//.test(text) ? "Reading the page…" : "Place on the canvas"}

@@ -88,9 +88,14 @@ async def read_link(
     title, text = ("", raw.strip()) if kind in ("text/plain", "text/markdown") else page_text(raw)
     if len(text) < MIN_TEXT:
         raise FetchRefused("the page has no readable text (a browser builds it)")
-    # The page's own heading leads, once, with where it was read from under it.
+    # The page's own heading leads, once, with where it was read from under it; the few short
+    # lines a page may put above its heading (a back link, a kicker) go with it.
     heading = f"# {title or url}"
-    body = text[len(heading) :].lstrip("\n") if text.startswith(heading) else text
+    blocks = text.split("\n\n")
+    at = next((i for i, block in enumerate(blocks[:6]) if block == heading), None)
+    if at is not None and all(len(block) < 60 for block in blocks[:at]):
+        blocks = blocks[at + 1 :]
+    body = "\n\n".join(blocks)
     words = f"{heading}\n\nRead from {url}\n\n{body[:MAX_TEXT]}\n"
     return Read(url, _file_name(url, ".md", title), words.encode(), title)
 
