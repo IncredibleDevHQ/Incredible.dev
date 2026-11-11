@@ -1,3 +1,4 @@
+import { preference } from "./preferences";
 // Small pieces every view shares: who said it, what state a thread is in, files, the footer, and
 // an agent's words.
 import {
@@ -56,7 +57,8 @@ export const kindTitle = (id: string) => capabilityOf(id)?.title ?? "";
 export const makesOf = (kind: string) => capabilityOf(kind)?.makes ?? "doc";
 
 export function clock(ts: number) {
-  return new Date(ts * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const format = preference("clock");
+  return new Date(ts * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: format === "system" ? undefined : format === "12" });
 }
 
 export function Avatar({ person, size }: { person?: Person; size?: "sm" }) {

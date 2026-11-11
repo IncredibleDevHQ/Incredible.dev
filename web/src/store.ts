@@ -22,7 +22,7 @@ import {
   type Work,
 } from "./api";
 
-export type Page = "channel" | "needs" | "brand" | "read-brand" | "skills" | "computer";
+export type Page = "channel" | "needs" | "brand" | "read-brand" | "skills" | "computer" | "settings";
 export type Mode = "chat" | "canvas";
 // The template picker on the canvas: open on the list, or on one template (started from an asset,
 // or placed onto a research frame, made from its notes).

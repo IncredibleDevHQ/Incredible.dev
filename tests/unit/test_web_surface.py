@@ -470,3 +470,27 @@ def test_every_address_in_the_app_opens_the_app(tmp_path: Path) -> None:
         page = client.get(address)
         assert page.status_code == 200, address
         assert "<title>Creative House</title>" in page.text, address
+
+
+def test_workspace_usage_counts_only_metered_events(tmp_path):
+    store = Store(tmp_path / "test.sqlite")
+    try:
+        assert store.workspace_usage()["calls"] == 0
+        for kind, data in [
+            ("usage", {"usd": 0.03, "usage": {"input_tokens": 12, "output_tokens": 2}}),
+            (
+                "usage",
+                {"priced": False, "usd": 0, "usage": {"input_tokens": 3, "output_tokens": 5}},
+            ),
+            ("other", {"usd": 99}),
+        ]:
+            store.add_activity({"kind": kind, "at": 1, "thread_id": "thread", "data": data})
+        assert store.workspace_usage() == {
+            "calls": 2,
+            "input_tokens": 15,
+            "output_tokens": 7,
+            "unpriced": 1,
+            "usd": 0.03,
+        }
+    finally:
+        store.close()

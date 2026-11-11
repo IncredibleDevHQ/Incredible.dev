@@ -12,6 +12,12 @@ export async function authRequest(path: string, body?: unknown) {
   return data;
 }
 
+export function WorkspaceSkeleton() {
+  return <div className="app workspace-skeleton" aria-label="Loading workspace" aria-busy="true">
+    <div className="side"><div className="skeleton-line" /><div className="skeleton-line" /></div><div className="main" />
+  </div>;
+}
+
 export function AuthGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<"loading" | "ready" | "login" | "error">("loading");
   const [google, setGoogle] = useState(false);
@@ -23,15 +29,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
     const boot = async () => {
       setState("loading");
       try {
+        const response = await fetch("/api/auth/session", { credentials: "same-origin", cache: "no-store" });
+        if (!active) return;
+        if (response.ok) { setState("ready"); return; }
+        if (response.status !== 401) throw new Error("Sign-in is temporarily unavailable. Please try again.");
         const config = await authRequest("config");
         if (!active) return;
-        if (!config.enabled) { setState("ready"); return; }
         setGoogle(config.google);
-        const response = await fetch("/api/auth/session", { credentials: "same-origin" });
-        if (!active) return;
-        if (response.ok) setState("ready");
-        else if (response.status === 401) setState("login");
-        else throw new Error("Sign-in is temporarily unavailable. Please try again.");
+        setState("login");
       } catch (failed) {
         if (active) { setError((failed as Error).message); setState("error"); }
       }
@@ -44,10 +49,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (state === "ready") return children;
   if (state === "login") return <Login google={google} />;
-  return <main className="auth-shell"><section className="auth-card" aria-busy={state === "loading"}>
+  if (state === "loading") return <WorkspaceSkeleton />;
+  return <main className="auth-shell"><section className="auth-card">
     <img className="auth-mark" src="/house.svg" alt="" />
     <h1>Incredible.dev</h1>
-    {state === "loading" ? <p role="status">Opening your workspace…</p> : <><p role="alert">{error}</p><button className="btn primary" onClick={() => setRetry(retry + 1)}>Try again</button></>}
+    <p role="alert">{error}</p><button className="btn primary" onClick={() => setRetry(retry + 1)}>Try again</button>
   </section></main>;
 }
 

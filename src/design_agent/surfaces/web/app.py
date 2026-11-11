@@ -298,6 +298,11 @@ def create_app(
     async def auth_config() -> dict[str, bool]:
         return {"enabled": bool(authenticated_user)}
 
+    @app.get("/api/auth/session")
+    async def workspace_auth_session() -> dict[str, bool]:
+        # In authenticated mode the outer gateway owns this route and validates the cookie.
+        return {"authenticated": bool(authenticated_user)}
+
     @app.get("/api/session")
     async def session(me: str = Depends(person)) -> dict[str, Any]:
         runtime = host.runtime
@@ -309,6 +314,10 @@ def create_app(
             "authenticated": bool(authenticated_user),
             "sandbox": runtime.binding.name if runtime else None,
         }
+
+    @app.get("/api/usage")
+    def usage(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        return store.workspace_usage()
 
     @app.get("/api/channels")
     async def channels(me: str = Depends(person)) -> list[dict[str, Any]]:  # noqa: ARG001

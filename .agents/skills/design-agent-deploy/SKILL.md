@@ -21,6 +21,8 @@ claim or import legacy SQLite data without an explicit owner decision. Verify un
 email confirmation. Run real Postgres integration and scripted render tests before replacing
 the local app. Google provider credentials and email delivery must be configured in Supabase;
 never silently disable confirmation or authentication to work around missing configuration.
+A lost idle connection should recover on the next checkout. Verify recovery in the private
+workspace integration tests and check the signed-in Settings usage summary after a rollout.
 The Postgres/token API below is a different deployment surface.
 
 Root Compose also requires private MinIO storage: run `uv run python scripts/setup_minio.py`

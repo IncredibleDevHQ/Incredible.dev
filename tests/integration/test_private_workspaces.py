@@ -62,6 +62,9 @@ async def test_ui_data_and_graph_memory_are_private_and_survive_reopening(databa
         a, b = stores
         assert [p["id"] for p in a.people() if not p["agent"]] == [users[0]["id"]]
         assert not list(tmp_path.rglob("*.sqlite"))
+        # Simulate a lost workspace connection without restarting the application.
+        with a._db.pool.connection() as idle:
+            idle.close()
         channel = a.add_channel("private")
         assert b.channel(channel["id"]) is None
         assert b._one("SELECT id FROM channels WHERE name = ?", ("private",)) is None
@@ -83,6 +86,8 @@ async def test_ui_data_and_graph_memory_are_private_and_survive_reopening(databa
             _,
             memory,
         ):
+            async with memory.conn.connection() as idle:
+                await idle.close()
             await memory.aput(("same-namespace",), "same-key", {"private": "alpha"})
         async with open_persistence(settings, tmp_path, schema=user_schema(users[1]["id"])) as (
             _,
@@ -188,6 +193,15 @@ async def test_real_private_apps_reject_other_users_channel_file_and_thread_ids(
             assert all(p["id"] in {users[1]["id"], "agent"} for p in session["people"])
             a = app.state.tenants.apps[users[0]["id"]].state.host
             b = app.state.tenants.apps[users[1]["id"]].state.host
+            a.store.add_activity(
+                {
+                    "kind": "usage",
+                    "thread_id": message["thread_id"],
+                    "at": 1,
+                    "data": {"input_tokens": 31, "priced": False},
+                }
+            )
+            assert (await client.get("/api/usage")).raise_for_status().json()["input_tokens"] == 0
             if settings.blob_backend == "s3":
                 assert a.store.file(file_id)["storage"] == "s3"
                 assert not list(tmp_path.rglob("note.txt"))
@@ -210,6 +224,7 @@ async def test_real_private_apps_reject_other_users_channel_file_and_thread_ids(
             a.hub.close(own_queue)
             b.hub.close(queue)
             client.cookies.set("incredible-access", "alpha")
+            assert (await client.get("/api/usage")).raise_for_status().json()["input_tokens"] == 31
             assert (await client.get("/api/files/" + file_id)).content == b"private data"
             if settings.blob_backend == "s3":
                 assert (

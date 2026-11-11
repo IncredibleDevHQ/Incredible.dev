@@ -593,3 +593,17 @@ class Store:
             "SELECT * FROM activity WHERE thread_id = ? AND kind = 'usage' ORDER BY at",
             (thread_id,),
         )
+
+    def workspace_usage(self) -> Row:
+        totals: Row = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "usd": 0.0, "unpriced": 0}
+        for row in self._all("SELECT data FROM activity WHERE kind = 'usage'"):
+            data = row["data"]
+            usage = data.get("usage") or {}
+            totals["calls"] += 1
+            for field in ("input_tokens", "output_tokens"):
+                totals[field] += usage.get(field, data.get(field, 0))
+            if data.get("priced") is False or data.get("usd") is None:
+                totals["unpriced"] += 1
+            else:
+                totals["usd"] += data["usd"]
+        return totals

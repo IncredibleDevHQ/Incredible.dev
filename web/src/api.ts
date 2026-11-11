@@ -317,6 +317,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 
 export const api = {
+  usage: () => call<{calls: number; input_tokens: number; output_tokens: number; usd: number; unpriced: number}>("GET", "/api/usage"),
   session: () => call<Session>("GET", "/api/session"),
   channels: () => call<Channel[]>("GET", "/api/channels"),
   addChannel: (name: string, topic = "") => call<Channel>("POST", "/api/channels", { name, topic }),

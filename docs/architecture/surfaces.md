@@ -62,6 +62,15 @@ schema. The browser has no database credential or service-role key. See [Supabas
 for trust boundaries, operational limits, and the distinction from the developer-only identity
 switcher.
 
+The sidebar keeps Light and Dark above the profile button. The profile menu opens Settings
+or signs out (native development also supports switching identities). Settings saves the
+start page and clock format on this device. Its usage summary counts persisted model calls
+in the current workspace, including calls whose model has no listed price.
+
+Workspace reads and writes, graph checkpoints and graph memory use bounded PostgreSQL pools.
+Each new connection restores its workspace search path. A checkout checks for stale connections
+before executing a statement. An interrupted write is never automatically replayed.
+
 Root Compose uses `blobs.py` to keep delivered files and attachments in private MinIO S3
 objects under the verified account UUID. File metadata stays in its Postgres schema; downloads
 pass through the authenticated backend, never a public bucket. Native development retains the

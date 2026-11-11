@@ -152,6 +152,13 @@ button { cursor: pointer; }
   background: none; text-align: left;
 }
 .whoami:hover { background: var(--raised); }
+.whoami[aria-expanded="true"] { background: var(--raised); }
+.account-copy { flex: 1; min-width: 0; }
+.account-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.account-chevron { flex: none; color: var(--muted); }
+.account-menu { bottom: calc(100% - 4px); }
+.account-label { margin: 4px 8px 8px; color: var(--muted); font-size: 11px; }
+.account-actions { border-top: 1px solid var(--line-soft); padding-top: 6px; margin-top: 8px; }
 .whoami small { display: block; color: var(--faint); font-size: 11px; }
 .menu {
   position: absolute; left: 12px; right: 12px; bottom: 64px; z-index: 30; padding: 6px; border-radius: 12px;
@@ -894,5 +901,12 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .auth-switch { margin: 22px 0 0; text-align: center; font-size: 12px; color: var(--muted); }
 .auth-switch button { border: 0; padding: 4px; background: none; color: var(--green); }
 .side-foot .whoami > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.side-foot > .btn { margin-top: 10px; width: 100%; justify-content: center; }
 @media (max-width: 480px) { .auth-card { padding: 25px 22px; } }
+.settings-page .section { max-width: 36rem; }
+.settings-page .ui-sel { margin: 16px 0; }
+.usage-totals { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+.usage-totals dd { margin: 0; font-variant-numeric: tabular-nums; }
+.workspace-skeleton { pointer-events: none; }
+.workspace-skeleton .side { padding: 24px 16px; gap: 16px; }
+.skeleton-line { height: 12px; width: 60%; border-radius: 6px; background: var(--line-soft); }
+.skeleton-line + .skeleton-line { width: 40%; }
