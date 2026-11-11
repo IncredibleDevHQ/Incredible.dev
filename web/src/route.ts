@@ -17,9 +17,9 @@ type Route =
   | { page: "channel"; channel?: string; mode: Mode; task?: string; node?: string; thread?: string }
   | { page: "brand"; kit?: string }
   | { page: "read-brand"; for?: string }
-  | { page: "needs" | "skills" | "computer" | "settings" };
+  | { page: "needs" | "skills" | "computer" | "settings" | "usage" | "organization" };
 
-const PAGES = { settings: "/settings", needs: "/needs-you", skills: "/skills", computer: "/computer" } as const;
+const PAGES = { usage: "/settings/usage", organization: "/settings/organization", settings: "/settings", needs: "/needs-you", skills: "/skills", computer: "/computer" } as const;
 const HOUSE_KIT = "default";
 
 const here = () => location.pathname + location.search;
@@ -41,6 +41,7 @@ export function parse(path: string, search: string): Route {
     if (view !== "canvas") return { page: "channel", channel, mode: "chat", thread: query.get("thread") ?? undefined };
     return { page: "channel", channel, mode: "canvas", task, node, thread: query.get("thread") ?? undefined };
   }
+  if (head === "settings" && (rest[0] === "usage" || rest[0] === "organization")) return {page: rest[0]};
   if (head === "brand") return rest[0] === "new" ? { page: "read-brand", for: query.get("for") ?? undefined } : { page: "brand", kit: rest[0] };
   const page = (Object.keys(PAGES) as (keyof typeof PAGES)[]).find((p) => PAGES[p] === `/${head}`);
   return page ? { page } : { page: "channel", mode: "chat" };
@@ -48,6 +49,8 @@ export function parse(path: string, search: string): Route {
 
 export function addressOf(s: State): string {
   switch (s.page) {
+    case "usage":
+    case "organization":
     case "settings":
     case "needs":
     case "skills":

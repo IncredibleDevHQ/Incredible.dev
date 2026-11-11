@@ -24,6 +24,8 @@ from typing import Any
 Row = dict[str, Any]
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS organization (
+  id INTEGER PRIMARY KEY CHECK (id = 1), name TEXT NOT NULL, website TEXT NOT NULL, description TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS people (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, initials TEXT NOT NULL, hue INTEGER NOT NULL,
   agent INTEGER NOT NULL DEFAULT 0);
@@ -67,6 +69,7 @@ CREATE TABLE IF NOT EXISTS activity (
   id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, kind TEXT NOT NULL, source TEXT NOT NULL DEFAULT '',
   label TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '{}',
   at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS activity_usage_time ON activity(at) WHERE kind = 'usage';
 CREATE INDEX IF NOT EXISTS activity_by_thread ON activity(thread_id, at);
 CREATE TABLE IF NOT EXISTS assets (
   id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL,
@@ -595,15 +598,62 @@ class Store:
         )
 
     def workspace_usage(self) -> Row:
-        totals: Row = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "usd": 0.0, "unpriced": 0}
+        totals = usage_counts()
         for row in self._all("SELECT data FROM activity WHERE kind = 'usage'"):
-            data = row["data"]
-            usage = data.get("usage") or {}
-            totals["calls"] += 1
-            for field in ("input_tokens", "output_tokens"):
-                totals[field] += usage.get(field, data.get(field, 0))
-            if data.get("priced") is False or data.get("usd") is None:
-                totals["unpriced"] += 1
-            else:
-                totals["usd"] += data["usd"]
+            add_call(totals, row["data"])
         return totals
+
+    def usage_report(self, period: str, *, now: float | None = None) -> Row:
+        now = time.time() if now is None else now
+        days = {"today": 1, "week": 7, "month": 30}[period]
+        start = (int(now) // 86400 - days + 1) * 86400
+        step = 3600 if period == "today" else 86400
+        series = [dict(at=at, **usage_counts()) for at in range(start, start + days * 86400, step)]
+        totals = usage_counts()
+        models: dict[str, Row] = {}
+        for row in self._all(
+            "SELECT at, data FROM activity WHERE kind = 'usage' AND at >= ? AND at <= ?",
+            (start, now),
+        ):
+            data = row["data"]
+            model = data.get("model") or "Unknown model"
+            if model not in models:
+                models[model] = dict(model=model, **usage_counts())
+            for counts in (totals, models[model], series[int((row["at"] - start) // step)]):
+                add_call(counts, data)
+        return {
+            "totals": totals,
+            "series": series,
+            "models": sorted(models.values(), key=lambda m: (-m["calls"], m["model"])),
+        }
+
+    def organization(self) -> Row:
+        return self._one("SELECT name, website, description FROM organization WHERE id = 1") or {
+            "name": "",
+            "website": "",
+            "description": "",
+        }
+
+    def save_organization(self, name: str, website: str, description: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO organization(id,name,website,description) VALUES(1,?,?,?) "
+                "ON CONFLICT(id) DO UPDATE SET name=excluded.name, website=excluded.website, "
+                "description=excluded.description",
+                (name, website, description),
+            )
+
+
+def usage_counts() -> Row:
+    return {"calls": 0, "input_tokens": 0, "output_tokens": 0, "usd": 0.0, "unpriced": 0}
+
+
+def add_call(totals: Row, data: Row) -> None:
+    usage = data.get("usage") or {}
+    totals["calls"] += 1
+    for field in ("input_tokens", "output_tokens"):
+        totals[field] += usage.get(field, data.get(field, 0))
+    if data.get("priced") is False or data.get("usd") is None:
+        totals["unpriced"] += 1
+    else:
+        totals["usd"] += data["usd"]

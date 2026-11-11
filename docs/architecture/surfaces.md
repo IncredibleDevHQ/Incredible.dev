@@ -64,8 +64,10 @@ switcher.
 
 The sidebar keeps Light and Dark above the profile button. The profile menu opens Settings
 or signs out (native development also supports switching identities). Settings saves the
-start page and clock format on this device. Its usage summary counts persisted model calls
-in the current workspace, including calls whose model has no listed price.
+start page and clock format on this device. The Organization tab persists the workspace name, website and description in its own database.
+The Usage tab charts input and output tokens and estimated USD by hour today or by day over
+7 or 30 calendar days (UTC). Model names and prices come from saved call events; missing prices
+are identified in the report. Both tabs support direct links and browser history.
 
 Workspace reads and writes, graph checkpoints and graph memory use bounded PostgreSQL pools.
 Each new connection restores its workspace search path. A checkout checks for stale connections

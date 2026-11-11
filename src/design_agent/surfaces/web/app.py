@@ -46,7 +46,7 @@ import mimetypes
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
@@ -58,7 +58,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 from starlette.background import BackgroundTask
 
 from design_agent.config import SAMPLE_BRAND, Settings
@@ -79,6 +79,20 @@ from design_agent.tools.mcp import load_mcp_tools, servers_for_runtime
 MAX_UPLOADS = 10
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 PING_SECONDS = 15.0
+
+
+class OrganizationIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    name: str = Field(min_length=1, max_length=100)
+    website: str = Field(default="", max_length=500)
+    description: str = Field(default="", max_length=500)
+
+    @field_validator("website")
+    @classmethod
+    def validate_website(cls, value: str) -> str:
+        if value:
+            HttpUrl(value)
+        return value
 
 
 class ChannelIn(BaseModel):
@@ -314,6 +328,21 @@ def create_app(
             "authenticated": bool(authenticated_user),
             "sandbox": runtime.binding.name if runtime else None,
         }
+
+    @app.get("/api/organization")
+    def organization(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        return store.organization()
+
+    @app.put("/api/organization")
+    def save_organization(body: OrganizationIn, me: str = Depends(person)) -> dict[str, str]:  # noqa: ARG001
+        store.save_organization(body.name, body.website, body.description)
+        return body.model_dump()
+
+    @app.get("/api/usage/report")
+    def usage_report(
+        period: Literal["today", "week", "month"] = "week", _me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return store.usage_report(period)
 
     @app.get("/api/usage")
     def usage(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001

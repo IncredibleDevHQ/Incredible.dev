@@ -193,6 +193,10 @@ async def test_real_private_apps_reject_other_users_channel_file_and_thread_ids(
             assert all(p["id"] in {users[1]["id"], "agent"} for p in session["people"])
             a = app.state.tenants.apps[users[0]["id"]].state.host
             b = app.state.tenants.apps[users[1]["id"]].state.host
+            profile = {"name": "Private studio", "website": "", "description": "Beta only"}
+            assert (
+                await client.put("/api/organization", json=profile)
+            ).raise_for_status().json() == profile
             a.store.add_activity(
                 {
                     "kind": "usage",
@@ -224,6 +228,7 @@ async def test_real_private_apps_reject_other_users_channel_file_and_thread_ids(
             a.hub.close(own_queue)
             b.hub.close(queue)
             client.cookies.set("incredible-access", "alpha")
+            assert (await client.get("/api/organization")).raise_for_status().json()["name"] == ""
             assert (await client.get("/api/usage")).raise_for_status().json()["input_tokens"] == 31
             assert (await client.get("/api/files/" + file_id)).content == b"private data"
             if settings.blob_backend == "s3":
