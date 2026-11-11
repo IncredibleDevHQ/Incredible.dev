@@ -1,5 +1,9 @@
 # Self-hosting
 
+For the browser app with React, FastAPI and Supabase Auth and PostgreSQL, use the separate
+[local Compose setup](local-compose.md). The stack below runs the token-authenticated HTTP API
+with Postgres and does not include the browser interface.
+
 The agent, run on a machine you operate: an HTTP API, Postgres for durability, and Docker for the
 sandbox computers. Docker Compose starts all of it.
 

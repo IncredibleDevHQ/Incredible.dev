@@ -17,13 +17,60 @@ from design_agent.config import Settings
 
 
 @asynccontextmanager
-async def open_persistence(settings: Settings, workspace: Path) -> AsyncIterator[tuple[Any, Any]]:
+async def open_persistence(
+    settings: Settings, workspace: Path, *, schema: str | None = None
+) -> AsyncIterator[tuple[Any, Any]]:
     """`(checkpointer, store)`, set up and closed with the context."""
+    checkpointer: Any
+    store: Any
     if settings.database_url is not None:
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
         from langgraph.store.postgres.aio import AsyncPostgresStore
 
         url = settings.database_url.get_secret_value()
+        if schema:
+            from psycopg import AsyncConnection, sql
+            from psycopg.rows import dict_row
+
+            from design_agent.surfaces.web.postgres import validate_schema
+
+            validate_schema(schema)
+            async with (
+                await AsyncConnection.connect(
+                    url,
+                    autocommit=True,
+                    prepare_threshold=None,
+                    row_factory=dict_row,
+                    connect_timeout=15,
+                ) as checkpoints,
+                await AsyncConnection.connect(
+                    url,
+                    autocommit=True,
+                    prepare_threshold=None,
+                    row_factory=dict_row,
+                    connect_timeout=15,
+                ) as memory,
+            ):
+                for connection in (checkpoints, memory):
+                    await connection.execute(
+                        sql.SQL("SET search_path TO {}").format(sql.Identifier(schema))
+                    )
+                checkpointer = AsyncPostgresSaver(checkpoints)
+                store = AsyncPostgresStore(memory)
+                await checkpointer.setup()
+                await store.setup()
+                # These internal tables must never be reachable through the public Data API.
+                tables = await checkpoints.execute(
+                    "SELECT tablename FROM pg_tables WHERE schemaname = %s", (schema,)
+                )
+                for row in await tables.fetchall():
+                    await checkpoints.execute(
+                        sql.SQL("ALTER TABLE {} ENABLE ROW LEVEL SECURITY").format(
+                            sql.Identifier(row["tablename"])
+                        )
+                    )
+                yield checkpointer, store
+            return
         async with (
             AsyncPostgresSaver.from_conn_string(url) as checkpointer,
             AsyncPostgresStore.from_conn_string(url) as store,

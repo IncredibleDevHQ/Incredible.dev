@@ -49,3 +49,15 @@ Each run is tagged with its trigger, surface (the runtime profile's `surface`, s
 The API returns each turn's reply and delivered files, and background news through
 `GET /threads/{id}/updates` ([self-hosting](../self-hosting.md)). The CLI prints each step's tool
 name as it runs and stays open while background work continues.
+
+## Authenticated private workspaces
+
+The browser entry point dispatches to `surfaces/web/auth.py` when Supabase is configured or
+`DESIGN_AGENT_AUTH_REQUIRED=1`. Supabase verifies cookie sessions before the gateway selects a
+user-specific web app. The user UUID determines its private Postgres schema and file root;
+its runtime, event hub and brand shelf are separate. `store.py` supports the existing SQLite
+developer path and the Postgres adapter in `postgres.py`; authenticated apps never use SQLite.
+`open_persistence(..., schema=...)` keeps the LangGraph store/checkpoints in that same private
+schema. The browser has no database credential or service-role key. See [Supabase](../supabase.md)
+for trust boundaries, operational limits, and the distinction from the developer-only identity
+switcher.

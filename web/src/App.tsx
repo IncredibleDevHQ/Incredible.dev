@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { AuthGate } from "./components/AuthGate";
 import { ChannelView } from "./components/ChannelView";
 import { FrameReview } from "./components/FrameReview";
 import { PreviewDialog } from "./components/Preview";
@@ -10,6 +11,10 @@ import { Brand, Computer, NeedsYou, Skills } from "./pages/Pages";
 import { useHouse } from "./store";
 
 export function App() {
+  return <AuthGate><WorkspaceApp /></AuthGate>;
+}
+
+function WorkspaceApp() {
   const page = useHouse((s) => s.page);
   const toast = useHouse((s) => s.toast);
   const frameId = useHouse((s) => s.frameId);

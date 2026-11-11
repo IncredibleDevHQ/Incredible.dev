@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api } from "../api";
 import { useHouse, type Page } from "../store";
 import { Avatar } from "../ui";
+import { authRequest } from "./AuthGate";
 
 export function Sidebar() {
   const { channels, channelId, page, people, session, threads } = useHouse();
@@ -67,7 +68,7 @@ export function Sidebar() {
         ))}
       </div>
       <div className="side-foot">
-        {menu && (
+        {menu && !session?.authenticated && (
           <div className="menu" role="menu" aria-label="Act as">
             {Object.values(people)
               .filter((p) => !p.agent)
@@ -88,13 +89,13 @@ export function Sidebar() {
               ))}
           </div>
         )}
-        <button type="button" className="whoami" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>
+        {session?.authenticated ? <><div className="whoami"><Avatar person={me} /><span>{me?.name}<small>Private workspace</small></span></div><button className="btn" type="button" onClick={async () => {try {await authRequest("logout", {});window.location.assign("/");} catch (error) {useHouse.getState().say((error as Error).message);}}}>Sign out</button></> : <button type="button" className="whoami" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>
           <Avatar person={me} />
           <span>
             {me?.name ?? "You"}
             <small>Switch who you are · local workspace</small>
           </span>
-        </button>
+        </button>}
       </div>
     </nav>
   );

@@ -124,7 +124,7 @@ def new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:12]}"
 
 
-def _decode(row: sqlite3.Row) -> Row:
+def _decode(row: Any) -> Row:
     out: Row = {}
     for key in row.keys():
         value = row[key]
@@ -151,19 +151,35 @@ def _encode(values: Mapping[str, Any]) -> dict[str, Any]:
 class Store:
     """Typed enough to keep the app honest; rows come back as plain dicts."""
 
-    def __init__(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(
+        self,
+        path: Path,
+        *,
+        database_url: str | None = None,
+        schema: str | None = None,
+        user: Mapping[str, Any] | None = None,
+    ) -> None:
         self.path = path
         self._lock = threading.Lock()
-        self._db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
-        self._db.row_factory = sqlite3.Row
-        with self._lock:
-            self._db.execute("PRAGMA journal_mode=WAL")
-            self._db.executescript(SCHEMA)
-            for table, column, kind in ADDED_COLUMNS:
-                have = {row[1] for row in self._db.execute(f"PRAGMA table_info({table})")}
-                if column not in have:
-                    self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+        self._db: Any
+        if database_url:
+            from design_agent.surfaces.web.postgres import PostgresConnection
+
+            if schema is None:
+                raise ValueError("A database-backed workspace requires a private schema")
+            self._db = PostgresConnection(database_url, schema)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self._db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
+            self._db.row_factory = sqlite3.Row
+            with self._lock:
+                self._db.execute("PRAGMA journal_mode=WAL")
+                self._db.executescript(SCHEMA)
+                for table, column, kind in ADDED_COLUMNS:
+                    have = {row[1] for row in self._db.execute(f"PRAGMA table_info({table})")}
+                    if column not in have:
+                        self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+        self._user = user
         self._seed()
 
     def close(self) -> None:
@@ -204,7 +220,21 @@ class Store:
 
     def _seed(self) -> None:
         if self._one("SELECT id FROM people LIMIT 1") is None:
-            for pid, name, initials, hue, agent in SEED_PEOPLE:
+            people = (
+                SEED_PEOPLE
+                if self._user is None
+                else (
+                    (
+                        str(self._user["id"]),
+                        str(self._user["email"]),
+                        str(self._user["email"])[0].upper(),
+                        152,
+                        False,
+                    ),
+                    (AGENT_ID, "Agent", "A", 145, True),
+                )
+            )
+            for pid, name, initials, hue, agent in people:
                 self._insert(
                     "people",
                     {"id": pid, "name": name, "initials": initials, "hue": hue, "agent": agent},

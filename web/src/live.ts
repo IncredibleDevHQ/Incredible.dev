@@ -27,6 +27,11 @@ export function connectLive(): () => void {
     };
     source.onerror = () => {
       if (closed) source?.close();
+      else if (useHouse.getState().session?.authenticated) {
+        void fetch("/api/auth/session", {credentials: "same-origin"}).then(response => {
+          if (response.status === 401) window.dispatchEvent(new Event("incredible:signout"));
+        }).catch(() => undefined);
+      }
     };
   };
   open();

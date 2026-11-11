@@ -215,6 +215,7 @@ export type CanvasTask = {
 };
 export type FolderFile = { path: string; size: number; modified: number };
 export type Session = {
+  authenticated?: boolean;
   me: string;
   people: Person[];
   agent: { mark: string; model: string };
@@ -284,6 +285,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     body: body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) {
+    if (response.status === 401) window.dispatchEvent(new Event("incredible:signout"));
     let detail = response.statusText;
     try {
       detail = (await response.json()).detail ?? detail;

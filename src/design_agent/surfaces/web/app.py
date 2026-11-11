@@ -171,15 +171,35 @@ class ChannelBrandIn(BaseModel):
 
 
 def create_app(
-    project_root: Path, settings: Settings | None = None, *, demo: bool = False
+    project_root: Path,
+    settings: Settings | None = None,
+    *,
+    demo: bool = False,
+    authenticated_user: dict[str, Any] | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
+    if authenticated_user is None and (settings.auth_required or settings.supabase_url):
+        from design_agent.surfaces.web.auth import create_authenticated_app
+
+        return create_authenticated_app(project_root, settings, demo=demo)
+    schema = None
+    if authenticated_user:
+        from design_agent.surfaces.web.auth import user_schema
+
+        schema = user_schema(authenticated_user["id"])
     if demo:
         # The demo's scripted lead poses in the sample brand's tokens, whatever pack is installed.
         settings = settings.model_copy(update={"brand_path": SAMPLE_BRAND})
     workspace = workspace_of(settings, project_root)
     data_dir = workspace / "house"
-    store = Store(data_dir / "house.sqlite")
+    store = Store(
+        data_dir / "house.sqlite",
+        database_url=settings.database_url.get_secret_value()
+        if authenticated_user and settings.database_url
+        else None,
+        schema=schema,
+        user=authenticated_user,
+    )
     hub = Hub()
     host = AgentHost(settings=settings, store=store, hub=hub, data_dir=data_dir, demo=demo)
     shelf = BrandShelf(
@@ -196,7 +216,7 @@ def create_app(
             from design_agent.surfaces.web.demo import DemoDirector
 
             model = DemoDirector()
-        async with open_persistence(settings, workspace) as (checkpointer, lg_store):
+        async with open_persistence(settings, workspace, schema=schema) as (checkpointer, lg_store):
             runtime = build_local_runtime(
                 settings,
                 project_root,
@@ -232,6 +252,8 @@ def create_app(
     app.state.host = host
 
     def person(x_person: str = Header(default="you")) -> str:
+        if authenticated_user:
+            return str(authenticated_user["id"])
         if store.person(x_person) is None or x_person == "agent":
             raise HTTPException(status_code=403, detail="unknown person")
         return x_person
@@ -244,6 +266,14 @@ def create_app(
 
     # -- the workspace -----------------------------------------------------------------------
 
+    @app.get("/healthz")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/api/auth/config")
+    async def auth_config() -> dict[str, bool]:
+        return {"enabled": bool(authenticated_user)}
+
     @app.get("/api/session")
     async def session(me: str = Depends(person)) -> dict[str, Any]:
         runtime = host.runtime
@@ -252,6 +282,7 @@ def create_app(
             "people": store.people(),
             "agent": {"mark": host.mark, "model": "demo" if demo else str(settings.lead_model())},
             "demo": demo,
+            "authenticated": bool(authenticated_user),
             "sandbox": runtime.binding.name if runtime else None,
         }
 

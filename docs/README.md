@@ -20,6 +20,8 @@ which one fits.
 | Guide | Covers |
 | --- | --- |
 | [Self-hosting](self-hosting.md) | Docker Compose, the HTTP API, security |
+| [Supabase](supabase.md) | Google/email login, PostgreSQL and private user workspaces |
+| [Local Compose](local-compose.md) | Browser app, Supabase, persistent workspace and local Docker setup |
 | [Operations](../OPERATIONS.md) | configuration, the sandbox, costs, troubleshooting, upgrades, backups |
 
 ## Know it's working

@@ -71,8 +71,13 @@ uv run python -m design_agent.surfaces.web           # a real model (a provider 
 Then open http://127.0.0.1:8765. For app development, run `npm run dev` in `web/` (port 5178); it
 passes `/api` through to the server. [Models](docs/models.md) lists the providers and their keys.
 
-The app has no sign-in yet. It serves 127.0.0.1 only and takes the person from a request header,
-so don't expose it on a network.
+To run the frontend and backend together in Docker with Supabase login and PostgreSQL, use the root
+`compose.yaml`: `docker compose up -d --build --wait`. See [local Compose setup](docs/local-compose.md)
+for first-time environment settings, existing data, backups and container limitations.
+
+The Docker app uses [Supabase Auth and private workspaces](docs/supabase.md). The native
+development app without Supabase configuration still uses local identity headers and SQLite;
+keep that developer mode on 127.0.0.1. The Compose setup also remains localhost-only.
 
 ## How it's built
 

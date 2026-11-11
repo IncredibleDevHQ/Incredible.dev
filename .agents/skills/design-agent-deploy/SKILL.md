@@ -11,6 +11,18 @@ should pass and the brand pack should validate (`design-agent-onboarding`, `bran
 
 This fork runs self-hosted, behind its own web UI. It needs Docker with Compose v2.24+.
 
+For the browser app, follow [local Compose](../../../docs/local-compose.md) and
+[Supabase](../../../docs/supabase.md), using the root `compose.yaml`. It builds React and the
+web backend together, requires Supabase Auth/Postgres, and mounts the existing workspace.
+Keep keys in `.env.supabase`; never put a service-role key or database credential in frontend
+code. Set host UID/GID/socket settings in `.env`. New accounts start private and empty; do not
+claim or import legacy SQLite data without an explicit owner decision. Verify unauthenticated
+401 responses, cross-user resource denial, private agent memory/events/files, Google PKCE and
+email confirmation. Run real Postgres integration and scripted render tests before replacing
+the local app. Google provider credentials and email delivery must be configured in Supabase;
+never silently disable confirmation or authentication to work around missing configuration.
+The Postgres/token API below is a different deployment surface.
+
 1. `uv run design-agent config set DESIGN_AGENT_MODEL=…` (the person types the key or sets it in
    `.env`), then `uv run design-agent config generate DESIGN_AGENT_API_TOKENS POSTGRES_PASSWORD`.
 2. `docker compose -f deploy/self-host/compose.yaml up -d --build`, then

@@ -152,6 +152,12 @@ class Settings(BaseSettings):
     """For models without native tool search: MCP tools a selector may expose per call."""
 
     # Self-hosted
+    auth_required: bool = False
+    app_url: str = "http://127.0.0.1:8765"
+    supabase_url: str | None = Field(default=None, validation_alias=_alias("SUPABASE_URL"))
+    supabase_publishable_key: SecretStr | None = Field(
+        default=None, validation_alias=_alias("SUPABASE_PUBLISHABLE_KEY")
+    )
     database_url: SecretStr | None = Field(default=None, validation_alias=_alias("DATABASE_URL"))
     api_tokens: SecretStr | None = None
     api_host: str = "127.0.0.1"
@@ -179,6 +185,8 @@ class Settings(BaseSettings):
         "groq_api_key",
         "exa_api_key",
         "database_url",
+        "supabase_url",
+        "supabase_publishable_key",
         "api_tokens",
         mode="before",
     )
