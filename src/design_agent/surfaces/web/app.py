@@ -147,9 +147,11 @@ class ResearchIn(BaseModel):
 class QuestionIn(BaseModel):
     question: str = Field(min_length=1, max_length=8_000)
     harness: str = Field(default="", pattern=r"^(claude|codex|kimi|)$")
-    #: The conversation it branches from, and the passage of that one's answer it starts on.
+    #: The conversation it branches from, the passage of that one's answer it starts on, and the
+    #: answer (a message) the passage was taken from.
     parent: str = Field(default="", max_length=64)
     quote: str = Field(default="", max_length=4_000)
+    answer: str = Field(default="", max_length=64)
 
 
 class NoteIn(BaseModel):
@@ -542,6 +544,7 @@ def create_app(
                 harness=body.harness,
                 parent=body.parent,
                 quote=body.quote,
+                answer=body.answer,
             )
         except KeyError:
             raise HTTPException(status_code=404, detail="no such research") from None

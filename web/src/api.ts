@@ -345,7 +345,7 @@ export const api = {
   researchOptions: () => call<ResearchOptions>("GET", "/api/research"),
   openResearch: (channelId: string, body: { repo: string; harness: HarnessId; question: string }) =>
     call<{ thread: Thread; conversation: ConversationRow }>("POST", `/api/channels/${channelId}/research`, body),
-  ask: (frameId: string, body: { question: string; harness?: HarnessId | ""; parent?: string; quote?: string }) =>
+  ask: (frameId: string, body: { question: string; harness?: HarnessId | ""; parent?: string; quote?: string; answer?: string }) =>
     call<ConversationRow>("POST", `/api/research/${frameId}/conversations`, body),
   keepNote: (frameId: string, body: { text: string; conversation_id?: string; message_id?: string }) =>
     call<Note>("POST", `/api/research/${frameId}/notes`, body),

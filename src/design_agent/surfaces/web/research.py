@@ -7,7 +7,7 @@ editing tools off, Codex in its read-only sandbox, Kimi Code under a profile tha
 environment: no API keys or base URLs, and none of the session variables of whatever launched the
 house, so it runs as the person's own install does, on their own plan. It streams JSON lines, and
 `parse` turns each into what the canvas shows: a step ("Reading src/session.go"), a note on the
-way, the answer, or the session a follow-up resumes.
+way, the answer, or the session a follow-up resumes and a branch forks.
 """
 
 from __future__ import annotations
@@ -68,6 +68,10 @@ class Harness:
     #: Whether a follow-up resumes the agent's own session; otherwise it starts again, told what
     #: was said (Kimi Code's profile can't be combined with resuming).
     resumes: bool
+    #: Whether a branch starts from a copy of its parent's session, knowing everything the parent
+    #: read and said while the parent's own stays as it was; otherwise it starts again, told the
+    #: answer it branched from.
+    forks: bool
 
     def binary(self) -> str | None:
         for candidate in self.candidates:
@@ -83,7 +87,9 @@ class Harness:
 
 
 HARNESSES: dict[str, Harness] = {
-    "claude": Harness("claude", "Claude Code", ("claude", "~/.claude/local/claude"), resumes=True),
+    "claude": Harness(
+        "claude", "Claude Code", ("claude", "~/.claude/local/claude"), resumes=True, forks=True
+    ),
     "codex": Harness(
         "codex",
         "Codex",
@@ -93,8 +99,9 @@ HARNESSES: dict[str, Harness] = {
             "/Applications/Codex.app/Contents/Resources/codex",
         ),
         resumes=True,
+        forks=True,
     ),
-    "kimi": Harness("kimi", "Kimi Code", ("kimi",), resumes=False),
+    "kimi": Harness("kimi", "Kimi Code", ("kimi",), resumes=False, forks=False),
 }
 
 
@@ -125,10 +132,18 @@ def clean_env(environ: Mapping[str, str] = os.environ) -> dict[str, str]:
 
 
 def command(
-    harness: Harness, binary: str, *, repo: Path, prompt: str, session: str, profile: Path
+    harness: Harness,
+    binary: str,
+    *,
+    repo: Path,
+    prompt: str,
+    session: str,
+    profile: Path,
+    fork: bool = False,
 ) -> tuple[list[str], str | None]:
     """The CLI's arguments for one run, and what goes in on stdin (so a prompt that starts with a
-    dash is never read as an option)."""
+    dash is never read as an option). With `fork`, the run continues a copy of `session` under a
+    new id and leaves the original as it was."""
     if harness.id == "claude":
         argv = [
             binary,
@@ -142,13 +157,15 @@ def command(
             "--append-system-prompt",
             GUIDE,
         ]
-        return argv + (["--resume", session] if session else []), prompt
+        if session:
+            argv += ["--resume", session] + (["--fork-session"] if fork else [])
+        return argv, prompt
     if harness.id == "codex":
         if session:
             return [
                 binary,
                 "exec",
-                "resume",
+                "fork" if fork else "resume",
                 "--json",
                 "--skip-git-repo-check",
                 "-c",
@@ -183,6 +200,7 @@ async def run(
     repo: Path,
     prompt: str,
     session: str = "",
+    fork: bool = False,
     profile: Path,
     timeout: float = RUN_SECONDS,
 ) -> AsyncGenerator[Event, None]:
@@ -195,7 +213,7 @@ async def run(
     if not repo.is_dir():
         raise ResearchError(f"{repo} isn't on this computer any more.")
     argv, stdin = command(
-        harness, binary, repo=repo, prompt=prompt, session=session, profile=profile
+        harness, binary, repo=repo, prompt=prompt, session=session, profile=profile, fork=fork
     )
     process = await asyncio.create_subprocess_exec(
         *argv,

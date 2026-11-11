@@ -340,7 +340,7 @@ export function Passage({
   const explore = async () => {
     if (!question.trim()) return;
     try {
-      await api.ask(frameId, { question: question.trim(), parent: conversationId, quote: picked.text });
+      await api.ask(frameId, { question: question.trim(), parent: conversationId, quote: picked.text, answer: messageId });
       done();
     } catch (error) {
       say(error);
