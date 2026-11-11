@@ -1,8 +1,9 @@
 // The workspace: where people are needed, what the agent works with, and the channels.
-import { BellDot, Cpu, Hash, Palette, Plus, Sparkles } from "lucide-react";
+import { BellDot, Cpu, Hash, Moon, Palette, Plus, Sparkles, Sun } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api";
 import { useHouse, type Page } from "../store";
+import { useTheme } from "../theme";
 import { Avatar } from "../ui";
 import { authRequest } from "./AuthGate";
 
@@ -20,7 +21,7 @@ export function Sidebar() {
     <button
       type="button"
       className="side-item"
-      aria-current={page === target ? "page" : undefined}
+      aria-current={page === target || (target === "brand" && page === "read-brand") ? "page" : undefined}
       onClick={() => openPage(target)}
     >
       {icon}
@@ -34,6 +35,12 @@ export function Sidebar() {
       <div className="side-top">
         <img src="/house.svg" alt="" />
         <strong>Creative House</strong>
+        {/* The demo's agent is scripted: it says so, so its sample work is never taken for the real thing. */}
+        {session?.demo && (
+          <span className="chip demo-chip" title="A scripted agent makes the same sample work, whatever you bring. No AI runs and nothing costs.">
+            Demo
+          </span>
+        )}
       </div>
       <div className="side-nav">
         {nav("needs", "Needs you", <BellDot />, needs)}
@@ -89,6 +96,7 @@ export function Sidebar() {
               ))}
           </div>
         )}
+        <ThemeSwitch />
         {session?.authenticated ? <><div className="whoami"><Avatar person={me} /><span>{me?.name}<small>Private workspace</small></span></div><button className="btn" type="button" onClick={async () => {try {await authRequest("logout", {});window.location.assign("/");} catch (error) {useHouse.getState().say((error as Error).message);}}}>Sign out</button></> : <button type="button" className="whoami" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>
           <Avatar person={me} />
           <span>
@@ -98,6 +106,23 @@ export function Sidebar() {
         </button>}
       </div>
     </nav>
+  );
+}
+
+// Light or dark, both named and in sight on every page, the one in use pressed.
+function ThemeSwitch() {
+  const [theme, setTheme] = useTheme();
+  return (
+    <div className="seg theme-switch" role="group" aria-label="Appearance">
+      <button type="button" aria-pressed={theme === "light"} onClick={() => setTheme("light")}>
+        <Sun />
+        Light
+      </button>
+      <button type="button" aria-pressed={theme === "dark"} onClick={() => setTheme("dark")}>
+        <Moon />
+        Dark
+      </button>
+    </div>
   );
 }
 

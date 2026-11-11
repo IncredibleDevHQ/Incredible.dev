@@ -1,30 +1,90 @@
 /* Creative House: channels, threads and the canvas over the design agent's engine.
-   One stylesheet, tokens first. Ink, slate and greens on near-black, like the prototype house;
-   amber marks what needs a person, red what failed. Inter for words, JetBrains Mono for labels. */
+   One stylesheet, tokens first. Ink, slate and greens, dark on near-black or light on paper (the
+   person picks; index.html sets it before paint); amber marks what needs a person, red what
+   failed. Inter for words, JetBrains Mono for labels. Each level sits a clear step above the one
+   under it: canvas, then a task's frame, then its cards with an edge and a shadow. */
 
 :root {
-  --bg: #111613;
-  --surface: #171d1a;
-  --raised: #1f2622;
-  --sunk: #0c100e;
-  --line: #2a332e;
-  --line-soft: #222a26;
+  --radius: 12px;
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Pins sit on artwork, so they keep one look in both themes. */
+  --pin: #e0a94c;
+  --pin-answered: #4abb7b;
+  --pin-resolved: #66736b;
+}
+
+/* Dark, and always dark where a frame or a film is looked at full size. */
+:root, .review, .studio, .viewer {
+  --bg: #0c100e;
+  --surface: #131915;
+  --raised: #222b26;
+  --sunk: #090c0a;
+  --line: #36433c;
+  --line-soft: #242d28;
+  --line-strong: #4d5c54;
+  --focus-line: #4a6b58;
+  --flow: #4f5e56;
   --ink: #e8ede9;
-  --ink-2: #b9c4bd;
-  --muted: #8b9890;
-  --faint: #66736b;
+  --ink-2: #bac5be;
+  --muted: #8e9b93;
+  --faint: #6b786f;
   --green: #4abb7b;
   --green-ink: #0d1f15;
+  --green-hover: #5bcb8b;
   --green-soft: #1d3527;
   --amber: #e0a94c;
   --amber-soft: #3a2f1a;
   --red: #e5705a;
   --red-soft: #3b211c;
-  --shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-  --radius: 12px;
-  --font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --frame-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 18px 48px rgba(0, 0, 0, 0.35);
+  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 22px rgba(0, 0, 0, 0.38);
+  --scrim: rgba(6, 9, 7, 0.6);
+  --wash: rgba(255, 255, 255, 0.025);
   color-scheme: dark;
+}
+
+.review, .studio, .viewer { color: var(--ink); }
+
+/* Light: paper under white cards, the same greens a shade deeper so words on them still read.
+   A card keeps that paper and ink on the dark canvas too, the way Figma's frames and Miro's cards
+   keep their own fills on a dark board: the canvas and the chrome go dark, the work does not.
+   A card that is only planned or skipped stays an outline on its frame. A template's cards, which
+   show what will land on the canvas, look as they will there. */
+:root[data-theme="light"],
+:root:not([data-theme="light"]) :is(.node:not([data-status="planned"], [data-status="skipped"]), .tpl-node:not(.source), .tpl-node[data-brought]) {
+  --bg: #efece5;
+  --surface: #f9f8f4;
+  --raised: #ffffff;
+  --sunk: #f2f0ea;
+  --line: #d6d1c5;
+  --line-soft: #e6e2d8;
+  --line-strong: #b3ad9e;
+  --focus-line: #8fbca2;
+  --flow: #c5bfb1;
+  --ink: #141b17;
+  --ink-2: #36413b;
+  --muted: #59655e;
+  --faint: #737d77;
+  --green: #157546;
+  --green-ink: #ffffff;
+  --green-hover: #106039;
+  --green-soft: #dcefe3;
+  --amber: #8f5608;
+  --amber-soft: #f6e7cb;
+  --red: #b23722;
+  --red-soft: #f8dfd8;
+  --shadow: 0 16px 40px rgba(28, 36, 31, 0.16), 0 2px 6px rgba(28, 36, 31, 0.06);
+  --frame-shadow: 0 1px 3px rgba(28, 36, 31, 0.05), 0 12px 32px rgba(28, 36, 31, 0.06);
+  --card-shadow: 0 1px 2px rgba(28, 36, 31, 0.07), 0 6px 18px rgba(28, 36, 31, 0.08);
+  --scrim: rgba(24, 31, 27, 0.32);
+  --wash: rgba(20, 27, 23, 0.035);
+  color-scheme: light;
+}
+/* Paper on the dark canvas casts a deeper shadow. */
+:root:not([data-theme="light"]) :is(.node:not([data-status="planned"], [data-status="skipped"]), .tpl-node:not(.source), .tpl-node[data-brought]) {
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 14px 32px rgba(0, 0, 0, 0.42);
 }
 
 * { box-sizing: border-box; }
@@ -39,6 +99,8 @@ body {
 button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+/* affectUI's fields show focus on their own rounded edge, so the text inside them gets no ring. */
+:is(.ui-tf__input, .ui-ta__input):focus-visible { outline: none; }
 .mono { font-family: var(--mono); }
 .muted { color: var(--muted); }
 .faint { color: var(--faint); }
@@ -53,6 +115,7 @@ button { cursor: pointer; }
 .side-top { display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px; }
 .side-top img { width: 26px; height: 26px; }
 .side-top strong { font-size: 15px; letter-spacing: -0.01em; }
+.demo-chip { margin-left: auto; cursor: help; }
 .side-nav { display: grid; gap: 1px; padding: 4px 8px 12px; }
 .side-item {
   display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 10px; border: 0;
@@ -75,7 +138,7 @@ button { cursor: pointer; }
 .side-new { display: grid; gap: 4px; padding: 2px 0 8px; }
 .side-new-name, .side-new-topic { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); }
 .side-new-name { display: flex; align-items: center; gap: 10px; color: var(--muted); }
-.side-new-name:focus-within, .side-new-topic:focus { border-color: #3a4a41; }
+.side-new-name:focus-within, .side-new-topic:focus { border-color: var(--focus-line); }
 .side-new-name svg { width: 16px; height: 16px; flex: none; opacity: 0.85; }
 .side-new-name input { flex: 1; min-width: 0; padding: 0; border: 0; outline: none; background: none; color: var(--ink); }
 .side-new-topic { min-width: 0; outline: none; color: var(--ink); font-size: 12px; }
@@ -121,13 +184,69 @@ button { cursor: pointer; }
 }
 .seg button svg { width: 15px; height: 15px; }
 .seg button[aria-pressed="true"] { background: var(--raised); color: var(--ink); }
+:root[data-theme="light"] .seg button[aria-pressed="true"] { box-shadow: 0 1px 2px rgba(28, 36, 31, 0.14); }
+.seg button:not([aria-pressed="true"]):hover { color: var(--ink); }
+.side-foot .theme-switch { display: flex; margin: 0 0 8px; }
+.theme-switch button { flex: 1; justify-content: center; padding: 4px 10px; font-size: 13px; }
 
 /* -- the chat ---------------------------------------------------------------------------- */
 .feed { flex: 1; min-height: 0; overflow: auto; padding: 18px 0 8px; }
 .empty { max-width: 460px; margin: 12vh auto 0; padding: 0 24px; text-align: center; color: var(--muted); }
 .empty h2 { margin: 0 0 6px; font-size: 18px; color: var(--ink); }
+/* An empty channel's start, in its chat and on its canvas: the brand its work wears, then the two
+   ways in (research or material), one action each. */
+.start-panel { width: min(720px, calc(100% - 48px)); margin: 9vh auto 24px; padding: 22px 22px 18px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--frame-shadow); }
+.start-panel h2 { margin: 0 0 6px; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+.start-brand { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; color: var(--ink-2); font-size: 13.5px; }
+.start-brand .brand-select { flex: none; width: 240px; }
+/* affectUI's parts in the house's colours: their own rules sit in a style React hoists into the
+   head, which :root outranks. A brand's logo sits on paper, so a dark mark reads on dark too. */
+:root :is(.ui-sel, .ui-tf, .ui-ta, .ui-progress, .ui-tl) {
+  --aui-success: var(--green);
+  --ui-tl-ray: var(--green);
+  --ui-tl-done: var(--green);
+  --ui-tf-text: var(--ink-2);
+  --ui-tf-wash: var(--sunk);
+  --ui-ta-text: var(--ink-2);
+  --ui-ta-wash: var(--sunk);
+  --ui-ta-readonly: var(--sunk);
+  --ui-tf-edge-focus: var(--focus-line);
+  --ui-ta-edge-focus: var(--focus-line);
+  --ui-pg-track: var(--sunk);
+  --aui-ink: var(--ink);
+  --aui-muted: var(--muted);
+  --aui-placeholder: var(--faint);
+  --aui-surface: var(--raised);
+  --aui-border: var(--line);
+  --aui-border-strong: var(--line-strong);
+  --aui-focus: var(--green);
+  --aui-danger: var(--red);
+  --aui-font: var(--font);
+  --ui-sel-glow: var(--green-soft);
+  --ui-sel-shadow-menu: var(--shadow);
+}
+:root .brand-select .ui-sel__icon > img { border-radius: 4px; background: #f6f1e7; object-fit: contain; }
+/* Reading a brand from a website: the address, then the read as it goes. */
+.read-brand { width: min(820px, 100%); margin: 0 auto; }
+.read-back { display: inline-flex; align-items: center; gap: 5px; margin: 0 0 14px; font-size: 13px; }
+.read-form { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 22px; }
+.read-form .ui-tf { flex: 1; min-width: 0; }
+.read-form .btn { height: 36px; white-space: nowrap; }
+.read-steps { max-width: 440px; }
+.read-failed { display: grid; justify-items: start; gap: 8px; margin: 16px 0 0; max-width: 560px; }
+.read-failed p { margin: 0; }
+.read-failed p:first-child { color: var(--red); }
+.start-ways { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.start-way { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px; border-radius: 14px; background: var(--raised); border: 1px solid var(--line); }
+.start-way h3 { margin: 4px 0 0; font-size: 14.5px; font-weight: 650; }
+.start-way p { flex: 1; margin: 0 0 8px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.start-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--green-soft); color: var(--green); }
+.start-icon svg { width: 16px; height: 16px; }
+.start-foot { margin: 14px 0 0; text-align: center; color: var(--muted); font-size: 13px; }
+.canvas-start { position: absolute; inset: 0; z-index: 30; overflow: auto; }
+@media (max-width: 640px) { .start-ways { grid-template-columns: minmax(0, 1fr); } }
 .msg { display: flex; gap: 12px; padding: 8px 20px; }
-.msg:hover { background: rgba(255, 255, 255, 0.015); }
+.msg:hover { background: var(--wash); }
 .msg-body { min-width: 0; flex: 1; }
 .msg-head { display: flex; align-items: baseline; gap: 8px; }
 .msg-head strong { font-weight: 650; }
@@ -195,7 +314,7 @@ button { cursor: pointer; }
 /* -- the composer ------------------------------------------------------------------------ */
 .composer { flex: none; padding: 12px 20px 18px; }
 .box { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
-.box:focus-within { border-color: #3a4a41; }
+.box:focus-within { border-color: var(--focus-line); }
 .box textarea {
   display: block; width: 100%; min-height: 48px; max-height: 240px; padding: 12px 14px 4px; border: 0;
   background: none; resize: none; outline: none; line-height: 1.5;
@@ -209,7 +328,7 @@ button { cursor: pointer; }
 .icon-btn:hover { background: var(--raised); color: var(--ink); }
 .icon-btn svg { width: 17px; height: 17px; }
 .send { margin-left: auto; background: var(--green); color: var(--green-ink); }
-.send:hover { background: #5bcb8b; color: var(--green-ink); }
+.send:hover { background: var(--green-hover); color: var(--green-ink); }
 .send:disabled { background: var(--raised); color: var(--faint); cursor: default; }
 .pending { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px 0; }
 .kinds {
@@ -289,27 +408,33 @@ button { cursor: pointer; }
 .canvas.dragging { cursor: grabbing; }
 .canvas-dots { position: absolute; inset: 0; background-image: radial-gradient(var(--line) 1px, transparent 1px); pointer-events: none; opacity: 0.6; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; display: flex; flex-wrap: wrap; gap: 64px; align-items: flex-start; width: 2600px; padding: 64px; }
-.tf { width: max-content; min-width: 720px; max-width: 2400px; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset; cursor: default; }
+.tf { width: max-content; min-width: 720px; max-width: 2400px; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--frame-shadow); cursor: default; }
 .tf-head { display: flex; align-items: center; gap: 12px; padding: 18px 22px; border-bottom: 1px solid var(--line-soft); }
 .tf-head h2 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.01em; max-width: 760px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tf-head .actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 .tf-running { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 10px 22px; border-bottom: 1px solid var(--line-soft); color: var(--ink-2); font-size: 13px; }
 .tf-running > span { display: inline-flex; align-items: center; gap: 8px; }
 .tf-running b { font-variant-numeric: tabular-nums; color: var(--green); }
+/* The demo's note: as wide as the frame, never widening it. */
+.tf-demo { contain: inline-size; margin: 0; padding: 9px 22px; border-bottom: 1px solid var(--line-soft); background: var(--amber-soft); color: var(--amber); font-size: 13px; font-weight: 550; }
 
 /* A task's work as a flow: its source, then each asset in columns, with lines from what it is
    made from. Lines are dim at rest, dashed while the asset waits, green for the card in hand. */
 .flow { position: relative; display: flex; align-items: flex-start; gap: 64px; padding: 26px 30px 30px; }
 .flow-col { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; width: 340px; flex: none; }
 .flow-lines { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.flow-lines path { fill: none; stroke: var(--line); stroke-width: 2; transition: stroke 0.15s; }
+.flow-lines path { fill: none; stroke: var(--flow); stroke-width: 2; transition: stroke 0.15s; }
 .flow-lines path.waiting { stroke-dasharray: 5 6; }
 .flow-lines path.lit { stroke: var(--green); }
 .flow-empty { margin: 14px 0 0; color: var(--muted); }
-.node { position: relative; border-radius: 16px; background: var(--raised); border: 1px solid var(--line); }
-.node[data-status="planned"], .node[data-status="skipped"] { background: transparent; border-style: dashed; }
+.node { position: relative; border-radius: 16px; background: var(--raised); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--card-shadow); }
+.node[data-status="planned"], .node[data-status="skipped"] { background: transparent; border-style: dashed; border-color: var(--line-strong); box-shadow: none; }
 .node[data-status="skipped"] { opacity: 0.6; }
 .node[data-status="blocked"] { border-color: var(--red-soft); }
+/* A click picks a card, and its address then links to it: under the pointer (or a key on its
+   controls) its edge firms up, and the picked one wears green (set after the status edges). */
+.node { outline: 3px solid transparent; transition: border-color 0.15s, outline-color 0.15s; }
+.node:hover, .node:has(:focus-visible) { border-color: var(--focus-line); outline-color: rgba(74, 187, 123, 0.14); }
 .node-head { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 8px 12px; }
 .node-head b { flex: 1; min-width: 0; font-size: 14px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .node-icon { display: grid; place-items: center; width: 26px; height: 26px; flex: none; border-radius: 8px; background: var(--sunk); color: var(--muted); }
@@ -321,6 +446,23 @@ button { cursor: pointer; }
 .node-brief { margin: 0; font-size: 13px; color: var(--ink-2); }
 .node .files { margin-top: 0; }
 .source-words { margin: 0; color: var(--ink-2); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+/* A page read from a link, as the page it is: its site, its title, a line of it and how much was
+   read. It opens the words kept; the arrow opens the page itself. */
+.page-card { position: relative; }
+.page-main {
+  display: grid; gap: 6px; width: 100%; padding: 11px 40px 11px 12px; border: 1px solid var(--line-soft); border-radius: 12px;
+  background: var(--surface); color: var(--ink); text-align: left; transition: border-color 0.12s;
+}
+.page-main:hover { border-color: var(--line-strong); }
+.page-site { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; color: var(--muted); }
+.page-site svg { width: 14px; height: 14px; flex: none; }
+.page-title { font-size: 14px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.page-line { font-size: 12.5px; line-height: 1.45; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.page-read { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.page-read svg { width: 13px; height: 13px; color: var(--green); }
+.page-out { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--muted); }
+.page-out:hover { background: var(--sunk); color: var(--ink); }
+.page-out svg { width: 15px; height: 15px; }
 .port {
   position: absolute; right: -14px; top: 9px; z-index: 2; display: grid; place-items: center; width: 28px; height: 28px; padding: 0;
   border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); opacity: 0; transition: opacity 0.12s;
@@ -339,12 +481,12 @@ button { cursor: pointer; }
 .strip { display: flex; flex-wrap: wrap; gap: 6px; }
 .strip button, .strip a { display: block; padding: 0; border: 1px solid var(--line-soft); border-radius: 7px; overflow: hidden; background: var(--sunk); }
 .strip img { display: block; height: 52px; width: auto; max-width: 120px; object-fit: cover; }
-.strip button:hover, .strip a:hover { border-color: #3d4c44; }
+.strip button:hover, .strip a:hover { border-color: var(--line-strong); }
 .finals { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .finals .film-hero { background: #000; }
 .finals .lead { justify-self: center; max-width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
 .finals .lead img { display: block; width: auto; max-width: 100%; height: auto; max-height: 300px; border-radius: 10px; border: 1px solid var(--line); }
-.finals .lead:hover img { border-color: #3d4c44; }
+.finals .lead:hover img { border-color: var(--line-strong); }
 .finals .strip button { cursor: zoom-in; }
 .finals audio { width: 100%; }
 /* A film before its render: its proof frames under a play button that opens the Studio preview. */
@@ -376,8 +518,8 @@ button { cursor: pointer; }
 .pop-head { display: flex; align-items: center; gap: 8px; padding: 0 2px 6px; }
 .pop-head svg { color: var(--muted); }
 .pop-line { margin: 0 8px 8px; font-size: 13px; color: var(--muted); }
-.pop textarea, .tpl-place textarea { display: block; width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); resize: vertical; outline: none; line-height: 1.5; }
-.pop textarea:focus, .tpl-place textarea:focus { border-color: #3a4a41; }
+.pop textarea { display: block; width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); resize: vertical; outline: none; line-height: 1.5; }
+.pop textarea:focus { border-color: var(--focus-line); }
 .pop-actions { display: flex; justify-content: flex-end; padding: 8px 0 0; }
 
 /* Research: a repository's questions as conversation trees, and the notes kept from them. */
@@ -388,7 +530,7 @@ button { cursor: pointer; }
   display: block; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk);
   resize: vertical; outline: none; line-height: 1.5;
 }
-.ask-box:focus, .note-new textarea:focus, .note-row textarea:focus { border-color: #3a4a41; }
+.ask-box:focus, .note-new textarea:focus, .note-row textarea:focus { border-color: var(--focus-line); }
 .ask-row { display: flex; align-items: center; gap: 8px; }
 .ask-row .btn { margin-left: auto; padding: 5px 11px; font-size: 13px; }
 .agents { display: flex; gap: 4px; }
@@ -399,15 +541,19 @@ button { cursor: pointer; }
 .agents.named { flex-wrap: wrap; margin: 4px 0 8px; }
 .agents.named button { padding: 4px 10px 4px 4px; font-size: 13px; }
 .conv .node-head b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.35; }
-.conv[data-status="working"] { border-color: #2f4a3a; }
+/* A click anywhere on a conversation opens it beside the canvas. */
+.conv { cursor: pointer; }
+.conv[data-status="working"] { border-color: var(--focus-line); }
 .conv[data-status="failed"] { border-color: var(--red-soft); }
+.node[data-focus] { border-color: var(--green); outline-color: rgba(74, 187, 123, 0.26); }
+.tf[data-focus] { border-color: var(--focus-line); outline: 3px solid rgba(74, 187, 123, 0.18); }
+.conv-working { justify-self: start; }
 .conv-quote, .msg-quote, .conv-follow { display: flex; gap: 6px; margin: 0; font-size: 12.5px; color: var(--muted); }
 .conv-quote svg, .msg-quote svg, .conv-follow svg { flex: none; margin-top: 2px; }
 .conv-quote span, .conv-follow span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .conv-quote span { font-style: italic; }
 .conv-follow { color: var(--ink-2); }
 .msg-quote { margin: 2px 0 4px; font-style: italic; }
-.conv-step::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: var(--green); vertical-align: 1px; animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.25; } }
 .conv-answer { max-height: 210px; overflow: hidden; font-size: 13px; line-height: 1.5; color: var(--ink-2); mask-image: linear-gradient(to bottom, #000 70%, transparent); cursor: text; }
 .conv-answer h1, .conv-answer h2, .conv-answer h3, .conv-answer h4 { font-size: 13.5px; }
@@ -451,7 +597,8 @@ button { cursor: pointer; }
 .research-start h3 { margin: 2px 2px 8px; font-size: 13px; color: var(--ink); }
 .repo-find { display: flex; align-items: center; gap: 7px; padding: 6px 9px; margin-bottom: 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); color: var(--muted); }
 .repo-find input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink); }
-.repo-list { display: grid; gap: 1px; max-height: 210px; overflow: auto; margin-bottom: 4px; }
+/* One height whatever the search shows, so the card holding it never moves under a pick. */
+.repo-list { display: grid; align-content: start; gap: 1px; height: 210px; overflow: auto; margin-bottom: 4px; }
 .repo-list p { margin: 6px 4px; font-size: 13px; }
 .repo-list button { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 6px 8px; border: 0; border-radius: 9px; background: none; color: var(--ink); text-align: left; }
 .repo-list button b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
@@ -465,34 +612,86 @@ button { cursor: pointer; }
 .answer-tools { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .answer-tools .faint { font-size: 12px; }
 
-/* Templates: a gallery on an empty canvas, a picker over a busy one. */
-.picker { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; padding: 72px 24px 24px; background: rgba(6, 9, 7, 0.6); backdrop-filter: blur(3px); overflow: auto; }
-.picker.inline { background: none; backdrop-filter: none; }
-.picker-panel { width: min(1120px, 100%); max-height: 100%; overflow: auto; padding: 18px 20px 20px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); cursor: default; }
-.picker-head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+/* Templates: a picker over the canvas. */
+.picker { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; padding: 72px 24px 24px; background: var(--scrim); backdrop-filter: blur(3px); overflow: auto; }
+.picker-panel { width: min(1120px, 100%); max-height: 100%; overflow: auto; padding: 0 20px 20px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); cursor: default; }
+/* The heading stays put while the gallery scrolls under it. */
+.picker-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 18px 0 12px; background: var(--surface); }
+.picker-lede { margin: -4px 0 14px; color: var(--muted); font-size: 13px; }
 .picker-head h2 { flex: 1; margin: 0; font-size: 18px; letter-spacing: -0.01em; }
-.picker-foot { margin: 14px 0 0; color: var(--muted); text-align: center; }
 .tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
-.tpl { display: grid; gap: 4px; align-content: start; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); text-align: left; color: var(--ink); }
-.tpl:hover { border-color: #3d4c44; }
-.tpl b { font-size: 15px; font-weight: 650; margin-top: 8px; }
-.tpl small { color: var(--ink-2); font-size: 13px; }
-.tpl-from { color: var(--faint); font-size: 12px; }
-.tpl-flow { display: block; box-sizing: content-box; padding: 12px; border-radius: 10px; background: var(--sunk); overflow: hidden; }
-.tpl-flow-inner { position: relative; display: flex; gap: 14px; align-items: flex-start; width: max-content; transform-origin: 0 0; }
-.tpl-flow.large { padding: 18px; overflow: auto; }
-.tpl-flow.large .tpl-flow-inner { gap: 48px; }
-.tpl-col { display: grid; gap: 7px; flex: none; }
-.tpl-slot { position: relative; display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 7px; border: 1px solid var(--line); background: var(--raised); color: var(--ink-2); font-size: 11px; font-weight: 550; white-space: nowrap; }
-.tpl-slot svg { color: var(--muted); }
-.tpl-slot .gate { color: var(--amber); }
-.tpl-slot.start { background: none; border-style: dashed; color: var(--muted); }
-.tpl-flow.large .tpl-slot { padding: 6px 11px; font-size: 13px; gap: 7px; border-radius: 9px; }
+/* A template card: a cover of what it makes, drawn in the channel's brand, then what you get,
+   what you sign off first, and what it starts from. */
+.tpl { display: grid; align-content: start; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); text-align: left; color: var(--ink); transition: border-color 0.15s, transform 0.15s; }
+.tpl:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+.tpl-text { display: grid; gap: 8px; padding: 12px 14px 14px; }
+.tpl b { font-size: 15px; font-weight: 650; }
+.tpl-gets { display: flex; flex-wrap: wrap; gap: 5px; }
+.tpl-get { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px 2px 6px; border-radius: 999px; background: var(--sunk); border: 1px solid var(--line-soft); color: var(--ink-2); font-size: 12px; white-space: nowrap; }
+.tpl-get svg { flex: none; color: var(--muted); }
+.tpl-gate, .tpl-from { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.tpl-gate { color: var(--amber); }
+.tpl-from { color: var(--faint); }
+.tpl-gate svg, .tpl-from svg { flex: none; }
+.cover { position: relative; display: block; aspect-ratio: 16 / 10; overflow: hidden; border-bottom: 1px solid var(--line-soft); container-type: inline-size; }
+.piece { position: absolute; display: flex; align-items: stretch; }
+/* A sheet's own corners measure against the cover; what is inside it, against the sheet. */
+.sheet { position: relative; display: block; flex: none; height: 100%; overflow: hidden; border-radius: 1.2cqw; container-type: inline-size; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 8px 18px rgba(0, 0, 0, 0.12); }
+.sheet-mark { position: absolute; top: 7cqw; left: 7cqw; height: 9cqw; max-width: 42%; object-fit: contain; object-position: left center; }
+.sheet-copy { position: absolute; left: 7cqw; right: 7cqw; bottom: 8cqw; display: grid; gap: 4cqw; }
+.sheet-copy strong { font-size: 9.5cqw; line-height: 1.05; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheet-line { display: block; height: 4.5cqw; border-radius: 2cqw; opacity: 0.8; }
+.sheet-rule { display: block; width: 36%; height: 1.6cqw; border-radius: 1cqw; }
+.sheet-pill { display: block; width: 34%; height: 7cqw; margin-top: 2cqw; border-radius: 4cqw; }
+.sheet-play { position: absolute; left: 50%; top: 44%; display: grid; place-items: center; width: 17cqw; height: 17cqw; border-radius: 50%; transform: translate(-50%, -50%); }
+.sheet-play svg { width: 46%; height: 46%; margin-left: 8%; fill: currentColor; }
+.sheet-head { position: absolute; left: 50%; top: 20%; width: 20cqw; height: 20cqw; border-radius: 50%; transform: translateX(-50%); opacity: 0.9; }
+.sheet-shoulders { position: absolute; left: 50%; bottom: 0; width: 48cqw; height: 34%; border-radius: 50% 50% 0 0 / 70% 70% 0 0; transform: translateX(-50%); opacity: 0.9; }
+.sheet-caption { position: absolute; left: 16cqw; right: 16cqw; bottom: 7cqw; display: grid; justify-items: center; padding: 2.6cqw 3cqw; border-radius: 2cqw; }
+.sheet-badge { position: absolute; top: 7cqw; left: 7cqw; display: grid; place-items: center; width: 17cqw; height: 17cqw; border-radius: 4cqw; font-size: 11cqw; font-weight: 700; line-height: 1; }
+.sheet-loop { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 2cqw; font-size: 12cqw; font-weight: 700; }
+.sheet-loop svg { width: 28cqw; height: 28cqw; }
+.sheet-stat { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 6cqw; }
+.sheet-stat strong { font-size: 30cqw; line-height: 1; }
+.sheet-title { position: absolute; top: 8cqw; left: 7cqw; right: 7cqw; display: grid; }
+.sheet-bars { position: absolute; left: 8cqw; right: 8cqw; bottom: 8cqw; height: 50%; display: flex; align-items: flex-end; gap: 4cqw; border-bottom: 0.8cqw solid; }
+.sheet-bars i { flex: 1; border-radius: 1.5cqw 1.5cqw 0 0; }
+.sheet-blob { position: absolute; border-radius: 50%; opacity: 0.92; }
+.sheet-blob.b0 { left: 10cqw; top: 14%; width: 46cqw; height: 46cqw; }
+.sheet-blob.b1 { left: 42cqw; top: 36%; width: 34cqw; height: 34cqw; }
+.sheet-blob.b2 { left: 70cqw; top: 10%; width: 22cqw; height: 22cqw; }
+.sheet-band { position: absolute; left: 0; right: 0; top: 0; height: 17%; }
+.sheet-text { position: absolute; left: 10cqw; right: 10cqw; top: 25%; display: grid; gap: 5cqw; }
+/* A template's assets as they land on the canvas: cards on the canvas's dots, joined by its lines. */
+.tpl-flow { padding: 20px; border-radius: 14px; background-color: var(--sunk); background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 18px 18px; overflow: auto; }
+.tpl-flow-inner { position: relative; display: flex; align-items: flex-start; gap: 44px; width: max-content; }
 .tpl-flow .flow-lines path { stroke-width: 1.5; }
+.tpl-col { display: grid; gap: 14px; flex: none; }
+.tpl-node { position: relative; display: grid; align-content: start; gap: 6px; width: 176px; padding: 8px 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--raised); color: var(--ink); box-shadow: var(--card-shadow); transition: border-color 0.15s; }
+.tpl-node:hover { border-color: var(--line-strong); }
+.tpl-node .slot-art { width: 160px; border: 0; border-radius: 8px; }
+.tpl-col.rows .tpl-node { grid-template-columns: 160px minmax(0, 1fr); column-gap: 12px; row-gap: 4px; width: 400px; }
+.tpl-col.rows .tpl-node .slot-art { grid-row: span 3; }
+.tpl-col.rows .tpl-node-title { padding-top: 6px; }
+.tpl-node.source { background: transparent; border-style: dashed; border-color: var(--line-strong); box-shadow: none; }
+.tpl-node-art { display: grid; place-content: center; justify-items: center; gap: 6px; width: 160px; height: 100px; padding: 0 10px; border-radius: 8px; border: 1px dashed var(--line); color: var(--muted); font-size: 12px; text-align: center; }
+.tpl-node-art > svg { width: 20px; height: 20px; }
+.tpl-node-art > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Once something is brought, the source is real: a card like the rest, what it is in its picture. */
+.tpl-node.source[data-brought] { border-style: solid; border-color: var(--line); background: var(--raised); box-shadow: var(--card-shadow); }
+.tpl-node.source[data-brought] .tpl-node-art { border-style: solid; border-color: var(--line-soft); background: var(--surface); color: var(--ink-2); font-weight: 550; }
+.tpl-node.source[data-brought] .tpl-node-art > svg { color: var(--green); }
+.tpl-node-title { display: flex; align-items: center; gap: 6px; padding: 2px 2px 0; font-size: 13px; font-weight: 650; }
+.tpl-node-title svg { flex: none; color: var(--muted); }
+.tpl-node-line { padding: 0 2px; font-size: 12px; line-height: 1.4; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.tpl-node-gate { display: inline-flex; align-items: center; justify-self: start; gap: 5px; margin: 2px 2px 0; padding: 2px 8px 2px 6px; border-radius: 999px; background: var(--amber-soft); color: var(--amber); font-size: 11.5px; font-weight: 600; }
+/* The light that runs down the lines once, in the order the work is made. */
+.tpl-pulses { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.tpl-pulses path { fill: none; stroke: var(--green); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 14 100; animation: tpl-pulse 900ms cubic-bezier(0.4, 0, 0.2, 1) calc(250ms + var(--step) * 550ms) both; }
+@keyframes tpl-pulse { from { stroke-dashoffset: 14; } to { stroke-dashoffset: -100; } }
+@media (prefers-reduced-motion: reduce) { .tpl-pulses { display: none; } }
 .tpl-place { display: grid; gap: 16px; }
 .tpl-place .lede { margin: 0; color: var(--ink-2); }
-.tpl-briefs { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px 18px; margin: 0; padding: 0; list-style: none; font-size: 13px; color: var(--muted); }
-.tpl-briefs b { color: var(--ink); font-weight: 600; }
 .tpl-start { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line-soft); }
 .tpl-start-head { display: flex; align-items: baseline; gap: 10px; }
 .tpl-start-head h3 { margin: 0; font-size: 14px; }
@@ -505,11 +704,12 @@ button { cursor: pointer; }
 .choices label svg { color: var(--muted); }
 .choices small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .choices input { margin: 0; accent-color: var(--green); }
-.tpl-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line-soft); }
+/* The way to place it stays in sight at the sheet's foot, however tall its flow is. */
+.tpl-foot { position: sticky; bottom: -20px; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: -20px; padding: 14px 0 20px; border-top: 1px solid var(--line-soft); background: var(--surface); }
 
 .frame { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 0; border: 0; background: none; text-align: left; }
 .frame-art { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: var(--sunk); aspect-ratio: 16/9; }
-.frame:hover .frame-art { border-color: #3d4c44; }
+.frame:hover .frame-art { border-color: var(--line-strong); }
 .frame-art img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .frame-meta { display: flex; align-items: center; gap: 8px; }
 .frame-meta b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -517,20 +717,20 @@ button { cursor: pointer; }
 .frame-flag { position: absolute; top: 8px; right: 8px; }
 .pin {
   position: absolute; z-index: 2; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50% 50% 50% 4px;
-  display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #111; background: var(--amber);
+  display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #111; background: var(--pin);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); border: 2px solid #111;
 }
-.pin.answered { background: var(--green); }
-.pin.resolved { background: var(--faint); }
+.pin.answered { background: var(--pin-answered); }
+.pin.resolved { background: var(--pin-resolved); }
 .board-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 .btn {
   display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 9px; border: 1px solid var(--line);
   background: var(--raised); color: var(--ink); font-weight: 550;
 }
-.btn:hover { border-color: #3d4c44; }
+.btn:hover { border-color: var(--line-strong); }
 .btn svg { width: 15px; height: 15px; }
 .btn.primary { background: var(--green); border-color: transparent; color: var(--green-ink); }
-.btn.primary:hover { background: #5bcb8b; }
+.btn.primary:hover { background: var(--green-hover); }
 .btn.warn { background: var(--amber-soft); border-color: transparent; color: var(--amber); }
 .btn:disabled { opacity: 0.45; cursor: default; }
 .zoom { position: absolute; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line); box-shadow: var(--shadow); }
@@ -551,10 +751,10 @@ button { cursor: pointer; }
 .notes { flex: 1; min-height: 0; overflow: auto; padding: 8px 0; }
 .note { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; padding: 10px 16px; }
 .note.hot { background: rgba(224, 169, 76, 0.07); }
-.note .n { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50% 50% 50% 4px; font-size: 11px; font-weight: 700; background: var(--amber); color: #111; }
-.note.answered .n { background: var(--green); }
+.note .n { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50% 50% 50% 4px; font-size: 11px; font-weight: 700; background: var(--pin); color: #111; }
+.note.answered .n { background: var(--pin-answered); }
 .note.resolved { opacity: 0.55; }
-.note.resolved .n { background: var(--faint); }
+.note.resolved .n { background: var(--pin-resolved); }
 .note p { margin: 0; white-space: pre-wrap; }
 .note .row { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
 .note .reply { grid-column: 2; padding-left: 10px; border-left: 2px solid var(--line); }
@@ -640,7 +840,7 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .brand-read-status.failed { color: var(--red); }
 .brand-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin: 18px 0 6px; }
 .brand-card { display: grid; grid-template-columns: 40px minmax(0, 1fr); grid-template-rows: auto auto; gap: 4px 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); text-align: left; color: var(--ink); }
-.brand-card:hover { border-color: #3d4c44; }
+.brand-card:hover { border-color: var(--line-strong); }
 .brand-card[aria-checked="true"] { border-color: var(--green); background: var(--green-soft); }
 .brand-card-mark { grid-row: span 2; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: #f6f1e7; overflow: hidden; color: #14161a; }
 .brand-card-mark img { max-width: 34px; max-height: 34px; object-fit: contain; }
@@ -648,7 +848,7 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .brand-card-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brand-card-text small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brand-card-swatches { display: flex; gap: 3px; }
-.brand-card-swatches i { width: 18px; height: 10px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.12); }
+.brand-card-swatches i { width: 18px; height: 10px; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent); }
 .brand-head { display: flex; align-items: center; gap: 12px; margin: 22px 0 0; }
 .brand-head h2 { margin: 0; font-size: 18px; }
 .brand-head .btn { margin-left: auto; }

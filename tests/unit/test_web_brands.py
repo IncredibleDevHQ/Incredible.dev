@@ -135,7 +135,8 @@ async def test_a_channel_wears_a_brand_read_from_a_website(
     store = Store(tmp_path / "house.sqlite")
     hub = Hub()
     seen: list[dict[str, Any]] = []
-    hub.publish = lambda kind, **data: seen.append({"type": kind, **data})  # type: ignore[method-assign]
+    # Each event as it was sent: a read's status keeps changing after it is published.
+    hub.publish = lambda kind, **data: seen.append({"type": kind, **json.loads(json.dumps(data))})  # type: ignore[method-assign]
     settings = Settings(workspace_root=checkout / "workspace")
     shelf = BrandShelf(
         store=store, hub=hub, settings=settings, project_root=checkout, data_dir=tmp_path
@@ -150,8 +151,12 @@ async def test_a_channel_wears_a_brand_read_from_a_website(
         by="you",
     )
 
-    async def fake_read(url: str, out: Path, *, image: str, timeout: float = 0) -> dict[str, Any]:
+    async def fake_read(
+        url: str, out: Path, *, image: str, timeout: float = 0, on_step: Any = None
+    ) -> dict[str, Any]:
         assert url == "https://docs.perplexity.ai" and image == settings.sandbox_image
+        for phase in ("colours", "type", "logo"):
+            on_step(phase)
         shutil.copytree(FIXTURE, out, dirs_exist_ok=True)
         return _found()
 
@@ -161,7 +166,10 @@ async def test_a_channel_wears_a_brand_read_from_a_website(
     await asyncio.gather(*list(shelf._reads.values()))
 
     assert status["status"] == "ready" and status["slug"] == "perplexity"
-    assert [e["read"]["status"] for e in seen if e["type"] == "brand.updated"] == ["ready", "ready"]
+    reads = [e["read"] for e in seen if e["type"] == "brand.updated"]
+    # Started, then each step as it is reached, then ready.
+    assert [r["step"] for r in reads] == ["open", "colours", "type", "logo", "pack", "done"]
+    assert [r["status"] for r in reads] == ["reading"] * 5 + ["ready"]
     assert shelf.channel_brand(channel["id"]) == "perplexity"
     assert shelf.brand_for(thread["id"]) == checkout / "workspace" / "brands" / "perplexity"
     assert [b["slug"] for b in shelf.brands()] == [DEFAULT, "perplexity"]
@@ -188,7 +196,9 @@ async def test_a_read_that_cannot_make_a_brand_says_why(
         store=store, hub=Hub(), settings=settings, project_root=checkout, data_dir=tmp_path
     )
 
-    async def blocked(url: str, out: Path, *, image: str, timeout: float = 0) -> dict[str, Any]:
+    async def blocked(
+        url: str, out: Path, *, image: str, timeout: float = 0, on_step: Any = None
+    ) -> dict[str, Any]:
         raise SiteBrandError("The site answered with a human check or a block (HTTP 403).")
 
     monkeypatch.setattr(brands_module, "read_site", blocked)
@@ -196,6 +206,21 @@ async def test_a_read_that_cannot_make_a_brand_says_why(
     await asyncio.gather(*list(shelf._reads.values()))
     assert status["status"] == "failed" and "human check" in status["message"]
     assert [b["slug"] for b in shelf.brands()] == [DEFAULT]
+
+    async def broken(
+        url: str, out: Path, *, image: str, timeout: float = 0, on_step: Any = None
+    ) -> dict[str, Any]:
+        on_step("type")
+        raise RuntimeError("fc-query crashed")
+
+    # A read that breaks unexpectedly says in which step, never just an exception's name.
+    monkeypatch.setattr(brands_module, "read_site", broken)
+    status = shelf.read("https://example.com", by="you")
+    await asyncio.gather(*list(shelf._reads.values()))
+    assert (
+        status["message"]
+        == "The read stopped while finding its type. The server's log has the details."
+    )
 
 
 def test_fonts_toml_names_files_where_the_pack_lives(checkout: Path) -> None:
@@ -205,3 +230,59 @@ def test_fonts_toml_names_files_where_the_pack_lives(checkout: Path) -> None:
     fonts = tomllib.loads((pack.root / "fonts.toml").read_text())["fonts"]
     assert {f["family"] for f in fonts} == {"Inter", "Fira Code"}
     assert "stands in" not in (pack.root / "graphic-language.md").read_text()
+
+
+def test_a_pack_kept_outside_the_checkout_names_its_files_in_full(
+    checkout: Path, tmp_path: Path
+) -> None:
+    # A workspace can live beside the checkout rather than in it, as the demo's does.
+    pack = write_pack(_found(), FIXTURE, tmp_path / "elsewhere" / "brands" / "perplexity", checkout)
+    fonts = tomllib.loads((pack.root / "fonts.toml").read_text())["fonts"]
+    assert fonts and all((checkout / f["file"]).is_file() for f in fonts)
+
+
+def test_the_brand_page_gets_colours_by_role_faces_and_rules(
+    checkout: Path, tmp_path: Path
+) -> None:
+    settings = Settings(workspace_root=checkout / "workspace")
+    shelf = BrandShelf(
+        store=Store(tmp_path / "house.sqlite"),
+        hub=Hub(),
+        settings=settings,
+        project_root=checkout,
+        data_dir=tmp_path,
+    )
+
+    sample = shelf.view(DEFAULT)
+    # No roles table: the roles come from the colours' names, and the rest is the palette.
+    assert [(r["role"], r["name"]) for r in sample["roles"]] == [
+        ("ground", "paper"),
+        ("ink", "ink"),
+        ("accent", "signal"),
+        ("muted", "graphite"),
+        ("rule", "mist"),
+    ]
+    assert [c["name"] for c in sample["palette"]] == ["white", "moss", "sky", "sand"]
+    assert sample["series"][0] == "#ff5a36"
+    assert sample["shape"]["radius"] == ["4px", "8px", "12px"]
+    assert sample["stacks"]["display"][0] == "Geist" and sample["rules"] and sample["banned"]
+    assert "square" in [f["slug"] for f in sample["formats"]]
+    geist = next(f for f in sample["faces"] if f["family"] == "Geist" and f["style"] == "normal")
+    assert geist["url"] == "/api/brands/default/files/fonts/Geist-Variable.ttf"
+    # Only the faces fonts.toml names are served, from the pack or the checkout's fonts.
+    assert (
+        shelf.file(DEFAULT, "fonts/Geist-Variable.ttf")
+        == (checkout / "fonts" / "Geist-Variable.ttf").resolve()
+    )
+    for refused in ("fonts/Fraunces-Variable.ttf", "fonts/../brand.toml", "fonts/LICENSES.md"):
+        assert shelf.file(DEFAULT, refused) is None
+    summary = shelf.summary(DEFAULT)
+    assert summary["logo"].endswith("/logos/mark.svg") and summary["ground"] == "#f6f1e7"
+
+    pack = write_pack(_found(), FIXTURE, checkout / "workspace" / "brands" / "perplexity", checkout)
+    read = shelf.view("perplexity")
+    tokens = json.loads((pack.root / "tokens.json").read_text())["design"]["tokens"]
+    # A roles table wins over names.
+    assert [r["role"] for r in read["roles"]] == ["ground", "ink", "accent", "muted", "rule"]
+    assert read["roles"][2]["value"] == tokens["--brand-color-accent"]
+    assert all(f["url"].startswith("/api/brands/perplexity/files/fonts/") for f in read["faces"])

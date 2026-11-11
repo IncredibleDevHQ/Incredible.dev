@@ -48,9 +48,11 @@ class FakeRunner:
         self.hold: asyncio.Event | None = None
 
     async def __call__(
-        self, harness: str, *, repo: Path, prompt: str, session: str, profile: Path
+        self, harness: str, *, repo: Path, prompt: str, session: str, fork: bool, profile: Path
     ) -> AsyncGenerator[Event, None]:
-        self.calls.append({"harness": harness, "repo": repo, "prompt": prompt, "session": session})
+        self.calls.append(
+            {"harness": harness, "repo": repo, "prompt": prompt, "session": session, "fork": fork}
+        )
         for event in self.script:
             if self.hold is not None and event.kind == "answer":
                 await self.hold.wait()
@@ -180,6 +182,16 @@ def test_every_agent_runs_read_only_with_the_prompt_kept_out_of_its_options(
         HARNESSES["claude"], "claude", repo=tmp_path, prompt="and?", session="s1", profile=profile
     )
     assert again[-2:] == ["--resume", "s1"]
+    branch, said = command(
+        HARNESSES["claude"],
+        "claude",
+        repo=tmp_path,
+        prompt="so?",
+        session="s1",
+        profile=profile,
+        fork=True,
+    )
+    assert branch[-3:] == ["--resume", "s1", "--fork-session"] and said == "so?"
 
     codex, said = command(
         HARNESSES["codex"], "codex", repo=tmp_path, prompt="why?", session="", profile=profile
@@ -192,6 +204,17 @@ def test_every_agent_runs_read_only_with_the_prompt_kept_out_of_its_options(
     )
     assert resumed[1:3] == ["exec", "resume"] and 'sandbox_mode="read-only"' in resumed
     assert resumed[-2:] == ["01a1", "-"] and said == "and?"
+    branch, said = command(
+        HARNESSES["codex"],
+        "codex",
+        repo=tmp_path,
+        prompt="so?",
+        session="01a1",
+        profile=profile,
+        fork=True,
+    )
+    assert branch[1:3] == ["exec", "fork"] and 'sandbox_mode="read-only"' in branch
+    assert branch[-2:] == ["01a1", "-"] and said == "so?"
 
     kimi, said = command(
         HARNESSES["kimi"], "kimi", repo=tmp_path, prompt="-why?", session="", profile=profile
@@ -260,7 +283,13 @@ async def test_a_research_frame_asks_its_first_question_and_files_the_answer(
 
     assert frame["task"] and frame["kind"] == RESEARCH and frame["title"] == "Research: streamline"
     assert runner.calls == [
-        {"harness": "claude", "repo": repo.resolve(), "prompt": "Why sessions?", "session": ""}
+        {
+            "harness": "claude",
+            "repo": repo.resolve(),
+            "prompt": "Why sessions?",
+            "session": "",
+            "fork": False,
+        }
     ]
     thread = agent.store.thread(conversation["id"])
     assert thread is not None and thread["kind"] == CONVERSATION and thread["status"] == "idle"
@@ -352,8 +381,11 @@ async def test_a_branch_starts_on_a_passage_of_its_parents_answer(
     )
     await _settle(agent.research)
     assert branch["parent_id"] == root["id"] and branch["harness"] == "codex"
-    assert runner.calls[-1]["prompt"] == (
-        "While researching “Why sessions?”, this came up:\n\n> A Durable Object renews them."
+    # A copy of the parent's session already holds everything the parent read and said.
+    forked = runner.calls[-1]
+    assert forked["session"] == "s-1" and forked["fork"] is True
+    assert forked["prompt"] == (
+        "From your answer above, this passage:\n\n> A Durable Object renews them."
         "\n\nWhat decides it?"
     )
     with pytest.raises(KeyError):
@@ -548,3 +580,99 @@ async def test_a_folder_inside_a_repository_can_be_researched(
             agent.research.open(
                 _channel(agent), by="you", repo=str(refused), harness="claude", question="?"
             )
+
+
+async def test_a_branch_that_cannot_fork_is_told_the_answer_its_passage_came_from(
+    house: tuple[AgentHost, FakeRunner, Path],
+) -> None:
+    agent, runner, repo = house
+    frame, root = agent.research.open(
+        _channel(agent), by="you", repo=str(repo), harness="kimi", question="Why sessions?"
+    )
+    await _settle(agent.research)
+    runner.script = [Event("answer", "They renew daily.")]
+    agent.research.follow_up(root["id"], by="you", text="How often?")
+    await _settle(agent.research)
+    first, latest = [m for m in agent.store.messages(root["id"]) if m["kind"] == "agent"]
+
+    agent.research.ask(
+        frame["id"],
+        by="you",
+        question="What decides it?",
+        parent=root["id"],
+        quote="A Durable Object renews them.",
+        answer=first["id"],
+    )
+    await _settle(agent.research)
+    told = runner.calls[-1]
+    assert told["session"] == "" and told["fork"] is False
+    assert told["prompt"] == (
+        "This branches from an earlier conversation about this repository.\n\n"
+        f"Asked: Why sessions?\n\nAnswered:\n\n{ANSWER}\n\n"
+        "From that answer, this passage:\n\n> A Durable Object renews them.\n\n"
+        "Now: What decides it?"
+    )
+
+    # Without a named answer, the parent's latest is the one told.
+    agent.research.ask(frame["id"], by="you", question="Daily?", parent=root["id"])
+    await _settle(agent.research)
+    assert f"Asked: How often?\n\nAnswered:\n\n{latest['text']}" in runner.calls[-1]["prompt"]
+
+
+async def test_a_branch_of_a_conversation_still_answering_is_told_rather_than_forked(
+    house: tuple[AgentHost, FakeRunner, Path],
+) -> None:
+    agent, runner, repo = house
+    frame, root = agent.research.open(
+        _channel(agent), by="you", repo=str(repo), harness="claude", question="Why sessions?"
+    )
+    await _settle(agent.research)
+    runner.hold = asyncio.Event()
+    agent.research.follow_up(root["id"], by="you", text="And expiry?")
+    await asyncio.sleep(0)
+
+    agent.research.ask(
+        frame["id"], by="you", question="Why?", parent=root["id"], quote="It renews them."
+    )
+    runner.hold.set()
+    await _settle(agent.research)
+    branch = runner.calls[-1]
+    assert branch["prompt"].endswith("Now: Why?")
+    assert branch["session"] == "" and branch["fork"] is False
+
+
+async def test_a_new_question_is_told_the_frames_notes_and_no_other_chat(
+    house: tuple[AgentHost, FakeRunner, Path],
+) -> None:
+    agent, runner, repo = house
+    frame, root = agent.research.open(
+        _channel(agent), by="you", repo=str(repo), harness="claude", question="Why sessions?"
+    )
+    await _settle(agent.research)
+    agent.research.keep(
+        frame["id"],
+        by="you",
+        text="Sessions  live in a\nDurable Object.",
+        conversation_id=root["id"],
+    )
+    agent.research.keep(frame["id"], by="you", text="Expiry is 30 days.")
+
+    agent.research.ask(frame["id"], by="you", question="Where is auth?")
+    await _settle(agent.research)
+    told = runner.calls[-1]
+    assert told["session"] == "" and told["fork"] is False
+    assert told["prompt"] == (
+        "What the team has kept from earlier answers about this repository, to build on "
+        "(check anything you rely on against the code):\n\n"
+        "- Sessions live in a Durable Object.\n- Expiry is 30 days.\n\n"
+        "The question: Where is auth?"
+    )
+
+    # Past what fits, the newest notes are the ones told.
+    for n in range(12):
+        agent.research.keep(frame["id"], by="you", text=f"Note {n:02d}. " + "word " * 120)
+    agent.research.ask(frame["id"], by="you", question="And billing?")
+    await _settle(agent.research)
+    told_now = runner.calls[-1]["prompt"]
+    assert "Note 11." in told_now and "Note 00." not in told_now and "Expiry" not in told_now
+    assert len(told_now) < 6_000 + 400

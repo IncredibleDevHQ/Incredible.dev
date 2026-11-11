@@ -10,6 +10,7 @@ import {
   Crop,
   FileText,
   Film,
+  Globe,
   Image as ImageIcon,
   Images,
   LayoutGrid,
@@ -138,16 +139,17 @@ export function FileList({ files, large, title, among }: { files?: FileView[]; l
         <div className="files">
           {rest.map((f) => {
             const kind = fileKind(f);
+            // A page read from a link goes by its title, as a page.
+            const page = f.origin === "link" && kind === "doc";
+            const name = page ? f.name.replace(/\.md$/i, "") : f.name;
             return (
-              <button type="button" className="file" key={f.id} title={f.name} onClick={() => openFiles({ files: among ?? files, at: f.id, title })}>
+              <button type="button" className="file" key={f.id} title={name} onClick={() => openFiles({ files: among ?? files, at: f.id, title })}>
                 {kind === "image" ? (
                   <img src={f.url} alt="" />
                 ) : (
-                  <span className="ico">
-                    <FileGlyph kind={kind} size={16} />
-                  </span>
+                  <span className="ico">{page ? <Globe size={16} /> : <FileGlyph kind={kind} size={16} />}</span>
                 )}
-                <span>{f.name}</span>
+                <span>{name}</span>
               </button>
             );
           })}

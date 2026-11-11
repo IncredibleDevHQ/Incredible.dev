@@ -23,7 +23,7 @@ import shutil
 import statistics
 import tempfile
 import tomllib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -110,9 +110,15 @@ def checked_url(url: str) -> str:
 
 
 async def read_site(
-    url: str, out: Path, *, image: str, timeout: float = READ_SECONDS
+    url: str,
+    out: Path,
+    *,
+    image: str,
+    timeout: float = READ_SECONDS,
+    on_step: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
-    """Read a site's brand into `out` (capture.json and the files it names)."""
+    """Read a site's brand into `out` (capture.json and the files it names). The capture says
+    when each phase starts (colours, type, logo), and `on_step` hears each one."""
     out.mkdir(parents=True, exist_ok=True)
     command = [
         "docker",
@@ -143,8 +149,23 @@ async def read_site(
     process = await asyncio.create_subprocess_exec(
         *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
+
+    async def follow() -> bytes:
+        if process.stdout is None or process.stderr is None:
+            raise SiteBrandError("The read could not start.")
+        errors = asyncio.ensure_future(process.stderr.read())
+        async for raw in process.stdout:
+            line = raw.decode(errors="replace").strip()
+            if on_step is not None and line.startswith("{"):
+                with contextlib.suppress(ValueError):
+                    said = json.loads(line)
+                    if isinstance(said, dict) and isinstance(said.get("step"), str):
+                        on_step(said["step"])
+        await process.wait()
+        return await errors
+
     try:
-        _, said = await asyncio.wait_for(process.communicate(), timeout)
+        said = await asyncio.wait_for(follow(), timeout)
     except TimeoutError:
         with contextlib.suppress(ProcessLookupError):
             process.kill()
@@ -260,6 +281,12 @@ def _kind(family: str, role: str) -> str:
     return "serif" if SERIF.search(family) else "sans"
 
 
+def _named(path: Path, project_root: Path) -> str:
+    """A file as fonts.toml names it: from the checkout's root when it lies inside the checkout
+    (the usual workspace), else in full (a workspace kept beside it, as the demo's is)."""
+    return str(path.relative_to(project_root)) if path.is_relative_to(project_root) else str(path)
+
+
 def type_of(found: Mapping[str, Any], target: Path, project_root: Path) -> dict[str, Any]:
     """The faces renders use, by role, with fonts.toml entries: the site's open faces as files
     (the checkout's copy when it has one), an open stand-in for any licensed face."""
@@ -293,7 +320,7 @@ def type_of(found: Mapping[str, Any], target: Path, project_root: Path) -> dict[
                             "family": family,
                             "weight": _weight(face),
                             "style": "italic" if italic else "normal",
-                            "file": str(copy.relative_to(project_root)),
+                            "file": _named(copy, project_root),
                             "required": not italic,
                             "license": f"Open (SIL OFL or Apache), as {found.get('host', 'the site')} serves it",
                         }
@@ -439,7 +466,7 @@ def write_pack(
         fonts_toml = target / "fonts.toml"
         fonts_toml.write_text(
             fonts_toml.read_text().replace(
-                str(staging.relative_to(project_root)), str(target.relative_to(project_root))
+                _named(staging, project_root), _named(target, project_root)
             )
         )
         return load_brand_pack(target, project_root=project_root)

@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="/house.svg" />
     <title>Creative House</title>
+    <script>
+      // The look before the first paint: the person's pick in this browser, else the system's.
+      (function () {
+        var pick = null;
+        try {
+          pick = localStorage.getItem("house:theme");
+        } catch (e) {}
+        document.documentElement.dataset.theme =
+          pick === "light" || pick === "dark" ? pick : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

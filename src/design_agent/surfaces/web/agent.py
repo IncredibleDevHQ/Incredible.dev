@@ -33,17 +33,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 from design_agent.config import Settings
 from design_agent.harness import events as ev
 from design_agent.harness import tasks
 from design_agent.harness.notices import should_post
 from design_agent.middleware.meter import METER
-from design_agent.surfaces.web import catalog, preview
+from design_agent.surfaces.web import catalog, pages, preview
 from design_agent.surfaces.web.hub import Hub
 from design_agent.surfaces.web.preview import Previews
 from design_agent.surfaces.web.research_desk import RESEARCH, ResearchDesk
 from design_agent.surfaces.web.store import AGENT_ID, CONVERSATION, Row, Store, new_id
 from design_agent.tools.delivery import MAX_FILE_BYTES, MAX_FILES, DeliveredFile
+from design_agent.tools.fetch import FetchRefused, system_resolver
 from design_agent.tools.files import WorkspaceError, read_bytes, require_backend
 
 if TYPE_CHECKING:
@@ -100,6 +103,12 @@ def title_of(text: str) -> str:
     return line if len(line) <= 80 else line[:79].rstrip() + "…"
 
 
+def _short_link(url: str) -> str:
+    """A link as a person reads it: no scheme or www, at most 60 characters."""
+    link = re.sub(r"^https?://(www\.)?", "", url).rstrip("/")
+    return link if len(link) <= 60 else link[:59] + "…"
+
+
 def model_mark(settings: Settings, demo: bool) -> str:
     """Which agent's logo the app shows for the lead: Claude, Codex or Kimi (or the house's own
     mark for the scripted demo)."""
@@ -136,6 +145,9 @@ class AgentHost:
         self.research = ResearchDesk(
             store=store, hub=hub, data_dir=data_dir, roots=settings.research_folders()
         )
+        #: How links people bring are reached (tests swap in their own).
+        self.link_resolver = system_resolver
+        self.link_transport: Any = None
         self._turns: dict[str, asyncio.Task[None]] = {}
         self._followups: dict[str, list[FollowUp]] = {}
         self._stops: set[str] = set()
@@ -1362,15 +1374,56 @@ class AgentHost:
             assets=list(made.values()),
         )
 
+    async def read_links(self, text: str, *, by: str) -> list[str]:
+        """The links in what someone brings, each read and kept as a file that goes with the ask
+        (a page as its article's words, a PDF as itself). When the links are all they brought, each
+        must be read, or it says why it couldn't be; beside notes, a link that can't be read is
+        left as a link."""
+        links = pages.links_in(text)
+        only = bool(links) and not pages.LINK.sub("", text).strip()
+        kept: list[str] = []
+        for url in links:
+            try:
+                read = await pages.read_link(
+                    url, resolver=self.link_resolver, transport=self.link_transport
+                )
+            except (FetchRefused, httpx.HTTPError) as error:
+                if only:
+                    why = error if isinstance(error, FetchRefused) else "the page didn't load"
+                    raise ValueError(
+                        f"Couldn't read {_short_link(url)}: {why}. Paste its text instead, or "
+                        "attach it as a file."
+                    ) from None
+                continue
+            kept.append(self.save_file("", read.name, read.content, origin="link", author=by)["id"])
+        return kept
+
     def _material_label(self, words: str, file_ids: Sequence[str]) -> str:
-        names = [str(f["name"]) for f in (self.store.file(i) for i in file_ids) if f is not None]
+        names = [
+            self._file_label(f) for f in (self.store.file(i) for i in file_ids) if f is not None
+        ]
         if names:
             more = len(names) - 2
             return " and ".join(names[:2]) + (f" and {more} more" if more > 0 else "")
         if re.fullmatch(r"https?://\S+", words):
-            link = re.sub(r"^https?://(www\.)?", "", words).rstrip("/")
-            return link if len(link) <= 60 else link[:59] + "…"
+            return _short_link(words)
         return "my notes"
+
+    def _file_label(self, row: Row) -> str:
+        # A page read from a link goes by its own title (its first line), quoted; a file kept's
+        # name can't carry all of a title.
+        if row["origin"] != "link":
+            return str(row["name"])
+        try:
+            with (self.files_dir / str(row["rel_path"])).open("rb") as kept:
+                first = kept.read(1024).decode("utf-8", errors="replace").split("\n", 1)[0]
+        except OSError:
+            first = ""
+        title = (first[2:].strip() if first.startswith("# ") else "") or Path(str(row["name"])).stem
+        # Short enough, cut at a word, that a thread's title keeps both quotes.
+        if len(title) > 55:
+            title = title[:55].rsplit(" ", 1)[0].rstrip(" :,;-") + "…"
+        return f"“{title}”"
 
     def mark_asset(self, thread_id: str, asset_id: str, *, status: str, note: str) -> str:
         """`canvas_update_asset`: where an asset stands, as the agent says it."""

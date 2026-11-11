@@ -7,7 +7,8 @@ import { Sidebar } from "./components/Sidebar";
 import { ThreadPanel } from "./components/ThreadPanel";
 import { Viewer } from "./components/Viewer";
 import { connectLive } from "./live";
-import { Brand, Computer, NeedsYou, Skills } from "./pages/Pages";
+import { Brand, Computer, NeedsYou, ReadBrand, Skills } from "./pages/Pages";
+import { followAddress, go, parse } from "./route";
 import { useHouse } from "./store";
 
 export function App() {
@@ -20,8 +21,17 @@ function WorkspaceApp() {
   const frameId = useHouse((s) => s.frameId);
 
   useEffect(() => {
-    void useHouse.getState().boot().catch((error: Error) => useHouse.getState().say(error.message));
-    return connectLive();
+    const stop = followAddress();
+    void useHouse
+      .getState()
+      .boot()
+      .then(() => go(parse(location.pathname, location.search)))
+      .catch((error: Error) => useHouse.getState().say(error.message));
+    const live = connectLive();
+    return () => {
+      stop();
+      live();
+    };
   }, []);
 
   useEffect(() => {
@@ -39,6 +49,7 @@ function WorkspaceApp() {
         <main className="main">
           {page === "needs" && <NeedsYou />}
           {page === "brand" && <Brand />}
+          {page === "read-brand" && <ReadBrand />}
           {page === "skills" && <Skills />}
           {page === "computer" && <Computer />}
         </main>

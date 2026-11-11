@@ -1,4 +1,5 @@
-"""The web surface: the store, the bridge's boards and feedback, steering, and the demo lead."""
+"""The web surface: the store, the bridge's boards and feedback, steering, the demo lead, and the
+app at every address."""
 
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ from typing import Any
 
 import pytest
 from deepagents.backends.protocol import FileDownloadResponse
+from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from design_agent.config import Settings
@@ -16,6 +18,7 @@ from design_agent.harness import tasks
 from design_agent.middleware.meter import METER
 from design_agent.surfaces.web import demo
 from design_agent.surfaces.web.agent import AgentHost, worked_seconds
+from design_agent.surfaces.web.app import create_app
 from design_agent.surfaces.web.hub import Hub
 from design_agent.surfaces.web.store import AGENT_ID, Store
 
@@ -448,3 +451,22 @@ def test_a_restart_replays_every_priced_call_with_spend_an_older_footer_lost(
     assert spent.usd == pytest.approx(6.31) and spent.calls == 3
     assert spent.by_source["t-build"].usd == pytest.approx(4.61)
     assert agent.store.thread(thread)["footer"]["usd"] == 6.31  # type: ignore[index]
+
+
+def test_every_address_in_the_app_opens_the_app(tmp_path: Path) -> None:
+    """A channel, its canvas, a card on it or a page, linked or reloaded, gets the app."""
+    built = tmp_path / "web" / "dist"
+    (built / "assets").mkdir(parents=True)
+    (built / "index.html").write_text("<!doctype html><title>Creative House</title>")
+    settings = Settings(_env_file=None, workspace_root=tmp_path / "workspace")  # type: ignore[call-arg]
+    client = TestClient(create_app(tmp_path, settings))
+    for address in (
+        "/c/lily",
+        "/c/lily/canvas",
+        "/c/lily/canvas/th_frame/as_card?thread=th_frame",
+        "/brand/new?for=lily",
+        "/needs-you",
+    ):
+        page = client.get(address)
+        assert page.status_code == 200, address
+        assert "<title>Creative House</title>" in page.text, address

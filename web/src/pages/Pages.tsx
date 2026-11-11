@@ -1,9 +1,8 @@
 // What the agent works with, and what waits on people. Each page is one piece of the design
 // agent's system map made visible: the brand pack it is staged with, the skills it routes
 // through, the computer it works on, and the threads whose work waits on a person.
-import { Check, CircleAlert, Globe, Palette } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, type BrandPackView, type ComputerView, type SkillView } from "../api";
+import { api, type ComputerView, type SkillView } from "../api";
 import { useHouse } from "../store";
 import { StatusChip } from "../ui";
 
@@ -11,6 +10,7 @@ export function NeedsYou() {
   const { threads, channels } = useHouse();
   const openChannel = useHouse((s) => s.openChannel);
   const openThread = useHouse((s) => s.openThread);
+  const focusOn = useHouse((s) => s.focusOn);
   const waiting = Object.values(threads).filter((t) => t.status === "needs_you");
   const working = Object.values(threads).filter((t) => t.status === "working");
   const row = (t: (typeof waiting)[number]) => {
@@ -21,9 +21,11 @@ export function NeedsYou() {
         key={t.id}
         className="card"
         style={{ textAlign: "left", display: "grid", gap: 6 }}
-        onClick={async () => {
-          await openChannel(t.channel_id, "canvas");
-          await openThread(t.id);
+        onClick={() => {
+          // A task's frame comes into view on its channel's canvas, with its thread beside it.
+          void openChannel(t.channel_id, "canvas");
+          if (t.task) focusOn({ task: t.id, node: null, reveal: true });
+          void openThread(t.id);
         }}
       >
         <span className="muted" style={{ fontSize: 12 }}>#{channel?.name}</span>
@@ -47,162 +49,9 @@ export function NeedsYou() {
   );
 }
 
-// The brands a channel can wear: the configured pack, and packs read from websites. A read runs
-// in a throwaway container and lands here when it is made; the pack shows what renders will use
-// (licensed faces named beside the open faces that stand in for them).
-export function Brand() {
-  const { brands, reads, channels, channelId } = useHouse();
-  const loadBrands = useHouse((s) => s.loadBrands);
-  const [selected, setSelected] = useState<string>("default");
-  const [pack, setPack] = useState<BrandPackView | null>(null);
-  const [url, setUrl] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    void loadBrands();
-  }, [loadBrands]);
-  useEffect(() => {
-    setPack(null);
-    void api.brandPack(selected).then(setPack).catch(() => setSelected("default"));
-  }, [selected, brands]);
-
-  const read = async () => {
-    if (!url.trim()) return;
-    setBusy(true);
-    try {
-      await api.readBrand(url.trim(), channelId ?? "");
-      setUrl("");
-    } catch (error) {
-      useHouse.getState().say((error as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const wearing = (slug: string) => channels.filter((c) => (c.brand || "default") === slug);
-  const here = channels.find((c) => c.id === channelId);
-
-  return (
-    <section className="page" aria-labelledby="brand-title">
-      <h1 id="brand-title">Brands</h1>
-      <p className="lede">A channel's brand is staged before every run in it. Read one from a website, or keep the configured pack.</p>
-      <form
-        className="brand-read"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void read();
-        }}
-      >
-        <Globe size={16} />
-        <input value={url} placeholder="A website, like yourcompany.com" aria-label="A website to read a brand from" onChange={(e) => setUrl(e.target.value)} />
-        <button type="submit" className="btn primary" disabled={!url.trim() || busy}>
-          Read its brand
-        </button>
-      </form>
-      {here && <p className="brand-read-note faint">It will be worn in #{here.name} once it is read.</p>}
-      {reads
-        .filter((r) => r.status !== "ready")
-        .map((r) => (
-          <p key={r.url} className={`brand-read-status ${r.status}`}>
-            {r.status === "reading" ? <span className="spin" /> : <CircleAlert size={14} />}
-            <span>{r.status === "reading" ? `Reading ${r.url.replace(/^https?:\/\//, "")}…` : r.message}</span>
-          </p>
-        ))}
-      <div className="brand-list" role="radiogroup" aria-label="Brands">
-        {brands.map((b) => (
-          <button type="button" role="radio" key={b.slug} aria-checked={selected === b.slug} className="brand-card" onClick={() => setSelected(b.slug)}>
-            <span className="brand-card-mark">{b.logo ? <img src={b.logo} alt="" /> : <Palette size={18} />}</span>
-            <span className="brand-card-text">
-              <b>{b.name}</b>
-              <small>{b.source ? `From ${b.source.replace(/^https?:\/\//, "").split("/")[0]}` : b.sample ? "The sample pack" : "The configured pack"}</small>
-            </span>
-            <span className="brand-card-swatches" aria-hidden="true">
-              {b.colors.slice(0, 5).map((c) => (
-                <i key={c.name} style={{ background: c.value }} />
-              ))}
-            </span>
-          </button>
-        ))}
-      </div>
-      {pack && (
-        <>
-          <div className="brand-head">
-            <h2>{pack.name}</h2>
-            <span className="faint">
-              {wearing(pack.slug).length ? `Worn in ${wearing(pack.slug).map((c) => `#${c.name}`).join(", ")}` : "Worn in no channel"}
-              {pack.read ? ` · read ${pack.read}` : ""}
-            </span>
-            {here && (here.brand || "default") !== pack.slug && (
-              <button type="button" className="btn" onClick={() => void api.wearBrand(here.id, pack.slug).then(() => loadBrands())}>
-                <Check />
-                Wear in #{here.name}
-              </button>
-            )}
-          </div>
-          <div className="section">
-            <h2>Colours</h2>
-            <div className="swatches">
-              {pack.colors.map((c) => (
-                <div className="swatch" key={c.name}>
-                  <i style={{ background: c.value }} />
-                  <div>
-                    <b>{c.name}</b>
-                    <span className="mono faint">{c.value}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="section">
-            <h2>Type</h2>
-            <div className="cards">
-              {pack.families.map((f) => (
-                <div className="card" key={f.family}>
-                  <h3 style={{ fontFamily: `"${f.family}", var(--font)` }}>{f.family}</h3>
-                  <p>
-                    {pack.stand_ins?.[f.family] ? `Stands in for ${pack.stand_ins[f.family]}, which the site licenses · ` : ""}
-                    {f.styles.join(" · ")}
-                    {f.license ? ` · ${f.license}` : ""}
-                    {f.required ? "" : " · optional"}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-          {pack.logos.length > 0 && (
-            <div className="section">
-              <h2>Logos</h2>
-              <div className="logos">
-                {pack.logos.map((logo) => (
-                  <figure key={logo.name} className={/reversed|white/i.test(logo.name) ? "on-ink" : ""}>
-                    <img src={logo.url} alt={logo.name} />
-                  </figure>
-                ))}
-              </div>
-            </div>
-          )}
-          {pack.reference && (
-            <div className="section">
-              <h2>The site, as it was read</h2>
-              <img className="brand-reference" src={pack.reference} alt={`The first screen of ${pack.source}`} />
-            </div>
-          )}
-          {pack.voice && (
-            <div className="section">
-              <h2>Voice</h2>
-              <div className="prose">{pack.voice}</div>
-            </div>
-          )}
-          {pack.graphic_language && (
-            <div className="section">
-              <h2>Graphic language</h2>
-              <div className="prose">{pack.graphic_language}</div>
-            </div>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
+// The Brand page and reading a brand from a website live in files of their own.
+export { Brand } from "./BrandPage";
+export { ReadBrand } from "./ReadBrandPage";
 
 const ROUTER = new Set(["media-production", "content-brief"]);
 const JUDGMENT = new Set(["brand-design", "design-wiki", "visual-verify", "motion-direction", "canvas"]);

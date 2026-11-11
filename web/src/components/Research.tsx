@@ -7,9 +7,10 @@ import { ArrowUp, Check, CornerDownRight, FileText, FolderOpen, GitBranch, Messa
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, type CanvasTask, type Conversation, type Harness, type HarnessId, type Note, type ResearchView } from "../api";
-import { useHouse } from "../store";
+import { useFocused, useHouse } from "../store";
 import { AgentMark, Rich } from "../ui";
 import { columnsOf, type Edge } from "./Flow";
+import { ThinkingLoader } from "./ThinkingLoader";
 
 export const RESEARCH_NODE = "research";
 export const NOTES_NODE = "notes";
@@ -74,6 +75,7 @@ export function ResearchColumns({
 // The research node: the repository it reads, which agent answers, and a new question.
 function ResearchNode({ frameId, research }: { frameId: string; research: ResearchView }) {
   const options = useHouse((s) => s.research);
+  const focused = useFocused(frameId, RESEARCH_NODE);
   const [harness, setHarness] = useState<HarnessId>(research.harness);
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
@@ -97,7 +99,7 @@ function ResearchNode({ frameId, research }: { frameId: string; research: Resear
   };
 
   return (
-    <article className="node research-node" data-node={RESEARCH_NODE} aria-label="Research">
+    <article className="node research-node" data-node={RESEARCH_NODE} data-focus={focused || undefined} aria-label="Research">
       <header className="node-head">
         <span className="node-icon">
           <Telescope size={16} />
@@ -164,7 +166,7 @@ function Agents({ value, onChange, known, named }: { value: HarnessId; onChange:
 }
 
 // One conversation: its question, what the agent is doing, the start of its answer (a passage of
-// which can be kept or explored), and a way into the whole of it.
+// which can be kept or explored), and a way into the whole of it: Open, or a click on the card.
 function ConversationCard({
   frameId,
   conversation: c,
@@ -177,6 +179,8 @@ function ConversationCard({
   onHot: (id: string | null) => void;
 }) {
   const openThread = useHouse((s) => s.openThread);
+  const focusOn = useHouse((s) => s.focusOn);
+  const focused = useFocused(frameId, c.id);
   const answer = useRef<HTMLDivElement>(null);
   const working = c.status === "working";
   const keptWhole = notes.some((n) => n.message_id === c.answer_id && n.text === c.answer);
@@ -187,19 +191,33 @@ function ConversationCard({
       say(error);
     }
   };
+  // Opened, the card is picked (its address links to it) and its chat is beside the canvas.
+  const open = () => {
+    focusOn({ task: frameId, node: c.id });
+    void openThread(c.id);
+  };
+  // A click anywhere on the card opens it, unless it lands on one of the card's own controls or
+  // ends a passage's selection (which gets Keep and Explore instead).
+  const openFrom = (e: React.MouseEvent<HTMLElement>) => {
+    const target = e.target as Element;
+    if (e.detail > 1 || !e.currentTarget.contains(target) || target.closest("button, a")) return;
+    if (!window.getSelection()?.isCollapsed) return;
+    open();
+  };
   return (
     <article
       className="node conv"
       data-node={c.id}
       data-status={c.status}
+      data-focus={focused || undefined}
       aria-label={c.question}
+      onClick={openFrom}
       onMouseEnter={() => onHot(c.id)}
       onMouseLeave={() => onHot(null)}
     >
       <header className="node-head">
         <AgentMark mark={c.harness} size="sm" />
         <b title={c.question}>{c.question}</b>
-        {working && <span className="spin" aria-label="Researching" />}
       </header>
       <div className="node-body">
         {c.quote && (
@@ -208,7 +226,7 @@ function ConversationCard({
             <span>“{c.quote}”</span>
           </p>
         )}
-        {working && <p className="node-line conv-step">{c.step || "Starting"}</p>}
+        {working && <ThinkingLoader className="conv-working" size="sm" phases={[c.step || "Starting"]} />}
         {c.answer && c.follow_up && (
           <p className="conv-follow" title={c.follow_up}>
             <MessageSquare size={13} />
@@ -216,14 +234,14 @@ function ConversationCard({
           </p>
         )}
         {c.answer && (
-          <div className="conv-answer rich" ref={answer}>
+          <div className="conv-answer rich" ref={answer} data-passage>
             <Rich text={c.answer} />
           </div>
         )}
         {c.answer && <Passage within={answer} frameId={frameId} conversationId={c.id} messageId={c.answer_id} />}
         {c.problem && !working && <p className="node-line warn">{c.problem}</p>}
         <div className="conv-actions">
-          <button type="button" className="btn" onClick={() => void openThread(c.id)}>
+          <button type="button" className="btn" onClick={open}>
             <MessageSquare />
             Open
           </button>
@@ -259,28 +277,34 @@ export function Passage({
   const bar = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const el = within.current;
-    if (!el) return;
+    // A selection counts wherever the pointer or key that made it is let go, and only its part in
+    // this answer does: one that starts on the time above it, or runs on past its end, still offers
+    // the words it holds here. The answer it began in takes it, else the one it ended in.
     const read = () => {
+      const el = within.current;
       const selection = window.getSelection();
-      if (!selection || selection.isCollapsed || !selection.rangeCount) return;
-      const range = selection.getRangeAt(0);
-      if (!el.contains(range.commonAncestorContainer)) return;
+      if (!el || !selection || selection.isCollapsed || !selection.rangeCount) return;
+      if ((answerOf(selection.anchorNode) ?? answerOf(selection.focusNode)) !== el) return;
+      const range = selection.getRangeAt(0).cloneRange();
+      const whole = document.createRange();
+      whole.selectNodeContents(el);
+      if (range.compareBoundaryPoints(Range.START_TO_START, whole) < 0) range.setStart(whole.startContainer, whole.startOffset);
+      if (range.compareBoundaryPoints(Range.END_TO_END, whole) > 0) range.setEnd(whole.endContainer, whole.endOffset);
       wholeWords(range);
-      selection.removeAllRanges();
-      selection.addRange(range);
       const text = range.toString().trim();
       if (text.length < 3) return;
+      selection.removeAllRanges();
+      selection.addRange(range);
       const r = range.getBoundingClientRect();
       setPicked({ text, x: r.left + r.width / 2, y: r.top });
       setAsking(false);
       setQuestion("");
     };
-    el.addEventListener("mouseup", read);
-    el.addEventListener("keyup", read);
+    document.addEventListener("mouseup", read);
+    document.addEventListener("keyup", read);
     return () => {
-      el.removeEventListener("mouseup", read);
-      el.removeEventListener("keyup", read);
+      document.removeEventListener("mouseup", read);
+      document.removeEventListener("keyup", read);
     };
   }, [within]);
 
@@ -316,7 +340,7 @@ export function Passage({
   const explore = async () => {
     if (!question.trim()) return;
     try {
-      await api.ask(frameId, { question: question.trim(), parent: conversationId, quote: picked.text });
+      await api.ask(frameId, { question: question.trim(), parent: conversationId, quote: picked.text, answer: messageId });
       done();
     } catch (error) {
       say(error);
@@ -353,6 +377,9 @@ export function Passage({
   );
 }
 
+// The answer a point of a selection is in, when it is one a passage can be taken from.
+const answerOf = (node: Node | null) => (node instanceof Element ? node : node?.parentElement)?.closest("[data-passage]") ?? null;
+
 // A selection that starts or ends inside a word takes the whole word.
 function wholeWords(range: Range) {
   const word = /[\p{L}\p{N}_'’-]/u;
@@ -386,6 +413,7 @@ function NotesNode({
   making: boolean;
 }) {
   const people = useHouse((s) => s.people);
+  const focused = useFocused(frameId, NOTES_NODE);
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const asked = new Map(research.conversations.map((c) => [c.id, c]));
@@ -400,7 +428,14 @@ function NotesNode({
     }
   };
   return (
-    <article className="node notes-node" data-node={NOTES_NODE} aria-label="Notes" onMouseEnter={() => onHot(NOTES_NODE)} onMouseLeave={() => onHot(null)}>
+    <article
+      className="node notes-node"
+      data-node={NOTES_NODE}
+      data-focus={focused || undefined}
+      aria-label="Notes"
+      onMouseEnter={() => onHot(NOTES_NODE)}
+      onMouseLeave={() => onHot(null)}
+    >
       <header className="node-head">
         <span className="node-icon">
           <NotebookPen size={16} />
@@ -546,10 +581,11 @@ function Lineage({ steps }: { steps: Note["lineage"] }) {
 }
 
 // Starting research from the canvas: which repository, which agent, and the first question.
-export function ResearchStart({ channelId, anchor, onClose }: { channelId: string; anchor: HTMLElement; onClose: () => void }) {
+export function ResearchStart({ channelId, anchor, onClose, onStarted }: { channelId: string; anchor: HTMLElement; onClose: () => void; onStarted?: () => void }) {
   const options = useHouse((s) => s.research);
   const box = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
+  const ask = useRef<HTMLTextAreaElement>(null);
   const [query, setQuery] = useState("");
   const [repo, setRepo] = useState("");
   const [harness, setHarness] = useState<HarnessId>("claude");
@@ -568,16 +604,23 @@ export function ResearchStart({ channelId, anchor, onClose }: { channelId: strin
       .catch(say);
   }, []);
 
+  // Below its button, moved up as far as it must to stay on screen. Its list keeps one height, so
+  // the card never grows or moves while someone searches and picks.
   useLayoutEffect(() => {
     const r = anchor.getBoundingClientRect();
     const width = box.current?.offsetWidth ?? 380;
-    setPlace({ top: r.bottom + 8, left: Math.max(12, Math.min(window.innerWidth - width - 12, r.left)) });
+    const height = box.current?.offsetHeight ?? 480;
+    setPlace({
+      top: Math.max(12, Math.min(r.bottom + 8, window.innerHeight - 12 - height)),
+      left: Math.max(12, Math.min(window.innerWidth - width - 12, r.left)),
+    });
   }, [anchor]);
 
-  // The search takes the keyboard once the card is placed (a hidden field can't be focused).
+  // The search takes the keyboard once, when the card is placed (a hidden field can't be focused).
+  const placed = Boolean(place);
   useEffect(() => {
-    if (place) search.current?.focus();
-  }, [place]);
+    if (placed) search.current?.focus();
+  }, [placed]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -595,11 +638,25 @@ export function ResearchStart({ channelId, anchor, onClose }: { channelId: strin
 
   const wanted = query.trim().toLowerCase();
   const shown = (options?.repos ?? []).filter((r) => r.name.toLowerCase().includes(wanted));
+  const folder = /[/~]/.test(query);
+  const chosen = folder && repo === query.trim() ? query.trim().split("/").filter(Boolean).pop() : options?.repos.find((r) => r.path === repo)?.name;
+  // A search that hides the picked repository picks its first match instead, so what will be read
+  // is always in sight; picking one, by click or Enter, moves on to the question.
+  const find = (text: string) => {
+    setQuery(text);
+    const matches = (options?.repos ?? []).filter((r) => r.name.toLowerCase().includes(text.trim().toLowerCase()));
+    if (!/[/~]/.test(text) && matches.length && !matches.some((r) => r.path === repo)) setRepo(matches[0].path);
+  };
+  const choose = (path: string) => {
+    setRepo(path);
+    ask.current?.focus();
+  };
   const start = async () => {
     if (!repo || !question.trim() || busy) return;
     setBusy(true);
     try {
       await api.openResearch(channelId, { repo, harness, question: question.trim() });
+      onStarted?.();
       onClose();
     } catch (error) {
       say(error);
@@ -618,20 +675,32 @@ export function ResearchStart({ channelId, anchor, onClose }: { channelId: strin
       <h3>Research a repository</h3>
       <label className="repo-find">
         <Search size={14} />
-        <input ref={search} value={query} placeholder="Find a repository" aria-label="Find a repository" onChange={(e) => setQuery(e.target.value)} />
+        <input
+          ref={search}
+          value={query}
+          placeholder="Find a repository"
+          aria-label="Find a repository"
+          onChange={(e) => find(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            if (folder) choose(query.trim());
+            else if (repo) ask.current?.focus();
+          }}
+        />
       </label>
       <div className="repo-list" role="listbox" aria-label="Repositories">
         {!options && <p className="muted">Looking for repositories…</p>}
-        {options && !shown.length && !/[/~]/.test(query) && <p className="muted">No repository matches. Type a folder's path to research one inside a repository.</p>}
-        {/[/~]/.test(query) && (
-          <button type="button" role="option" aria-selected={repo === query.trim()} title={query.trim()} onClick={() => setRepo(query.trim())}>
+        {options && !shown.length && !folder && <p className="muted">No repository matches. Type a folder's path to research one inside a repository.</p>}
+        {folder && (
+          <button type="button" role="option" aria-selected={repo === query.trim()} title={query.trim()} onClick={() => choose(query.trim())}>
             <FolderOpen size={14} />
             <b>{query.trim().split("/").filter(Boolean).pop()}</b>
             <small>this folder</small>
           </button>
         )}
         {shown.map((r) => (
-          <button type="button" role="option" aria-selected={repo === r.path} key={r.path} title={r.path} onClick={() => setRepo(r.path)}>
+          <button type="button" role="option" aria-selected={repo === r.path} key={r.path} title={r.path} onClick={() => choose(r.path)}>
             <GitBranch size={14} />
             <b>{r.name}</b>
             <small>{r.branch}</small>
@@ -640,9 +709,10 @@ export function ResearchStart({ channelId, anchor, onClose }: { channelId: strin
       </div>
       <Agents value={harness} onChange={setHarness} known={options?.harnesses} named />
       <textarea
+        ref={ask}
         rows={3}
         value={question}
-        placeholder="What should it find out?"
+        placeholder={chosen ? `What should it find out about ${chosen}?` : "What should it find out?"}
         aria-label="The first question"
         onChange={(e) => setQuestion(e.target.value)}
         onKeyDown={(e) => {

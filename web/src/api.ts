@@ -131,7 +131,9 @@ export type Capability = {
   accepts: string[];
   takes: string[];
 };
-export type Slot = { key: string; kind: string; title: string; brief: string; sources: string[]; gate: boolean };
+// One piece of a template: what it is, what it is made from, what the person gets, and the shape
+// of each piece it makes ("16:9", "9:16", "210:297" for a page).
+export type Slot = { key: string; kind: string; title: string; brief: string; sources: string[]; gate: boolean; gets: string; shape: string[] };
 export type Template = { id: string; title: string; line: string; starts: string; starts_from: string[]; slots: Slot[] };
 export type Catalog = { capabilities: Capability[]; templates: Template[] };
 export type AssetStatus = "planned" | "making" | "review" | "changes" | "approved" | "done" | "blocked" | "skipped";
@@ -243,12 +245,17 @@ export type BrandSummary = {
   name: string;
   colors: { name: string; value: string }[];
   logo: string;
+  ground: string;
   source: string;
   read: string;
   sample: boolean;
   channels: string[];
 };
-export type BrandRead = { url: string; status: "reading" | "ready" | "failed"; slug?: string; message?: string; brand?: BrandSummary };
+// A read of a site's brand: where it is (`step`: open, colours, type, logo, pack, then done), the
+// channel it was read for, and what it made or why it stopped.
+export type BrandRead = { url: string; status: "reading" | "ready" | "failed"; step?: string; channel?: string; slug?: string; message?: string; brand?: BrandSummary };
+export type ColourRole = "ground" | "ink" | "accent" | "muted" | "rule";
+export type TypeRole = "display" | "text" | "mono";
 export type BrandPackView = Omit<BrandView, "logos"> & {
   slug: string;
   logos: { name: string; url: string }[];
@@ -256,6 +263,18 @@ export type BrandPackView = Omit<BrandView, "logos"> & {
   read: string;
   reference: string;
   stand_ins?: Record<string, string>;
+  description: string;
+  voice_line: string;
+  license_note: string;
+  formats: { slug: string; width: number; height: number; label: string }[];
+  roles: { role: ColourRole; name: string; value: string }[];
+  palette: { name: string; value: string }[];
+  series: string[];
+  faces: { family: string; style: string; weight: string; file: string; url: string }[];
+  stacks: Partial<Record<TypeRole, string[]>>;
+  shape: { radius: string[]; pill: string; stroke: string; space: string; weights: Partial<Record<"display" | "text" | "strong", string>>; tracking: string };
+  rules: string[];
+  banned: string[];
 };
 export type ComputerView = {
   sandbox: string | null;
@@ -328,7 +347,7 @@ export const api = {
   researchOptions: () => call<ResearchOptions>("GET", "/api/research"),
   openResearch: (channelId: string, body: { repo: string; harness: HarnessId; question: string }) =>
     call<{ thread: Thread; conversation: ConversationRow }>("POST", `/api/channels/${channelId}/research`, body),
-  ask: (frameId: string, body: { question: string; harness?: HarnessId | ""; parent?: string; quote?: string }) =>
+  ask: (frameId: string, body: { question: string; harness?: HarnessId | ""; parent?: string; quote?: string; answer?: string }) =>
     call<ConversationRow>("POST", `/api/research/${frameId}/conversations`, body),
   keepNote: (frameId: string, body: { text: string; conversation_id?: string; message_id?: string }) =>
     call<Note>("POST", `/api/research/${frameId}/notes`, body),

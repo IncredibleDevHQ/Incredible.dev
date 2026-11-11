@@ -13,7 +13,9 @@ charges every image a flat 85 tokens, while Claude bills an image by its 28 x 28
 1080p frame is 2,691 tokens), so an image-heavy thread is undercounted many times over and
 summarization barely fires. `image_tokens` is that cost and `count_tokens_with_images` a drop-in
 counter; for other providers it is an estimate on the same scale. Image sizes are read from the
-file header (PNG, JPEG, GIF, WebP, BMP) with the standard library.
+file header (PNG, JPEG, GIF, WebP, BMP) with the standard library. `compaction` is Deep Agents'
+summarization with that counter: the runtime gives one to the lead and to every helper, where it
+takes the place of the one Deep Agents adds.
 
 Deep Agents' summarization summarizes on the client; langchain's `ClearToolUsesEdit` clears
 client-side too. Upstream, a `context_management` field on a subagent spec would carry this edit.
@@ -28,6 +30,10 @@ import struct
 from collections.abc import Iterable, Sequence
 from typing import Any
 
+from deepagents.backends.protocol import BackendProtocol
+from deepagents.middleware.summarization import create_summarization_middleware
+from langchain.agents.middleware import AgentMiddleware
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import convert_to_messages
 from langchain_core.messages.utils import count_tokens_approximately
 
@@ -252,3 +258,13 @@ def count_tokens_with_images(
         if isinstance(block, dict) and block.get("type") in ("image", "image_url")
     )
     return text + images
+
+
+def compaction(model: BaseChatModel, backend: BackendProtocol) -> AgentMiddleware[Any, Any, Any]:
+    """Deep Agents' summarization for one agent, counting each image at what it costs.
+
+    It keeps Deep Agents' thresholds for `model` (a share of its context window) and its offload of
+    what it evicts to `backend`; only the counter differs. It has the built-in one's name, so in an
+    agent's `middleware` it takes that one's place in the stack.
+    """
+    return create_summarization_middleware(model, backend, token_counter=count_tokens_with_images)

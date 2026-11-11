@@ -112,15 +112,22 @@ def _is_ip(host: str) -> bool:
 
 
 async def fetch(
-    url: str, *, client: httpx.AsyncClient, resolver: Resolver = system_resolver
+    url: str,
+    *,
+    client: httpx.AsyncClient,
+    resolver: Resolver = system_resolver,
+    types: tuple[str, ...] = ALLOWED_TYPES,
+    limit: int = MAX_BYTES,
+    agent: str = "design-agent/0.1",
 ) -> tuple[bytes, str]:
-    """Follow at most MAX_REDIRECTS re-checked redirects; return (bytes, content type)."""
+    """Follow at most MAX_REDIRECTS re-checked redirects; return (bytes, content type) for a
+    response of one of `types` no bigger than `limit` (a file by default; web pages read as
+    material ask for pages)."""
+    too_big = f"the file is larger than {limit // (1024 * 1024)} MB"
     current = url
     for _ in range(MAX_REDIRECTS + 1):
         await check_url(current, resolver)
-        async with client.stream(
-            "GET", current, headers={"User-Agent": "design-agent/0.1"}
-        ) as response:
+        async with client.stream("GET", current, headers={"User-Agent": agent}) as response:
             if response.status_code in {301, 302, 303, 307, 308}:
                 location = response.headers.get("location")
                 if not location:
@@ -130,16 +137,16 @@ async def fetch(
             if response.status_code != 200:
                 raise FetchRefused(f"the server answered HTTP {response.status_code}")
             kind = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-            if not kind.startswith(ALLOWED_TYPES) or kind == "image/svg+xml":
+            if not kind.startswith(types) or kind == "image/svg+xml":
                 raise FetchRefused(f"files of type {kind or 'unknown'} are not fetched")
             declared = response.headers.get("content-length")
-            if declared and declared.isdigit() and int(declared) > MAX_BYTES:
-                raise FetchRefused("the file is larger than 50 MB")
+            if declared and declared.isdigit() and int(declared) > limit:
+                raise FetchRefused(too_big)
             data = bytearray()
             async for chunk in response.aiter_bytes():
                 data.extend(chunk)
-                if len(data) > MAX_BYTES:
-                    raise FetchRefused("the file is larger than 50 MB")
+                if len(data) > limit:
+                    raise FetchRefused(too_big)
             return bytes(data), kind
     raise FetchRefused("too many redirects")
 

@@ -3,8 +3,15 @@ asked about it of a coding agent on this computer, and the notes the team keeps 
 
 Each question is a conversation, a thread of its own kept on the frame rather than in the channel:
 the question, each run's progress as a turn card of steps, and the answer. A conversation can
-branch from a passage of another's answer, so a frame grows into a tree. A follow-up resumes the
-agent's own session where its CLI allows, and otherwise starts again, told what was said.
+branch from a passage of another's answer, so a frame grows into a tree. What each run is told:
+- a new question starts afresh, with the notes the team kept on the frame as what is already
+  established (never another conversation's raw chat, which would make its answer depend on
+  whichever happened to run before);
+- a branch starts from a copy of its parent's session where the CLI can fork one, so nothing is
+  read twice and the parent's session stays as it was; otherwise it starts again, told the
+  question and answer its passage came from;
+- a follow-up resumes the agent's own session where its CLI allows, and otherwise starts again,
+  told what was said.
 
 Once something is made from a research frame it is a task like any other, and its notes are what
 it started from: `notes_markdown` is the file the engine is handed. Runs happen here, on the host,
@@ -44,8 +51,10 @@ _LOGGER = logging.getLogger(__name__)
 RESEARCH = "research"
 #: How often a running conversation's latest step reaches its card (its thread gets every step).
 CARD_SECONDS = 1.0
-#: What a follow-up that starts afresh is told of the conversation so far.
+#: What a follow-up or a branch that starts afresh is told of the conversation so far.
 CONTEXT_CHARS = 6_000
+#: Each kept note, as a new question is told it: one line.
+NOTE_CHARS = 600
 #: Steps a turn card keeps.
 STEPS_KEPT = 40
 
@@ -151,9 +160,11 @@ class ResearchDesk:
         harness: str = "",
         parent: str = "",
         quote: str = "",
+        answer: str = "",
     ) -> Row:
         """A new conversation on the frame: from the research node, or branching from another
-        conversation (on a passage of its answer, when `quote` is given)."""
+        conversation (on a passage of its answer, when `quote` is given; `answer` is the message
+        the passage was taken from, else the latest)."""
         research, frame = self._frame(frame_id)
         above = self.store.conversation(parent) if parent else None
         if parent and (above is None or above["frame_id"] != frame_id):
@@ -195,7 +206,14 @@ class ResearchDesk:
             data={"quote": passage} if passage else {},
         )
         self.hub.publish("message.created", message=message)
-        self._start(conversation, self._opening(words, above, passage), session="")
+        if above is None:
+            self._start(conversation, self._fresh(frame_id, words), session="")
+        elif self._forks(above, harness):
+            self._start(
+                conversation, _forked(words, passage), session=str(above["session"]), fork=True
+            )
+        else:
+            self._start(conversation, self._retold(above, answer, words, passage), session="")
         return conversation
 
     def follow_up(self, conversation_id: str, *, by: str, text: str) -> Row:
@@ -223,13 +241,56 @@ class ResearchDesk:
             self._start(conversation, self._so_far(conversation, words), session="")
         return message
 
-    def _opening(self, question: str, above: Row | None, quote: str) -> str:
-        if above is None:
+    def _fresh(self, frame_id: str, question: str) -> str:
+        """A new question, told what the team kept on the frame: the newest notes that fit, each
+        on one line."""
+        kept: list[str] = []
+        for note in reversed(self.store.notes(frame_id)):
+            line = f"- {_clip(str(note['text']), NOTE_CHARS)}"
+            if sum(len(k) + 1 for k in kept) + len(line) > CONTEXT_CHARS:
+                break
+            kept.insert(0, line)
+        if not kept:
             return question
-        asked = self._question(str(above["id"]))
+        notes = "\n".join(kept)
+        return (
+            "What the team has kept from earlier answers about this repository, to build on "
+            f"(check anything you rely on against the code):\n\n{notes}\n\nThe question: {question}"
+        )
+
+    def _forks(self, above: Row, harness: str) -> bool:
+        """Whether a branch can start from a copy of its parent's session: the same agent, one
+        whose CLI forks, a session to fork, and a parent not mid-answer."""
+        return (
+            HARNESSES[harness].forks
+            and harness == above["harness"]
+            and bool(above["session"])
+            and not self.running(str(above["id"]))
+        )
+
+    def _retold(self, above: Row, answer_id: str, question: str, quote: str) -> str:
+        """A branch that starts afresh, told what it branched from: the question and the answer
+        its passage came from (the parent's latest unless `answer_id` names another), cut to
+        CONTEXT_CHARS."""
+        said = self.store.messages(str(above["id"]))
+        answers = [i for i, m in enumerate(said) if m["kind"] == "agent"]
+        at = next(
+            (i for i in answers if said[i]["id"] == answer_id), answers[-1] if answers else -1
+        )
+        asked = next(
+            (str(m["text"]) for m in reversed(said[: max(at, 0)]) if m["kind"] == "person"),
+            self._question(str(above["id"])),
+        )
+        lines = [
+            "This branches from an earlier conversation about this repository.",
+            f"Asked: {asked}",
+        ]
+        if at >= 0:
+            lines.append(f"Answered:\n\n{_cut(str(said[at]['text']), CONTEXT_CHARS)}")
         if quote:
-            return f"While researching “{asked}”, this came up:\n\n> {quote}\n\n{question}"
-        return f"Following on from “{asked}”:\n\n{question}"
+            lines.append(f"From that answer, this passage:\n\n> {quote}")
+        lines.append(f"Now: {question}")
+        return "\n\n".join(lines)
 
     def _so_far(self, conversation: Row, question: str) -> str:
         lines = [f"From the passage: “{conversation['quote']}”"] if conversation["quote"] else []
@@ -284,15 +345,15 @@ class ResearchDesk:
                 )
                 self.store.update_thread(thread["id"], status="failed")
 
-    def _start(self, conversation: Row, prompt: str, *, session: str) -> None:
+    def _start(self, conversation: Row, prompt: str, *, session: str, fork: bool = False) -> None:
         conversation_id = str(conversation["id"])
         self._set_status(conversation_id, "working")
         self._runs[conversation_id] = asyncio.get_running_loop().create_task(
-            self._run(conversation, prompt, session), name=f"research {conversation_id}"
+            self._run(conversation, prompt, session, fork), name=f"research {conversation_id}"
         )
         self._changed(str(conversation["frame_id"]))
 
-    async def _run(self, conversation: Row, prompt: str, session: str) -> None:
+    async def _run(self, conversation: Row, prompt: str, session: str, fork: bool) -> None:
         conversation_id = str(conversation["id"])
         frame_id = str(conversation["frame_id"])
         harness = HARNESSES[conversation["harness"]]
@@ -323,7 +384,12 @@ class ResearchDesk:
         try:
             self._write_profile()
             events = self.runner(
-                harness.id, repo=repo, prompt=prompt, session=session, profile=self.profile
+                harness.id,
+                repo=repo,
+                prompt=prompt,
+                session=session,
+                fork=fork,
+                profile=self.profile,
             )
             async with contextlib.aclosing(events):
                 async for event in events:
@@ -654,6 +720,19 @@ def _title(text: str) -> str:
 def _clip(text: str, limit: int) -> str:
     text = " ".join(text.split())
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _cut(text: str, limit: int) -> str:
+    """`text` up to `limit`, its lines kept."""
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _forked(question: str, quote: str) -> str:
+    """A branch in a copy of its parent's session, which holds everything the parent read and
+    said: the passage and the question are all it needs."""
+    return (
+        f"From your answer above, this passage:\n\n> {quote}\n\n{question}" if quote else question
+    )
 
 
 def _demote(text: str) -> str:
