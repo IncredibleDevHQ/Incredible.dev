@@ -52,9 +52,9 @@ preview, or stop it.
 
 ## Your brand on everything
 
-Read a brand from a website, or keep a brand pack, and choose which one each channel uses.
+Create a brand from a website, or keep a brand pack, and choose which one each channel uses.
 
-![The brand page: read a brand from a website, and the sample pack's colours and type](docs/images/brands.png)
+![The brand page: create a brand from a website, and the sample pack's colours and type](docs/images/brands.png)
 
 ## Run it locally
 

@@ -80,7 +80,7 @@ function Rail({ brands, selected, onSelect, channelId }: { brands: BrandSummary[
       <h1 id="brand-title">Brands</h1>
       <button type="button" className="btn primary kit-new" onClick={() => readBrandFor(channelId || null)}>
         <Globe />
-        Read a brand from a website
+        Create a brand from a website
       </button>
       {reads
         .filter((r) => r.status !== "ready")
@@ -98,7 +98,7 @@ function Rail({ brands, selected, onSelect, channelId }: { brands: BrandSummary[
               )}
             </span>
             {r.status === "failed" && (
-              <button type="button" className="icon-btn" aria-label={`Read ${host(r.url)} again`} onClick={() => void read(r.url)}>
+              <button type="button" className="icon-btn" aria-label={`Try ${host(r.url)} again`} onClick={() => void read(r.url)}>
                 <RotateCcw />
               </button>
             )}

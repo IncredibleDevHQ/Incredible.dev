@@ -31,7 +31,7 @@ export function BrandSelect({ channel }: { channel: Channel }) {
       description: b.slug === "default" ? "The house default" : b.source ? `From ${host(b.source)}` : "A brand pack",
       icon: b.logo ? <img src={b.logo} alt="" /> : <Palette />,
     })),
-    { value: READ, label: "Read one from a website", description: "Its colours, type and logo", icon: <Globe /> },
+    { value: READ, label: "Create one from a website", description: "Its colours, type and logo", icon: <Globe /> },
   ];
   return (
     <Select
@@ -118,7 +118,7 @@ export function BrandMenu({ channel, anchor, onClose }: { channel: Channel; anch
         >
           <Globe size={16} />
           <span>
-            <b>Read one from a website</b>
+            <b>Create one from a website</b>
           </span>
         </button>
       </div>

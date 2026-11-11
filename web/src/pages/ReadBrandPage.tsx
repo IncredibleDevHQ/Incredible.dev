@@ -66,10 +66,10 @@ export function ReadBrand() {
         <ArrowLeft size={14} />
         Brands
       </button>
-      <h1 id="read-brand-title">Read a brand from a website</h1>
+      <h1 id="read-brand-title">Create a brand from a website</h1>
       <p className="lede">
         Its first screen gives the colours, the type and the logo; a licensed font gets an open stand-in.
-        {channel ? ` #${channel.name} wears it once it's read.` : ""}
+        {channel ? ` #${channel.name} wears it once it's made.` : ""}
       </p>
       {!going && (
         <form
@@ -95,7 +95,7 @@ export function ReadBrand() {
             }}
           />
           <button type="submit" className="btn primary" disabled={!address.trim() || busy}>
-            {busy ? "Starting…" : "Read its brand"}
+            {busy ? "Starting…" : "Create brand"}
           </button>
         </form>
       )}
