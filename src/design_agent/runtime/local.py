@@ -10,7 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from deepagents import create_deep_agent
+from deepagents import SubAgent, create_deep_agent
+from deepagents.backends.protocol import BackendProtocol
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
@@ -20,6 +21,7 @@ from langgraph.store.memory import InMemoryStore
 from design_agent.assembly import AgentComponents, build_agent_components
 from design_agent.config import Settings
 from design_agent.harness import notices
+from design_agent.harness.context import compaction
 from design_agent.harness.tasks import REGISTRY
 from design_agent.middleware.background import BackgroundServices
 from design_agent.middleware.watch_tools import WATCHES
@@ -67,19 +69,31 @@ def compile_graph(
     checkpointer: Any | None = None,
     store: Any | None = None,
 ) -> Any:
+    backend = binding.graph_backend
+    # The lead and every helper compact counting images at what they cost (harness/context.py).
+    helpers = [_compacting(spec, components.model, backend) for spec in components.subagents]
     return create_deep_agent(
         model=components.model,
         tools=list(components.tools),
         system_prompt=components.system_prompt,
-        middleware=list(components.middleware),
-        subagents=list(components.subagents) or None,
+        middleware=[*components.middleware, compaction(components.model, backend)],
+        subagents=helpers or None,
         skills=list(components.skills),
-        backend=binding.graph_backend,
+        backend=backend,
         interrupt_on=dict(components.interrupt_on) or None,
         checkpointer=checkpointer if checkpointer is not None else InMemorySaver(),
         store=store if store is not None else InMemoryStore(),
         name=GRAPH_NAME,
     )
+
+
+def _compacting(spec: SubAgent, lead: BaseChatModel, backend: BackendProtocol) -> SubAgent:
+    """A helper whose compaction counts images too, on its own model (the lead's if it names
+    none). A model named by a string is resolved inside Deep Agents, which compacts it as before."""
+    model = spec.get("model", lead)
+    if not isinstance(model, BaseChatModel):
+        return spec
+    return {**spec, "middleware": [*spec.get("middleware", []), compaction(model, backend)]}
 
 
 @dataclass

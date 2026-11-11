@@ -18,6 +18,9 @@
 
 - One presentation hook in place of the Slack slot: `surfaces/presenter.py`'s `Presenter`, set on
   `RuntimeProfile.presenter` (`build_local_runtime(presenter=...)`). With none, runs are headless.
+- Summarization counts each image at what it costs, for the lead and every helper
+  (`harness/context.py`'s `compaction`). LangChain's counter charges an image 85 tokens, so a
+  thread of renders and contact sheets compacted late.
 
 ### Added
 

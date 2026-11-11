@@ -1,11 +1,18 @@
-"""Server-side clearing of old tool results, and what images really cost in tokens."""
+"""Server-side clearing of old tool results, what images really cost in tokens, and the compaction
+that counts them."""
 
 from __future__ import annotations
 
 import base64
 import io
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
+from deepagents.backends import FilesystemBackend
+from deepagents.middleware.summarization import create_summarization_middleware
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.messages.utils import count_tokens_approximately
 from PIL import Image
@@ -14,11 +21,13 @@ from design_agent.harness.context import (
     CONTEXT_MANAGEMENT_BETA,
     MAX_IMAGE_TOKENS,
     clear_old_tool_results,
+    compaction,
     count_tokens_with_images,
     image_size,
     image_tokens,
     image_tokens_of,
 )
+from design_agent.runtime import local
 
 
 def _png(width: int, height: int) -> str:
@@ -189,3 +198,58 @@ def test_count_tokens_with_images_matches_langchain_without_images() -> None:
     assert count_tokens_with_images(messages, tools=tools) == count_tokens_approximately(
         messages, tools=tools
     )
+
+
+def test_compaction_counts_images_and_takes_the_built_in_ones_place(tmp_path: Path) -> None:
+    model = FakeListChatModel(responses=["summary"])
+    backend = FilesystemBackend(root_dir=tmp_path, virtual_mode=True)
+
+    ours = compaction(model, backend)
+
+    assert ours.token_counter is count_tokens_with_images  # type: ignore[attr-defined]
+    # Deep Agents replaces its own middleware with one of the same name passed in.
+    assert ours.name == create_summarization_middleware(model, backend).name
+
+
+def test_the_lead_and_every_helper_compact_counting_images(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    built: dict[str, Any] = {}
+    monkeypatch.setattr(local, "create_deep_agent", lambda **kwargs: built.update(kwargs))
+    lead, helper = FakeListChatModel(responses=["a"]), FakeListChatModel(responses=["b"])
+    named = {"name": "named", "description": "", "system_prompt": "", "model": "openai:gpt-x"}
+    components = SimpleNamespace(
+        model=lead,
+        tools=(),
+        system_prompt="",
+        middleware=(),
+        skills=(),
+        interrupt_on={},
+        subagents=(
+            {"name": "general-purpose", "description": "", "system_prompt": ""},
+            {
+                "name": "low",
+                "description": "",
+                "system_prompt": "",
+                "model": helper,
+                "middleware": [],
+            },
+            named,
+        ),
+    )
+    binding = SimpleNamespace(graph_backend=FilesystemBackend(root_dir=tmp_path, virtual_mode=True))
+
+    local.compile_graph(components, binding)  # type: ignore[arg-type]
+
+    def compacting(stack: list[Any]) -> Any:
+        [found] = [
+            m for m in stack if getattr(m, "token_counter", None) is count_tokens_with_images
+        ]
+        return found.model
+
+    general, low, untouched = built["subagents"]
+    assert compacting(built["middleware"]) is lead
+    assert compacting(general["middleware"]) is lead
+    assert compacting(low["middleware"]) is helper
+    # A model named by a string is resolved inside Deep Agents, which compacts it as before.
+    assert untouched is named

@@ -159,7 +159,10 @@ watch the same log (and exit file) again under the same id.
   shared prefix rather than each writing it. `PrefixWatch` logs which part of a prefix changed.
 - `harness/context.py` builds Anthropic's server-side tool-result clearing for helpers (opt-in)
   and counts image tokens by their real cost instead of LangChain's flat 85 tokens, reading image
-  sizes from file headers with the standard library.
+  sizes from file headers with the standard library. Its `compaction` is Deep Agents' summarization
+  with that counter; `compile_graph` gives one to the lead and to every helper, on each one's own
+  model, in place of the one Deep Agents adds, so a thread of renders and contact sheets compacts
+  before it fills the window.
 - `harness/meter.py` prices every call from its uncached, cache-write (by TTL), cache-read and output
   tokens, and sums a job (thread) per source and per role. Prices live in `config/prices.toml`, one
   entry per provider and model with the date it was checked and its public source. Long-context
