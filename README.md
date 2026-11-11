@@ -39,7 +39,8 @@ it's right.
 ### 4. The film and everything around it
 
 The film is built in code with [HyperFrames](https://hyperframes.heygen.com), then thumbnails,
-social cards and GIFs, each linked on the canvas to what it was made from.
+social cards and GIFs, each linked on the canvas to what it was made from. Every channel, canvas
+and card has its own address, so a link takes a teammate straight to it.
 
 ![A launch kit on the canvas: the source note, the storyboard, the teaser, thumbnails, social cards and a GIF](docs/images/canvas.png)
 

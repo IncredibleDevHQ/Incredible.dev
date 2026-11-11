@@ -7,7 +7,7 @@ import { ArrowUp, Check, CornerDownRight, FileText, FolderOpen, GitBranch, Messa
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, type CanvasTask, type Conversation, type Harness, type HarnessId, type Note, type ResearchView } from "../api";
-import { useHouse } from "../store";
+import { useFocused, useHouse } from "../store";
 import { AgentMark, Rich } from "../ui";
 import { columnsOf, type Edge } from "./Flow";
 import { ThinkingLoader } from "./ThinkingLoader";
@@ -75,6 +75,7 @@ export function ResearchColumns({
 // The research node: the repository it reads, which agent answers, and a new question.
 function ResearchNode({ frameId, research }: { frameId: string; research: ResearchView }) {
   const options = useHouse((s) => s.research);
+  const focused = useFocused(frameId, RESEARCH_NODE);
   const [harness, setHarness] = useState<HarnessId>(research.harness);
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
@@ -98,7 +99,7 @@ function ResearchNode({ frameId, research }: { frameId: string; research: Resear
   };
 
   return (
-    <article className="node research-node" data-node={RESEARCH_NODE} aria-label="Research">
+    <article className="node research-node" data-node={RESEARCH_NODE} data-focus={focused || undefined} aria-label="Research">
       <header className="node-head">
         <span className="node-icon">
           <Telescope size={16} />
@@ -178,7 +179,8 @@ function ConversationCard({
   onHot: (id: string | null) => void;
 }) {
   const openThread = useHouse((s) => s.openThread);
-  const open = useHouse((s) => s.threadId === c.id);
+  const focusOn = useHouse((s) => s.focusOn);
+  const focused = useFocused(frameId, c.id);
   const answer = useRef<HTMLDivElement>(null);
   const working = c.status === "working";
   const keptWhole = notes.some((n) => n.message_id === c.answer_id && n.text === c.answer);
@@ -189,20 +191,25 @@ function ConversationCard({
       say(error);
     }
   };
-  // A click on the card opens the conversation beside the canvas, unless it lands on one of the
-  // card's own controls or ends a passage's selection (which gets Keep and Explore instead).
+  // Opened, the card is picked (its address links to it) and its chat is beside the canvas.
+  const open = () => {
+    focusOn({ task: frameId, node: c.id });
+    void openThread(c.id);
+  };
+  // A click anywhere on the card opens it, unless it lands on one of the card's own controls or
+  // ends a passage's selection (which gets Keep and Explore instead).
   const openFrom = (e: React.MouseEvent<HTMLElement>) => {
     const target = e.target as Element;
     if (e.detail > 1 || !e.currentTarget.contains(target) || target.closest("button, a")) return;
     if (!window.getSelection()?.isCollapsed) return;
-    void openThread(c.id);
+    open();
   };
   return (
     <article
       className="node conv"
       data-node={c.id}
       data-status={c.status}
-      data-open={open || undefined}
+      data-focus={focused || undefined}
       aria-label={c.question}
       onClick={openFrom}
       onMouseEnter={() => onHot(c.id)}
@@ -234,7 +241,7 @@ function ConversationCard({
         {c.answer && <Passage within={answer} frameId={frameId} conversationId={c.id} messageId={c.answer_id} />}
         {c.problem && !working && <p className="node-line warn">{c.problem}</p>}
         <div className="conv-actions">
-          <button type="button" className="btn" onClick={() => void openThread(c.id)}>
+          <button type="button" className="btn" onClick={open}>
             <MessageSquare />
             Open
           </button>
@@ -397,6 +404,7 @@ function NotesNode({
   making: boolean;
 }) {
   const people = useHouse((s) => s.people);
+  const focused = useFocused(frameId, NOTES_NODE);
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const asked = new Map(research.conversations.map((c) => [c.id, c]));
@@ -411,7 +419,14 @@ function NotesNode({
     }
   };
   return (
-    <article className="node notes-node" data-node={NOTES_NODE} aria-label="Notes" onMouseEnter={() => onHot(NOTES_NODE)} onMouseLeave={() => onHot(null)}>
+    <article
+      className="node notes-node"
+      data-node={NOTES_NODE}
+      data-focus={focused || undefined}
+      aria-label="Notes"
+      onMouseEnter={() => onHot(NOTES_NODE)}
+      onMouseLeave={() => onHot(null)}
+    >
       <header className="node-head">
         <span className="node-icon">
           <NotebookPen size={16} />

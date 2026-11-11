@@ -4,7 +4,7 @@
 import { ArrowUpRight, Check, Globe, Paperclip } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FileView, Material } from "../api";
-import { useHouse } from "../store";
+import { useFocused, useHouse } from "../store";
 import { FileList, fileSize } from "../ui";
 
 export const SOURCE = "source";
@@ -20,7 +20,8 @@ export const siteOf = (url: string) => {
   }
 };
 
-export function SourceNode({ material }: { material: Material }) {
+export function SourceNode({ task, material }: { task: string; material: Material }) {
+  const focused = useFocused(task, SOURCE);
   const [first, ...rest] = material.text.split("\n");
   // A template's first line names it (the frame's title says so); the material is what follows.
   const words = rest.join("\n").trim() || (material.files.length ? "" : first);
@@ -31,7 +32,7 @@ export function SourceNode({ material }: { material: Material }) {
   const each = read.length > 0 && links.length === read.length;
   const notes = each ? words.replace(LINK, "").trim() : words;
   return (
-    <article className="node source" data-node={SOURCE} aria-label="What this started from">
+    <article className="node source" data-node={SOURCE} data-focus={focused || undefined} aria-label="What this started from">
       <header className="node-head">
         <span className="node-icon">
           <Paperclip size={16} />

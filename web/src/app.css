@@ -431,6 +431,10 @@ button { cursor: pointer; }
 .node[data-status="planned"], .node[data-status="skipped"] { background: transparent; border-style: dashed; border-color: var(--line-strong); box-shadow: none; }
 .node[data-status="skipped"] { opacity: 0.6; }
 .node[data-status="blocked"] { border-color: var(--red-soft); }
+/* A click picks a card, and its address then links to it: under the pointer (or a key on its
+   controls) its edge firms up, and the picked one wears green (set after the status edges). */
+.node { outline: 3px solid transparent; transition: border-color 0.15s, outline-color 0.15s; }
+.node:hover, .node:has(:focus-visible) { border-color: var(--focus-line); outline-color: rgba(74, 187, 123, 0.14); }
 .node-head { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 8px 12px; }
 .node-head b { flex: 1; min-width: 0; font-size: 14px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .node-icon { display: grid; place-items: center; width: 26px; height: 26px; flex: none; border-radius: 8px; background: var(--sunk); color: var(--muted); }
@@ -537,13 +541,12 @@ button { cursor: pointer; }
 .agents.named { flex-wrap: wrap; margin: 4px 0 8px; }
 .agents.named button { padding: 4px 10px 4px 4px; font-size: 13px; }
 .conv .node-head b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.35; }
-/* A click anywhere on a conversation opens it beside the canvas: the pointer (or a key on its
-   buttons) firms its edge, and the one that's open keeps a green one. */
-.conv { cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
-.conv:hover, .conv:has(:focus-visible) { border-color: var(--focus-line); box-shadow: 0 0 0 3px rgba(74, 187, 123, 0.14), var(--card-shadow); }
+/* A click anywhere on a conversation opens it beside the canvas. */
+.conv { cursor: pointer; }
 .conv[data-status="working"] { border-color: var(--focus-line); }
 .conv[data-status="failed"] { border-color: var(--red-soft); }
-.conv[data-open] { border-color: var(--green); box-shadow: 0 0 0 3px rgba(74, 187, 123, 0.26), var(--card-shadow); }
+.node[data-focus] { border-color: var(--green); outline-color: rgba(74, 187, 123, 0.26); }
+.tf[data-focus] { border-color: var(--focus-line); outline: 3px solid rgba(74, 187, 123, 0.18); }
 .conv-working { justify-self: start; }
 .conv-quote, .msg-quote, .conv-follow { display: flex; gap: 6px; margin: 0; font-size: 12.5px; color: var(--muted); }
 .conv-quote svg, .msg-quote svg, .conv-follow svg { flex: none; margin-top: 2px; }

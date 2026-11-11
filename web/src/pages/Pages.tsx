@@ -10,6 +10,7 @@ export function NeedsYou() {
   const { threads, channels } = useHouse();
   const openChannel = useHouse((s) => s.openChannel);
   const openThread = useHouse((s) => s.openThread);
+  const focusOn = useHouse((s) => s.focusOn);
   const waiting = Object.values(threads).filter((t) => t.status === "needs_you");
   const working = Object.values(threads).filter((t) => t.status === "working");
   const row = (t: (typeof waiting)[number]) => {
@@ -20,9 +21,11 @@ export function NeedsYou() {
         key={t.id}
         className="card"
         style={{ textAlign: "left", display: "grid", gap: 6 }}
-        onClick={async () => {
-          await openChannel(t.channel_id, "canvas");
-          await openThread(t.id);
+        onClick={() => {
+          // A task's frame comes into view on its channel's canvas, with its thread beside it.
+          void openChannel(t.channel_id, "canvas");
+          if (t.task) focusOn({ task: t.id, node: null, reveal: true });
+          void openThread(t.id);
         }}
       >
         <span className="muted" style={{ fontSize: 12 }}>#{channel?.name}</span>

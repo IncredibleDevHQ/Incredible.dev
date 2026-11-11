@@ -8,7 +8,7 @@ import { ArrowLeft, Check, LayoutTemplate, Maximize, MessageSquare, Minus, Paper
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, type Asset, type Board, type CanvasTask, type Capability, type FileView, type FrameView, type Work } from "../api";
-import { useHouse } from "../store";
+import { useFocused, useHouse, type Focus } from "../store";
 import { Avatar, FileList, FooterLine, KindIcon, makesOf, StatusChip } from "../ui";
 import { columnsOf, Lines, useLines, type Edge } from "./Flow";
 import { EMPTY_RESEARCH, NOTES_NODE, ResearchColumns, researchEdges, researching, ResearchStart } from "./Research";
@@ -23,12 +23,18 @@ const READY = new Set(["approved", "done", "skipped"]);
 // Pointer and wheel events from these belong to them, not to the canvas's pan and zoom.
 const OWN_POINTER = "button, a, video, audio, textarea, input, label, .tf, .picker, .pop, .canvas-start";
 const OWN_WHEEL = ".tf video, .picker, .pop, .canvas-start";
+// A click on these does their own thing, not pick the card or the frame they sit in.
+const CONTROLS = "button, a, video, audio, textarea, input, select, label, .pop";
+const DELIVERED = "delivered";
+// Where a picked frame, or a card in it, is on the canvas.
+const spotOf = (focus: Focus) => `[data-task="${CSS.escape(focus.task)}"]${focus.node ? ` [data-node="${CSS.escape(focus.node)}"]` : ""}`;
 
 export function Canvas({ channelId }: { channelId: string }) {
   const tasks = useHouse((s) => s.canvas[channelId]);
   const channel = useHouse((s) => s.channels.find((c) => c.id === channelId));
   const picking = useHouse((s) => s.picking);
   const pickTemplate = useHouse((s) => s.pickTemplate);
+  const focus = useHouse((s) => s.focus);
   const view = useRef<HTMLDivElement>(null);
   const world = useRef<HTMLDivElement>(null);
   const [camera, setCamera] = useState<Camera>(cameras[channelId] ?? { x: 0, y: 0, z: 0.5 });
@@ -61,6 +67,21 @@ export function Canvas({ channelId }: { channelId: string }) {
     setCamera({ z, x: (v.clientWidth - width * z) / 2 - minX * z, y: Math.max(72, (v.clientHeight - height * z) / 2) - minY * z });
   }, []);
 
+  // One frame or card whole in the middle of the view, at full size at most.
+  const bringIntoView = useCallback((el: HTMLElement) => {
+    const v = view.current;
+    const w = world.current;
+    if (!v || !w) return;
+    let x = 0;
+    let y = 0;
+    for (let at: HTMLElement | null = el; at && at !== w; at = at.offsetParent as HTMLElement | null) {
+      x += at.offsetLeft;
+      y += at.offsetTop;
+    }
+    const z = Math.max(0.12, Math.min(1, (v.clientWidth - 96) / el.offsetWidth, (v.clientHeight - 160) / el.offsetHeight));
+    setCamera({ z, x: (v.clientWidth - el.offsetWidth * z) / 2 - x * z, y: Math.max(72, (v.clientHeight - el.offsetHeight * z) / 2) - y * z });
+  }, []);
+
   useLayoutEffect(() => {
     if (!tasks) return;
     if (!fitted.current || !moved.current) {
@@ -68,6 +89,16 @@ export function Canvas({ channelId }: { channelId: string }) {
       requestAnimationFrame(fit);
     }
   }, [shape, tasks, fit]);
+
+  // A frame or card arrived at by a link comes into view once it is on the canvas.
+  useLayoutEffect(() => {
+    const target = tasks && focus?.reveal ? world.current?.querySelector<HTMLElement>(spotOf(focus)) : null;
+    if (!focus || !target) return;
+    fitted.current = true;
+    moved.current = true;
+    useHouse.getState().focusOn({ ...focus, reveal: false });
+    requestAnimationFrame(() => bringIntoView(target));
+  }, [shape, tasks, focus, bringIntoView]);
 
   const zoomAt = (factor: number, px: number, py: number) =>
     setCamera((c) => {
@@ -97,8 +128,10 @@ export function Canvas({ channelId }: { channelId: string }) {
     moved.current = true;
     setDragging(true);
     const move = (ev: PointerEvent) => setCamera((c) => ({ ...c, x: start.cx + ev.clientX - start.x, y: start.cy + ev.clientY - start.y }));
-    const up = () => {
+    const up = (ev: PointerEvent) => {
       setDragging(false);
+      // A click on the bare canvas, not a drag across it, lets go of what was picked.
+      if (Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 4) useHouse.getState().focusOn(null);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
@@ -182,15 +215,25 @@ export function Canvas({ channelId }: { channelId: string }) {
 function TaskFrame({ task }: { task: CanvasTask }) {
   const people = useHouse((s) => s.people);
   const openThread = useHouse((s) => s.openThread);
+  const focusOn = useHouse((s) => s.focusOn);
   const demo = useHouse((s) => s.session?.demo);
   const [adding, setAdding] = useState<HTMLElement | null>(null);
   const { thread, work } = task;
+  const focused = useFocused(thread.id, null);
   const titles = new Set(task.assets.map((a) => a.title));
   // A render named after an asset shows on its card; the strip holds the rest.
   const running = work.filter((w) => w.status === "running" && !(w.kind === "render" && titles.has(w.label)));
   const research = thread.kind === "research";
+  // A click on a card, or on the frame around the cards, picks it (the address then links to it),
+  // unless it lands on a control or ends a selection of text.
+  const pick = (e: React.MouseEvent<HTMLElement>) => {
+    const target = e.target as Element;
+    if (e.detail > 1 || !e.currentTarget.contains(target) || target.closest(CONTROLS)) return;
+    if (!window.getSelection()?.isCollapsed) return;
+    focusOn({ task: thread.id, node: target.closest<HTMLElement>("[data-node]")?.dataset.node ?? null });
+  };
   return (
-    <section className="tf" aria-label={thread.title}>
+    <section className="tf" data-task={thread.id} data-focus={focused || undefined} aria-label={thread.title} onClick={pick}>
       <header className="tf-head">
         <Avatar person={people[thread.started_by]} size="sm" />
         <div style={{ minWidth: 0 }}>
@@ -260,6 +303,7 @@ function TaskFlow({ task }: { task: CanvasTask }) {
   // A film's proof sheets arrive as deliveries before they are filed with its preview.
   const filed = new Set(assets.flatMap((a) => [...a.files, ...(a.preview?.proofs ?? [])].map((f) => f.id)));
   const loose = task.files.filter((f) => !filed.has(f.id));
+  const deliveredFocused = useFocused(task.thread.id, DELIVERED);
   return (
     <div className="flow" ref={box}>
       <Lines lines={lines} hot={hot} />
@@ -267,7 +311,7 @@ function TaskFlow({ task }: { task: CanvasTask }) {
         <ResearchColumns task={task} research={research} onHot={setHot} onMake={setMaking} making={Boolean(making)} />
       ) : (
         <div className="flow-col">
-          <SourceNode material={task.material} />
+          <SourceNode task={task.thread.id} material={task.material} />
         </div>
       )}
       {making && <MakeMenu task={task} anchor={making} onClose={() => setMaking(null)} />}
@@ -281,7 +325,7 @@ function TaskFlow({ task }: { task: CanvasTask }) {
       {(loose.length > 0 || (assets.length === 0 && !research)) && (
         <div className="flow-col">
           {loose.length > 0 ? (
-            <article className="node">
+            <article className="node" data-node={DELIVERED} data-focus={deliveredFocused || undefined}>
               <header className="node-head">
                 <span className="node-icon">
                   <Paperclip size={16} />
@@ -322,11 +366,13 @@ function AssetCard({ asset, task, onHot }: { asset: Asset; task: CanvasTask; onH
   const draft = isDraft(asset);
   const live = asset.status === "making" && task.thread.status === "working";
   const chip = CHIPS[asset.status];
+  const focused = useFocused(task.thread.id, asset.id);
   return (
     <article
       className="node"
       data-status={asset.status}
       data-node={asset.id}
+      data-focus={focused || undefined}
       aria-label={asset.title}
       onMouseEnter={() => onHot(asset.id)}
       onMouseLeave={() => onHot(null)}

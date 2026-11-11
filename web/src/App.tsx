@@ -7,6 +7,7 @@ import { ThreadPanel } from "./components/ThreadPanel";
 import { Viewer } from "./components/Viewer";
 import { connectLive } from "./live";
 import { Brand, Computer, NeedsYou, ReadBrand, Skills } from "./pages/Pages";
+import { followAddress, go, parse } from "./route";
 import { useHouse } from "./store";
 
 export function App() {
@@ -15,8 +16,17 @@ export function App() {
   const frameId = useHouse((s) => s.frameId);
 
   useEffect(() => {
-    void useHouse.getState().boot().catch((error: Error) => useHouse.getState().say(error.message));
-    return connectLive();
+    const stop = followAddress();
+    void useHouse
+      .getState()
+      .boot()
+      .then(() => go(parse(location.pathname, location.search)))
+      .catch((error: Error) => useHouse.getState().say(error.message));
+    const live = connectLive();
+    return () => {
+      stop();
+      live();
+    };
   }, []);
 
   useEffect(() => {

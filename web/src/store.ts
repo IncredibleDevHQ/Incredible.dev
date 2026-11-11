@@ -32,8 +32,11 @@ export type OpenPreview = { url: string; title: string; threadId: string; assetI
 // Finished files open over everything at full size: the set they came in (an asset's files, a
 // message's attachments), the one shown, and what the set is called.
 export type OpenFiles = { files: FileView[]; at: string; title?: string };
+// What's picked on a channel's canvas: a task's frame (by its thread), or a card in it. Its address
+// links to it; one arrived at by a link is brought into view (`reveal`) once it is on the canvas.
+export type Focus = { task: string; node: string | null; reveal?: boolean };
 
-type State = {
+export type State = {
   session: Session | null;
   catalog: Catalog;
   people: Record<string, Person>;
@@ -41,6 +44,7 @@ type State = {
   page: Page;
   channelId: string | null;
   mode: Mode;
+  focus: Focus | null;
   threadId: string | null;
   frameId: string | null;
   focusBoard: string | null;
@@ -70,6 +74,7 @@ type State = {
   openBrand: (slug: string) => void;
   openChannel: (id: string, mode?: Mode) => Promise<void>;
   setMode: (mode: Mode) => void;
+  focusOn: (focus: Focus | null) => void;
   openThread: (id: string | null) => Promise<void>;
   openFrame: (frameId: string | null, boardId?: string | null) => void;
   refreshCanvas: (channelId: string) => Promise<void>;
@@ -106,6 +111,7 @@ export const useHouse = create<State>((set, get) => ({
   page: "channel",
   channelId: null,
   mode: "chat",
+  focus: null,
   threadId: null,
   frameId: null,
   focusBoard: null,
@@ -125,12 +131,11 @@ export const useHouse = create<State>((set, get) => ({
   brandSlug: "default",
   toast: null,
 
+  // Who's here and what the house has; where to look comes from the address (route.ts).
   async boot() {
     const [session, channels, catalog] = await Promise.all([api.session(), api.channels(), api.catalog()]);
     const people = Object.fromEntries(session.people.map((p) => [p.id, p]));
     set({ session, people, channels, catalog });
-    const first = get().channelId ?? channels[0]?.id ?? null;
-    if (first) await get().openChannel(first, get().mode);
   },
 
   async switchPerson(id) {
@@ -152,11 +157,13 @@ export const useHouse = create<State>((set, get) => ({
   },
 
   async openChannel(id, mode) {
-    // The rail only ever shows this channel's work: a thread open from another channel closes.
+    // The rail only ever shows this channel's work: a thread open from another channel closes,
+    // and what was picked on another channel's canvas is let go.
     set((s) => ({
       page: "channel",
       channelId: id,
       mode: mode ?? s.mode,
+      focus: s.channelId === id ? s.focus : null,
       frameId: null,
       threadId: s.threadId && s.threads[s.threadId]?.channel_id === id ? s.threadId : null,
     }));
@@ -187,8 +194,13 @@ export const useHouse = create<State>((set, get) => ({
     if (mode === "canvas" && id) void get().refreshCanvas(id);
   },
 
+  focusOn(focus) {
+    set({ focus });
+  },
+
   async openThread(id) {
-    set({ threadId: id });
+    // A conversation's card is picked while its chat is open: closing the chat lets go of it.
+    set((s) => ({ threadId: id, focus: !id && s.threadId && s.focus?.node === s.threadId ? null : s.focus }));
     if (!id) return;
     const detail = await api.thread(id);
     set((s) => ({
@@ -389,3 +401,6 @@ function mapTask(
 }
 
 export const person = (id: string) => useHouse.getState().people[id];
+
+// Whether a task's frame (no node) or one of its cards is what's picked on the canvas.
+export const useFocused = (task: string, node: string | null) => useHouse((s) => s.focus?.task === task && s.focus.node === node);
