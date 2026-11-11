@@ -62,7 +62,8 @@ schema. The browser has no database credential or service-role key. See [Supabas
 for trust boundaries, operational limits, and the distinction from the developer-only identity
 switcher.
 
-The sidebar keeps Light and Dark above the profile button. The profile menu opens Settings
+The sidebar keeps Light and Dark above the profile button. Its two lines show the organization
+name and signed-in email. An unnamed organization displays “My workspace”. The profile menu opens Settings
 or signs out (native development also supports switching identities). Settings saves the
 start page and clock format on this device. The Organization tab persists the workspace name, website and description in its own database.
 The Usage tab charts input and output tokens and estimated USD by hour today or by day over

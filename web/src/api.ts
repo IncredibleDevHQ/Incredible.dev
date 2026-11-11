@@ -217,6 +217,8 @@ export type CanvasTask = {
 };
 export type FolderFile = { path: string; size: number; modified: number };
 export type Session = {
+  email?: string | null;
+  organizationName?: string;
   authenticated?: boolean;
   me: string;
   people: Person[];

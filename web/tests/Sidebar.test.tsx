@@ -14,7 +14,7 @@ beforeEach(() => {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   localStorage.clear();
   useHouse.setState({ ...useHouse.getInitialState(), people: { member: me }, session: {
-    me: "member", people: [me], authenticated: true, demo: false, agent: {mark: "house", model: "test"}, sandbox: null,
+    organizationName: "Pine Studio", email: me.name, me: "member", people: [me], authenticated: true, demo: false, agent: {mark: "house", model: "test"}, sandbox: null,
   } });
   vi.mocked(authRequest).mockReset();
 });
@@ -27,8 +27,10 @@ test("appearance stays visible and Settings opens from the profile row", async (
   expect(localStorage.getItem("house:theme")).toBe("light");
   expect(screen.queryByRole("button", { name: "Settings" })).toBeNull();
   const trigger = screen.getByRole("button", { name: "Account options for member@example.com" });
-  await user.click(within(trigger).getByText("Private workspace"));
+  expect(within(trigger).getByText(me.name).getAttribute("title")).toBe(me.name);
+  await user.click(within(trigger).getByText("Pine Studio"));
   const panel = screen.getByRole("group", { name: "Account options" });
+  expect(within(panel).getByRole("button", {name: /Invite members/}).hasAttribute("disabled")).toBe(true);
   expect(within(panel).queryByRole("group", { name: "Appearance" })).toBeNull();
   expect(within(panel).getByRole("button", { name: "Sign out" })).toBeTruthy();
   await user.click(within(panel).getByRole("button", { name: "Settings" }));

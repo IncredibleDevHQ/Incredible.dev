@@ -4,9 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../src/api";
 import { SettingsPage } from "../src/pages/Settings";
+import { useHouse } from "../src/store";
 import { parse } from "../src/route";
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear(); });
+afterEach(() => { cleanup(); useHouse.setState(useHouse.getInitialState()); vi.restoreAllMocks(); localStorage.clear(); });
 
 test("usage failure can be retried and unpriced calls have no dollar estimate", async () => {
   const counts = {calls: 1, input_tokens: 120, output_tokens: 20, usd: 0, unpriced: 1};
@@ -39,6 +40,8 @@ test("start preference affects the home address and preserves deep links", async
 });
 
 test("organization edits survive a failed save and can be retried", async () => {
+  useHouse.setState({session: {me:"user", people:[], authenticated:true, organizationName:"Original",
+    demo:false, agent:{mark:"house", model:"test"}, sandbox:null}});
   const profile = {name:"Original", website:"", description:""};
   vi.spyOn(api, "organization").mockResolvedValue(profile);
   const save = vi.spyOn(api, "saveOrganization").mockRejectedValueOnce(new Error()).mockResolvedValue({...profile, name:"Studio"});
@@ -49,9 +52,18 @@ test("organization edits survive a failed save and can be retried", async () => 
   await user.type(field, "Studio");
   await user.click(screen.getByRole("button", {name:"Save changes"}));
   expect(await screen.findByRole("alert")).toBeTruthy();
+  expect(useHouse.getState().session?.organizationName).toBe("Original");
   await user.click(screen.getByRole("button", {name:"Save changes"}));
   expect(await screen.findByText("Changes saved.")).toBeTruthy();
+  expect(useHouse.getState().session?.organizationName).toBe("Studio");
   expect(save).toHaveBeenLastCalledWith({...profile, name:"Studio"});
   expect(parse("/settings/organization", "").page).toBe("organization");
   expect(parse("/settings/usage", "").page).toBe("usage");
+});
+
+test("the usage skeleton is accessible until the report resolves", () => {
+  vi.spyOn(api, "usageReport").mockReturnValue(new Promise(() => {}));
+  render(<SettingsPage tab="usage" />);
+  expect(screen.getByRole("status", {name: "Loading usage"})).toBeTruthy();
+  expect(screen.queryByText("Checking usage…")).toBeNull();
 });

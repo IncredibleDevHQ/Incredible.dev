@@ -1,3 +1,4 @@
+import { Skeleton } from "./Skeleton";
 // Research on the canvas: a frame that reads one of your repositories. Its first column asks a
 // coding agent on this computer (Claude Code, Codex or Kimi Code, read-only, signed in as you);
 // each question grows into a conversation, and a passage of any answer can be kept as a note or
@@ -583,6 +584,7 @@ function Lineage({ steps }: { steps: Note["lineage"] }) {
 // Starting research from the canvas: which repository, which agent, and the first question.
 export function ResearchStart({ channelId, anchor, onClose, onStarted }: { channelId: string; anchor: HTMLElement; onClose: () => void; onStarted?: () => void }) {
   const options = useHouse((s) => s.research);
+  const [repoError, setRepoError] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const ask = useRef<HTMLTextAreaElement>(null);
@@ -601,7 +603,7 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
         setRepo((r) => r || found.repos[0]?.path || "");
         setHarness((h) => (found.harnesses.find((x) => x.id === h)?.ready ? h : (found.harnesses.find((x) => x.ready)?.id ?? h)));
       })
-      .catch(say);
+      .catch(() => setRepoError(true));
   }, []);
 
   // Below its button, moved up as far as it must to stay on screen. Its list keeps one height, so
@@ -690,7 +692,7 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
         />
       </label>
       <div className="repo-list" role="listbox" aria-label="Repositories">
-        {!options && <p className="muted">Looking for repositories…</p>}
+        {!options && (repoError ? <p role="alert">Couldn’t load repositories.</p> : <Skeleton label="Loading repositories" />)}
         {options && !shown.length && !folder && <p className="muted">No repository matches. Type a folder's path to research one inside a repository.</p>}
         {folder && (
           <button type="button" role="option" aria-selected={repo === query.trim()} title={query.trim()} onClick={() => choose(query.trim())}>

@@ -1,3 +1,4 @@
+import { Skeleton } from "./Skeleton";
 // The channel's canvas, in place of Paper. Every task is a frame holding its work as a flow: what
 // it started from, then each asset the agent makes (a storyboard, a teaser, thumbnails, cards),
 // with a line from what each is made from. People review here (a note pinned to a frame, a board
@@ -151,7 +152,8 @@ export function Canvas({ channelId }: { channelId: string }) {
       <div className="world" ref={world} style={{ transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.z})` }}>
         {tasks?.map((task) => <TaskFrame key={task.thread.id} task={task} />)}
       </div>
-      {!empty && (
+      {!tasks && <Skeleton shape="cards" label="Loading canvas" />}
+      {tasks && !empty && (
         <div className="canvas-bar">
           <button type="button" className="btn" aria-expanded={Boolean(starting)} onClick={(e) => setStarting(starting ? null : e.currentTarget)}>
             <Telescope />

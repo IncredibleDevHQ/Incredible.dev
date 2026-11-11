@@ -1,3 +1,4 @@
+import { Skeleton } from "./Skeleton";
 // A finished file over everything, at its size: a film plays, an image fits the window (a click
 // shows a larger one at actual size), a document reads as a page. The rest of its set is a strip
 // below; ← and → step through it, and Download saves the one shown.
@@ -172,7 +173,7 @@ function Page({ file, doc }: { file: FileView; doc: boolean }) {
         <span>It didn't open. Download it instead.</span>
       </div>
     );
-  if (text === null) return <span className="spin" aria-label="Opening" />;
+  if (text === null) return <Skeleton label="Loading file preview" />;
   return doc ? (
     <article className="viewer-doc rich">
       <Rich text={text} />

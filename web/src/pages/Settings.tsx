@@ -1,3 +1,4 @@
+import { Skeleton } from "../components/Skeleton";
 import { useEffect, useState } from "react";
 import { api, type Organization } from "../api";
 import { TextArea } from "../components/TextArea";
@@ -68,13 +69,14 @@ function OrganizationProfile() {
     <p className="muted">Details for this private workspace.</p>
     {error && <p role="alert">{error}</p>}
     {!draft ? error ? <button className="btn" onClick={() => {setError(""); retry(r => r + 1);}}>Try again</button> :
-      <p role="status">Loading profile…</p> :
+      <Skeleton label="Loading organization" shape="form" /> :
     <form onSubmit={async event => {
       event.preventDefault();
       if (busy || !draft.name.trim()) return;
       setBusy(true); setMessage(""); setError("");
       try {
         const profile = await api.saveOrganization(draft);
+        useHouse.setState(state => ({session: state.session && {...state.session, organizationName: profile.name}}));
         setSaved(profile); setDraft(profile); setMessage("Changes saved.");
       } catch { setError("Couldn’t save your changes. Check the details and try again."); }
       finally { setBusy(false); }

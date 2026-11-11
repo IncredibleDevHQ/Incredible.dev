@@ -1,5 +1,5 @@
 // The workspace: where people are needed, what the agent works with, and the channels.
-import { BellDot, ChevronsUpDown, Cpu, Hash, LogOut, Moon, Palette, Plus, Settings, Sparkles, Sun } from "lucide-react";
+import { BellDot, ChevronsUpDown, Cpu, Building2, ChartColumn, UserPlus, Keyboard, Hash, LogOut, Moon, Palette, Plus, Settings, Sparkles, Sun } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { api } from "../api";
 import { useHouse, type Page } from "../store";
@@ -21,6 +21,9 @@ export function Sidebar() {
   const [adding, setAdding] = useState(false);
   const needs = Object.values(threads).filter((t) => t.status === "needs_you").length;
   const me = session ? people[session.me] : undefined;
+
+  const identity = session?.email || me?.name || "You";
+  const workspaceName = session?.organizationName || "My workspace";
 
   useEffect(() => {
     if (!menu) return;
@@ -120,15 +123,15 @@ export function Sidebar() {
           ref={trigger}
           type="button"
           className="whoami"
-          aria-label={`Account options for ${me?.name ?? "You"}`}
+          aria-label={`Account options for ${identity}`}
           aria-expanded={menu}
           aria-controls={menu ? accountId : undefined}
           onClick={() => setMenu(!menu)}
         >
           <Avatar person={me} />
           <span className="account-copy">
-            <span className="account-name" title={me?.name ?? "You"}>{me?.name ?? "You"}</span>
-            <small>{session?.authenticated ? "Private workspace" : "Local workspace"}</small>
+            <span className="account-name" title={workspaceName}>{workspaceName}</span>
+            <small title={identity}>{identity}</small>
           </span>
           <ChevronsUpDown className="account-chevron" size={16} aria-hidden="true" />
         </button>
@@ -137,6 +140,14 @@ export function Sidebar() {
             <button type="button" onClick={() => { setMenu(false); openPage("settings"); }}>
               <Settings size={16} aria-hidden="true" /> Settings
             </button>
+            <button type="button" onClick={() => { setMenu(false); openPage("organization"); }}>
+              <Building2 size={16} aria-hidden="true" /> Organization
+            </button>
+            <button type="button" onClick={() => { setMenu(false); openPage("usage"); }}>
+              <ChartColumn size={16} aria-hidden="true" /> Usage
+            </button>
+            <button type="button" disabled><UserPlus size={16} aria-hidden="true" /> Invite members <small>Soon</small></button>
+            <button type="button" disabled><Keyboard size={16} aria-hidden="true" /> Keyboard shortcuts <small>Soon</small></button>
             <div className="account-actions">
               {session?.authenticated ? (
                 <button type="button" disabled={signingOut} onClick={() => void signOut()}>

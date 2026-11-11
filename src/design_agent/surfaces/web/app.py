@@ -322,6 +322,8 @@ def create_app(
         runtime = host.runtime
         return {
             "me": me,
+            "email": authenticated_user["email"] if authenticated_user else None,
+            "organizationName": store.organization()["name"],
             "people": store.people(),
             "agent": {"mark": host.mark, "model": "demo" if demo else str(settings.lead_model())},
             "demo": demo,

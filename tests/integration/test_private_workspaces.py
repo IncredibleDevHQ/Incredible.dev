@@ -197,6 +197,8 @@ async def test_real_private_apps_reject_other_users_channel_file_and_thread_ids(
             assert (
                 await client.put("/api/organization", json=profile)
             ).raise_for_status().json() == profile
+            assert (await client.get("/api/session")).json()["organizationName"] == profile["name"]
+            assert (await client.get("/api/session")).json()["email"] == users[1]["email"]
             a.store.add_activity(
                 {
                     "kind": "usage",

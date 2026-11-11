@@ -1,3 +1,4 @@
+import { Skeleton } from "./Skeleton";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 
 export async function authRequest(path: string, body?: unknown) {
@@ -14,7 +15,7 @@ export async function authRequest(path: string, body?: unknown) {
 
 export function WorkspaceSkeleton() {
   return <div className="app workspace-skeleton" aria-label="Loading workspace" aria-busy="true">
-    <div className="side"><div className="skeleton-line" /><div className="skeleton-line" /></div><div className="main" />
+    <div className="side"><Skeleton label="Loading navigation" /></div><div className="main"><Skeleton label="Loading content" /></div>
   </div>;
 }
 
@@ -96,7 +97,7 @@ function Login({ google }: { google: boolean }) {
       {signup && <p className="auth-hint">Use at least 8 characters. We’ll ask you to confirm your email.</p>}
       {error && <p className="auth-error" role="alert">{error}</p>}
       {message && <p className="auth-message" role="status">{message}</p>}
-      <button type="submit" className="btn primary" disabled={busy}>{busy ? "Please wait…" : signup ? "Create account" : "Sign in"}</button>
+      <button type="submit" className="btn primary" disabled={busy}>{busy ? <Skeleton label={signup ? "Creating account" : "Signing in"} shape="inline" /> : signup ? "Create account" : "Sign in"}</button>
     </form>
     <p className="auth-switch">{signup ? "Already have an account?" : "New here?"} <button type="button" disabled={busy} onClick={() => {setSignup(!signup);setError("");setMessage("");setPassword("");}}>{signup ? "Sign in" : "Create an account"}</button></p>
   </section></main>;

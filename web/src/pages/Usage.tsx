@@ -1,3 +1,4 @@
+import { Skeleton } from "../components/Skeleton";
 import { useEffect, useState } from "react";
 import { Activity, Coins, Layers3, RefreshCw } from "lucide-react";
 import { api, type UsageCounts, type UsagePeriod, type UsageReport } from "../api";
@@ -31,7 +32,7 @@ export function Usage() {
         onClick={() => load(period)}><RefreshCw size={15} /></button></div>
     </header>
     {error ? <p role="alert">Usage is temporarily unavailable. Try refreshing.</p> :
-      !report ? <p role="status">Checking usage…</p> : <>
+      !report ? <Skeleton label="Loading usage" shape="chart" /> : <>
       <div className="usage-metrics">
         <article><Layers3 /><span>Total tokens</span><strong>{number.format(tokens(report.totals))}</strong>
           <small>{number.format(report.totals.input_tokens)} input · {number.format(report.totals.output_tokens)} output</small></article>
