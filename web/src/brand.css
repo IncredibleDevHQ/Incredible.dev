@@ -6,12 +6,8 @@
 /* -- the rail ----------------------------------------------------------------------------------- */
 .kit-rail { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow: auto; padding: 26px 16px 24px 24px; border-right: 1px solid var(--line-soft); }
 .kit-rail h1 { margin: 0; font-size: 20px; letter-spacing: -0.01em; }
-.kit-new { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
-.kit-new-field { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--sunk); color: var(--muted); }
-.kit-new-field:focus-within { border-color: var(--green); }
-.kit-new-field input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink); }
-.kit-new .btn { justify-content: center; }
-.kit-new small { color: var(--faint); font-size: 12px; line-height: 1.4; }
+.kit-new { justify-content: center; }
+.kit-reading .linkish { font-size: 12px; font-weight: 500; text-align: left; }
 .kit-reading { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); }
 .kit-reading > span:not(.spin) { display: grid; flex: 1; min-width: 0; }
 .kit-reading b { color: var(--ink); font-size: 13px; font-weight: 600; }

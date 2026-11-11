@@ -250,7 +250,9 @@ export type BrandSummary = {
   sample: boolean;
   channels: string[];
 };
-export type BrandRead = { url: string; status: "reading" | "ready" | "failed"; slug?: string; message?: string; brand?: BrandSummary };
+// A read of a site's brand: where it is (`step`: open, colours, type, logo, pack, then done), the
+// channel it was read for, and what it made or why it stopped.
+export type BrandRead = { url: string; status: "reading" | "ready" | "failed"; step?: string; channel?: string; slug?: string; message?: string; brand?: BrandSummary };
 export type ColourRole = "ground" | "ink" | "accent" | "muted" | "rule";
 export type TypeRole = "display" | "text" | "mono";
 export type BrandPackView = Omit<BrandView, "logos"> & {

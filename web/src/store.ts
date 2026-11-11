@@ -22,7 +22,7 @@ import {
   type Work,
 } from "./api";
 
-export type Page = "channel" | "needs" | "brand" | "skills" | "computer";
+export type Page = "channel" | "needs" | "brand" | "read-brand" | "skills" | "computer";
 export type Mode = "chat" | "canvas";
 // The template picker on the canvas: open on the list, or on one template (started from an asset,
 // or placed onto a research frame, made from its notes).
@@ -58,10 +58,16 @@ type State = {
   // The house's brands, and the reads from websites still running or just finished.
   brands: BrandSummary[];
   reads: BrandRead[];
+  // The channel a brand being read from a website is for, which wears it once it is made.
+  brandFor: string | null;
+  // The kit the Brands page shows; another page can send you to one.
+  brandSlug: string;
   toast: string | null;
   boot: () => Promise<void>;
   switchPerson: (id: string) => Promise<void>;
   openPage: (page: Page) => void;
+  readBrandFor: (channelId: string | null) => void;
+  openBrand: (slug: string) => void;
   openChannel: (id: string, mode?: Mode) => Promise<void>;
   setMode: (mode: Mode) => void;
   openThread: (id: string | null) => Promise<void>;
@@ -115,6 +121,8 @@ export const useHouse = create<State>((set, get) => ({
   research: null,
   brands: [],
   reads: [],
+  brandFor: null,
+  brandSlug: "default",
   toast: null,
 
   async boot() {
@@ -133,6 +141,14 @@ export const useHouse = create<State>((set, get) => ({
 
   openPage(page) {
     set({ page, frameId: null });
+  },
+
+  readBrandFor(channelId) {
+    set({ page: "read-brand", brandFor: channelId, frameId: null });
+  },
+
+  openBrand(slug) {
+    set({ page: "brand", brandSlug: slug, frameId: null });
   },
 
   async openChannel(id, mode) {
@@ -334,7 +350,8 @@ export const useHouse = create<State>((set, get) => ({
           void get().loadBrands();
           set({ toast: `${read.brand?.name ?? "The brand"} is ready.` });
         }
-        if (read.status === "failed") set({ toast: read.message ?? "The read stopped." });
+        // The read's own page says why it stopped; anywhere else, a toast does.
+        if (read.status === "failed" && s.page !== "read-brand") set({ toast: read.message ?? "The read stopped." });
         break;
       }
       case "research.updated": {

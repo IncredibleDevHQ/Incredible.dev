@@ -6,7 +6,7 @@ import { Sidebar } from "./components/Sidebar";
 import { ThreadPanel } from "./components/ThreadPanel";
 import { Viewer } from "./components/Viewer";
 import { connectLive } from "./live";
-import { Brand, Computer, NeedsYou, Skills } from "./pages/Pages";
+import { Brand, Computer, NeedsYou, ReadBrand, Skills } from "./pages/Pages";
 import { useHouse } from "./store";
 
 export function App() {
@@ -34,6 +34,7 @@ export function App() {
         <main className="main">
           {page === "needs" && <NeedsYou />}
           {page === "brand" && <Brand />}
+          {page === "read-brand" && <ReadBrand />}
           {page === "skills" && <Skills />}
           {page === "computer" && <Computer />}
         </main>

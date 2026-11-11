@@ -98,6 +98,8 @@ body {
 button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+/* affectUI's fields show focus on their own rounded edge, so the text inside them gets no ring. */
+.ui-tf__input:focus-visible { outline: none; }
 .mono { font-family: var(--mono); }
 .muted { color: var(--muted); }
 .faint { color: var(--faint); }
@@ -200,6 +202,34 @@ button { cursor: pointer; }
 .start-mark { display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 6px; overflow: hidden; background: #f6f1e7; color: #14161a; }
 .start-mark img { max-width: 18px; max-height: 18px; object-fit: contain; }
 .start-mark svg { width: 14px; height: 14px; }
+/* affectUI's parts in the house's colours: their own rules sit in a style React hoists into the
+   head, which :root outranks. */
+:root :is(.ui-tf, .ui-progress) {
+  --aui-success: var(--green);
+  --ui-tf-text: var(--ink-2);
+  --ui-tf-wash: var(--sunk);
+  --ui-tf-edge-focus: var(--focus-line);
+  --ui-pg-track: var(--sunk);
+  --aui-ink: var(--ink);
+  --aui-muted: var(--muted);
+  --aui-placeholder: var(--faint);
+  --aui-surface: var(--raised);
+  --aui-border: var(--line);
+  --aui-border-strong: var(--line-strong);
+  --aui-focus: var(--green);
+  --aui-danger: var(--red);
+  --aui-font: var(--font);
+}
+/* Reading a brand from a website: the address, then the read as it goes. */
+.read-brand { width: min(820px, 100%); margin: 0 auto; }
+.read-back { display: inline-flex; align-items: center; gap: 5px; margin: 0 0 14px; font-size: 13px; }
+.read-form { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 22px; }
+.read-form .ui-tf { flex: 1; min-width: 0; }
+.read-form .btn { height: 36px; white-space: nowrap; }
+.read-steps { max-width: 440px; }
+.read-failed { display: grid; justify-items: start; gap: 8px; margin: 16px 0 0; max-width: 560px; }
+.read-failed p { margin: 0; }
+.read-failed p:first-child { color: var(--red); }
 .start-ways { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .start-way { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px; border-radius: 14px; background: var(--raised); border: 1px solid var(--line); }
 .start-way h3 { margin: 4px 0 0; font-size: 14.5px; font-weight: 650; }

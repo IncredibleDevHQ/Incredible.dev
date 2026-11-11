@@ -435,6 +435,8 @@ const keepSymbol = async (browser, read, outDir) => {
 const main = async () => {
   const [url, outDir] = process.argv.slice(2)
   if (!url || !outDir) throw new Error('usage: node capture.mjs <url> <out-dir>')
+  // Each phase says when it starts, one JSON line on stdout, so the person sees the read move.
+  const step = (name) => process.stdout.write(`${JSON.stringify({ step: name })}\n`)
   if (!(await publicHost(url))) throw new Error('That address is not on the public internet.')
   const pageScript = (await fs.readFile(path.join(here, 'page.js'), 'utf8')).replace(/^\/\/.*\n/gm, '')
   const browser = await puppeteer.launch({
@@ -483,6 +485,7 @@ const main = async () => {
     const blockedTitle = /^(?:(?:error\s*)?(?:401|403|429)\b.*|forbidden|access denied|attention required!?|just a moment(?:\.{3})?)(?:\s*[|—-]\s*cloudflare)?$/i.test(evidence.title.trim())
     if (minimal && (evidence.challenge || blockedTitle || status === 401 || status === 403 || status === 429))
       throw new Error(`The site answered with a human check or a block (${status ? `HTTP ${status}` : 'no status'}, “${evidence.title}”), so it can't be read automatically. Try another page of the site, or bring its brand files.`)
+    step('colours')
     await page.evaluate('window.scrollTo(0, Math.min(document.body.scrollHeight, innerHeight * 4))').catch(() => undefined)
     await wait(600)
     await page.evaluate('window.scrollTo(0, 0)').catch(() => undefined)
@@ -492,8 +495,10 @@ const main = async () => {
     read.palette = (Array.isArray(read.palette) ? read.palette : []).filter((colour) => /^#[0-9a-f]{6}$/i.test(colour)).slice(0, 24)
     await page.screenshot({ path: path.join(outDir, 'first-screen.jpg'), type: 'jpeg', quality: 82 })
     const roles = brandRoles(read.stats, read.palette, read.grounds)
+    step('type')
     const fonts = fontRoles(read.fonts)
     const fontFiles = await keepFaces(read, fonts, captured, outDir)
+    step('logo')
     const logo = await keepLogo(browser, page, read, roles, outDir)
     const symbol = await keepSymbol(browser, read, outDir)
     const result = {

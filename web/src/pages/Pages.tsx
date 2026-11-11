@@ -46,8 +46,9 @@ export function NeedsYou() {
   );
 }
 
-// The Brand page lives in its own file.
+// The Brand page and reading a brand from a website live in files of their own.
 export { Brand } from "./BrandPage";
+export { ReadBrand } from "./ReadBrandPage";
 
 const ROUTER = new Set(["media-production", "content-brief"]);
 const JUDGMENT = new Set(["brand-design", "design-wiki", "visual-verify", "motion-direction", "canvas"]);

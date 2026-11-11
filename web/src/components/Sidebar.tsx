@@ -20,7 +20,7 @@ export function Sidebar() {
     <button
       type="button"
       className="side-item"
-      aria-current={page === target ? "page" : undefined}
+      aria-current={page === target || (target === "brand" && page === "read-brand") ? "page" : undefined}
       onClick={() => openPage(target)}
     >
       {icon}

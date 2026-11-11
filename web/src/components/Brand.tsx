@@ -32,7 +32,7 @@ export function ChannelBrand({ channel }: { channel: Channel }) {
 
 export function BrandMenu({ channel, anchor, onClose }: { channel: Channel; anchor: HTMLElement; onClose: () => void }) {
   const brands = useHouse((s) => s.brands);
-  const openPage = useHouse((s) => s.openPage);
+  const readBrandFor = useHouse((s) => s.readBrandFor);
   const box = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<{ top: number; left: number } | null>(null);
   useLayoutEffect(() => {
@@ -77,7 +77,7 @@ export function BrandMenu({ channel, anchor, onClose }: { channel: Channel; anch
           type="button"
           onClick={() => {
             onClose();
-            openPage("brand");
+            readBrandFor(channel.id);
           }}
         >
           <Globe size={16} />

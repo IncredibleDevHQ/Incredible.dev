@@ -25,6 +25,7 @@ that code's MIT notice is preserved in [licenses/managed-deepagents-sdk-MIT.txt]
 | HyperFrames agent skills (HeyGen), vendored unmodified at release v0.8.169 | `skills/` entries listed in `skills-lock.json` | Apache-2.0, [licenses/hyperframes-LICENSE.txt](licenses/hyperframes-LICENSE.txt) |
 | LangSmith agent skills (LangChain), vendored unmodified at commit 1fb52e836f2d | `skills/langsmith-trace`, `.agents/skills/langsmith-dataset`, `.agents/skills/langsmith-evaluator` | MIT, [licenses/langsmith-skills-LICENSE.txt](licenses/langsmith-skills-LICENSE.txt) |
 | Deep Agents agent skills (LangChain), vendored unmodified at commit 16a992f09ab3 | `.agents/skills/deep-agents-*` | MIT, [licenses/langchain-skills-LICENSE.txt](licenses/langchain-skills-LICENSE.txt) |
+| affectUI free items: Text Field (as it comes) and Progress Tracker (adapted to follow work as it happens), each in the house's colours | `web/src/components/TextField.tsx`, `ProgressTracker.tsx` | MIT, [licenses/affectui-MIT.txt](licenses/affectui-MIT.txt) |
 | HyperFrames CLI | installed in the sandbox image, not redistributed here | Apache-2.0 |
 | Geist, Fragment Mono, Inter, IBM Plex Mono, Fira Code, Fraunces | `fonts/` | SIL Open Font License 1.1, [fonts/licenses/](fonts/licenses/) |
 | Apache ECharts | installed in the sandbox image | Apache-2.0 |

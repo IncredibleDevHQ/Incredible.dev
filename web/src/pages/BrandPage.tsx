@@ -5,7 +5,7 @@
 // from. Every value comes from the pack the engine stages; nothing here is made up but the
 // sample frames' placeholder words.
 import { Check, CircleAlert, ExternalLink, Globe, Palette, RotateCcw } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { api, type BrandPackView, type BrandSummary, type ColourRole } from "../api";
 import { contrast, luminance, onColour, pick, rolesOf, useFaces } from "../kit";
 import { useHouse } from "../store";
@@ -23,72 +23,65 @@ const host = (url: string) => url.replace(/^https?:\/\//, "").split("/")[0];
 export function Brand() {
   const { brands, reads, channels, channelId } = useHouse();
   const loadBrands = useHouse((s) => s.loadBrands);
-  const [selected, setSelected] = useState("default");
+  const selected = useHouse((s) => s.brandSlug);
+  const openBrand = useHouse((s) => s.openBrand);
   const [pack, setPack] = useState<BrandPackView | null>(null);
-  const opened = useRef(new Set<string>());
+  // Reads already made when the page opens are not news; one that lands while it's open is.
+  const [landed] = useState(() => new Set(reads.filter((r) => r.status === "ready").map((r) => r.url)));
 
   useEffect(() => {
     void loadBrands();
   }, [loadBrands]);
   useEffect(() => {
-    void api.brandPack(selected).then(setPack).catch(() => setSelected("default"));
-  }, [selected, brands]);
+    void api.brandPack(selected).then(setPack).catch(() => openBrand("default"));
+  }, [selected, brands, openBrand]);
   // A read that lands opens the kit it made, once.
   useEffect(() => {
     for (const r of reads) {
-      if (r.status === "ready" && r.slug && !opened.current.has(r.url)) {
-        opened.current.add(r.url);
-        setSelected(r.slug);
+      if (r.status === "ready" && r.slug && !landed.has(r.url)) {
+        landed.add(r.url);
+        openBrand(r.slug);
       }
     }
-  }, [reads]);
+  }, [reads, landed, openBrand]);
 
   const here = channels.find((c) => c.id === channelId);
   return (
     <section className="page kits" aria-labelledby="brand-title">
-      <Rail brands={brands} selected={selected} onSelect={setSelected} here={here?.name} channelId={channelId ?? ""} />
+      <Rail brands={brands} selected={selected} onSelect={openBrand} channelId={channelId ?? ""} />
       {pack && <Kit key={pack.slug} pack={pack} here={here} />}
     </section>
   );
 }
 
-// -- the rail: a new kit from an address, reads under way, and the kits --------------------------
+// -- the rail: a new kit from a website, reads under way, and the kits ----------------------------
 
-function Rail({ brands, selected, onSelect, here, channelId }: { brands: BrandSummary[]; selected: string; onSelect: (slug: string) => void; here?: string; channelId: string }) {
+// What a read is doing, in the rail's words.
+const READING: Record<string, string> = {
+  open: "Opening the site…",
+  colours: "Taking its colours…",
+  type: "Finding its type…",
+  logo: "Finding its logo…",
+  pack: "Writing the brand pack…",
+};
+
+function Rail({ brands, selected, onSelect, channelId }: { brands: BrandSummary[]; selected: string; onSelect: (slug: string) => void; channelId: string }) {
   const reads = useHouse((s) => s.reads);
-  const [url, setUrl] = useState("");
-  const [busy, setBusy] = useState(false);
+  const readBrandFor = useHouse((s) => s.readBrandFor);
   const read = async (address: string) => {
-    if (!address.trim()) return;
-    setBusy(true);
     try {
-      await api.readBrand(address.trim(), channelId);
-      setUrl("");
+      await api.readBrand(address, channelId);
     } catch (error) {
       useHouse.getState().say((error as Error).message);
-    } finally {
-      setBusy(false);
     }
   };
   return (
     <aside className="kit-rail" aria-label="Brand kits">
       <h1 id="brand-title">Brands</h1>
-      <form
-        className="kit-new"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void read(url);
-        }}
-      >
-        <label className="kit-new-field">
-          <Globe size={15} aria-hidden="true" />
-          <input value={url} placeholder="yourcompany.com" aria-label="A website to read a brand from" onChange={(e) => setUrl(e.target.value)} />
-        </label>
-        <button type="submit" className="btn primary" disabled={!url.trim() || busy}>
-          Read its brand
-        </button>
-        {here && <small>#{here} switches to it once it's read.</small>}
-      </form>
+      <button type="button" className="btn primary kit-new" onClick={() => readBrandFor(channelId || null)}>
+        <Globe />
+        Read a brand from a website
+      </button>
       {reads
         .filter((r) => r.status !== "ready")
         .map((r) => (
@@ -96,7 +89,13 @@ function Rail({ brands, selected, onSelect, here, channelId }: { brands: BrandSu
             {r.status === "reading" ? <span className="spin" /> : <CircleAlert size={15} />}
             <span>
               <b>{host(r.url)}</b>
-              <small>{r.status === "reading" ? "Reading its colours, type and logos…" : r.message}</small>
+              {r.status === "reading" ? (
+                <button type="button" className="linkish" onClick={() => readBrandFor(r.channel || null)}>
+                  {READING[r.step ?? "open"] ?? READING.open}
+                </button>
+              ) : (
+                <small>{r.message}</small>
+              )}
             </span>
             {r.status === "failed" && (
               <button type="button" className="icon-btn" aria-label={`Read ${host(r.url)} again`} onClick={() => void read(r.url)}>

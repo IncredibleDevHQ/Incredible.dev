@@ -33,6 +33,16 @@ _LOGGER = logging.getLogger(__name__)
 
 #: The configured pack, by the name the app uses for it.
 DEFAULT = "default"
+#: A read's steps, in order: the capture says when it reaches colours, type and logo; the pack is
+#: written here. What each is called while it runs, for a read that stops in it.
+STEPS = ("open", "colours", "type", "logo", "pack")
+WHILE = {
+    "open": "opening the site",
+    "colours": "taking its colours",
+    "type": "finding its type",
+    "logo": "finding its logo",
+    "pack": "writing the brand pack",
+}
 SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 #: Files of a pack the app may show: its marks and the site it was read from.
 SHOWN = re.compile(r"^(?:logos|reference)/[\w.-]+\.(?:svg|png|jpe?g|webp)$")
@@ -189,12 +199,19 @@ class BrandShelf:
     # -- reading a brand from a website ----------------------------------------------------------
 
     def read(self, url: str, *, by: str, channel_id: str = "") -> dict[str, Any]:
-        """Start reading a site's brand; the result arrives as a `brand.updated` event, and a
-        channel named here wears the brand once it is made."""
+        """Start reading a site's brand; each step it reaches and then its result arrive as
+        `brand.updated` events, and a channel named here wears the brand once it is made."""
         address = checked_url(url)
         if address in self._reads and not self._reads[address].done():
             return self.reading[address]
-        status = {"url": address, "status": "reading", "by": by, "started": time.time()}
+        status = {
+            "url": address,
+            "status": "reading",
+            "step": STEPS[0],
+            "by": by,
+            "channel": channel_id,
+            "started": time.time(),
+        }
         self.reading[address] = status
         self._reads[address] = asyncio.get_running_loop().create_task(
             self._read(address, channel_id), name=f"brand read {address}"
@@ -205,19 +222,30 @@ class BrandShelf:
     async def _read(self, url: str, channel_id: str) -> None:
         status = self.reading[url]
         out = self.captures / f"{int(time.time())}-{re.sub(r'[^a-z0-9]+', '-', url.lower())[:60]}"
+
+        def step(name: str) -> None:
+            if name in STEPS and status.get("step") != name:
+                status["step"] = name
+                self.hub.publish("brand.updated", read=status)
+
         try:
-            found = await read_site(url, out, image=self.image)
+            found = await read_site(url, out, image=self.image, on_step=step)
             slug = slug_of(found)
+            step("pack")
             await asyncio.to_thread(write_pack, found, out, self.root / slug, self.project_root)
-            status.update(status="ready", slug=slug, brand=self.summary(slug))
+            status.update(status="ready", step="done", slug=slug, brand=self.summary(slug))
             if channel_id and self.store.channel(channel_id) is not None:
                 self.wear(channel_id, slug)
                 status["brand"] = self.summary(slug)
         except (SiteBrandError, BrandPackError) as error:
             status.update(status="failed", message=str(error).splitlines()[0][:300])
-        except Exception as error:  # a read that breaks must say so, never hang
+        except Exception:  # a read that breaks must say so, never hang
             _LOGGER.exception("brand read failed for %s", url)
-            status.update(status="failed", message=f"The read stopped: {type(error).__name__}.")
+            doing = WHILE.get(str(status.get("step")), "reading the site")
+            status.update(
+                status="failed",
+                message=f"The read stopped while {doing}. The server's log has the details.",
+            )
         finally:
             with contextlib.suppress(OSError):
                 shutil.rmtree(out, ignore_errors=True)
