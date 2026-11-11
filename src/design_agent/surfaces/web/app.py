@@ -49,7 +49,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -59,12 +59,14 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
 from design_agent.config import SAMPLE_BRAND, Settings
 from design_agent.runtime import maintenance
 from design_agent.runtime.local import build_local_runtime
 from design_agent.runtime.persistence import open_persistence, workspace_of
 from design_agent.surfaces.web.agent import AgentHost
+from design_agent.surfaces.web.blobs import StorageUnavailable, byte_range
 from design_agent.surfaces.web.brands import BrandShelf, brand_view
 from design_agent.surfaces.web.catalog import catalog_view
 from design_agent.surfaces.web.hub import Hub
@@ -205,7 +207,14 @@ def create_app(
         user=authenticated_user,
     )
     hub = Hub()
-    host = AgentHost(settings=settings, store=store, hub=hub, data_dir=data_dir, demo=demo)
+    host = AgentHost(
+        settings=settings,
+        store=store,
+        hub=hub,
+        data_dir=data_dir,
+        demo=demo,
+        blob_namespace=schema.removeprefix("user_") if schema else "local",
+    )
     shelf = BrandShelf(
         store=store, hub=hub, settings=settings, project_root=project_root, data_dir=data_dir
     )
@@ -254,6 +263,10 @@ def create_app(
 
     app = FastAPI(title="Creative House", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.host = host
+
+    @app.exception_handler(StorageUnavailable)
+    async def storage_error(_request: Request, _error: StorageUnavailable) -> Response:
+        return Response("File storage is unavailable. Try again shortly.", status_code=503)
 
     def person(x_person: str = Header(default="you")) -> str:
         if authenticated_user:
@@ -425,21 +438,70 @@ def create_app(
             content = await upload.read(MAX_UPLOAD_BYTES + 1)
             if len(content) > MAX_UPLOAD_BYTES:
                 raise HTTPException(status_code=413, detail="a file is over 200 MiB")
-            row = host.save_file(
-                "", upload.filename or "attachment", content, origin="upload", author=me
+            row = await asyncio.to_thread(
+                host.save_file,
+                "",
+                upload.filename or "attachment",
+                content,
+                origin="upload",
+                author=me,
             )
             out.append(host.file_view(row))
         return out
 
     @app.get("/api/files/{file_id}")
-    async def file(file_id: str) -> FileResponse:
+    async def file(
+        file_id: str, range_header: str | None = Header(default=None, alias="Range")
+    ) -> Response:
         row = store.file(file_id)
         if row is None:
             raise HTTPException(status_code=404, detail="no such file")
-        path = (host.files_dir / row["rel_path"]).resolve()
-        if host.files_dir.resolve() not in path.parents or not path.is_file():
-            raise HTTPException(status_code=404, detail="no such file")
-        return FileResponse(path, media_type=row["mime"], filename=row["name"])
+        try:
+            if row.get("storage", "local") == "local":
+                path = host.blobs.local_path(row["rel_path"])
+                if not path.is_file():
+                    raise FileNotFoundError
+                return FileResponse(path, media_type=row["mime"], filename=row["name"])
+            try:
+                start, end = byte_range(range_header, row["size"])
+            except ValueError:
+                return Response(
+                    status_code=416, headers={"Content-Range": f"bytes */{row['size']}"}
+                )
+            body = await asyncio.to_thread(
+                host.blobs.open, row, start, end if range_header else None
+            )
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="no such file") from None
+
+        def chunks() -> Any:
+            remaining = end - start + 1
+            try:
+                while remaining:
+                    data = body.read(min(1024 * 1024, remaining))
+                    if not data:
+                        break
+                    remaining -= len(data)
+                    yield data
+            finally:
+                body.close()
+
+        headers = {
+            "Content-Length": str(end - start + 1),
+            "Content-Disposition": f"attachment; filename*=utf-8''{quote(row['name'])}",
+            "Accept-Ranges": "bytes",
+            "ETag": f'"{row["sha256"]}"',
+            "X-Content-Type-Options": "nosniff",
+        }
+        if range_header:
+            headers["Content-Range"] = f"bytes {start}-{end}/{row['size']}"
+        return StreamingResponse(
+            chunks(),
+            status_code=206 if range_header else 200,
+            media_type=row["mime"],
+            headers=headers,
+            background=BackgroundTask(body.close),
+        )
 
     # -- the canvas --------------------------------------------------------------------------
 

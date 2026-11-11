@@ -61,3 +61,8 @@ developer path and the Postgres adapter in `postgres.py`; authenticated apps nev
 schema. The browser has no database credential or service-role key. See [Supabase](../supabase.md)
 for trust boundaries, operational limits, and the distinction from the developer-only identity
 switcher.
+
+Root Compose uses `blobs.py` to keep delivered files and attachments in private MinIO S3
+objects under the verified account UUID. File metadata stays in its Postgres schema; downloads
+pass through the authenticated backend, never a public bucket. Native development retains the
+local backend. See [MinIO](../minio.md) for migration and the local working-data boundary.

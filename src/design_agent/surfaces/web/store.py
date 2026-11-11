@@ -94,6 +94,7 @@ CREATE INDEX IF NOT EXISTS notes_by_frame ON notes(frame_id, position);
 CONVERSATION = "conversation"
 #: Columns added since a table was first made, put into a store that predates them.
 ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("files", "storage", "TEXT NOT NULL DEFAULT 'local'"),
     # A film's Studio preview on the thread's computer, and the proof frames that came with it.
     ("assets", "preview", "TEXT NOT NULL DEFAULT '{}'"),
     # The brand pack a channel's work wears (a folder under workspace/brands); empty for the
@@ -376,6 +377,12 @@ class Store:
 
     def file(self, file_id: str) -> Row | None:
         return self._one("SELECT * FROM files WHERE id = ?", (file_id,))
+
+    def local_files(self) -> list[Row]:
+        return self._all("SELECT * FROM files WHERE storage = ?", ("local",))
+
+    def relocate_file(self, file_id: str, rel_path: str) -> None:
+        self._update("files", file_id, {"storage": "s3", "rel_path": rel_path})
 
     def files(self, thread_id: str, origin: str | None = None) -> list[Row]:
         if origin is None:

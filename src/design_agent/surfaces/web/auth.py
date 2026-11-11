@@ -370,11 +370,15 @@ def create_authenticated_app(
     auth = Auth(settings, transport)
     stack = AsyncExitStack()
     tenants = Tenants(root, settings, stack, demo, tenant_factory)
+    from design_agent.surfaces.web.blobs import BlobFiles, StorageUnavailable
+
+    blobs = BlobFiles(settings, root / "workspace/house/files", "local")
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         async with stack:
             try:
+                await asyncio.to_thread(blobs.check)
                 if tenant_factory is None:
                     from psycopg import AsyncConnection
 
@@ -386,6 +390,7 @@ def create_authenticated_app(
                 yield
             finally:
                 await auth.client.aclose()
+                blobs.close()
 
     app = FastAPI(
         title="Incredible.dev", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
@@ -393,6 +398,12 @@ def create_authenticated_app(
     app.add_middleware(SecurityHeaders)
     app.state.auth = auth
     app.state.tenants = tenants
+
+    @app.exception_handler(StorageUnavailable)
+    async def storage_error(_request: Request, _error: StorageUnavailable) -> Response:
+        return JSONResponse(
+            {"detail": "File storage is unavailable. Try again shortly."}, status_code=503
+        )
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request: Request, error: RequestValidationError) -> Response:

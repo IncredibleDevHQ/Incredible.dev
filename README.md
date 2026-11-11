@@ -73,7 +73,8 @@ Then open http://127.0.0.1:8765. For app development, run `npm run dev` in `web/
 passes `/api` through to the server. [Models](docs/models.md) lists the providers and their keys.
 
 To run the frontend and backend together in Docker with Supabase login and PostgreSQL, use the root
-`compose.yaml`: `docker compose up -d --build --wait`. See [local Compose setup](docs/local-compose.md)
+`compose.yaml`: generate MinIO credentials with `uv run python scripts/setup_minio.py`, then
+`docker compose up -d --build --wait`. See [local Compose setup](docs/local-compose.md)
 for first-time environment settings, existing data, backups and container limitations.
 
 The Docker app uses [Supabase Auth and private workspaces](docs/supabase.md). The native

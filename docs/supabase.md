@@ -82,8 +82,9 @@ workspace ID from the client. Each user gets:
   revoked. These schemas are not exposed through the public Data API. The trusted backend
   selects the schema from the verified identity and owns its tables.
 - A separate runtime, live-event hub, brand shelf and file directory under
-  `workspace/accounts/<uuid_without_dashes>/`. Files remain on the server's persistent disk;
-  Supabase holds their metadata. Back up this directory as well as the database.
+  `workspace/accounts/<uuid_without_dashes>/`. Root Compose keeps registered file bytes in
+  private [MinIO S3 storage](minio.md); Supabase holds their metadata. Back up MinIO, the
+  database and local working data.
 - Two initial empty channels and only their own person record plus the agent. There is no
   identity-switch menu. Local repository research and shared trace-reading tools are disabled.
 

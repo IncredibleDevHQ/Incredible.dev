@@ -23,6 +23,12 @@ the local app. Google provider credentials and email delivery must be configured
 never silently disable confirmation or authentication to work around missing configuration.
 The Postgres/token API below is a different deployment surface.
 
+Root Compose also requires private MinIO storage: run `uv run python scripts/setup_minio.py`
+before the first build. Follow [MinIO](../../../docs/minio.md); keep administrator credentials
+out of the app environment and sandbox. Verify private bucket access, authenticated uploads and
+downloads, range requests, migration checksums, and cross-account file denial against real
+MinIO. Preserve the named data volume, legacy data and local migration backup copies.
+
 1. `uv run design-agent config set DESIGN_AGENT_MODEL=…` (the person types the key or sets it in
    `.env`), then `uv run design-agent config generate DESIGN_AGENT_API_TOKENS POSTGRES_PASSWORD`.
 2. `docker compose -f deploy/self-host/compose.yaml up -d --build`, then

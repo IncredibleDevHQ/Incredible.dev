@@ -14,6 +14,7 @@ repository root:
 # Preserve existing environment files. Fill .env.supabase using docs/supabase.md.
 test -f .env.supabase || cp .env.example .env.supabase
 mkdir -p private-fonts
+uv run python scripts/setup_minio.py
 # Set LOCAL_UID and LOCAL_GID in .env to your host's id -u and id -g.
 # DOCKER_GID is the socket's group (usually 0 on Docker Desktop/OrbStack).
 # For a nonstandard socket, set DOCKER_SOCKET_PATH in .env to the path reported by:
@@ -36,7 +37,8 @@ The image excludes keys, private config, local databases and uploads from its bu
 
 The host's entire `workspace/` is mounted at `/app/workspace`. New accounts use their own
 `workspace/accounts/<uuid>/` folders; the legacy SQLite data remains untouched and inaccessible
-to those accounts. Back up uploaded/generated files on disk as well as Supabase Postgres.
+to those accounts. Uploads and generated assets use [private MinIO storage](minio.md).
+Back up the `incredible-local_minio-data` volume, Supabase Postgres and local working data.
 `private-fonts/` is mounted read-only. Rendering sandbox workspace volumes persist separately.
 
 ```bash
@@ -46,7 +48,7 @@ docker compose up -d --wait
 ```
 
 `docker compose down` removes app containers, not the host workspace or per-thread sandbox
-volumes. Do not prune sandbox volumes if you need to resume their tasks.
+volumes. The MinIO data volume also persists. Do not use `down -v` or prune volumes you need.
 
 ## Verification and limitations
 

@@ -159,6 +159,12 @@ class Settings(BaseSettings):
         default=None, validation_alias=_alias("SUPABASE_PUBLISHABLE_KEY")
     )
     database_url: SecretStr | None = Field(default=None, validation_alias=_alias("DATABASE_URL"))
+    blob_backend: Literal["local", "s3"] = "local"
+    s3_endpoint: str | None = None
+    s3_bucket: str = "incredible-files"
+    s3_region: str = "us-east-1"
+    s3_access_key: SecretStr | None = None
+    s3_secret_key: SecretStr | None = None
     api_tokens: SecretStr | None = None
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8080, ge=1, le=65535)
@@ -185,6 +191,9 @@ class Settings(BaseSettings):
         "groq_api_key",
         "exa_api_key",
         "database_url",
+        "s3_endpoint",
+        "s3_access_key",
+        "s3_secret_key",
         "supabase_url",
         "supabase_publishable_key",
         "api_tokens",
