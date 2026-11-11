@@ -13,7 +13,7 @@ export function ChannelStart({ channel, inChat }: { channel: Channel; inChat?: b
   const pickTemplate = useHouse((s) => s.pickTemplate);
   const [researching, setResearching] = useState<HTMLElement | null>(null);
   return (
-    <section className="start" aria-label={`Start #${channel.name}`}>
+    <section className="start-panel" aria-label={`Start #${channel.name}`}>
       <h2>Start #{channel.name}</h2>
       <div className="start-brand">
         <span>Everything made here wears</span>

@@ -2,15 +2,15 @@
 // kit, a post turned into social). An empty channel's start opens them; a task's finished asset
 // offers the ones that start from it. Placing one sets its assets up as a task, from what you bring
 // (files, a link, notes) or from something already on the canvas, and the agent starts on it.
-import { ArrowLeft, BadgeCheck, LayoutTemplate, Paperclip, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { AlignLeft, ArrowLeft, BadgeCheck, FileText, Globe, LayoutTemplate, Paperclip, Telescope, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { api, type BrandPackView, type FileView, type Template } from "../api";
 import { useFaces } from "../kit";
 import { useHouse } from "../store";
 import { KindIcon, makesOf } from "../ui";
 import { columnsOf, Lines, useLines, type Edge } from "./Flow";
 import { linksIn, siteOf } from "./Source";
-import { lookOf, TemplateCover } from "./TemplateCover";
+import { lookOf, SlotArt, TemplateCover, type Look } from "./TemplateCover";
 import { TextArea } from "./TextArea";
 
 const FINISHED = new Set(["done", "approved"]);
@@ -26,6 +26,7 @@ export function Templates({ channelId, onPlaced }: { channelId: string; onPlaced
   const channel = useHouse((s) => s.channels.find((c) => c.id === channelId));
   const [selected, setSelected] = useState<string | null>(picking?.template ?? null);
   const chosen = templates.find((t) => t.id === selected);
+  const panel = useRef<HTMLDivElement>(null);
   // Covers draw in the brand the channel wears, in its own faces.
   const slug = channel?.brand || "default";
   const [pack, setPack] = useState<BrandPackView | null>(packs.get(slug) ?? null);
@@ -42,6 +43,11 @@ export function Templates({ channelId, onPlaced }: { channelId: string; onPlaced
   const look = useMemo(() => lookOf(pack), [pack]);
 
   useEffect(() => setSelected(picking?.template ?? null), [picking?.template]);
+  // A template opens at its top, not where the gallery was scrolled to.
+  useEffect(() => {
+    // A block, not an expression: scrollTo can return a promise, which React would take for a cleanup.
+    panel.current?.scrollTo({ top: 0 });
+  }, [selected]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -55,7 +61,7 @@ export function Templates({ channelId, onPlaced }: { channelId: string; onPlaced
 
   return (
     <div className="picker" role="dialog" aria-modal="true" aria-label="Templates">
-      <div className="picker-panel" style={type.vars}>
+      <div className="picker-panel" ref={panel} style={type.vars}>
         <style>{type.css}</style>
         <header className="picker-head">
           {chosen && !picking?.template && (
@@ -72,6 +78,7 @@ export function Templates({ channelId, onPlaced }: { channelId: string; onPlaced
           <Place
             key={chosen.id}
             template={chosen}
+            look={look}
             channelId={channelId}
             from={picking?.from}
             frame={picking?.frame}
@@ -128,58 +135,76 @@ export function Templates({ channelId, onPlaced }: { channelId: string; onPlaced
   );
 }
 
-// A template's assets as a small flow: what each is made from, and which the team signs off.
-function TemplateFlow({ template, large, start = "Source" }: { template: Template; large?: boolean; start?: string }) {
-  const frame = useRef<HTMLSpanElement>(null);
-  const box = useRef<HTMLSpanElement>(null);
-  const [fit, setFit] = useState<{ scale: number; height: number } | null>(null);
+// A template's assets as they land on the canvas: a card for each, after what it is made from,
+// drawn in the brand the channel wears and saying what it is; one the team signs off says so, and
+// what is made from it waits, dashed. The source leads, showing what is brought. A light runs down
+// the lines once, in the order the work is made (as affectUI's Integration Beam pulses along its
+// beams), and a card in hand lights its own lines.
+type Brought = { icon: ReactNode; label: string };
+// Where lines meet a card: the middle of its picture (8px in, a 160×100 picture).
+const ANCHOR = 58;
+
+function TemplateFlow({ template, look, brought, empty }: { template: Template; look: Look; brought: Brought | null; empty: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [hot, setHot] = useState<string | null>(null);
   const items = useMemo(() => template.slots.map((s) => ({ ...s, id: s.key })), [template]);
   const columns = useMemo(() => columnsOf(items), [items]);
-  // Every template starts from something, as every task on the canvas does: what it is made from.
+  // Every template starts from something, as every task on the canvas does.
   const edges = useMemo<Edge[]>(
-    () => items.flatMap((s) => (s.sources.length ? s.sources : [START]).map((from) => ({ from, to: s.id }))),
+    () => items.flatMap((s) => (s.sources.length ? s.sources : [START]).map((from) => ({ from, to: s.id, waiting: items.some((g) => g.id === from && g.gate) }))),
     [items],
   );
-  const lines = useLines(box, edges, large ? 17 : 12);
-  // A card's flow shrinks to the card's width rather than running off its edge.
-  useLayoutEffect(() => {
-    const outer = frame.current;
-    const inner = box.current;
-    if (large || !outer || !inner) return;
-    const pad = parseFloat(getComputedStyle(outer).paddingLeft) * 2;
-    const scale = Math.min(1, (outer.clientWidth - pad) / inner.scrollWidth);
-    const height = Math.ceil(inner.offsetHeight * scale);
-    if (!fit || Math.abs(fit.scale - scale) > 0.01 || fit.height !== height) setFit({ scale, height });
-  });
+  const lines = useLines(box, edges, ANCHOR);
+  const step = (id: string) => (id === START ? 0 : columns.findIndex((c) => c.some((s) => s.id === id)) + 1);
+  const hover = (id: string) => ({ onPointerEnter: () => setHot(id), onPointerLeave: () => setHot(null) });
   return (
-    <span className={`tpl-flow ${large ? "large" : ""}`} ref={frame} style={fit ? { height: fit.height } : undefined}>
-      <span className="tpl-flow-inner" ref={box} style={fit && fit.scale < 1 ? { transform: `scale(${fit.scale})` } : undefined}>
-        <Lines lines={lines} />
-        <span className="tpl-col">
-          <span className="tpl-slot start" data-node={START} title={large ? undefined : template.starts}>
-            <Paperclip size={large ? 15 : 12} aria-hidden="true" />
-            {large && start}
-          </span>
-        </span>
+    <div className="tpl-flow">
+      <div className="tpl-flow-inner" ref={box}>
+        <Lines lines={lines} hot={hot} />
+        <svg className="tpl-pulses" aria-hidden="true">
+          {lines.map((l) => (
+            <path key={`${l.from}>${l.to}`} d={l.d} pathLength={100} style={{ "--step": step(l.from) } as CSSProperties} />
+          ))}
+        </svg>
+        <div className="tpl-col">
+          <div className="tpl-node source" data-node={START} data-brought={brought ? "" : undefined} {...hover(START)}>
+            <span className="tpl-node-art">
+              {brought?.icon ?? <Paperclip />}
+              <span>{brought?.label ?? empty}</span>
+            </span>
+            <b className="tpl-node-title">Source</b>
+            <span className="tpl-node-line">{template.starts}</span>
+          </div>
+        </div>
+        {/* A column of more than two lays its cards out as rows, the picture beside the words. */}
         {columns.map((column, i) => (
-          <span className="tpl-col" key={i}>
-            {column.map((slot) => (
-              <span className="tpl-slot" key={slot.id} data-node={slot.id} title={large ? undefined : slot.brief}>
-                {large && <KindIcon kind={slot.kind} size={15} />}
-                {slot.title}
-                {slot.gate && <BadgeCheck className="gate" size={large ? 14 : 11} aria-label="signed off by the team first" />}
-              </span>
+          <div className={`tpl-col ${column.length > 2 ? "rows" : ""}`} key={i}>
+            {column.map((slot, n) => (
+              <div className="tpl-node" key={slot.id} data-node={slot.id} {...hover(slot.id)}>
+                <SlotArt slot={slot} look={look} tint={i + n} />
+                <b className="tpl-node-title">
+                  <KindIcon kind={slot.kind} size={14} />
+                  {slot.title}
+                </b>
+                <span className="tpl-node-line">{slot.brief}</span>
+                {slot.gate && (
+                  <span className="tpl-node-gate">
+                    <BadgeCheck size={13} />
+                    You sign it off first
+                  </span>
+                )}
+              </div>
             ))}
-          </span>
+          </div>
         ))}
-      </span>
-    </span>
+      </div>
+    </div>
   );
 }
 
 // Placing one template: what it starts from (what you bring, a finished asset, or a research
 // frame's notes), then the agent starts on it.
-function Place({ template, channelId, from, frame, onPlaced }: { template: Template; channelId: string; from?: string; frame?: string; onPlaced: () => void }) {
+function Place({ template, look, channelId, from, frame, onPlaced }: { template: Template; look: Look; channelId: string; from?: string; frame?: string; onPlaced: () => void }) {
   const tasks = useHouse((s) => s.canvas[channelId]) ?? [];
   const channel = useHouse((s) => s.channels.find((c) => c.id === channelId));
   const worn = useHouse((s) => s.brands.find((b) => b.slug === (channel?.brand || "default")));
@@ -207,6 +232,20 @@ function Place({ template, channelId, from, frame, onPlaced }: { template: Templ
       : links.length > 1
         ? `Reads ${links.length > 3 ? "the first 3 links" : `${links.length} pages`} (${sites}); the agent starts from their words.`
         : undefined;
+  // What the source card shows: what is brought so far.
+  const picked = canvas.find((c) => c.asset.id === source)?.asset;
+  const brings = [links.length === 1 ? sites || "a page" : links.length ? `${links.length} pages` : "", files.length === 1 ? files[0].name : files.length ? `${files.length} files` : ""].filter(Boolean);
+  const brought: Brought | null = frame
+    ? { icon: <Telescope />, label: "The research notes" }
+    : mode === "canvas"
+      ? picked
+        ? { icon: <KindIcon kind={picked.kind} size={18} />, label: picked.title }
+        : null
+      : brings.length
+        ? { icon: links.length ? <Globe /> : <FileText />, label: brings.join(" and ") }
+        : text.trim()
+          ? { icon: <AlignLeft />, label: "Your notes" }
+          : null;
 
   const attach = async (list: FileList | null) => {
     if (!list?.length) return;
@@ -243,18 +282,10 @@ function Place({ template, channelId, from, frame, onPlaced }: { template: Templ
   return (
     <div className="tpl-place">
       <p className="lede">{template.line}.</p>
-      <TemplateFlow template={template} large start={frame ? "Notes" : mode === "canvas" ? canvas.find((c) => c.asset.id === source)?.asset.title : undefined} />
-      <ul className="tpl-briefs">
-        {template.slots.map((s) => (
-          <li key={s.key}>
-            <b>{s.title}</b> {s.brief}
-          </li>
-        ))}
-      </ul>
+      <TemplateFlow template={template} look={look} brought={brought} empty={material ? "Bring it below" : "None on the canvas yet"} />
       <section className="tpl-start" aria-label="Start from">
         <div className="tpl-start-head">
           <h3>Start from</h3>
-          <span className="faint">{template.starts}</span>
           {material && canvas.length > 0 && !frame && (
             <div className="seg" role="group" aria-label="Start from">
               <button type="button" aria-pressed={mode === "material"} onClick={() => setMode("material")}>

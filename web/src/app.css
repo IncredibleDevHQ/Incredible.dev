@@ -50,9 +50,10 @@
 /* Light: paper under white cards, the same greens a shade deeper so words on them still read.
    A card keeps that paper and ink on the dark canvas too, the way Figma's frames and Miro's cards
    keep their own fills on a dark board: the canvas and the chrome go dark, the work does not.
-   A card that is only planned or skipped stays an outline on its frame. */
+   A card that is only planned or skipped stays an outline on its frame. A template's cards, which
+   show what will land on the canvas, look as they will there. */
 :root[data-theme="light"],
-:root:not([data-theme="light"]) .node:not([data-status="planned"], [data-status="skipped"]) {
+:root:not([data-theme="light"]) :is(.node:not([data-status="planned"], [data-status="skipped"]), .tpl-node:not(.source), .tpl-node[data-brought]) {
   --bg: #efece5;
   --surface: #f9f8f4;
   --raised: #ffffff;
@@ -82,7 +83,7 @@
   color-scheme: light;
 }
 /* Paper on the dark canvas casts a deeper shadow. */
-:root:not([data-theme="light"]) .node:not([data-status="planned"], [data-status="skipped"]) {
+:root:not([data-theme="light"]) :is(.node:not([data-status="planned"], [data-status="skipped"]), .tpl-node:not(.source), .tpl-node[data-brought]) {
   --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 14px 32px rgba(0, 0, 0, 0.42);
 }
 
@@ -194,8 +195,8 @@ button { cursor: pointer; }
 .empty h2 { margin: 0 0 6px; font-size: 18px; color: var(--ink); }
 /* An empty channel's start, in its chat and on its canvas: the brand its work wears, then the two
    ways in (research or material), one action each. */
-.start { width: min(720px, calc(100% - 48px)); margin: 9vh auto 24px; padding: 22px 22px 18px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--frame-shadow); }
-.start h2 { margin: 0 0 6px; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+.start-panel { width: min(720px, calc(100% - 48px)); margin: 9vh auto 24px; padding: 22px 22px 18px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--frame-shadow); }
+.start-panel h2 { margin: 0 0 6px; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
 .start-brand { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; color: var(--ink-2); font-size: 13.5px; }
 .start-brand .brand-select { flex: none; width: 240px; }
 /* affectUI's parts in the house's colours: their own rules sit in a style React hoists into the
@@ -651,21 +652,36 @@ button { cursor: pointer; }
 .sheet-blob.b2 { left: 70cqw; top: 10%; width: 22cqw; height: 22cqw; }
 .sheet-band { position: absolute; left: 0; right: 0; top: 0; height: 17%; }
 .sheet-text { position: absolute; left: 10cqw; right: 10cqw; top: 25%; display: grid; gap: 5cqw; }
-.tpl-flow { display: block; box-sizing: content-box; padding: 12px; border-radius: 10px; background: var(--sunk); overflow: hidden; }
-.tpl-flow-inner { position: relative; display: flex; gap: 14px; align-items: flex-start; width: max-content; transform-origin: 0 0; }
-.tpl-flow.large { padding: 18px; overflow: auto; }
-.tpl-flow.large .tpl-flow-inner { gap: 48px; }
-.tpl-col { display: grid; gap: 7px; flex: none; }
-.tpl-slot { position: relative; display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 7px; border: 1px solid var(--line); background: var(--raised); color: var(--ink-2); font-size: 11px; font-weight: 550; white-space: nowrap; }
-.tpl-slot svg { color: var(--muted); }
-.tpl-slot .gate { color: var(--amber); }
-.tpl-slot.start { background: none; border-style: dashed; color: var(--muted); }
-.tpl-flow.large .tpl-slot { padding: 6px 11px; font-size: 13px; gap: 7px; border-radius: 9px; }
+/* A template's assets as they land on the canvas: cards on the canvas's dots, joined by its lines. */
+.tpl-flow { padding: 20px; border-radius: 14px; background-color: var(--sunk); background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 18px 18px; overflow: auto; }
+.tpl-flow-inner { position: relative; display: flex; align-items: flex-start; gap: 44px; width: max-content; }
 .tpl-flow .flow-lines path { stroke-width: 1.5; }
+.tpl-col { display: grid; gap: 14px; flex: none; }
+.tpl-node { position: relative; display: grid; align-content: start; gap: 6px; width: 176px; padding: 8px 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--raised); color: var(--ink); box-shadow: var(--card-shadow); transition: border-color 0.15s; }
+.tpl-node:hover { border-color: var(--line-strong); }
+.tpl-node .slot-art { width: 160px; border: 0; border-radius: 8px; }
+.tpl-col.rows .tpl-node { grid-template-columns: 160px minmax(0, 1fr); column-gap: 12px; row-gap: 4px; width: 400px; }
+.tpl-col.rows .tpl-node .slot-art { grid-row: span 3; }
+.tpl-col.rows .tpl-node-title { padding-top: 6px; }
+.tpl-node.source { background: transparent; border-style: dashed; border-color: var(--line-strong); box-shadow: none; }
+.tpl-node-art { display: grid; place-content: center; justify-items: center; gap: 6px; width: 160px; height: 100px; padding: 0 10px; border-radius: 8px; border: 1px dashed var(--line); color: var(--muted); font-size: 12px; text-align: center; }
+.tpl-node-art > svg { width: 20px; height: 20px; }
+.tpl-node-art > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Once something is brought, the source is real: a card like the rest, what it is in its picture. */
+.tpl-node.source[data-brought] { border-style: solid; border-color: var(--line); background: var(--raised); box-shadow: var(--card-shadow); }
+.tpl-node.source[data-brought] .tpl-node-art { border-style: solid; border-color: var(--line-soft); background: var(--surface); color: var(--ink-2); font-weight: 550; }
+.tpl-node.source[data-brought] .tpl-node-art > svg { color: var(--green); }
+.tpl-node-title { display: flex; align-items: center; gap: 6px; padding: 2px 2px 0; font-size: 13px; font-weight: 650; }
+.tpl-node-title svg { flex: none; color: var(--muted); }
+.tpl-node-line { padding: 0 2px; font-size: 12px; line-height: 1.4; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.tpl-node-gate { display: inline-flex; align-items: center; justify-self: start; gap: 5px; margin: 2px 2px 0; padding: 2px 8px 2px 6px; border-radius: 999px; background: var(--amber-soft); color: var(--amber); font-size: 11.5px; font-weight: 600; }
+/* The light that runs down the lines once, in the order the work is made. */
+.tpl-pulses { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.tpl-pulses path { fill: none; stroke: var(--green); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 14 100; animation: tpl-pulse 900ms cubic-bezier(0.4, 0, 0.2, 1) calc(250ms + var(--step) * 550ms) both; }
+@keyframes tpl-pulse { from { stroke-dashoffset: 14; } to { stroke-dashoffset: -100; } }
+@media (prefers-reduced-motion: reduce) { .tpl-pulses { display: none; } }
 .tpl-place { display: grid; gap: 16px; }
 .tpl-place .lede { margin: 0; color: var(--ink-2); }
-.tpl-briefs { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px 18px; margin: 0; padding: 0; list-style: none; font-size: 13px; color: var(--muted); }
-.tpl-briefs b { color: var(--ink); font-weight: 600; }
 .tpl-start { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line-soft); }
 .tpl-start-head { display: flex; align-items: baseline; gap: 10px; }
 .tpl-start-head h3 { margin: 0; font-size: 14px; }
@@ -678,7 +694,8 @@ button { cursor: pointer; }
 .choices label svg { color: var(--muted); }
 .choices small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .choices input { margin: 0; accent-color: var(--green); }
-.tpl-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line-soft); }
+/* The way to place it stays in sight at the sheet's foot, however tall its flow is. */
+.tpl-foot { position: sticky; bottom: -20px; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: -20px; padding: 14px 0 20px; border-top: 1px solid var(--line-soft); background: var(--surface); }
 
 .frame { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 0; border: 0; background: none; text-align: left; }
 .frame-art { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: var(--sunk); aspect-ratio: 16/9; }

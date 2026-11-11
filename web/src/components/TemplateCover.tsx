@@ -62,6 +62,18 @@ export function TemplateCover({ template, look, tint }: { template: Template; lo
   );
 }
 
+// One slot on its own, centred on a tint of the brand: what a template's sheet shows on each of
+// its cards. A storyboard shows as three of its beats.
+export function SlotArt({ slot, look, tint }: { slot: Slot; look: Look; tint: number }) {
+  const shown = slot.kind === "board" ? { ...slot, shape: ["16:9", "16:9", "16:9"] } : slot;
+  const backdrop = look.series[tint % look.series.length];
+  return (
+    <span className="cover slot-art" aria-hidden="true" style={{ background: `color-mix(in srgb, ${backdrop} 22%, ${look.ground})` }}>
+      <Piece slot={shown} look={look} spot={[W / 2, H / 2]} share={0.42} lead />
+    </span>
+  );
+}
+
 // One slot's pieces side by side at their shapes (a set of sizes, two thumbnails, a carousel's
 // slides), sized to its share of the cover and placed at its spot.
 function Piece({ slot, look, spot, share, lead }: { slot: Slot; look: Look; spot: [number, number]; share: number; lead: boolean }) {
@@ -86,7 +98,8 @@ function Piece({ slot, look, spot, share, lead }: { slot: Slot; look: Look; spot
 }
 
 // One piece as its kind looks: a film with its play button, a phone-shaped short, a captioned
-// clip, an A/B thumbnail, a GIF loop, a card, a page, a chart, a slide or hero art.
+// clip, an A/B thumbnail, a GIF loop, a storyboard's beat, a card, a page, a chart, a slide or
+// hero art.
 function Sheet({ slot, ratio, look, n, lead, width }: { slot: Slot; ratio: number; look: Look; n: number; lead: boolean; width: number }) {
   const display: CSSProperties = { fontFamily: "var(--kit-display, var(--font))" };
   const dark = n % 2 === 1;
@@ -164,6 +177,20 @@ function Sheet({ slot, ratio, look, n, lead, width }: { slot: Slot; ratio: numbe
           {[0.42, 0.7, 0.55, 0.9].map((x, i) => (
             <i key={i} style={{ height: `${x * 100}%`, background: look.series[i % look.series.length] }} />
           ))}
+        </span>
+      </>
+    );
+  } else if (slot.kind === "board") {
+    // A beat: its number, and a line of what it shows over the brand's rule.
+    face = paper;
+    body = (
+      <>
+        <b className="sheet-badge" style={{ background: look.ink, color: look.ground }}>
+          {n + 1}
+        </b>
+        <span className="sheet-copy">
+          {lines(look.muted, [78])}
+          <i className="sheet-rule" style={{ background: look.accent }} />
         </span>
       </>
     );
