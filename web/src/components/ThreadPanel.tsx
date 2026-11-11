@@ -36,9 +36,10 @@ export function ThreadPanel() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Escape closes what is on top first: a preview, a frame under review, a menu, the templates.
+      // Escape closes what is on top first: a preview, a frame under review, a menu, the templates,
+      // a selected passage's Keep and Explore.
       const { frameId, picking, preview } = useHouse.getState();
-      if (e.key === "Escape" && !frameId && !picking && !preview && !document.querySelector(".pop")) void openThread(null);
+      if (e.key === "Escape" && !frameId && !picking && !preview && !document.querySelector(".pop, .passage")) void openThread(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -160,7 +161,7 @@ function Item({ message, conversation }: { message: Message; conversation?: Conv
         )}
         {message.text &&
           (agent ? (
-            <div className="msg-text agent rich" ref={text}>
+            <div className="msg-text agent rich" ref={text} data-passage={answer ? true : undefined}>
               <Rich text={message.text} threadId={message.thread_id} />
             </div>
           ) : (

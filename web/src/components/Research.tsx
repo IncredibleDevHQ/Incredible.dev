@@ -234,7 +234,7 @@ function ConversationCard({
           </p>
         )}
         {c.answer && (
-          <div className="conv-answer rich" ref={answer}>
+          <div className="conv-answer rich" ref={answer} data-passage>
             <Rich text={c.answer} />
           </div>
         )}
@@ -277,28 +277,34 @@ export function Passage({
   const bar = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const el = within.current;
-    if (!el) return;
+    // A selection counts wherever the pointer or key that made it is let go, and only its part in
+    // this answer does: one that starts on the time above it, or runs on past its end, still offers
+    // the words it holds here. The answer it began in takes it, else the one it ended in.
     const read = () => {
+      const el = within.current;
       const selection = window.getSelection();
-      if (!selection || selection.isCollapsed || !selection.rangeCount) return;
-      const range = selection.getRangeAt(0);
-      if (!el.contains(range.commonAncestorContainer)) return;
+      if (!el || !selection || selection.isCollapsed || !selection.rangeCount) return;
+      if ((answerOf(selection.anchorNode) ?? answerOf(selection.focusNode)) !== el) return;
+      const range = selection.getRangeAt(0).cloneRange();
+      const whole = document.createRange();
+      whole.selectNodeContents(el);
+      if (range.compareBoundaryPoints(Range.START_TO_START, whole) < 0) range.setStart(whole.startContainer, whole.startOffset);
+      if (range.compareBoundaryPoints(Range.END_TO_END, whole) > 0) range.setEnd(whole.endContainer, whole.endOffset);
       wholeWords(range);
-      selection.removeAllRanges();
-      selection.addRange(range);
       const text = range.toString().trim();
       if (text.length < 3) return;
+      selection.removeAllRanges();
+      selection.addRange(range);
       const r = range.getBoundingClientRect();
       setPicked({ text, x: r.left + r.width / 2, y: r.top });
       setAsking(false);
       setQuestion("");
     };
-    el.addEventListener("mouseup", read);
-    el.addEventListener("keyup", read);
+    document.addEventListener("mouseup", read);
+    document.addEventListener("keyup", read);
     return () => {
-      el.removeEventListener("mouseup", read);
-      el.removeEventListener("keyup", read);
+      document.removeEventListener("mouseup", read);
+      document.removeEventListener("keyup", read);
     };
   }, [within]);
 
@@ -370,6 +376,9 @@ export function Passage({
     document.body,
   );
 }
+
+// The answer a point of a selection is in, when it is one a passage can be taken from.
+const answerOf = (node: Node | null) => (node instanceof Element ? node : node?.parentElement)?.closest("[data-passage]") ?? null;
 
 // A selection that starts or ends inside a word takes the whole word.
 function wholeWords(range: Range) {
