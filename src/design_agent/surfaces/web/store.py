@@ -24,6 +24,8 @@ from typing import Any
 Row = dict[str, Any]
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS organization (
+  id INTEGER PRIMARY KEY CHECK (id = 1), name TEXT NOT NULL, website TEXT NOT NULL, description TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS people (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, initials TEXT NOT NULL, hue INTEGER NOT NULL,
   agent INTEGER NOT NULL DEFAULT 0);
@@ -67,6 +69,7 @@ CREATE TABLE IF NOT EXISTS activity (
   id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, kind TEXT NOT NULL, source TEXT NOT NULL DEFAULT '',
   label TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '{}',
   at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS activity_usage_time ON activity(at) WHERE kind = 'usage';
 CREATE INDEX IF NOT EXISTS activity_by_thread ON activity(thread_id, at);
 CREATE TABLE IF NOT EXISTS assets (
   id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL,
@@ -94,6 +97,7 @@ CREATE INDEX IF NOT EXISTS notes_by_frame ON notes(frame_id, position);
 CONVERSATION = "conversation"
 #: Columns added since a table was first made, put into a store that predates them.
 ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("files", "storage", "TEXT NOT NULL DEFAULT 'local'"),
     # A film's Studio preview on the thread's computer, and the proof frames that came with it.
     ("assets", "preview", "TEXT NOT NULL DEFAULT '{}'"),
     # The brand pack a channel's work wears (a folder under workspace/brands); empty for the
@@ -124,7 +128,7 @@ def new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:12]}"
 
 
-def _decode(row: sqlite3.Row) -> Row:
+def _decode(row: Any) -> Row:
     out: Row = {}
     for key in row.keys():
         value = row[key]
@@ -151,19 +155,35 @@ def _encode(values: Mapping[str, Any]) -> dict[str, Any]:
 class Store:
     """Typed enough to keep the app honest; rows come back as plain dicts."""
 
-    def __init__(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(
+        self,
+        path: Path,
+        *,
+        database_url: str | None = None,
+        schema: str | None = None,
+        user: Mapping[str, Any] | None = None,
+    ) -> None:
         self.path = path
         self._lock = threading.Lock()
-        self._db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
-        self._db.row_factory = sqlite3.Row
-        with self._lock:
-            self._db.execute("PRAGMA journal_mode=WAL")
-            self._db.executescript(SCHEMA)
-            for table, column, kind in ADDED_COLUMNS:
-                have = {row[1] for row in self._db.execute(f"PRAGMA table_info({table})")}
-                if column not in have:
-                    self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+        self._db: Any
+        if database_url:
+            from design_agent.surfaces.web.postgres import PostgresConnection
+
+            if schema is None:
+                raise ValueError("A database-backed workspace requires a private schema")
+            self._db = PostgresConnection(database_url, schema)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self._db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
+            self._db.row_factory = sqlite3.Row
+            with self._lock:
+                self._db.execute("PRAGMA journal_mode=WAL")
+                self._db.executescript(SCHEMA)
+                for table, column, kind in ADDED_COLUMNS:
+                    have = {row[1] for row in self._db.execute(f"PRAGMA table_info({table})")}
+                    if column not in have:
+                        self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+        self._user = user
         self._seed()
 
     def close(self) -> None:
@@ -204,7 +224,21 @@ class Store:
 
     def _seed(self) -> None:
         if self._one("SELECT id FROM people LIMIT 1") is None:
-            for pid, name, initials, hue, agent in SEED_PEOPLE:
+            people = (
+                SEED_PEOPLE
+                if self._user is None
+                else (
+                    (
+                        str(self._user["id"]),
+                        str(self._user["email"]),
+                        str(self._user["email"])[0].upper(),
+                        152,
+                        False,
+                    ),
+                    (AGENT_ID, "Agent", "A", 145, True),
+                )
+            )
+            for pid, name, initials, hue, agent in people:
                 self._insert(
                     "people",
                     {"id": pid, "name": name, "initials": initials, "hue": hue, "agent": agent},
@@ -346,6 +380,12 @@ class Store:
 
     def file(self, file_id: str) -> Row | None:
         return self._one("SELECT * FROM files WHERE id = ?", (file_id,))
+
+    def local_files(self) -> list[Row]:
+        return self._all("SELECT * FROM files WHERE storage = ?", ("local",))
+
+    def relocate_file(self, file_id: str, rel_path: str) -> None:
+        self._update("files", file_id, {"storage": "s3", "rel_path": rel_path})
 
     def files(self, thread_id: str, origin: str | None = None) -> list[Row]:
         if origin is None:
@@ -556,3 +596,64 @@ class Store:
             "SELECT * FROM activity WHERE thread_id = ? AND kind = 'usage' ORDER BY at",
             (thread_id,),
         )
+
+    def workspace_usage(self) -> Row:
+        totals = usage_counts()
+        for row in self._all("SELECT data FROM activity WHERE kind = 'usage'"):
+            add_call(totals, row["data"])
+        return totals
+
+    def usage_report(self, period: str, *, now: float | None = None) -> Row:
+        now = time.time() if now is None else now
+        days = {"today": 1, "week": 7, "month": 30}[period]
+        start = (int(now) // 86400 - days + 1) * 86400
+        step = 3600 if period == "today" else 86400
+        series = [dict(at=at, **usage_counts()) for at in range(start, start + days * 86400, step)]
+        totals = usage_counts()
+        models: dict[str, Row] = {}
+        for row in self._all(
+            "SELECT at, data FROM activity WHERE kind = 'usage' AND at >= ? AND at <= ?",
+            (start, now),
+        ):
+            data = row["data"]
+            model = data.get("model") or "Unknown model"
+            if model not in models:
+                models[model] = dict(model=model, **usage_counts())
+            for counts in (totals, models[model], series[int((row["at"] - start) // step)]):
+                add_call(counts, data)
+        return {
+            "totals": totals,
+            "series": series,
+            "models": sorted(models.values(), key=lambda m: (-m["calls"], m["model"])),
+        }
+
+    def organization(self) -> Row:
+        return self._one("SELECT name, website, description FROM organization WHERE id = 1") or {
+            "name": "",
+            "website": "",
+            "description": "",
+        }
+
+    def save_organization(self, name: str, website: str, description: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO organization(id,name,website,description) VALUES(1,?,?,?) "
+                "ON CONFLICT(id) DO UPDATE SET name=excluded.name, website=excluded.website, "
+                "description=excluded.description",
+                (name, website, description),
+            )
+
+
+def usage_counts() -> Row:
+    return {"calls": 0, "input_tokens": 0, "output_tokens": 0, "usd": 0.0, "unpriced": 0}
+
+
+def add_call(totals: Row, data: Row) -> None:
+    usage = data.get("usage") or {}
+    totals["calls"] += 1
+    for field in ("input_tokens", "output_tokens"):
+        totals[field] += usage.get(field, data.get(field, 0))
+    if data.get("priced") is False or data.get("usd") is None:
+        totals["unpriced"] += 1
+    else:
+        totals["usd"] += data["usd"]

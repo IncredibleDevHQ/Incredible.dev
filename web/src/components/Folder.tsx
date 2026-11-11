@@ -1,3 +1,4 @@
+import { Skeleton } from "./Skeleton";
 // The task's project folder on the agent's computer, read-only. Everything the agent makes is
 // code here (the brief, the plan, each pose's HTML, the composition, the renders), so a change is
 // an edit and a re-render; this is where you can see it.
@@ -17,7 +18,8 @@ const kindOf = (path: string) => {
 export function Folder({ threadId }: { threadId: string }) {
   const [files, setFiles] = useState<FolderFile[] | null>(null);
   const [open, setOpen] = useState<string | null>(null);
-  const [text, setText] = useState("");
+  const [text, setText] = useState<string | null>(null);
+  const [fileError, setFileError] = useState(false);
 
   const load = () => {
     setFiles(null);
@@ -26,11 +28,15 @@ export function Folder({ threadId }: { threadId: string }) {
   useEffect(load, [threadId]);
 
   useEffect(() => {
-    setText("");
+    let active = true;
+    setFileError(false);
+    setText(null);
     if (!open || kindOf(open) !== "text") return;
     void fetch(api.folderUrl(threadId, open))
-      .then((r) => r.text())
-      .then((t) => setText(t.slice(0, 200_000)));
+      .then((r) => { if (!r.ok) throw new Error(); return r.text(); })
+      .then((t) => { if (active) setText(t.slice(0, 200_000)); })
+      .catch(() => { if (active) setFileError(true); });
+    return () => { active = false; };
   }, [open, threadId]);
 
   const groups = useMemo(() => {
@@ -43,7 +49,7 @@ export function Folder({ threadId }: { threadId: string }) {
     return out;
   }, [files]);
 
-  if (files === null) return <p className="muted" style={{ padding: "12px 16px" }}>Reading the computer…</p>;
+  if (files === null) return <Skeleton label="Loading project files" />;
   if (!files.length) return <p className="muted" style={{ padding: "12px 16px" }}>Nothing in the project folder yet.</p>;
 
   const kind = open ? kindOf(open) : "";
@@ -65,7 +71,8 @@ export function Folder({ threadId }: { threadId: string }) {
           </div>
           {kind === "image" && <img src={api.folderUrl(threadId, open)} alt="" />}
           {kind === "video" && <video src={api.folderUrl(threadId, open)} controls />}
-          {kind === "text" && <pre>{text}</pre>}
+          {kind === "text" && (fileError ? <p role="alert">Couldn’t read this file.</p> :
+            text === null ? <Skeleton label="Loading file contents" /> : <pre>{text}</pre>)}
           {kind === "other" && (
             <a className="linkish" href={api.folderUrl(threadId, open)} target="_blank" rel="noreferrer">
               Download

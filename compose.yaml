@@ -1,0 +1,86 @@
+# Local web app (React + FastAPI) with Supabase Auth and PostgreSQL.
+name: incredible-local
+
+services:
+  minio:
+    build:
+      context: .
+      dockerfile: deploy/minio/Dockerfile
+    image: incredible-minio:local
+    env_file: .env.minio
+    ports:
+      - "127.0.0.1:19000:9000"
+      - "127.0.0.1:19001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:9000/minio/health/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  minio-init:
+    image: incredible-minio:local
+    entrypoint: ["/bin/sh", "/opt/minio/init.sh"]
+    env_file:
+      - .env.minio
+      - .env.storage
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+
+  sandbox:
+    build: ./sandbox
+    image: design-agent-sandbox:local
+    entrypoint: ["true"]
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      dockerfile: deploy/local/Dockerfile
+    image: incredible-web:local
+    init: true
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    group_add: ["${DOCKER_GID:-0}"]
+    env_file:
+      - path: .env.supabase
+        required: true
+      - path: .env.storage
+        required: true
+    environment:
+      DESIGN_AGENT_BLOB_BACKEND: s3
+      DESIGN_AGENT_S3_ENDPOINT: http://minio:9000
+      DESIGN_AGENT_S3_BUCKET: incredible-files
+      DESIGN_AGENT_AUTH_REQUIRED: "1"
+      DESIGN_AGENT_RUNTIME: local
+      DESIGN_AGENT_SANDBOX: docker
+      DESIGN_AGENT_SANDBOX_IMAGE: design-agent-sandbox:local
+      DESIGN_AGENT_WORKSPACE_ROOT: /app/workspace
+      DESIGN_AGENT_BRAND_PATH: /app/workspace/brand
+      DESIGN_AGENT_PRIVATE_FONTS_DIR: /app/private-fonts
+      DOCKER_HOST: unix:///var/run/docker.sock
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - ./workspace:/app/workspace
+      - ./private-fonts:/app/private-fonts:ro
+      - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+      sandbox:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/healthz', timeout=5).close()"]
+      interval: 15s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 45s
+
+volumes:
+  minio-data:

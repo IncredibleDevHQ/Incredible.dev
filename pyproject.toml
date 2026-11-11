@@ -41,6 +41,8 @@ dependencies = [
     "python-multipart>=0.0.20,<1",
     # PEP 615: zoneinfo needs IANA time zone data on Windows.
     "tzdata>=2024.1; sys_platform == 'win32'",
+    "email-validator>=2.3,<3",
+    "boto3>=1.40,<2",
 ]
 
 [project.urls]

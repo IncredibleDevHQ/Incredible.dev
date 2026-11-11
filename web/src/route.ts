@@ -9,6 +9,7 @@
 // The address follows the app: a page, a channel, or its chat or canvas is a step Back returns
 // from, while what's picked on a canvas and the thread open beside it update the step in place.
 // An address opened from a link, and Back and Forward, take the app there.
+import { preference } from "./preferences";
 import type { CanvasTask } from "./api";
 import { useHouse, type Focus, type Mode, type State } from "./store";
 
@@ -16,9 +17,9 @@ type Route =
   | { page: "channel"; channel?: string; mode: Mode; task?: string; node?: string; thread?: string }
   | { page: "brand"; kit?: string }
   | { page: "read-brand"; for?: string }
-  | { page: "needs" | "skills" | "computer" };
+  | { page: "needs" | "skills" | "computer" | "settings" | "usage" | "organization" };
 
-const PAGES = { needs: "/needs-you", skills: "/skills", computer: "/computer" } as const;
+const PAGES = { usage: "/settings/usage", organization: "/settings/organization", settings: "/settings", needs: "/needs-you", skills: "/skills", computer: "/computer" } as const;
 const HOUSE_KIT = "default";
 
 const here = () => location.pathname + location.search;
@@ -33,12 +34,14 @@ const part = (text: string) => {
 
 export function parse(path: string, search: string): Route {
   const [head, ...rest] = path.split("/").filter(Boolean).map(part);
+  if (!head && preference("start") === "needs") return { page: "needs" };
   const query = new URLSearchParams(search);
   if (head === "c" && rest[0]) {
     const [channel, view, task, node] = rest;
     if (view !== "canvas") return { page: "channel", channel, mode: "chat", thread: query.get("thread") ?? undefined };
     return { page: "channel", channel, mode: "canvas", task, node, thread: query.get("thread") ?? undefined };
   }
+  if (head === "settings" && (rest[0] === "usage" || rest[0] === "organization")) return {page: rest[0]};
   if (head === "brand") return rest[0] === "new" ? { page: "read-brand", for: query.get("for") ?? undefined } : { page: "brand", kit: rest[0] };
   const page = (Object.keys(PAGES) as (keyof typeof PAGES)[]).find((p) => PAGES[p] === `/${head}`);
   return page ? { page } : { page: "channel", mode: "chat" };
@@ -46,6 +49,9 @@ export function parse(path: string, search: string): Route {
 
 export function addressOf(s: State): string {
   switch (s.page) {
+    case "usage":
+    case "organization":
+    case "settings":
     case "needs":
     case "skills":
     case "computer":

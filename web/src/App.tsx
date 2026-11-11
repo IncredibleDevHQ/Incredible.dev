@@ -1,4 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { SettingsPage } from "./pages/Settings";
+import { AuthGate, WorkspaceSkeleton } from "./components/AuthGate";
 import { ChannelView } from "./components/ChannelView";
 import { FrameReview } from "./components/FrameReview";
 import { PreviewDialog } from "./components/Preview";
@@ -11,19 +13,27 @@ import { followAddress, go, parse } from "./route";
 import { useHouse } from "./store";
 
 export function App() {
+  return <AuthGate><WorkspaceApp /></AuthGate>;
+}
+
+function WorkspaceApp() {
+  const [ready, setReady] = useState(false);
+  const [failure, setFailure] = useState("");
   const page = useHouse((s) => s.page);
   const toast = useHouse((s) => s.toast);
   const frameId = useHouse((s) => s.frameId);
 
   useEffect(() => {
+    let active = true;
     const stop = followAddress();
     void useHouse
       .getState()
       .boot()
-      .then(() => go(parse(location.pathname, location.search)))
-      .catch((error: Error) => useHouse.getState().say(error.message));
+      .then(() => { if (active) { go(parse(location.pathname, location.search)); setReady(true); } })
+      .catch(() => { if (active) setFailure("Your workspace couldn’t connect."); });
     const live = connectLive();
     return () => {
+      active = false;
       stop();
       live();
     };
@@ -35,6 +45,8 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  if (failure) return <main className="auth-shell"><section className="auth-card"><p role="alert">{failure}</p><button className="btn" onClick={() => location.reload()}>Try again</button></section></main>;
+  if (!ready) return <WorkspaceSkeleton />;
   return (
     <div className="app">
       <Sidebar />
@@ -42,6 +54,7 @@ export function App() {
         <ChannelView />
       ) : (
         <main className="main">
+          {(page === "settings" || page === "usage" || page === "organization") && <SettingsPage tab={page} />}
           {page === "needs" && <NeedsYou />}
           {page === "brand" && <Brand />}
           {page === "read-brand" && <ReadBrand />}

@@ -20,8 +20,17 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
-    app = create_app(project_root(), Settings(), demo=args.demo)
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    settings = Settings()
+    app = create_app(project_root(), settings, demo=args.demo)
+    # OAuth callbacks contain short-lived credentials in their query string.
+    uvicorn.run(
+        app,
+        host=args.host,
+        port=args.port,
+        log_level="info",
+        access_log=not (settings.auth_required or settings.supabase_url),
+        timeout_graceful_shutdown=10,
+    )
 
 
 if __name__ == "__main__":

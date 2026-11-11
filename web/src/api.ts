@@ -217,6 +217,9 @@ export type CanvasTask = {
 };
 export type FolderFile = { path: string; size: number; modified: number };
 export type Session = {
+  email?: string | null;
+  organizationName?: string;
+  authenticated?: boolean;
   me: string;
   people: Person[];
   agent: { mark: string; model: string };
@@ -303,6 +306,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     body: body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) {
+    if (response.status === 401) window.dispatchEvent(new Event("incredible:signout"));
     let detail = response.statusText;
     try {
       detail = (await response.json()).detail ?? detail;
@@ -314,7 +318,20 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return (await response.json()) as T;
 }
 
+export type UsagePeriod = "today" | "week" | "month";
+export type UsageCounts = {calls: number; input_tokens: number; output_tokens: number; usd: number; unpriced: number};
+export type UsageReport = {
+  totals: UsageCounts;
+  series: (UsageCounts & {at: number})[];
+  models: (UsageCounts & {model: string})[];
+};
+export type Organization = { name: string; website: string; description: string };
+
 export const api = {
+  usageReport: (period: UsagePeriod) => call<UsageReport>("GET", "/api/usage/report?period=" + period),
+  organization: () => call<Organization>("GET", "/api/organization"),
+  saveOrganization: (profile: Organization) => call<Organization>("PUT", "/api/organization", profile),
+  usage: () => call<{calls: number; input_tokens: number; output_tokens: number; usd: number; unpriced: number}>("GET", "/api/usage"),
   session: () => call<Session>("GET", "/api/session"),
   channels: () => call<Channel[]>("GET", "/api/channels"),
   addChannel: (name: string, topic = "") => call<Channel>("POST", "/api/channels", { name, topic }),

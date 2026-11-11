@@ -46,10 +46,10 @@ import mimetypes
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -58,13 +58,15 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from starlette.background import BackgroundTask
 
 from design_agent.config import SAMPLE_BRAND, Settings
 from design_agent.runtime import maintenance
 from design_agent.runtime.local import build_local_runtime
 from design_agent.runtime.persistence import open_persistence, workspace_of
 from design_agent.surfaces.web.agent import AgentHost
+from design_agent.surfaces.web.blobs import StorageUnavailable, byte_range
 from design_agent.surfaces.web.brands import BrandShelf, brand_view
 from design_agent.surfaces.web.catalog import catalog_view
 from design_agent.surfaces.web.hub import Hub
@@ -77,6 +79,20 @@ from design_agent.tools.mcp import load_mcp_tools, servers_for_runtime
 MAX_UPLOADS = 10
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 PING_SECONDS = 15.0
+
+
+class OrganizationIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    name: str = Field(min_length=1, max_length=100)
+    website: str = Field(default="", max_length=500)
+    description: str = Field(default="", max_length=500)
+
+    @field_validator("website")
+    @classmethod
+    def validate_website(cls, value: str) -> str:
+        if value:
+            HttpUrl(value)
+        return value
 
 
 class ChannelIn(BaseModel):
@@ -175,17 +191,44 @@ class ChannelBrandIn(BaseModel):
 
 
 def create_app(
-    project_root: Path, settings: Settings | None = None, *, demo: bool = False
+    project_root: Path,
+    settings: Settings | None = None,
+    *,
+    demo: bool = False,
+    authenticated_user: dict[str, Any] | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
+    if authenticated_user is None and (settings.auth_required or settings.supabase_url):
+        from design_agent.surfaces.web.auth import create_authenticated_app
+
+        return create_authenticated_app(project_root, settings, demo=demo)
+    schema = None
+    if authenticated_user:
+        from design_agent.surfaces.web.auth import user_schema
+
+        schema = user_schema(authenticated_user["id"])
     if demo:
         # The demo's scripted lead poses in the sample brand's tokens, whatever pack is installed.
         settings = settings.model_copy(update={"brand_path": SAMPLE_BRAND})
     workspace = workspace_of(settings, project_root)
     data_dir = workspace / "house"
-    store = Store(data_dir / "house.sqlite")
+    store = Store(
+        data_dir / "house.sqlite",
+        database_url=settings.database_url.get_secret_value()
+        if authenticated_user and settings.database_url
+        else None,
+        schema=schema,
+        user=authenticated_user,
+    )
     hub = Hub()
-    host = AgentHost(settings=settings, store=store, hub=hub, data_dir=data_dir, demo=demo)
+    host = AgentHost(
+        settings=settings,
+        store=store,
+        hub=hub,
+        data_dir=data_dir,
+        demo=demo,
+        blob_namespace=schema.removeprefix("user_") if schema else "local",
+    )
     shelf = BrandShelf(
         store=store, hub=hub, settings=settings, project_root=project_root, data_dir=data_dir
     )
@@ -200,7 +243,7 @@ def create_app(
             from design_agent.surfaces.web.demo import DemoDirector
 
             model = DemoDirector()
-        async with open_persistence(settings, workspace) as (checkpointer, lg_store):
+        async with open_persistence(settings, workspace, schema=schema) as (checkpointer, lg_store):
             runtime = build_local_runtime(
                 settings,
                 project_root,
@@ -235,7 +278,13 @@ def create_app(
     app = FastAPI(title="Creative House", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.host = host
 
+    @app.exception_handler(StorageUnavailable)
+    async def storage_error(_request: Request, _error: StorageUnavailable) -> Response:
+        return Response("File storage is unavailable. Try again shortly.", status_code=503)
+
     def person(x_person: str = Header(default="you")) -> str:
+        if authenticated_user:
+            return str(authenticated_user["id"])
         if store.person(x_person) is None or x_person == "agent":
             raise HTTPException(status_code=403, detail="unknown person")
         return x_person
@@ -255,16 +304,51 @@ def create_app(
 
     # -- the workspace -----------------------------------------------------------------------
 
+    @app.get("/healthz")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/api/auth/config")
+    async def auth_config() -> dict[str, bool]:
+        return {"enabled": bool(authenticated_user)}
+
+    @app.get("/api/auth/session")
+    async def workspace_auth_session() -> dict[str, bool]:
+        # In authenticated mode the outer gateway owns this route and validates the cookie.
+        return {"authenticated": bool(authenticated_user)}
+
     @app.get("/api/session")
     async def session(me: str = Depends(person)) -> dict[str, Any]:
         runtime = host.runtime
         return {
             "me": me,
+            "email": authenticated_user["email"] if authenticated_user else None,
+            "organizationName": store.organization()["name"],
             "people": store.people(),
             "agent": {"mark": host.mark, "model": "demo" if demo else str(settings.lead_model())},
             "demo": demo,
+            "authenticated": bool(authenticated_user),
             "sandbox": runtime.binding.name if runtime else None,
         }
+
+    @app.get("/api/organization")
+    def organization(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        return store.organization()
+
+    @app.put("/api/organization")
+    def save_organization(body: OrganizationIn, me: str = Depends(person)) -> dict[str, str]:  # noqa: ARG001
+        store.save_organization(body.name, body.website, body.description)
+        return body.model_dump()
+
+    @app.get("/api/usage/report")
+    def usage_report(
+        period: Literal["today", "week", "month"] = "week", _me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return store.usage_report(period)
+
+    @app.get("/api/usage")
+    def usage(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        return store.workspace_usage()
 
     @app.get("/api/channels")
     async def channels(me: str = Depends(person)) -> list[dict[str, Any]]:  # noqa: ARG001
@@ -394,21 +478,70 @@ def create_app(
             content = await upload.read(MAX_UPLOAD_BYTES + 1)
             if len(content) > MAX_UPLOAD_BYTES:
                 raise HTTPException(status_code=413, detail="a file is over 200 MiB")
-            row = host.save_file(
-                "", upload.filename or "attachment", content, origin="upload", author=me
+            row = await asyncio.to_thread(
+                host.save_file,
+                "",
+                upload.filename or "attachment",
+                content,
+                origin="upload",
+                author=me,
             )
             out.append(host.file_view(row))
         return out
 
     @app.get("/api/files/{file_id}")
-    async def file(file_id: str) -> FileResponse:
+    async def file(
+        file_id: str, range_header: str | None = Header(default=None, alias="Range")
+    ) -> Response:
         row = store.file(file_id)
         if row is None:
             raise HTTPException(status_code=404, detail="no such file")
-        path = (host.files_dir / row["rel_path"]).resolve()
-        if host.files_dir.resolve() not in path.parents or not path.is_file():
-            raise HTTPException(status_code=404, detail="no such file")
-        return FileResponse(path, media_type=row["mime"], filename=row["name"])
+        try:
+            if row.get("storage", "local") == "local":
+                path = host.blobs.local_path(row["rel_path"])
+                if not path.is_file():
+                    raise FileNotFoundError
+                return FileResponse(path, media_type=row["mime"], filename=row["name"])
+            try:
+                start, end = byte_range(range_header, row["size"])
+            except ValueError:
+                return Response(
+                    status_code=416, headers={"Content-Range": f"bytes */{row['size']}"}
+                )
+            body = await asyncio.to_thread(
+                host.blobs.open, row, start, end if range_header else None
+            )
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="no such file") from None
+
+        def chunks() -> Any:
+            remaining = end - start + 1
+            try:
+                while remaining:
+                    data = body.read(min(1024 * 1024, remaining))
+                    if not data:
+                        break
+                    remaining -= len(data)
+                    yield data
+            finally:
+                body.close()
+
+        headers = {
+            "Content-Length": str(end - start + 1),
+            "Content-Disposition": f"attachment; filename*=utf-8''{quote(row['name'])}",
+            "Accept-Ranges": "bytes",
+            "ETag": f'"{row["sha256"]}"',
+            "X-Content-Type-Options": "nosniff",
+        }
+        if range_header:
+            headers["Content-Range"] = f"bytes {start}-{end}/{row['size']}"
+        return StreamingResponse(
+            chunks(),
+            status_code=206 if range_header else 200,
+            media_type=row["mime"],
+            headers=headers,
+            background=BackgroundTask(body.close),
+        )
 
     # -- the canvas --------------------------------------------------------------------------
 

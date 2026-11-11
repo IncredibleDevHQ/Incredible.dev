@@ -1,3 +1,4 @@
+import { Skeleton } from "./Skeleton";
 // One thread: a task's whole conversation. People's messages, each agent turn as a live card of
 // steps, the replies and files, the boards it put on the canvas, the work still running
 // (helpers, renders, pipelines) and the footer, with a way to stop or steer it. A research
@@ -46,7 +47,7 @@ export function ThreadPanel() {
   }, [openThread]);
 
   if (!threadId) return null;
-  if (!detail) return <aside className="thread" aria-label="Thread"><div className="empty">Opening…</div></aside>;
+  if (!detail) return <aside className="thread" aria-label="Thread"><Skeleton label="Loading thread" /></aside>;
   const { thread } = detail;
   const conversation = detail.conversation ?? null;
   const live = detail.work.filter((w) => w.status === "running");

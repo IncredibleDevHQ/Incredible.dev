@@ -470,3 +470,80 @@ def test_every_address_in_the_app_opens_the_app(tmp_path: Path) -> None:
         page = client.get(address)
         assert page.status_code == 200, address
         assert "<title>Creative House</title>" in page.text, address
+
+
+def test_workspace_usage_counts_only_metered_events(tmp_path):
+    store = Store(tmp_path / "test.sqlite")
+    try:
+        assert store.workspace_usage()["calls"] == 0
+        for kind, data in [
+            ("usage", {"usd": 0.03, "usage": {"input_tokens": 12, "output_tokens": 2}}),
+            (
+                "usage",
+                {"priced": False, "usd": 0, "usage": {"input_tokens": 3, "output_tokens": 5}},
+            ),
+            ("other", {"usd": 99}),
+        ]:
+            store.add_activity({"kind": kind, "at": 1, "thread_id": "thread", "data": data})
+        assert store.workspace_usage() == {
+            "calls": 2,
+            "input_tokens": 15,
+            "output_tokens": 7,
+            "unpriced": 1,
+            "usd": 0.03,
+        }
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(
+    ("period", "size", "step"), [("today", 24, 3600), ("week", 7, 86400), ("month", 30, 86400)]
+)
+def test_usage_report_boundaries_models_and_unknown_prices(tmp_path, period, size, step):
+    now = 100 * 86400 + 7200
+    start = 100 * 86400 - (0 if period == "today" else (size - 1) * step)
+    store = Store(tmp_path / "usage.sqlite")
+    try:
+        for at, data in [
+            (start - 1, {"usd": 99}),
+            (
+                start,
+                {"model": "first", "usage": {"input_tokens": 8, "output_tokens": 2}, "usd": 0.005},
+            ),
+            (now, {"model": "second", "input_tokens": 3, "priced": False}),
+            (now + 1, {"usd": 99}),
+        ]:
+            store.add_activity({"at": at, "kind": "usage", "thread_id": "a", "data": data})
+        report = store.usage_report(period, now=now)
+        assert len(report["series"]) == size
+        assert report["series"][0]["at"] == start
+        assert report["totals"] == dict(
+            calls=2, input_tokens=11, output_tokens=2, usd=0.005, unpriced=1
+        )
+        assert {m["model"]: m["calls"] for m in report["models"]} == {"first": 1, "second": 1}
+        assert sum(b["calls"] for b in report["series"]) == 2
+    finally:
+        store.close()
+
+
+def test_organization_persists_and_validates(tmp_path):
+    app = create_app(
+        Path(__file__).resolve().parents[2],
+        Settings(_env_file=None, workspace_root=tmp_path),
+        demo=True,
+    )
+    with TestClient(app) as client:
+        profile = {
+            "name": " Example studio ",
+            "description": "Design team",
+            "website": "https://example.com",
+        }
+        assert client.put("/api/organization", json=profile).status_code == 200
+        assert client.get("/api/organization").json()["name"] == "Example studio"
+        for invalid in [
+            {"name": "  "},
+            {"website": "javascript:alert(1)"},
+            {"description": "a" * 501},
+        ]:
+            assert client.put("/api/organization", json=profile | invalid).status_code == 422
+        assert client.get("/api/organization").json()["description"] == "Design team"

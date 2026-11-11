@@ -49,3 +49,32 @@ Each run is tagged with its trigger, surface (the runtime profile's `surface`, s
 The API returns each turn's reply and delivered files, and background news through
 `GET /threads/{id}/updates` ([self-hosting](../self-hosting.md)). The CLI prints each step's tool
 name as it runs and stays open while background work continues.
+
+## Authenticated private workspaces
+
+The browser entry point dispatches to `surfaces/web/auth.py` when Supabase is configured or
+`DESIGN_AGENT_AUTH_REQUIRED=1`. Supabase verifies cookie sessions before the gateway selects a
+user-specific web app. The user UUID determines its private Postgres schema and file root;
+its runtime, event hub and brand shelf are separate. `store.py` supports the existing SQLite
+developer path and the Postgres adapter in `postgres.py`; authenticated apps never use SQLite.
+`open_persistence(..., schema=...)` keeps the LangGraph store/checkpoints in that same private
+schema. The browser has no database credential or service-role key. See [Supabase](../supabase.md)
+for trust boundaries, operational limits, and the distinction from the developer-only identity
+switcher.
+
+The sidebar keeps Light and Dark above the profile button. Its two lines show the organization
+name and signed-in email. An unnamed organization displays “My workspace”. The profile menu opens Settings
+or signs out (native development also supports switching identities). Settings saves the
+start page and clock format on this device. The Organization tab persists the workspace name, website and description in its own database.
+The Usage tab charts input and output tokens and estimated USD by hour today or by day over
+7 or 30 calendar days (UTC). Model names and prices come from saved call events; missing prices
+are identified in the report. Both tabs support direct links and browser history.
+
+Workspace reads and writes, graph checkpoints and graph memory use bounded PostgreSQL pools.
+Each new connection restores its workspace search path. A checkout checks for stale connections
+before executing a statement. An interrupted write is never automatically replayed.
+
+Root Compose uses `blobs.py` to keep delivered files and attachments in private MinIO S3
+objects under the verified account UUID. File metadata stays in its Postgres schema; downloads
+pass through the authenticated backend, never a public bucket. Native development retains the
+local backend. See [MinIO](../minio.md) for migration and the local working-data boundary.
