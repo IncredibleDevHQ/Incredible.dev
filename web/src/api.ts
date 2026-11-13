@@ -90,12 +90,98 @@ export type Comment = {
   text: string;
   x: number | null;
   y: number | null;
+  // The row of a plan's section the note is on; empty for a pin or a note on the whole frame.
+  anchor: string;
   version: number;
   resolved: boolean;
   resolved_by: string;
   answered_in: number;
   created_at: number;
 };
+// One row of a brief's or a plan's section: a line of the brief, a claim in its ledger, a spine,
+// or a chapter in the chapter list.
+export type PlanRow = {
+  id: string;
+  label: string;
+  text?: string;
+  detail?: string;
+  picked?: boolean;
+  title?: string;
+  time?: string;
+  // Where it starts in the film, in seconds, worked out by the canvas.
+  start?: number;
+  seconds?: number;
+  asks?: string;
+  ends?: string;
+  shape?: string;
+  // Its share of the material: what it uses and what it leaves to the chapters beside it.
+  covers?: string;
+  cue?: string;
+  handoff?: string;
+  // The film's first spoken line and the kind of hook it is (the open's row), and its last with
+  // how it lands the idea (the close's).
+  first?: string;
+  hook?: string;
+  last?: string;
+  landing?: string;
+  // The one moment the film pivots on, on the row of the chapter that holds it.
+  turn?: string;
+  // A claim in the ledger: the fact as the film states it, the material's own words for it, and
+  // whether the canvas found those words in the material.
+  claim?: string;
+  quote?: string;
+  status?: "stated" | "illustrative" | "unconfirmed";
+  found?: boolean;
+};
+// One frame of a beat (the plan's files call it a shot): a line of picture and script. `speaks`
+// and `reads` are how long its line takes to say and its words on screen to read, in seconds.
+export type PlanShot = {
+  id: string;
+  time: string;
+  start: number;
+  seconds: number;
+  speaks: number;
+  reads: number;
+  move: string;
+  shows: string;
+  vo?: string;
+  on?: string;
+  at?: number;
+  sound?: string;
+};
+// One beat of a chapter. Its frames are written from it afterwards, so it can stand without them;
+// `stale` says its words changed since they were written. `says` is the passage the voice says
+// over it, which its frames cut into lines; `technique` is how it makes its point land.
+export type PlanBeat = {
+  id: string;
+  title: string;
+  time: string;
+  start: number;
+  seconds: number;
+  speaks: number;
+  takeaway: string;
+  technique?: string;
+  says?: string;
+  focal: string;
+  demands: string[];
+  change: string;
+  result: string;
+  enters: string;
+  leaves: string;
+  claim?: string;
+  shots?: PlanShot[];
+  stale?: boolean;
+};
+// One section of an episode's plan, as a plan board's frame carries it: the top layer's lists and
+// tables, or a chapter's beats with their frames. The clock (`time`) and `words` are worked out by
+// the canvas; `changed` names the rows whose words differ from the version before.
+export type PlanSection = { changed?: string[] } & (
+  | { section: "list" | "claims" | "spine" | "chapters"; layer: "top"; rows: PlanRow[] }
+  | { section: "chapter"; layer: "chapter"; title: string; time: string; start: number; seconds: number; words?: string; beats: PlanBeat[] }
+);
+// One of a plan's checks, worked out from its sections: what it checks, what it found.
+// `group` says what a check is about, so a long list reads in parts: time, structure, words.
+export type PlanCheck = { id: string; label: string; rule: string; text: string; state: "pass" | "fail" | "wait"; group?: string };
 export type FrameView = {
   id: string;
   name: string;
@@ -105,6 +191,9 @@ export type FrameView = {
   verdict_by: string;
   version: number;
   versions: { v: number; url: string; at: number }[];
+  // A plan board's frame: the section it holds, and as it was in the version before.
+  data?: PlanSection | null;
+  was?: PlanSection | null;
   comments: Comment[];
 };
 export type Board = {
@@ -118,6 +207,10 @@ export type Board = {
   created_at: number;
   updated_at: number;
   frames: FrameView[];
+  // A brief's or a plan's checks, worked out from its sections as they stand.
+  checks?: PlanCheck[];
+  // The brief a plan is written from: its idea, where it stands, and the frame that opens it.
+  brief?: { board_id: string; frame_id: string; status: string; idea: string };
 };
 // What the canvas can ask the engine for (src/design_agent/surfaces/web/catalog.py).
 export type Capability = {
@@ -353,12 +446,17 @@ export const api = {
   dropNote: (noteId: string) => call<{ ok: boolean }>("DELETE", `/api/notes/${noteId}`),
   folder: (threadId: string) => call<FolderFile[]>("GET", `/api/threads/${threadId}/folder`),
   folderUrl: (threadId: string, path: string) => `/api/threads/${threadId}/folder/file?path=${encodeURIComponent(path)}`,
-  comment: (frameId: string, body: { text: string; x?: number | null; y?: number | null; parent_id?: string }) =>
+  comment: (frameId: string, body: { text: string; x?: number | null; y?: number | null; parent_id?: string; anchor?: string }) =>
     call<Comment>("POST", `/api/frames/${frameId}/comments`, body),
   resolve: (commentId: string, resolved: boolean) =>
     call<{ ok: boolean }>("POST", `/api/comments/${commentId}/resolve`, { resolved }),
   verdict: (frameId: string, verdict: "" | "approved" | "changes") =>
     call<{ ok: boolean }>("POST", `/api/frames/${frameId}/verdict`, { verdict }),
+  // One part of a plan rewritten and nothing else: a section, or one row of it.
+  refinePlan: (boardId: string, body: { frame_id: string; text: string; row?: string }) =>
+    call<Message>("POST", `/api/boards/${boardId}/refine`, body),
+  // One chapter of a plan written in full ahead of the rest.
+  writeChapter: (boardId: string, name: string) => call<Message>("POST", `/api/boards/${boardId}/write`, { name }),
   sendBoard: (boardId: string, approve: boolean) =>
     call<Message>("POST", `/api/boards/${boardId}/send`, { approve }),
   brand: () => call<BrandView>("GET", "/api/brand"),
