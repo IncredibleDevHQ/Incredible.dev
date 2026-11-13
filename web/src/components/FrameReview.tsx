@@ -1,10 +1,13 @@
 // Reviewing one frame of a board: click anywhere on it to pin a note there, compare versions,
 // approve the frame or send it back, and send the board's notes to the agent when you're done.
+// A brief's and a plan's frames are sections in words, so they open in their own review
+// (PlanReview).
 import { ArrowLeft, ArrowRight, Check, CornerDownRight, Send, Undo2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Board, type Comment } from "../api";
 import { useHouse } from "../store";
 import { Avatar, clock } from "../ui";
+import { PlanReview } from "./PlanReview";
 
 export function FrameReview() {
   const { frameId, focusBoard, details, canvas, people } = useHouse();
@@ -33,7 +36,7 @@ export function FrameReview() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).closest("textarea, input")) return;
       if (e.key === "Escape") openFrame(null);
-      if (!board || !frame) return;
+      if (!board || !frame || board.kind === "plan" || board.kind === "brief") return;
       const i = board.frames.findIndex((f) => f.id === frame.id);
       if (e.key === "ArrowRight" && board.frames[i + 1]) openFrame(board.frames[i + 1].id, board.id);
       if (e.key === "ArrowLeft" && board.frames[i - 1]) openFrame(board.frames[i - 1].id, board.id);
@@ -43,6 +46,7 @@ export function FrameReview() {
   }, [board, frame, openFrame]);
 
   if (!board || !frame) return null;
+  if (board.kind === "plan" || board.kind === "brief") return <PlanReview board={board} frame={frame} />;
   const index = board.frames.findIndex((f) => f.id === frame.id);
   const shown = frame.versions.find((v) => v.v === version) ?? frame.versions[frame.versions.length - 1];
   const roots = frame.comments.filter((c) => !c.parent_id);

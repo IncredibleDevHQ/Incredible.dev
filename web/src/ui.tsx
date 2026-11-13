@@ -14,7 +14,9 @@ import {
   Image as ImageIcon,
   Images,
   LayoutGrid,
+  ListTree,
   type LucideIcon,
+  ScrollText,
   Palette,
   Paperclip,
   Presentation,
@@ -29,6 +31,8 @@ import { useHouse } from "./store";
 
 // Each kind of work the engine makes (the catalog's capabilities), by its icon.
 const KIND_ICONS: Record<string, LucideIcon> = {
+  brief: ScrollText,
+  plan: ListTree,
   board: LayoutGrid,
   video: Clapperboard,
   film: Film,

@@ -98,6 +98,17 @@ class CommentIn(BaseModel):
     x: float | None = Field(default=None, ge=0, le=1)
     y: float | None = Field(default=None, ge=0, le=1)
     parent_id: str = ""
+    anchor: str = Field(default="", max_length=120)
+
+
+class RefineIn(BaseModel):
+    frame_id: str
+    text: str = Field(min_length=1, max_length=4_000)
+    row: str = Field(default="", max_length=120)
+
+
+class WriteIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
 
 
 class ResolveIn(BaseModel):
@@ -195,16 +206,19 @@ def create_app(
         servers = servers_for_runtime(project_root, settings, "self_hosted")
         loaded = await load_mcp_tools(servers)
         servers = [s for s in servers if s.name not in loaded.failed]
-        model = None
+        model, role_models = None, None
         if demo:
-            from design_agent.surfaces.web.demo import DemoDirector
+            from design_agent.surfaces.web.demo import DemoDirector, DemoWriter
 
-            model = DemoDirector()
+            # The scripted lead, and scripted writers for the helpers a pipeline runs, each
+            # taking a moment so the order of a pipeline's steps can be watched.
+            model, role_models = DemoDirector(), {"helper": DemoWriter(pause=2.0)}
         async with open_persistence(settings, workspace) as (checkpointer, lg_store):
             runtime = build_local_runtime(
                 settings,
                 project_root,
                 model=model,
+                role_models=role_models,
                 out_dir=data_dir / "out",
                 replies=host.wake_reply,
                 checkpointer=checkpointer,
@@ -429,7 +443,13 @@ def create_app(
     async def comment(frame_id: str, body: CommentIn, me: str = Depends(person)) -> dict[str, Any]:
         try:
             return host.add_comment(
-                frame_id, author_id=me, text=body.text, x=body.x, y=body.y, parent_id=body.parent_id
+                frame_id,
+                author_id=me,
+                text=body.text,
+                x=body.x,
+                y=body.y,
+                parent_id=body.parent_id,
+                anchor=body.anchor,
             )
         except KeyError:
             raise HTTPException(status_code=404, detail="no such frame") from None
@@ -458,6 +478,24 @@ def create_app(
             return host.send_board(board_id, by=me, approve=body.approve)
         except KeyError:
             raise HTTPException(status_code=404, detail="no such board") from None
+
+    @app.post("/api/boards/{board_id}/refine")
+    async def refine(board_id: str, body: RefineIn, me: str = Depends(person)) -> dict[str, Any]:
+        try:
+            return host.refine_plan(board_id, body.frame_id, by=me, text=body.text, row=body.row)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="no such section") from None
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from None
+
+    @app.post("/api/boards/{board_id}/write")
+    async def write(board_id: str, body: WriteIn, me: str = Depends(person)) -> dict[str, Any]:
+        try:
+            return host.write_chapter(board_id, body.name, by=me)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="no such chapter") from None
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from None
 
     @app.post("/api/boards/{board_id}/pick")
     async def pick(board_id: str, body: PickIn, me: str = Depends(person)) -> dict[str, Any]:

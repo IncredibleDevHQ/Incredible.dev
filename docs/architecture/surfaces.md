@@ -30,13 +30,30 @@ before its next model call.
 Code: `src/design_agent/surfaces/web/` (`catalog.py`, `agent.py`, `presenter.py`).
 
 A task's work on the canvas is a set of assets, each one capability's piece of work (the catalog's
-fourteen kinds, from a storyboard to a film study) with its sources, its review board and its
+sixteen kinds, from a storyboard to a film study) with its sources, its review board and its
 finished files. People add an asset made from another, or place a template (slots wired together,
 some signed off before anything is made from them); the bridge tells the lead each asset's id, kind,
 brief and sources in the turn's input, and the lead files its work under them with the canvas
 tools. A board or `upload_files` delivery that names no asset is filed under the one under way it
 fits (none when two fit equally), or becomes a new asset. Approving a board signs its asset off,
 and the line that reaches the lead names what that lets it start on.
+
+An episode's brief and its plan are boards of kind `brief` and `plan`: their frames are sections
+in words (JSON files), reviewed row by row, with a note or a refine on any one row.
+`design_agent.episode` reads them. It refuses a section that does not pass, puts a chapter's shots
+only under beats the board already holds, marks the shots of a beat whose words changed as stale,
+and works out the clock, the word counts and the checks every time a board is read, so no number
+on it was written by the model. When a brief is published, the host reads the material its
+`source` row names and marks each quote in the ledger found or not. The brief is signed off
+first, and its asset gates the plan's. The plan is then signed off in two layers: the top layer,
+which has the chapters written, then the whole plan once every chapter has shots written from
+its beats as they stand. The review reads a plan as a deck (`PlanReview.tsx`, `PlanFilm.tsx`,
+`PlanTimeline.tsx`): the episode is the cover, each chapter is one slide with its timeline inside
+it, the slides run down a filmstrip, and the part picked on a slide is shown in full under it.
+The timeline is drawn from the numbers the host works out: where each beat and shot starts, how
+long its line takes to say and its words to read. The checks carry what each is about (`group`:
+time, structure or words), and the review shows them in those parts; the chapter the film turns
+on is marked on its thumbnail and on the episode's strip.
 
 ## Trace tags
 

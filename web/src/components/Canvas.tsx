@@ -13,6 +13,8 @@ import { Avatar, FileList, FooterLine, KindIcon, makesOf, StatusChip } from "../
 import { columnsOf, Lines, useLines, type Edge } from "./Flow";
 import { EMPTY_RESEARCH, NOTES_NODE, ResearchColumns, researchEdges, researching, ResearchStart } from "./Research";
 import { SOURCE, SourceNode } from "./Source";
+import { briefOf, chapterState, isWritten, planOf, planWork, rowsOf, signOff, stageOf, STATE_WORDS, tone, topStage } from "../plan";
+import { openPlanAt } from "./PlanReview";
 import { ChannelStart } from "./Start";
 import { Templates } from "./Templates";
 
@@ -403,7 +405,7 @@ function AssetCard({ asset, task, onHot }: { asset: Asset; task: CanvasTask; onH
             {draft && <DraftActions asset={asset} />}
           </>
         ) : board ? (
-          <BoardPreview board={board} />
+          board.kind === "plan" ? <PlanPreview board={board} /> : board.kind === "brief" ? <BriefPreview board={board} /> : <BoardPreview board={board} />
         ) : null}
         <AssetLine asset={asset} task={task} live={live} />
       </div>
@@ -531,6 +533,120 @@ function BoardPreview({ board }: { board: Board }) {
               </button>
             </div>
           )}
+    </div>
+  );
+}
+
+// A brief's face on its card: the one idea, how much the film may state and where that stands
+// against the material, and the sign-off that lets the plan start.
+function BriefPreview({ board }: { board: Board }) {
+  const openFrame = useHouse((s) => s.openFrame);
+  const { rows, idea, stated, madeUp, missing } = briefOf(board);
+  const first = rows ?? board.frames[0];
+  if (!first) return null;
+  const open = board.frames.flatMap((f) => f.comments.filter((c) => !c.parent_id && !c.resolved && !c.answered_in));
+  const sentBack = board.frames.some((f) => f.verdict === "changes");
+  const line = missing
+    ? `${missing} ${missing === 1 ? "claim is" : "claims are"} not in the material. Open the brief to see which.`
+    : `${stated} ${stated === 1 ? "fact" : "facts"} from the material${madeUp ? `, ${madeUp} made up to show the idea` : ""}.`;
+  return (
+    <div className="board-mini plan-mini">
+      <div className="plan-face">
+        <button type="button" className="plan-face-title" onClick={() => openFrame(first.id, board.id)}>
+          <b>{idea?.text ?? board.title}</b>
+          <span>Open the brief</span>
+        </button>
+        <span className="node-line">{line}</span>
+      </div>
+      {board.status !== "approved" && (
+        <div className="board-actions">
+          <button type="button" className="btn primary" onClick={() => void api.sendBoard(board.id, true)}>
+            <Check />
+            Approve brief
+          </button>
+          <button type="button" className="btn" disabled={!open.length && !sentBack} onClick={() => void api.sendBoard(board.id, false)}>
+            <Send />
+            {open.length ? `Send ${open.length} ${open.length === 1 ? "note" : "notes"}` : "Send notes"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A plan's face on its card: the spine it follows and its chapters as one strip, each lit as it is
+// written and signed off; the strip opens the plan at that chapter. The same sign-off as any board.
+function PlanPreview({ board }: { board: Board }) {
+  const openFrame = useHouse((s) => s.openFrame);
+  const work = useHouse((s) => planWork(s, board.thread_id));
+  const { sections, spine, table, listed, chapterOf, topSigned, allWritten } = planOf(board);
+  const sign = signOff(board, work);
+  const [first] = sections;
+  if (!first) return null;
+  const picked = rowsOf(spine).find((r) => r.picked);
+  const written = listed.filter((c) => isWritten(chapterOf(c))).length;
+  const done = listed.filter((c) => isWritten(chapterOf(c)) && chapterOf(c)?.verdict === "approved").length;
+  const open = board.frames.flatMap((f) => f.comments.filter((c) => !c.parent_id && !c.resolved && !c.answered_in));
+  const sentBack = board.frames.some((f) => f.verdict === "changes");
+  const failing = (board.checks ?? []).filter((c) => c.state === "fail").length;
+  const writing = listed.map((c) => stageOf(work, c.label)).filter(Boolean);
+  const line = writing.length
+    ? writing.includes("frames")
+      ? "Writing each chapter's frames from its beats."
+      : "Writing each chapter's beats."
+    : topStage(work) ||
+      (failing
+        ? `${failing} ${failing === 1 ? "check fails" : "checks fail"}. Open the plan to see which.`
+        : written
+          ? allWritten
+            ? `${done} of ${listed.length} chapters approved`
+            : `${written} of ${listed.length} chapters written`
+          : topSigned
+            ? "The top layer is signed off. Each chapter is being written in full."
+            : "The top layer: the idea, the spine and the chapters.");
+  const show = (page: string, frameId: string) => {
+    openPlanAt(page);
+    openFrame(frameId, board.id);
+  };
+  return (
+    <div className="board-mini plan-mini">
+      <div className="plan-face">
+        <button type="button" className="plan-face-title" onClick={() => show("episode", first.id)}>
+          <b>{picked ? picked.label.replace(/^\w+ · /, "") : board.title}</b>
+          <span>Open the plan</span>
+        </button>
+        <span className="plan-strip" role="group" aria-label="Chapters">
+          {listed.map((c) => {
+            const state = chapterState(chapterOf(c), topSigned, stageOf(work, c.label));
+            return (
+              <button
+                type="button"
+                key={c.id}
+                data-state={tone(state)}
+                style={{ flexGrow: c.seconds ?? 1 }}
+                title={`${c.label} · ${c.title} · ${STATE_WORDS[state]}`}
+                aria-label={`Open ${c.label}: ${c.title}`}
+                onClick={() => show(c.id, (chapterOf(c) ?? table ?? first).id)}
+              >
+                {c.label.replace("Chapter ", "")}
+              </button>
+            );
+          })}
+        </span>
+        <span className="node-line">{line}</span>
+      </div>
+      {board.status !== "approved" && (
+        <div className="board-actions">
+          <button type="button" className="btn primary" disabled={sign.busy} onClick={() => void api.sendBoard(board.id, true)}>
+            <Check />
+            {sign.label}
+          </button>
+          <button type="button" className="btn" disabled={!open.length && !sentBack} onClick={() => void api.sendBoard(board.id, false)}>
+            <Send />
+            {open.length ? `Send ${open.length} ${open.length === 1 ? "note" : "notes"}` : "Send notes"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

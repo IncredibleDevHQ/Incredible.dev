@@ -19,6 +19,7 @@ Pick the pipeline from what the person will receive, then open its skill.
 | A storyboard | frames from HTML or HyperFrames snapshots, one contact sheet | `storyboard` |
 | A video, animation or motion graphic | storyboard, animatic, HyperFrames composition, render | `storyboard`, `motion-direction`, `hyperframes` |
 | A 1-3 minute launch film | the `launch_film` pipeline (`run_pipeline`) | `launch-film` |
+| A brief, then a plan, for a 4-10 minute explainer (an episode), in words | the `episode_plan` pipeline (`run_pipeline`) | `episode-plan` |
 | Voice, music or sound | host audio tools, then the mixer | `sound` |
 | A teardown of a reference film | cuts, timing and audio measured, then compared | `film-breakdown` |
 | What to learn from a film someone shares | a frame-by-frame study written to `workspace/references/` | `reference-study` |

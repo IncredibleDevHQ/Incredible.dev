@@ -324,7 +324,18 @@ replay from a memo; `resume_task("p-…")` continues a run after a restart; a pi
 operator a question (the lead relays it). Ship `launch_film`: plan (max) → lead act (max) → each act
 (xhigh or max) reviewed by a critic as it lands with one fix pass → assembly → final review → operator
 approval → final render. Running a launch film from instructions alone, the internal lead skipped
-reviews; control flow belongs in code, judgment in briefs.
+reviews; control flow belongs in code, judgment in briefs. `episode_plan` plans a 4 to 10 minute
+explainer in words before any picture, in stages a person signs off between: the brief and its
+ledger of claims (max); the top layer (the spine from the brief, max, then the chapter list from
+the spine, xhigh); and each chapter's beats (xhigh) followed by its shots, written from those
+beats (xhigh). Shots are never written beside their beats: the shots step is handed the beats in
+its brief and does not start until they pass. The voice is written with the beat, and its shots
+cut the passage without changing a word. The brief names the gap the idea closes for the viewer;
+the chapter list gives each chapter one question, names the one chapter the film turns on, and
+carries the first line and a last line that lands the idea without reciting it. A first reader
+(xhigh) then sends back what a viewer would trip on, once; its verdict is kept as a file. A
+last stage writes only the shots of a chapter whose beats stand. Every step has a time limit: a
+helper that goes quiet is stopped and its step re-issued once.
 
 ### 7.6 Parallel looks
 

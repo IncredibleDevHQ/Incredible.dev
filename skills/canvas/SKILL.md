@@ -51,9 +51,11 @@ the id whenever the thread gave you one.
 | An ad set or social sizes (`stills`) | `stills` | one size: `LinkedIn portrait · 1080×1350` |
 | Thumbnails (`thumbnails`) | `thumbnails` | one variant, with its small-size sheet as its own frame |
 | Directions from `start_looks` | `looks` | one look's hero still, named after the look |
+| An episode's brief (`episode-plan`) | `brief` | one section of the brief, a JSON file: `Brief`, `Claims` |
+| An episode's plan in words (`episode-plan`) | `plan` | one section of the plan, a JSON file: `Spine`, `Chapters`, `Chapter 2` |
 
 Render every frame first (`html2png`, `hyperframes snapshot`, `review-thumb`), look at it, run
-its gates, then publish: the board is the cheap gate, so frames are real artefacts (real tokens,
+its gates, then publish (a brief's and a plan's frames are words, so there is nothing to render): the board is the cheap gate, so frames are real artefacts (real tokens,
 real copy, the real logo), never sketches of them. A video's review is its storyboard.
 
 Reply in a line or two: what is on the board and what you need (a sign-off, a pick, notes). Then

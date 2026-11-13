@@ -16,6 +16,57 @@
 
 ### Added in this fork
 
+- Episodes: a long explainer (4 to 10 minutes, in chapters) planned in words before any picture.
+  The Episode template (`surfaces/web/catalog.py`) starts with a Brief asset and a Plan asset
+  made from it. The brief's board (kind `brief`) holds the idea, the gap it closes for the
+  viewer, who it is for, the length and a ledger of what the film may state, each claim with
+  the material's own words; the canvas looks every quote up in the material and marks the ones
+  it cannot find. Nothing is planned before the brief is signed off. The plan's board (kind
+  `plan`) holds the plan's sections as JSON and is signed off in two layers: the top layer (the
+  spine, the chapter list with the film's first and last spoken line and the one chapter it
+  turns on, the sound and the look), then every chapter in full. Any row can be noted or
+  refined on its own, and one chapter can be written ahead of the rest.
+- The `episode_plan` pipeline and the `episode-plan` skill write the brief and then the plan
+  level by level, each from the one above it: a chapter's beats first, then its shots from those
+  beats. The words the voice says are a beat's, written by the one writer of a chapter who has
+  the material open; its shots cut that passage into lines and change no word. The canvas puts
+  shots only under beats already on the board and marks the shots of a beat that changed as
+  stale until they are written again. A chapter whose beats stand gets only its shots written
+  (`stage` "shots"): the beats are read back and left alone.
+- A first reader goes through the chapters as a viewer would once they are written, quotes
+  each one's weakest line, and each chapter it sends back (three at most) is written once more
+  with its notes. It is handed how each chapter's beats explain, counted by code. Its verdict
+  is a file in the plan folder and a note to the lead the moment it reports, so a run stopped
+  during the rewrites does not take it along. A part a person asked to have rewritten has no
+  reader but them (`review` false), and the reader can be run alone over a plan as it stands
+  (`stage` "review").
+- `design_agent.episode` works out every number a plan shows (the clock, the word counts, whether
+  each line fits its shot) and its sixteen checks, so a plan states no number the model wrote. The
+  checks read in three parts: time, structure and the voice. Ten of them read the words: a chapter
+  asks one question; the last line lands the idea in sixteen words or fewer and is not the brief's
+  sentence again; each shot says its beat's words; the film opens and closes on the lines in the
+  chapter list; the voice does not credit its source; nothing spoken or on screen says a thing is
+  made up beyond the brief's one label; a figure is written the way it is said; a part is neither
+  captions read aloud nor one long breath; and no technique carries most of a chapter's beats,
+  with some beat in the film making the idea concrete. What only reading the words shows goes back
+  to its writer once and is said to the team, and does not hold a chapter's shots back. It also
+  keeps a plan in words: a field that runs long, or that gives positions and sizes in pixels, is
+  sent back to its writer, and refused on the board.
+- A pipeline step can carry a time limit (`ctx.agent(..., within=seconds)`): a helper that has
+  not reported by then is stopped and the step fails like any other. `episode_plan` gives every
+  step one and re-issues a stopped step once, so a model call that hangs costs a chapter
+  minutes, not the half hour the model's own stall ceiling allows.
+- A plan is reviewed as a deck. The episode is its cover: the idea, the spine, and the whole
+  film on one strip with its first line, its turn and its last line. Each chapter is one slide:
+  its question under its title, its beats and frames on a timeline inside it (each frame's
+  picture, voice, words on screen and sound on its own track, a line drawn as long as it takes
+  to say), and what it ends on. The slides run down a filmstrip of thumbnails, and what is
+  picked on a slide is shown in full under it. The notes panel can be put away, so the slide
+  takes the room.
+- A pipeline's steps show on its job in the web app, each with where it stands, and a step's
+  helper stops reading as running when the step ends. A pipeline that is cancelled or fails
+  closes the step it was on and that step's helper, and the canvas's own cancel now reaches a
+  pipeline run.
 - One presentation hook in place of the Slack slot: `surfaces/presenter.py`'s `Presenter`, set on
   `RuntimeProfile.presenter` (`build_local_runtime(presenter=...)`). With none, runs are headless.
 - Summarization counts each image at what it costs, for the lead and every helper

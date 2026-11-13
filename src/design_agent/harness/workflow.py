@@ -8,7 +8,9 @@ helpers get.
 A pipeline is an async function `fn(ctx, **args)`, registered by name with a `WorkflowRunner`:
 - `ctx.agent(brief, effort=...)` runs one helper through the host's `HelperRunner` and returns its
   report. With a `schema` it returns the JSON the report ends with, validated; a report that doesn't
-  match goes back to a helper with what is wrong, up to `attempts` times.
+  match goes back to a helper with what is wrong, up to `attempts` times. With `within`, a helper
+  that has not reported in that many seconds is stopped and the step fails: a model call can hang
+  far longer than the step should take, and nothing else would notice.
 - `ctx.parallel(thunks)` runs steps at once and waits for all of them; a failure becomes None.
   `ctx.pipeline(items, *stages)` moves each item to its next stage as soon as its current stage
   finishes, with no barrier between stages.
@@ -409,13 +411,17 @@ class WorkflowContext:
         phase: str = "",
         schema: Mapping[str, Any] | None = None,
         attempts: int = 3,
+        within: float | None = None,
     ) -> Step:
         """Run one helper with `brief` at `effort`; return its report as a `Step`.
 
         With `schema`, the value is the JSON the report ends with, validated; a report that doesn't
         match is sent back with the problem appended, up to `attempts` runs in all. A helper that
         fails raises `StepFailed`. `label` names the step in events and status lines (default: the
-        brief's first line); `phase` tags it (default: the current phase).
+        brief's first line); `phase` tags it (default: the current phase). `within` is the most
+        seconds one helper may take: past it the helper is stopped and the step fails, like any
+        other failure (memoized, so a replay takes the same path). It is not part of the step's
+        key.
 
         The same brief, effort, schema and label is the same step: it replays from the memo. Give
         work you mean to repeat a distinct label, and carry an earlier step's result in the brief of
@@ -437,6 +443,7 @@ class WorkflowContext:
             phase=phase or self._phase,
             schema=schema,
             attempts=max(1, attempts),
+            within=within,
         )
 
     async def _run(
@@ -449,6 +456,7 @@ class WorkflowContext:
         phase: str,
         schema: Mapping[str, Any] | None,
         attempts: int,
+        within: float | None = None,
     ) -> Step:
         helpers = self._live.helpers
         if helpers is None:
@@ -461,7 +469,13 @@ class WorkflowContext:
             self._say(f"{label}: started ({effort}).", state="started", **facts)
             try:
                 value, result, attempt = await self._attempts(
-                    helpers, brief, effort=effort, label=label, schema=schema, attempts=attempts
+                    helpers,
+                    brief,
+                    effort=effort,
+                    label=label,
+                    schema=schema,
+                    attempts=attempts,
+                    within=within,
                 )
             except StepFailed as failure:
                 failed = {
@@ -517,11 +531,22 @@ class WorkflowContext:
         label: str,
         schema: Mapping[str, Any] | None,
         attempts: int,
+        within: float | None = None,
     ) -> tuple[Any, HelperResult, int]:
         prompt, problem, task_id = brief, "", ""
         for attempt in range(1, attempts + 1):
             try:
-                result = await helpers.run(prompt, effort=effort, label=label, wave=self.run_id)
+                # `wait_for` cancels the helper it gives up on. A pipeline's helpers run inside
+                # its own task, so the cancel reaches the model call that hung.
+                result = await asyncio.wait_for(
+                    helpers.run(prompt, effort=effort, label=label, wave=self.run_id), within
+                )
+            except TimeoutError:
+                raise StepFailed(
+                    label,
+                    f"its helper gave no report within {minutes(within or 0)} and was stopped",
+                    task_id=task_id,
+                ) from None
             except Exception as error:  # the host's error fails the step, not the run
                 raise StepFailed(
                     label, f"its helper could not run: {type(error).__name__}: {error}"

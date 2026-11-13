@@ -873,3 +873,292 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
   .spin, .dot.working { animation: none; }
   .bar-fill { transition: none; }
 }
+
+/* -- an episode's plan, reviewed as a deck ------------------------------------------------------- */
+/* The chrome stays dark like any review, and thin: a bar, a filmstrip of slides down the side and
+   one stage. The plan's own slides and pages are paper. */
+.pl-stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.pl-top { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 14px; }
+.pl-top .seg { margin-left: 0; }
+.pl-top .seg .pl-count { margin-left: 2px; }
+.pl-top .icon-btn[aria-pressed="true"] { background: var(--raised); color: var(--ink); }
+.pl-crumbs { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; color: var(--faint); }
+.pl-crumbs button { max-width: 34ch; padding: 5px 7px; border: 0; border-radius: 7px; background: none; color: var(--ink-2); font: inherit; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.pl-crumbs button:hover { background: var(--raised); color: var(--ink); }
+.pl-crumbs > span { padding: 5px 7px; color: var(--ink); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-top .mono { font-size: 11px; }
+.pl-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 216px minmax(0, 1fr); }
+
+/* The filmstrip: the cover, then one slide a chapter. A slide's ring is drawn in the chrome's
+   green, outside the paper. */
+.pl-film { --ring: var(--green); display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: auto; padding: 2px 14px 28px; scrollbar-width: thin; }
+.pl-film-head { display: flex; align-items: center; gap: 8px; padding-left: 2px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.pl-film-head .mono { margin-left: auto; color: var(--faint); letter-spacing: 0; }
+.pl-film-head .icon-btn { width: 26px; height: 26px; }
+.pl-film-head .icon-btn svg { width: 14px; height: 14px; }
+.pl-progress { display: grid; gap: 3px; padding: 0 2px 4px; font-size: 12px; color: var(--muted); }
+.pl-progress > span:first-child { color: var(--ink-2); font-weight: 600; }
+.pl-bar { height: 3px; margin-top: 5px; overflow: hidden; border-radius: 99px; background: var(--raised); }
+.pl-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--green); transition: width 0.3s ease; }
+/* A slide in small: where it sits in the film, its title, and its beats and frames in time. */
+.th { position: relative; flex: none; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 4px; width: 100%; aspect-ratio: 16 / 9; padding: 9px 10px 9px; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); color: var(--ink); font: inherit; text-align: left; cursor: pointer; box-shadow: var(--card-shadow); }
+.th:hover { border-color: var(--line-strong); }
+.th[aria-current="page"] { outline: 2px solid var(--ring); outline-offset: 2px; }
+.th-top { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); font-size: 10.5px; font-weight: 600; line-height: 1.2; }
+.th-top .pl-dot { width: 7px; height: 7px; }
+.th-top .pl-count { padding: 0 6px; font-size: 10.5px; }
+.th-label { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.th-title { align-self: center; display: -webkit-box; overflow: hidden; font-size: 13.5px; font-weight: 650; line-height: 1.2; letter-spacing: -0.01em; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.th-asks { display: -webkit-box; overflow: hidden; color: var(--ink-2); font-size: 13px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.th-foot { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.th-time { flex: 1; display: grid; gap: 2px; min-width: 0; }
+.th-time > span { position: relative; display: block; height: 4px; }
+.th-time i { position: absolute; top: 0; bottom: 0; border-radius: 1.5px; background: var(--line-strong); }
+.th-time i.beat { background: var(--green); }
+.th-time i.stale { opacity: 0.4; }
+.th-blank { flex: 1; height: 10px; border: 1px dashed var(--line-strong); border-radius: 3px; }
+.th-turn { flex: none; color: var(--ink-2); font-size: 10.5px; font-weight: 650; }
+.th-cover { grid-template-rows: auto minmax(0, 1fr); }
+.th-cover .th-title { align-self: start; font-size: 12.5px; -webkit-line-clamp: 3; line-clamp: 3; }
+.th[data-size="large"] { gap: 6px; padding: 14px 16px 13px; border-radius: 14px; }
+.th[data-size="large"] .th-top { font-size: 11.5px; }
+.th[data-size="large"] .th-title { align-self: end; font-size: 17px; }
+.th[data-size="large"] .th-turn { font-size: 11.5px; }
+.pl-dot { flex: none; width: 9px; height: 9px; border: 1.5px solid var(--faint); border-radius: 50%; }
+.pl-dot[data-state="approved"] { border-color: var(--green); background: var(--green); }
+.pl-dot[data-state="review"] { border-color: var(--amber); background: var(--amber); }
+.pl-dot[data-state="changes"] { border-color: var(--amber); }
+.pl-dot[data-state="planned"] { border-style: dashed; }
+.pl-dot[data-state="writing"] { border-style: dashed; border-color: var(--green); animation: pl-turn 2.4s linear infinite; }
+@keyframes pl-turn { to { transform: rotate(360deg); } }
+.pl-count { flex: none; padding: 1px 7px; border-radius: 99px; background: var(--amber-soft); color: var(--amber); font-size: 11.5px; font-weight: 650; white-space: nowrap; }
+
+/* The stage: a well set into the chrome, with the slide the filmstrip points at, or a page to
+   read (the script, the checks, the spine) in one column. */
+.pl-page { display: grid; grid-auto-rows: max-content; align-content: start; gap: 16px; min-width: 0; min-height: 0; overflow: auto; padding: 26px clamp(20px, 3vw, 44px) 64px; border-top: 1px solid var(--line-soft); border-left: 1px solid var(--line-soft); border-top-left-radius: 16px; background: var(--surface); }
+.pl-page { container-type: inline-size; }
+.pl-page > * { width: min(100%, 940px); justify-self: center; }
+.pl-page[data-view="deck"] > * { width: min(100%, 1240px); }
+.pl-body.single .pl-page { border-left: 0; border-top-left-radius: 0; }
+.pl-page h2 { margin: 8px 4px 0; font-size: 15px; font-weight: 650; }
+.pl-hero { display: grid; gap: 6px; padding: 8px 10px 10px; border: 0; border-radius: 12px; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.pl-hero.static { cursor: default; }
+.pl-hero:not(.static):hover { background: var(--wash); }
+.pl-kicker { font: 600 11.5px/1.4 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.pl-title { max-width: 40em; font-size: 24px; line-height: 1.25; font-weight: 680; letter-spacing: -0.01em; text-wrap: balance; }
+.pl-soft { color: var(--muted); font-size: 13px; }
+.pl-k { color: var(--muted); font-size: 12.5px; font-weight: 600; }
+.pl-marks { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.pl-state { font-size: 12px; font-weight: 600; color: var(--muted); }
+.pl-state:is([data-state="review"], [data-state="changes"]) { color: var(--amber); }
+.pl-state:is([data-state="approved"], [data-state="writing"]) { color: var(--green); }
+/* A plan is read, not glanced at: no canvas showing through behind it. */
+.review.plan-review { grid-template-columns: minmax(0, 1fr) 368px; background: var(--bg); backdrop-filter: none; }
+/* The notes are put away until they are wanted: the slide takes the room. */
+.review.plan-review[data-notes="closed"] { grid-template-columns: minmax(0, 1fr); }
+.review.plan-review[data-notes="closed"] .pl-side { display: none; }
+
+/* Paper: every card on the page keeps its own light fill, as cards do on the canvas. */
+:is(.sl, .th, .pl-card, .pl-spine, .pl-beat, .pl-empty, .tl) {
+  --surface: #f9f8f4; --raised: #ffffff; --sunk: #f2f0ea; --line: #d6d1c5; --line-soft: #e6e2d8; --line-strong: #b3ad9e;
+  --ink: #141b17; --ink-2: #36413b; --muted: #59655e; --faint: #737d77;
+  --green: #157546; --green-ink: #ffffff; --green-soft: #dcefe3; --amber: #8f5608; --amber-soft: #f6e7cb; --red: #b23722;
+  color: var(--ink);
+}
+.pl-card { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); box-shadow: var(--card-shadow); }
+.pl-card-head { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 10px 16px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pl-card-head b { font-size: 14px; font-weight: 650; }
+.pl-card-head.static { justify-content: space-between; cursor: default; }
+.pl-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 4px 14px; align-items: start; width: 100%; padding: 10px 16px; border: 0; border-top: 1px solid var(--line-soft); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; scroll-margin: 16px; }
+.pl-row > span { min-width: 0; }
+.pl-row b, .pl-row .pl-soft { display: block; }
+.pl-row.pl-wide { grid-template-columns: minmax(0, 1fr) auto; }
+.pl-row.pl-script { grid-template-columns: 56px minmax(0, 1fr) auto; font-size: 15px; }
+:is(.pl-card-head, .pl-row, .pl-beat-head):hover { background: var(--sunk); }
+:is(.pl-hero, .pl-card-head, .pl-row, .pl-spine, .pl-beat-head, .pl-frame)[aria-pressed="true"] { background: var(--green-soft); box-shadow: inset 0 0 0 2px var(--green); }
+.pl-more { display: inline-flex; align-items: center; gap: 4px; margin: 0 10px 10px; padding: 7px 8px; border: 0; border-radius: 8px; background: none; color: var(--green); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.pl-more:hover { background: var(--sunk); }
+/* What a refine changed, until the section is approved. */
+.pl-add { border-radius: 3px; background: var(--green-soft); color: var(--green); box-shadow: 0 0 0 1px var(--green-soft); }
+.pl-del { color: var(--red); text-decoration: line-through; opacity: 0.7; }
+
+/* A slide: one chapter on the stage, as wide as the stage allows. It is as tall as a 16:9
+   frame where the window has the height for it and still shows what is under the slide; it is
+   never shorter than what it holds. Its title and question, its beats and frames in time, and
+   what it ends on. */
+.sl { display: grid; grid-template-rows: auto minmax(min-content, 1fr) auto; gap: 20px; min-width: 0; min-height: min(calc(min(100cqw, 1240px) * 0.5625), calc(100dvh - 290px)); padding: clamp(22px, 2.6vw, 36px) clamp(22px, 3vw, 44px) clamp(20px, 2.2vw, 30px); border-radius: 18px; background: var(--raised); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 26px 64px rgba(0, 0, 0, 0.42); }
+.sl-head { display: grid; justify-items: start; gap: 10px; width: calc(100% + 20px); margin: -8px -10px 0; padding: 8px 10px 10px; border: 0; border-radius: 12px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; scroll-margin: 16px; }
+.sl-head.static { cursor: default; }
+.sl-head:not(.static):hover, button.sl-foot:hover, button.sl-fact:hover { background: var(--sunk); }
+:is(.sl-head, .sl-fact)[aria-pressed="true"] { background: var(--green-soft); box-shadow: inset 0 0 0 2px var(--green); }
+.sl-kicker { display: flex; align-items: center; gap: 12px; width: 100%; color: var(--muted); font: 600 11.5px/1.4 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; }
+.sl-kicker > :first-child { margin-right: auto; }
+.sl-kicker .pl-state, .sl-kicker .pl-marks { font-family: var(--font); letter-spacing: 0; text-transform: none; }
+.sl-title { max-width: 22em; font-size: clamp(26px, 2.7vw, 40px); line-height: 1.08; font-weight: 700; letter-spacing: -0.028em; text-wrap: balance; }
+.sl-asks { max-width: 44em; color: var(--ink-2); font-size: clamp(15px, 1.25vw, 18px); line-height: 1.45; text-wrap: pretty; }
+.sl-cover .sl-title { max-width: 26em; font-size: clamp(22px, 2.2vw, 32px); line-height: 1.16; letter-spacing: -0.02em; }
+/* On the cover the idea and the spine are each picked on their own. */
+.sl-pick { margin: -4px -8px; padding: 4px 8px; border: 0; border-radius: 10px; background: none; color: inherit; font-family: inherit; text-align: left; cursor: pointer; scroll-margin: 16px; }
+.sl-pick:hover { background: var(--sunk); }
+.sl-pick[aria-pressed="true"] { background: var(--green-soft); box-shadow: inset 0 0 0 2px var(--green); }
+.sl-pick .pl-marks { display: inline-flex; margin-left: 8px; vertical-align: middle; }
+.sl-links { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-left: -8px; }
+.sl-links .pl-more { margin: 0; }
+.sl-body { display: grid; align-content: center; min-width: 0; }
+.sl-wait { display: grid; place-items: center; min-height: 120px; padding: 20px; border: 1px dashed var(--line-strong); border-radius: 12px; color: var(--muted); font-size: 14px; }
+.sl-foot { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 12px 32px; width: calc(100% + 20px); margin: 0 -10px -6px; padding: 14px 10px 8px; border: 0; border-top: 1px solid var(--line-soft); border-radius: 0 0 12px 12px; background: none; color: inherit; font: inherit; font-size: 14.5px; line-height: 1.45; text-align: left; }
+button.sl-foot { cursor: pointer; }
+.sl-fact { display: grid; align-content: start; gap: 3px; min-width: 0; padding: 0; border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; text-align: left; }
+button.sl-fact { margin: -6px -8px; padding: 6px 8px; cursor: pointer; }
+.sl-fact .pl-soft { white-space: nowrap; }
+/* Inside a slide a timeline is the slide's own body, not a card of its own, and has the room
+   for another line of each picture and each passage. */
+.sl .tl { --tl-rows: 20px 54px 70px 74px 30px 24px; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.sl .tl-episode { --tl-rows: 18px 56px 12px; }
+.sl .tl-shot > span { -webkit-line-clamp: 3; line-clamp: 3; }
+.sl .tl-line > span { -webkit-line-clamp: 4; line-clamp: 4; }
+/* With the whole chapter fitted to the slide a line's block is narrow: it keeps two lines of
+   its words, and the passage is read in full under the slide. */
+.sl .tl[data-mode="fit"] { --tl-rows: 20px 54px 70px 42px 30px 24px; }
+.sl .tl[data-mode="fit"] .tl-line > span { -webkit-line-clamp: 2; line-clamp: 2; }
+.tl-meta { color: var(--ink-2); font-size: 13px; font-weight: 600; white-space: nowrap; }
+/* Every chapter as a slide in small, on the cover. */
+.pl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
+/* The rest of a chapter's row, under its slide. */
+.pl-contract { display: grid; gap: 10px; padding: 16px 18px; }
+.pl-contract-top { display: flex; align-items: baseline; gap: 10px; }
+.pl-contract-top b { font-size: 14px; font-weight: 650; }
+.pl-qa { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 14px; font-size: 14px; }
+
+/* The spine: three ways to follow the one idea. */
+.pl-spines { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.pl-spine { display: grid; align-content: start; gap: 5px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); color: var(--ink); font: inherit; text-align: left; cursor: pointer; box-shadow: var(--card-shadow); scroll-margin: 16px; }
+.pl-spine.picked { padding: 15px; border: 2px solid var(--green); }
+.pl-spine-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pl-spine-top b { font-size: 15px; }
+.pl-spine .pl-k { margin-top: 6px; }
+
+/* A brief: one page, its ledger a claim beside the material's own words for it. */
+.pl-body.single { grid-template-columns: minmax(0, 1fr); }
+.pl-row.pl-claim { grid-template-columns: 40px minmax(0, 1fr) auto; }
+.pl-quote { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; font-style: italic; }
+
+/* A plan in time. Tracks share one clock: a block sits where its part starts and is as wide as
+   it runs. A voice line is as wide as it takes to say, so the air after it is the frame's. */
+.tl { --tl-rows: 20px 50px 62px 58px 28px 24px; --tl-gap: 4px; display: grid; gap: 8px; min-width: 0; padding: 12px 14px 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); box-shadow: var(--card-shadow); }
+.tl-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.tl-head b { font-size: 14px; font-weight: 650; }
+.tl-head .tl-hint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-head .seg { margin-left: auto; }
+.tl-body { display: grid; grid-template-columns: 70px minmax(0, 1fr); }
+.tl-names, .tl-lanes { display: grid; grid-template-rows: var(--tl-rows); gap: var(--tl-gap); }
+.tl-names span { align-self: center; color: var(--muted); font-size: 12px; font-weight: 600; }
+.tl-scroll { min-width: 0; padding-bottom: 8px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.tl-lanes { position: relative; min-width: 100%; }
+.tl-ruler { position: relative; border-bottom: 1px solid var(--line); }
+.tl-ruler span { position: absolute; bottom: 0; height: 15px; padding-left: 4px; border-left: 1px solid var(--line-strong); color: var(--faint); font: 500 10.5px/1.1 var(--mono); }
+.tl-track { position: relative; border-radius: 7px; background: var(--sunk); }
+.tl-now { position: absolute; top: 22px; bottom: 0; z-index: 0; border-radius: 7px; background: color-mix(in srgb, var(--green) 10%, transparent); pointer-events: none; }
+.tl-track > * { position: absolute; top: 0; bottom: 0; z-index: 1; min-width: 0; overflow: hidden; margin: 0; padding: 4px 7px; border: 0; border-radius: 7px; color: var(--ink); font: inherit; font-size: 12px; line-height: 1.3; text-align: left; cursor: pointer; }
+.tl-track > *[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--green); }
+.tl-track b { display: block; overflow: hidden; font-weight: 650; white-space: nowrap; text-overflow: ellipsis; }
+.tl-track b .mono { color: var(--green); font-size: 11.5px; }
+.tl-beat { background: var(--green-soft); }
+.tl-beat > span { display: block; overflow: hidden; color: var(--ink-2); white-space: nowrap; text-overflow: ellipsis; }
+.tl-shot { border: 1px solid var(--line); background: var(--raised); }
+.tl-shot > span { display: -webkit-box; overflow: hidden; color: var(--muted); font-size: 11.5px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.tl-shot.stale { border-style: dashed; opacity: 0.65; }
+.tl-shot:hover, .tl-words:hover { border-color: var(--line-strong); }
+.tl-line { border-left: 3px solid var(--ink-2); border-radius: 3px 7px 7px 3px; background: color-mix(in srgb, var(--ink) 7%, var(--raised)); }
+/* The words are cut to whole lines inside the block: a block is as tall as its track, and a
+   clamp on the block itself lets the next line show under the last. */
+.tl-line > span { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; }
+.tl-words { border: 1px solid var(--line-strong); background: var(--raised); font-weight: 650; white-space: nowrap; text-overflow: ellipsis; }
+:is(.tl-line, .tl-words).over { border-color: var(--amber); background: var(--amber-soft); color: var(--amber); }
+.tl-sound { padding-left: 14px; background: none; color: var(--muted); font-size: 11.5px; white-space: nowrap; text-overflow: ellipsis; }
+.tl-sound::before { content: ""; position: absolute; top: 50%; left: 4px; width: 5px; height: 5px; border-radius: 50%; background: var(--faint); transform: translateY(-50%); }
+.tl-wait { display: grid; place-items: center; border: 1px dashed var(--line-strong); background: none; color: var(--faint); font-size: 11.5px; white-space: nowrap; cursor: default; }
+.tl-note { display: inline-block; width: 6px; height: 6px; margin-left: 5px; border-radius: 50%; background: var(--amber); vertical-align: middle; }
+/* The whole episode on one strip: its parts, and under each the beats and frames it has. */
+.tl-episode { --tl-rows: 18px 44px 11px; padding-bottom: 12px; }
+.tl-episode .tl-scroll { padding-bottom: 0; overflow: hidden; }
+.tl-part { border: 1px dashed var(--line-strong); background: var(--raised); }
+.tl-part:hover { border-color: var(--ink-2); }
+.tl-part b { font: 650 11.5px/1.3 var(--mono); color: var(--muted); }
+.tl-part > span { display: block; overflow: hidden; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+/* The chapter the film pivots on, marked where the whole episode is laid out. */
+.tl-turn { margin-left: 6px; color: var(--ink); font: normal 600 11px/1.3 var(--font); }
+.tl-part[data-state="writing"] { border-style: dotted; border-color: var(--green); }
+.tl-part:is([data-state="review"], [data-state="changes"]) { border-color: transparent; background: var(--amber-soft); }
+.tl-part[data-state="approved"] { border-color: transparent; background: var(--green-soft); }
+.tl-episode .tl-track[data-track="Beats and frames"] { background: none; }
+.tl-mini { top: 7px; padding: 0; border-radius: 2px; background: var(--line-strong); cursor: default; }
+.tl-mini.beat { top: 0; bottom: 7px; background: var(--green); }
+.tl-mini.stale { opacity: 0.4; }
+.tl-episode .tl-wait { top: 0; bottom: 0; }
+
+/* Under a slide: the beat picked on it, in full, with the frames written from it. */
+.pl-beat { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: var(--card-shadow); }
+.pl-beat-head { display: grid; gap: 8px; width: 100%; padding: 6px 8px 8px; border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; scroll-margin: 16px; }
+.pl-beat-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.pl-beat-top b { font-size: 15px; }
+.pl-beat-top .mono { color: var(--muted); font-size: 12px; }
+.pl-beat-top .pl-marks { margin-left: auto; }
+.pl-id { padding: 5px 7px; border-radius: 6px; background: var(--green-soft); color: var(--green); font: 650 12.5px/1 var(--mono); }
+.pl-take { font-size: 15.5px; font-weight: 600; }
+.pl-facts { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 5px 12px; padding: 2px 8px 6px; font-size: 14px; }
+.pl-frames { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+/* A frame in words: its picture sketched as the words on screen, then its voice and its sound. */
+.pl-frame { display: grid; align-content: start; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); color: var(--ink); font: inherit; text-align: left; cursor: pointer; scroll-margin: 16px; }
+.pl-frame:hover { border-color: var(--line-strong); }
+.pl-sketch { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 9; max-width: 100%; padding: 28px 16px 14px; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--sunk); text-align: center; }
+.pl-move { position: absolute; top: 8px; left: 8px; padding: 2px 8px; border: 1px solid var(--line-soft); border-radius: 99px; background: var(--raised); color: var(--ink-2); font-size: 11.5px; font-weight: 600; }
+.pl-when { position: absolute; top: 10px; right: 10px; color: var(--muted); font: 500 11px/1 var(--mono); }
+.pl-words { display: grid; gap: 4px; color: var(--ink); font-size: 15px; font-weight: 650; line-height: 1.25; }
+.pl-scene { color: var(--muted); font-size: 13px; font-style: italic; }
+.pl-frame-head { display: flex; align-items: center; gap: 8px; }
+.pl-frame-head .mono { color: var(--muted); font-size: 12px; }
+.pl-frame-head .pl-marks { margin-left: auto; }
+.pl-line { display: grid; grid-template-columns: 50px minmax(0, 1fr); gap: 8px; font-size: 13.5px; }
+.pl-vo { font-weight: 500; }
+.pl-empty { display: grid; justify-items: start; gap: 12px; padding: 20px; border: 1px dashed var(--line-strong); border-radius: 14px; background: var(--surface); }
+.pl-empty p { max-width: 56em; margin: 0; }
+/* Frames come after beats: a beat waiting for its frames, and frames written from an earlier beat. */
+.pl-frames-wait { display: flex; align-items: center; min-height: 44px; padding: 10px 14px; border: 1px dashed var(--line-strong); border-radius: 12px; color: var(--muted); font-size: 13px; }
+.pl-frames.stale { opacity: 0.55; }
+.pl-stale { margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--amber-soft); color: var(--ink-2); font-size: 13px; }
+.pl-stale b { color: var(--amber); }
+.pl-row.static { cursor: default; }
+.pl-rule { display: block; margin-top: 2px; color: var(--faint); font-size: 12px; }
+
+/* The side panel: the part picked, its notes, and refining it alone. */
+.pl-working { padding-top: 2px; }
+.pl-compose { display: grid; gap: 10px; }
+.pl-compose-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.btn.refine { border-color: var(--green); color: var(--green); }
+.btn.refine:hover { background: var(--green-soft); }
+.pl-compose .board-actions { margin-top: 2px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+
+/* The plan on its card: the spine it follows, then its chapters as one strip. */
+.plan-face { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--surface); }
+.plan-face-title { display: grid; gap: 1px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.plan-face-title b { font-size: 13.5px; font-weight: 650; }
+.plan-face-title span { color: var(--green); font-size: 12px; font-weight: 600; }
+.plan-face-title:hover span { text-decoration: underline; }
+.plan-strip { display: flex; gap: 3px; }
+.plan-strip button { display: grid; place-items: center; flex: 1 1 34px; min-width: 0; height: 28px; overflow: hidden; border: 1px dashed var(--line-strong); border-radius: 7px; background: none; color: var(--muted); font: 600 11.5px/1 var(--font); cursor: pointer; }
+.plan-strip button:hover { border-color: var(--ink-2); color: var(--ink); }
+.plan-strip button[data-state="writing"] { border-style: dotted; }
+.plan-strip button:is([data-state="review"], [data-state="changes"]) { border-color: transparent; background: var(--amber-soft); color: var(--amber); }
+.plan-strip button[data-state="approved"] { border-color: transparent; background: var(--green-soft); color: var(--green); }
+
+@media (max-width: 1100px) {
+  /* The filmstrip runs along the top, and the slide keeps the width. */
+  .pl-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .pl-film { flex-direction: row; align-items: stretch; padding: 4px 14px 12px; overflow-x: auto; }
+  .pl-film .th { width: 168px; }
+  .pl-film-head, .pl-progress { display: none; }
+  .pl-page { border-left: 0; border-top-left-radius: 0; }
+  .pl-row, .pl-row.pl-script { grid-template-columns: minmax(0, 1fr); }
+  .tl-hint { display: none; }
+}

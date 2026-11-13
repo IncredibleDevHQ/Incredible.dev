@@ -99,6 +99,9 @@ ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # The brand pack a channel's work wears (a folder under workspace/brands); empty for the
     # configured one.
     ("channels", "brand", "TEXT NOT NULL DEFAULT ''"),
+    # The row of a plan's section a note is on, by the id the section gives it; empty for a note
+    # pinned to a picture or left on the whole frame.
+    ("comments", "anchor", "TEXT NOT NULL DEFAULT ''"),
 )
 
 #: Columns that hold JSON, decoded on the way out.

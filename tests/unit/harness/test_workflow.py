@@ -584,6 +584,40 @@ async def test_cancel_stops_the_run_and_the_helpers_it_has_in_flight(
     assert runner.running_lines(THREAD) == []
 
 
+async def test_a_helper_that_outlasts_its_step_is_stopped_and_the_step_fails(
+    bus: ev.EventBus, seen: list[ev.Event]
+) -> None:
+    stopped = asyncio.Event()
+
+    async def forever(brief: str, label: str) -> str:
+        try:
+            await asyncio.Event().wait()  # a model call that never comes back
+        except asyncio.CancelledError:
+            stopped.set()
+            raise
+        return ""
+
+    async def demo(ctx):
+        try:
+            await ctx.agent("build it", effort="max", label="act 1", within=0.05)
+        except StepFailed as failure:
+            return failure.reason
+        return "it reported"
+
+    runner = make(demo, FakeHelpers(forever), bus=bus)
+    record = await finish(runner, await runner.start("demo", {}, THREAD))
+
+    # The helper is stopped, not left running behind the step that gave up on it.
+    assert stopped.is_set()
+    assert record.status == "done"
+    assert record.result == "its helper gave no report within 1 min and was stopped"
+    steps = [e for e in seen if e.kind == ev.PIPELINE_STEP]
+    assert [e.data.get("state") for e in steps] == ["started", "failed"]
+    # A step with no limit, or one that reports inside it, is untouched.
+    quick = make(lambda ctx: ctx.agent("b", effort="low", within=5), FakeHelpers())
+    assert (await finish(quick, await quick.start("demo", {}, THREAD))).status == "done"
+
+
 async def test_start_refuses_unknown_pipelines_and_arguments() -> None:
     async def demo(ctx, *, project: str) -> str:
         return project

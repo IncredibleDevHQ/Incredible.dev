@@ -1,5 +1,7 @@
 """Real graph: the launch-film pipeline runs its steps as helpers, asks the person before the
-final render, and replays finished steps from its memo after the answer (SPEC §7.5)."""
+final render, and replays finished steps from its memo after the answer (SPEC §7.5); the
+episode-plan pipeline writes a chapter's beats, then its shots from them, has a first reader go
+through them, and wakes the lead with what to publish."""
 
 from __future__ import annotations
 
@@ -120,3 +122,48 @@ async def test_launch_film_asks_before_the_final_render_and_replays_after_the_an
     assert ROLES["lead"] == 1 and ROLES["render"] == 1
     assert ROLES["review"] >= 3, "every act and the final cut were reviewed"
     assert ("film", "The final is rendered.") in posted
+
+
+async def test_episode_plan_writes_a_chapters_shots_from_its_beats(tmp_path: Path) -> None:
+    from design_agent.surfaces.web.demo import DemoWriter
+
+    finished: list[str] = []
+
+    def on_finish(messages: Sequence[BaseMessage]) -> AIMessage:
+        finished.append(latest_human(messages))
+        return reply("Chapter 2 is written.")
+
+    asked = {"project": "search", "stage": "chapters", "chapters": {"Chapter 2": 65}}
+    lead = ScriptedChatModel(
+        steps=[
+            lambda _m: tool_call(
+                "run_pipeline", {"name": "episode_plan", "args_json": json.dumps(asked)}
+            ),
+            lambda m: reply(
+                "Writing the chapter."
+                if "Started p-" in str(m[-1].content)
+                else f"FAILED: {m[-1].content}"
+            ),
+            on_finish,
+        ]
+    )
+    writer = DemoWriter()  # the demo's scripted helpers: they write the sample plan's files
+    runtime, posted = build(tmp_path, lead, xhigh=writer, low=writer)  # type: ignore[arg-type]
+    added = await runtime.ask("Write chapter 2 of the plan.", thread_id="plan")
+    assert added[-1].content == "Writing the chapter."
+    for _ in range(600):
+        if finished:
+            break
+        await asyncio.sleep(0.02)
+    assert await runtime.settle(timeout_seconds=30, poll_seconds=0.05)
+    assert finished, "the pipeline woke the lead when it finished"
+    notice = finished[0]
+    # The top layer was read back first; then both steps ran, the beats first; then the first
+    # reader. The lead is told what to publish in that order.
+    assert notice.index("the top as it stands: done") < notice.index("Chapter 2: beats: done")
+    assert notice.index("Chapter 2: beats: done") < notice.index("Chapter 2: shots: done")
+    assert notice.index("Chapter 2: shots: done") < notice.index("reader: done")
+    assert notice.index("chapter-2.beats.json") < notice.index("chapter-2.shots.json")
+    written = {path.name for path in tmp_path.rglob("chapter-2.*.json")}
+    assert written == {"chapter-2.beats.json", "chapter-2.shots.json"}
+    assert ("plan", "Chapter 2 is written.") in posted

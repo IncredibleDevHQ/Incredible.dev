@@ -10,10 +10,12 @@ from __future__ import annotations
 import inspect
 
 from design_agent.harness.workflow import Pipeline, WorkflowRunner
+from design_agent.pipelines.episode_plan import episode_plan
 from design_agent.pipelines.launch_film import launch_film
 
 PIPELINES: dict[str, Pipeline] = {
     "launch_film": launch_film,
+    "episode_plan": episode_plan,
 }
 
 
