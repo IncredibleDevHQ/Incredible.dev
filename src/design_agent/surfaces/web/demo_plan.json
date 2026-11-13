@@ -1,0 +1,1135 @@
+{
+ "title": "How search finds the page you mean",
+ "material": "# How our docs search finds the page you mean\n\nType \"reset my password\" into our docs search and the first result is a page called \"Account recovery\". The two share no words. This is how the search gets there.\n\n## Matching words is where search started\n\nThe classic approach splits the question into words and looks each one up in an index: a list of every page that contains it. Pages that share more of the question's words, and rarer words, score higher. It is fast and it is exact, and it fails when the page you need uses different words.\n\n## Meaning as a position\n\nWe run every passage through an embedding model, which turns a piece of text into a list of 384 numbers. Those numbers work like coordinates: passages that mean similar things land close together, whatever words they use. We embed each passage ahead of time, when the docs are indexed, and the question at the moment you ask.\n\n## Finding the nearest without measuring everything\n\nComparing the question with every passage costs one comparison each, which is too slow as the docs grow. So the index links every passage to its closest neighbours, with a few long links that cross the whole map (the structure is called HNSW). A search hops from neighbour to neighbour and checks a small share of the passages.\n\n## Keeping the exact matches\n\nMeaning search is weaker on exact things such as product names and error codes, so we keep the word matches as well. The two ranked lists are merged by position: a page near the top of both lists moves up the most. Last, a slower model re-reads the question together with each of the top few results and moves the best one to first place.\n",
+ "brief": {
+  "section": "list",
+  "rows": [
+   {
+    "id": "idea",
+    "label": "The one idea",
+    "text": "Search finds the page you mean by comparing where meanings sit, not which words match."
+   },
+   {
+    "id": "gap",
+    "label": "The gap it closes",
+    "text": "You type what you want in your own words, and cannot see how search finds a page that shares none of them."
+   },
+   {
+    "id": "for",
+    "label": "Who it is for",
+    "text": "Developers who use a docs search and know what an index is, but not how meaning is compared."
+   },
+   {
+    "id": "length",
+    "label": "Length",
+    "text": "5 minutes at 1920 × 1080, led by the voiceover.",
+    "seconds": 300
+   },
+   {
+    "id": "source",
+    "label": "Made from",
+    "text": "“How our docs search finds the page you mean”, the team's own engineering notes.",
+    "names": [],
+    "files": [
+     "/workspace/attachments/how-our-docs-search-works.md"
+    ]
+   },
+   {
+    "id": "label",
+    "label": "Made up is marked",
+    "text": "Illustrative"
+   },
+   {
+    "id": "leaves",
+    "label": "Leaves out",
+    "text": "How the embedding model is trained, and how the index keeps up as pages change."
+   }
+  ]
+ },
+ "claims": {
+  "section": "claims",
+  "rows": [
+   {
+    "id": "c0",
+    "claim": "The query “reset my password” finds a page called “Account recovery”, and the two share no words.",
+    "quote": "the first result is a page called \"Account recovery\". The two share no words.",
+    "status": "stated"
+   },
+   {
+    "id": "c1",
+    "claim": "Classic search looks each word of the question up in an index of the pages that contain it.",
+    "quote": "splits the question into words and looks each one up in an index: a list of every page that contains it",
+    "status": "stated"
+   },
+   {
+    "id": "c2",
+    "claim": "Pages that share more of your words, and rarer words, score higher.",
+    "quote": "Pages that share more of the question's words, and rarer words, score higher.",
+    "status": "stated"
+   },
+   {
+    "id": "c3",
+    "claim": "Word matching fails when the page you need uses different words.",
+    "quote": "it fails when the page you need uses different words",
+    "status": "stated"
+   },
+   {
+    "id": "c4",
+    "claim": "An embedding model turns a piece of text into a list of 384 numbers.",
+    "quote": "turns a piece of text into a list of 384 numbers",
+    "status": "stated"
+   },
+   {
+    "id": "c5",
+    "claim": "Passages that mean similar things land close together, whatever words they use.",
+    "quote": "passages that mean similar things land close together, whatever words they use",
+    "status": "stated"
+   },
+   {
+    "id": "c6",
+    "claim": "Every passage is embedded ahead of time, when the docs are indexed.",
+    "quote": "We embed each passage ahead of time, when the docs are indexed",
+    "status": "stated"
+   },
+   {
+    "id": "c7",
+    "claim": "Comparing the question with every passage is too slow as the docs grow.",
+    "quote": "costs one comparison each, which is too slow as the docs grow",
+    "status": "stated"
+   },
+   {
+    "id": "c8",
+    "claim": "The index links each passage to its closest neighbours, with a few long links across the map.",
+    "quote": "the index links every passage to its closest neighbours, with a few long links that cross the whole map",
+    "status": "stated"
+   },
+   {
+    "id": "c9",
+    "claim": "A search that hops between neighbours checks a small share of the passages.",
+    "quote": "hops from neighbour to neighbour and checks a small share of the passages",
+    "status": "stated"
+   },
+   {
+    "id": "c10",
+    "claim": "Meaning search is weaker on exact names and error codes, so the word matches are kept as well.",
+    "quote": "Meaning search is weaker on exact things such as product names and error codes, so we keep the word matches as well",
+    "status": "stated"
+   },
+   {
+    "id": "c11",
+    "claim": "The two ranked lists are merged by position, and a page near the top of both moves up the most.",
+    "quote": "The two ranked lists are merged by position … moves up the most",
+    "status": "stated"
+   },
+   {
+    "id": "c12",
+    "claim": "A slower model re-reads the question with each of the top few results and puts the best first.",
+    "quote": "a slower model re-reads the question together with each of the top few results",
+    "status": "stated"
+   },
+   {
+    "id": "i1",
+    "claim": "The other page names, the count of 12,000 passages and every score on screen are made up to show the idea.",
+    "status": "illustrative"
+   }
+  ]
+ },
+ "spine": {
+  "section": "spine",
+  "rows": [
+   {
+    "id": "A",
+    "label": "A · Follow the question",
+    "text": "The query “reset my password” travels through every stage of the search until it comes back as the page “Account recovery”.",
+    "detail": "A worked example, as a trip through one world: the search is one long set and each chapter is a stop. Every chapter does something to the query, so every beat has the same thing to point at.",
+    "picked": true
+   },
+   {
+    "id": "B",
+    "label": "B · The map of meaning",
+    "text": "One map of every passage in the docs. Each chapter adds a layer to it.",
+    "detail": "One diagram that grows, in one frame that keeps rebuilding. It suits chapters 2 and 3, but matching words and re-reading don't happen on a map.",
+    "picked": false
+   },
+   {
+    "id": "C",
+    "label": "C · Two searches",
+    "text": "The same query typed into the old search and the new one, side by side.",
+    "detail": "Before and after, as a split screen that collapses to one. It shows that the new search wins, not how it works.",
+    "picked": false
+   }
+  ]
+ },
+ "chapters": {
+  "section": "chapters",
+  "rows": [
+   {
+    "id": "open",
+    "label": "Open",
+    "title": "The question",
+    "seconds": 20,
+    "asks": "You typed “reset my password”. The page is called “Account recovery”. How did search find it?",
+    "ends": "The mismatch is on screen: not one word in common.",
+    "shape": "A question, asked with the real input",
+    "covers": "The question only: the three words typed and the page that answers them. No mechanism yet.",
+    "cue": "Key clicks, then a rising tone",
+    "handoff": "",
+    "first": "You type three words into a docs search.",
+    "hook": "scenario"
+   },
+   {
+    "id": "ch1",
+    "label": "Chapter 1",
+    "title": "Matching words",
+    "seconds": 55,
+    "asks": "Why can't search just match the words?",
+    "ends": "Word matching puts “Password policy” first and never sees the right page.",
+    "turn": "The ranked list comes back with “Password policy” on top, and “Account recovery” is not on it at all.",
+    "shape": "The naive version, then where it breaks",
+    "covers": "Keyword search: splitting the question into words, the index of pages by word, and the ranked list that misses “Account recovery”.",
+    "cue": "The pulse thins, then drops out",
+    "handoff": "The query chip leaves the search box, as a chip in flight and arrives above the word index, where it splits into three words: one camera follows it; no cut."
+   },
+   {
+    "id": "ch2",
+    "label": "Chapter 2",
+    "title": "Meaning as a position",
+    "seconds": 65,
+    "asks": "If not words, what can search compare?",
+    "ends": "On a map of meaning, the question lands next to “Account recovery”.",
+    "shape": "One diagram that grows",
+    "covers": "Embeddings: text into numbers, numbers as a position, and the docs placed on the same map ahead of time.",
+    "cue": "A pad lifts, with a chime on the join",
+    "handoff": "The query chip leaves the failed list, re-formed from its three words and arrives at the mouth of the model that turns text into numbers: the list drops away under it; no cut."
+   },
+   {
+    "id": "ch3",
+    "label": "Chapter 3",
+    "title": "Finding the nearest, fast",
+    "seconds": 65,
+    "asks": "With thousands of passages, how does it find the nearest one quickly?",
+    "ends": "Hopping along links between neighbours reaches the nearest passages in a few steps.",
+    "shape": "Steps in order",
+    "covers": "Finding the nearest passages: why measuring every distance is slow, and the web of neighbours that makes it a few hops.",
+    "cue": "A note per hop, rising",
+    "handoff": "The query dot leaves the close-up with its neighbour and arrives as one dot among thousands on the whole map: the dot stays put while the camera pulls back; no cut."
+   },
+   {
+    "id": "ch4",
+    "label": "Chapter 4",
+    "title": "Two lists, one answer",
+    "seconds": 60,
+    "asks": "Exact words still matter sometimes. Can search keep both?",
+    "ends": "Merged and re-read, the list puts “Account recovery” first.",
+    "shape": "Two things become one",
+    "covers": "Hybrid search: keeping the word list beside the meaning list, merging them by position, and re-reading the best few.",
+    "cue": "A sweep into one hit",
+    "handoff": "The five lit passages leaves the map, as dots and arrives as the rows of a second list: the dots fly out and stack while the map falls away."
+   },
+   {
+    "id": "close",
+    "label": "Close",
+    "title": "The answer",
+    "seconds": 35,
+    "asks": "What comes back to the search box?",
+    "ends": "The page you meant, open at its line, and the idea in one sentence.",
+    "shape": "The result, then the route in one line",
+    "covers": "The answer back in the search box, and the idea restated on it. No new mechanism.",
+    "cue": "The chord resolves",
+    "handoff": "The top row, “Account recovery” leaves the re-read list and arrives as the first result under the search box from the opening: the camera pulls back until the list is the real results; no cut.",
+    "last": "Search doesn't look for your words. It looks for your meaning, nearby.",
+    "landing": "distillation"
+   }
+  ]
+ },
+ "sound": {
+  "section": "list",
+  "rows": [
+   {
+    "id": "voice",
+    "label": "Voice",
+    "text": "One calm narrator, at about 90 words a minute."
+   },
+   {
+    "id": "music",
+    "label": "Music",
+    "text": "A quiet pulse under the voice. It thins when word matching fails, lifts on the map and resolves on the answer."
+   },
+   {
+    "id": "look",
+    "label": "Look",
+    "text": "Paper and ink, with one green kept for the query."
+   },
+   {
+    "id": "picture",
+    "label": "Returning picture",
+    "text": "The map of meaning, which chapters 2 and 3 share."
+   }
+  ]
+ },
+ "beats": {
+  "Open": {
+   "section": "chapter",
+   "title": "The question",
+   "beats": [
+    {
+     "id": "O1",
+     "title": "The mismatch",
+     "seconds": 12,
+     "takeaway": "The words you typed aren't in the page that answers you.",
+     "technique": "contrast",
+     "focal": "the query in the search box",
+     "demands": [
+      "the typed query",
+      "the result's title"
+     ],
+     "change": "The query is typed and the top result rises under it. A scan looks for words they share, and none light up.",
+     "result": "Query and title side by side, with no shared word marked.",
+     "enters": "semantic handoff: the film opens here",
+     "leaves": "the query chip",
+     "claim": "c0"
+    },
+    {
+     "id": "O2",
+     "title": "The question",
+     "seconds": 8,
+     "takeaway": "Something other than matching words found that page.",
+     "technique": "question and answer",
+     "focal": "the query chip lifting out of the box",
+     "demands": [
+      "the question line"
+     ],
+     "change": "The results fall back, and the query lifts out of the box as a chip and sets off into the search itself.",
+     "result": "The chip is in flight and the search box is behind it.",
+     "enters": "the query chip",
+     "leaves": "the query chip",
+     "claim": ""
+    }
+   ]
+  },
+  "Chapter 1": {
+   "section": "chapter",
+   "title": "Matching words",
+   "beats": [
+    {
+     "id": "1A",
+     "title": "An index of words",
+     "seconds": 18,
+     "takeaway": "Classic search looks up each word in an index of the pages that contain it.",
+     "technique": "demonstration",
+     "focal": "the index: each word with its pages",
+     "demands": [
+      "the three words",
+      "the index rows lighting"
+     ],
+     "change": "The chip splits into its three words. Each word drops onto its row in the index, and the pages on that row light up.",
+     "result": "Two rows are lit: “password” with three pages and “reset” with two. “my” is greyed out.",
+     "enters": "the query chip",
+     "leaves": "the lit pages",
+     "claim": "c1. The page names in the index are illustrative (i1)."
+    },
+    {
+     "id": "1B",
+     "title": "Rank by matches",
+     "seconds": 18,
+     "takeaway": "Pages are ranked by how well their words match, so a page with your words wins.",
+     "technique": "worked example",
+     "focal": "the ranked list",
+     "demands": [
+      "the rows moving",
+      "the order they settle in"
+     ],
+     "change": "The lit pages leave the index, form a list and sort by score. “Password policy” climbs to the top.",
+     "result": "“Password policy” is first.",
+     "enters": "the lit pages",
+     "leaves": "the ranked list",
+     "claim": "c2. The scores are illustrative (i1)."
+    },
+    {
+     "id": "1C",
+     "title": "Where it breaks",
+     "seconds": 19,
+     "takeaway": "The right page shares no words with the question, so word matching can't see it.",
+     "technique": "counterexample",
+     "focal": "the “Account recovery” page, outside the list",
+     "demands": [
+      "the missing page",
+      "the “0 words in common” tag"
+     ],
+     "change": "The camera travels down past the end of the list and finds “Account recovery” unlit. Its text is scanned against the three words and nothing lights.",
+     "result": "The right page sits outside the list, tagged “0 words in common”.",
+     "enters": "the ranked list",
+     "leaves": "the query chip, re-formed",
+     "claim": "c3"
+    }
+   ]
+  },
+  "Chapter 2": {
+   "section": "chapter",
+   "title": "Meaning as a position",
+   "beats": [
+    {
+     "id": "2A",
+     "title": "Text becomes numbers",
+     "seconds": 16,
+     "takeaway": "A model turns any piece of text into a long list of numbers.",
+     "technique": "demonstration",
+     "focal": "the model the chip passes through",
+     "demands": [
+      "the chip going in",
+      "the numbers coming out"
+     ],
+     "change": "The chip goes into the model. A row of numbers comes out the other side and keeps unrolling while a counter runs up to 384.",
+     "result": "The question is now a row of 384 numbers.",
+     "enters": "the query chip",
+     "leaves": "the query, as a row of numbers",
+     "claim": "c4"
+    },
+    {
+     "id": "2B",
+     "title": "Numbers are a position",
+     "seconds": 16,
+     "takeaway": "Those numbers are coordinates: they put the text at one point in a space.",
+     "technique": "analogy",
+     "focal": "the dot",
+     "demands": [
+      "the row folding into axes",
+      "the dot it becomes"
+     ],
+     "change": "The row of numbers folds into two axes, with a note that this is 2 of 384 dimensions. The row shrinks to one dot at its position.",
+     "result": "One labelled dot on an empty map.",
+     "enters": "the query, as a row of numbers",
+     "leaves": "the query, as a dot",
+     "claim": "c5. The flat map is a simplification, and the picture says so."
+    },
+    {
+     "id": "2C",
+     "title": "The docs are already there",
+     "seconds": 16,
+     "takeaway": "Every passage of the docs was put on the same map ahead of time, and similar meanings sit close together.",
+     "technique": "build-up",
+     "focal": "the map filling with dots",
+     "demands": [
+      "the dots arriving",
+      "the labels on the groups"
+     ],
+     "change": "Passages from the docs stream through the same model and land as dots. They gather into groups, and a label lands on each group.",
+     "result": "A full map with three labelled groups.",
+     "enters": "the query, as a dot",
+     "leaves": "the query, as a dot",
+     "claim": "c6. The count of 12,000 is illustrative (i1)."
+    },
+    {
+     "id": "2D",
+     "title": "Next to its answer",
+     "seconds": 17,
+     "takeaway": "The question sits right beside the passage that answers it, though they share no words.",
+     "technique": "worked example",
+     "focal": "the query dot and its nearest neighbour",
+     "demands": [
+      "the two dots",
+      "the line between them"
+     ],
+     "change": "The camera pushes in on the query dot. The nearest dot lights and opens into its passage. A line joins the two and a similarity value lands on it.",
+     "result": "The question and the “Account recovery” passage, joined by a short line marked 0.83.",
+     "enters": "the query, as a dot",
+     "leaves": "the query, as a dot",
+     "claim": "c5. The value 0.83 is illustrative (i1)."
+    }
+   ]
+  },
+  "Chapter 3": {
+   "section": "chapter",
+   "title": "Finding the nearest, fast",
+   "beats": [
+    {
+     "id": "3A",
+     "title": "Checking everything is slow",
+     "seconds": 20,
+     "takeaway": "Measuring the distance to every passage works, but it gets slow as the docs grow.",
+     "technique": "number made visible",
+     "focal": "the query dot, measuring",
+     "demands": [
+      "the lines fanning out",
+      "the counter"
+     ],
+     "change": "The camera pulls back to the whole map. The query dot draws a line to every other dot, one after another, while a counter races up.",
+     "result": "The map is covered in lines and the counter reads 12,000.",
+     "enters": "the query, as a dot",
+     "leaves": "the query, as a dot",
+     "claim": "c7. The count is illustrative (i1)."
+    },
+    {
+     "id": "3B",
+     "title": "A web of neighbours",
+     "seconds": 22,
+     "takeaway": "Ahead of time, each passage is linked to its nearest neighbours, with a few long links that cross the map.",
+     "technique": "build-up",
+     "focal": "the links between dots",
+     "demands": [
+      "the short links",
+      "the long links"
+     ],
+     "change": "The measuring lines clear. Short links grow between neighbouring dots, then a few long links arc across the map above them.",
+     "result": "The map is a web: short links everywhere, a few long ones on top.",
+     "enters": "the query, as a dot",
+     "leaves": "the query, as a dot",
+     "claim": "c8"
+    },
+    {
+     "id": "3C",
+     "title": "Hop towards the answer",
+     "seconds": 23,
+     "takeaway": "The search hops along links, always to the neighbour closer to the question, and arrives in a few steps.",
+     "technique": "demonstration",
+     "focal": "the ring that hops from dot to dot",
+     "demands": [
+      "the hopping ring",
+      "the counter"
+     ],
+     "change": "A ring starts on a far dot, takes a long link across the map, then shorter and shorter hops, each to the neighbour nearest the query. It stops on “Account recovery” and the five nearest passages light up.",
+     "result": "The ring is on “Account recovery”, five passages are lit, and the counter reads about 200.",
+     "enters": "the query, as a dot",
+     "leaves": "the five lit passages",
+     "claim": "c9. The counts are illustrative (i1)."
+    }
+   ]
+  },
+  "Chapter 4": {
+   "section": "chapter",
+   "title": "Two lists, one answer",
+   "beats": [
+    {
+     "id": "4A",
+     "title": "Keep both lists",
+     "seconds": 18,
+     "takeaway": "Meaning can blur exact things like a name or an error code, so search keeps the word list too.",
+     "technique": "counterexample",
+     "focal": "the two lists, side by side",
+     "demands": [
+      "the list of meaning matches",
+      "the list of word matches"
+     ],
+     "change": "The five lit passages fly off the map and stack into a list. The word list from chapter 1 slides back in beside it, and a tag lands on each.",
+     "result": "Two ranked lists side by side, each tagged with what it is good at.",
+     "enters": "the five lit passages",
+     "leaves": "both lists",
+     "claim": "c10"
+    },
+    {
+     "id": "4B",
+     "title": "Merge by position",
+     "seconds": 20,
+     "takeaway": "The lists are merged by position: near the top of either list is good, near the top of both is best.",
+     "technique": "worked example",
+     "focal": "the merged list forming between them",
+     "demands": [
+      "the rows travelling in",
+      "the order they settle in"
+     ],
+     "change": "Rows from both lists slide to the centre. A page found in both joins into one row and jumps up. The merged list settles.",
+     "result": "One list: “Sign-in help”, “Account recovery”, “Password policy”.",
+     "enters": "both lists",
+     "leaves": "the merged list",
+     "claim": "c11. The order is illustrative (i1)."
+    },
+    {
+     "id": "4C",
+     "title": "Re-read the best few",
+     "seconds": 22,
+     "takeaway": "A slower, more careful model reads the question against each of the top few and puts the best answer first.",
+     "technique": "cause and effect",
+     "focal": "the question held next to one passage at a time",
+     "demands": [
+      "the question beside a passage",
+      "the list reordering"
+     ],
+     "change": "The query chip visits the top three rows in turn. Each passage opens beside it and gets a bar for how well it answers. The rows reorder and “Account recovery” moves to the top.",
+     "result": "“Account recovery” is first.",
+     "enters": "the query chip, with the merged list",
+     "leaves": "the top row, “Account recovery”",
+     "claim": "c12"
+    }
+   ]
+  },
+  "Close": {
+   "section": "chapter",
+   "title": "The answer",
+   "beats": [
+    {
+     "id": "C1",
+     "title": "The page you meant",
+     "seconds": 16,
+     "takeaway": "The search box shows the page you meant, opened at the line that answers you.",
+     "technique": "callback",
+     "focal": "the first result in the search box",
+     "demands": [
+      "the first result",
+      "the highlighted line"
+     ],
+     "change": "The camera pulls back until the list is the results under the search box from the opening. “Account recovery” opens and the line that answers the question is highlighted.",
+     "result": "The opening frame again, now with the right page open at its line.",
+     "enters": "the top row, “Account recovery”",
+     "leaves": "the query, back in its box",
+     "claim": "c0"
+    },
+    {
+     "id": "C2",
+     "title": "The idea",
+     "seconds": 19,
+     "takeaway": "Search found it by comparing where meanings sit, then re-reading the best few.",
+     "technique": "distillation",
+     "focal": "the last line",
+     "demands": [
+      "the route with its four stops",
+      "the last line"
+     ],
+     "change": "The route the question took draws itself as one line with four stops, each lighting as it is named. The line then shortens into the last sentence.",
+     "result": "The last sentence alone on screen, held.",
+     "enters": "the query, back in its box",
+     "leaves": "semantic handoff: the film ends here",
+     "claim": ""
+    }
+   ]
+  }
+ },
+ "shots": {
+  "Open": {
+   "section": "shots",
+   "shots": [
+    {
+     "beat": "O1",
+     "id": "O1.1",
+     "seconds": 5,
+     "move": "Type in",
+     "shows": "The search box fills the frame and the query is typed.",
+     "vo": "You type three words into a docs search.",
+     "on": "reset my password",
+     "at": 2,
+     "sound": "key clicks"
+    },
+    {
+     "beat": "O1",
+     "id": "O1.2",
+     "seconds": 7,
+     "move": "Compare",
+     "shows": "The top result rises. A scan runs across both lines and finds no word in common.",
+     "vo": "The page that answers you is called Account recovery. Not one word in common.",
+     "on": "Account recovery",
+     "at": 1.5,
+     "sound": "a soft tick as the title lands"
+    },
+    {
+     "beat": "O2",
+     "id": "O2.1",
+     "seconds": 8,
+     "move": "Travel to",
+     "shows": "The question appears as it is spoken. The chip lifts off and the camera follows it.",
+     "vo": "So how did search find it? Follow the question and see.",
+     "on": "How did search find it?",
+     "at": 1,
+     "sound": "a rising tone as the chip lifts"
+    }
+   ]
+  },
+  "Chapter 1": {
+   "section": "shots",
+   "shots": [
+    {
+     "beat": "1A",
+     "id": "1A.1",
+     "seconds": 8,
+     "move": "Split",
+     "shows": "The chip breaks into three words.",
+     "vo": "The classic way is simple. Split the question into words.",
+     "on": "reset · my · password",
+     "at": 3,
+     "sound": "three soft clicks"
+    },
+    {
+     "beat": "1A",
+     "id": "1A.2",
+     "seconds": 10,
+     "move": "Look up",
+     "shows": "Each word drops onto its row in the index and the row's pages light up.",
+     "vo": "Then look each word up in an index: a list of every page that contains it.",
+     "on": "password → Password policy, Sign-in help, Security settings / reset → Reset your API key, Factory reset",
+     "at": 2.5,
+     "sound": "a click as each row lights"
+    },
+    {
+     "beat": "1B",
+     "id": "1B.1",
+     "seconds": 9,
+     "move": "Populate",
+     "shows": "The lit pages fly out of the index and stack into a list.",
+     "vo": "Pages that share more of your words, and rarer words, score higher.",
+     "on": "",
+     "sound": "soft thuds as rows land"
+    },
+    {
+     "beat": "1B",
+     "id": "1B.2",
+     "seconds": 9,
+     "move": "Sort",
+     "shows": "The rows sort by score and “Password policy” settles on top.",
+     "vo": "So Password policy comes first. It has your word right in the title.",
+     "on": "Password policy · Reset your API key · Sign-in help",
+     "at": 3,
+     "sound": "a tick per swap, a firmer one at the top"
+    },
+    {
+     "beat": "1C",
+     "id": "1C.1",
+     "seconds": 9,
+     "move": "Travel to",
+     "shows": "The camera travels below the list and finds the page nobody ranked.",
+     "vo": "But the page you needed isn't in the list at all.",
+     "on": "Account recovery",
+     "at": 4,
+     "sound": "the music thins"
+    },
+    {
+     "beat": "1C",
+     "id": "1C.2",
+     "seconds": 10,
+     "move": "Compare",
+     "shows": "The page's text is scanned against the three words. Nothing lights, and a tag lands.",
+     "vo": "Account recovery never says reset, or password. To find it, search has to compare something other than words.",
+     "on": "0 words in common",
+     "at": 3,
+     "sound": "a low note"
+    }
+   ]
+  },
+  "Chapter 2": {
+   "section": "shots",
+   "shots": [
+    {
+     "beat": "2A",
+     "id": "2A.1",
+     "seconds": 8,
+     "move": "Transform",
+     "shows": "The chip enters a box labelled as the model.",
+     "vo": "Modern search hands your question to a model that reads it whole.",
+     "on": "embedding model",
+     "at": 2,
+     "sound": "a soft whirr"
+    },
+    {
+     "beat": "2A",
+     "id": "2A.2",
+     "seconds": 8,
+     "move": "Number build",
+     "shows": "Numbers unroll from the other side and the counter stops at 384.",
+     "vo": "Out comes a list of numbers. A few hundred of them.",
+     "on": "384 numbers",
+     "at": 5,
+     "sound": "counter ticks, then a stop"
+    },
+    {
+     "beat": "2B",
+     "id": "2B.1",
+     "seconds": 8,
+     "move": "Morph",
+     "shows": "The row of numbers folds down into two axes.",
+     "vo": "Think of those numbers as coordinates, like latitude and longitude.",
+     "on": "drawn in 2 of 384 dimensions",
+     "at": 4,
+     "sound": "a soft fold"
+    },
+    {
+     "beat": "2B",
+     "id": "2B.2",
+     "seconds": 8,
+     "move": "Morph",
+     "shows": "The row shrinks into one dot, with the query as its label.",
+     "vo": "They pin your question to one exact spot on a map.",
+     "on": "reset my password",
+     "at": 4,
+     "sound": "a landing tone"
+    },
+    {
+     "beat": "2C",
+     "id": "2C.1",
+     "seconds": 8,
+     "move": "Populate",
+     "shows": "Passages stream through the model and land on the map as dots.",
+     "vo": "Every passage in the docs went through the same model, ahead of time.",
+     "on": "12,000 passages",
+     "at": 4,
+     "sound": "a patter as dots land"
+    },
+    {
+     "beat": "2C",
+     "id": "2C.2",
+     "seconds": 8,
+     "move": "Group and label",
+     "shows": "The dots settle into groups and a label lands on each.",
+     "vo": "Passages that mean similar things land close together, whatever words they use.",
+     "on": "billing · API keys · signing in",
+     "at": 4,
+     "sound": "three soft notes"
+    },
+    {
+     "beat": "2D",
+     "id": "2D.1",
+     "seconds": 8,
+     "move": "Travel to",
+     "shows": "The camera pushes in on the query dot. Its nearest neighbour lights and opens.",
+     "vo": "Now look at what sits right next to your question.",
+     "on": "Account recovery: Locked out? We'll email you a link to get back in.",
+     "at": 3.5,
+     "sound": "a rising pad"
+    },
+    {
+     "beat": "2D",
+     "id": "2D.2",
+     "seconds": 9,
+     "move": "Connect",
+     "shows": "A line joins the two dots and the value lands on it.",
+     "vo": "Account recovery. No shared words, but almost the same meaning, so almost the same spot.",
+     "on": "similarity 0.83",
+     "at": 4,
+     "sound": "a bright chime: the chapter's hit"
+    }
+   ]
+  },
+  "Chapter 3": {
+   "section": "shots",
+   "shots": [
+    {
+     "beat": "3A",
+     "id": "3A.1",
+     "seconds": 9,
+     "move": "Pull-back reveal",
+     "shows": "The camera pulls back from the pair to the whole map.",
+     "vo": "Finding the nearest dot sounds easy. Measure the distance to every one.",
+     "on": "",
+     "sound": "the groove comes in under it"
+    },
+    {
+     "beat": "3A",
+     "id": "3A.2",
+     "seconds": 11,
+     "move": "Number build",
+     "shows": "Lines fan out from the query to every dot and the counter runs to 12,000.",
+     "vo": "That's twelve thousand measurements for one question. For millions of pages, it's far too slow.",
+     "on": "12,000 comparisons",
+     "at": 7,
+     "sound": "ticks speeding up"
+    },
+    {
+     "beat": "3B",
+     "id": "3B.1",
+     "seconds": 11,
+     "move": "Connect",
+     "shows": "The lines clear and short links grow between neighbours.",
+     "vo": "So the index does some work ahead of time. It links every passage to its closest neighbours.",
+     "on": "many short links",
+     "at": 6,
+     "sound": "soft plucks"
+    },
+    {
+     "beat": "3B",
+     "id": "3B.2",
+     "seconds": 11,
+     "move": "Connect",
+     "shows": "A few long links arc across the whole map.",
+     "vo": "And it adds a few long links, shortcuts that cross the whole map.",
+     "on": "a few long links",
+     "at": 6,
+     "sound": "three longer plucks"
+    },
+    {
+     "beat": "3C",
+     "id": "3C.1",
+     "seconds": 10,
+     "move": "Trace a path",
+     "shows": "A ring starts far away, crosses the map on a long link, then takes shorter hops.",
+     "vo": "Now the search starts anywhere, and hops to whichever neighbour is closer to your question.",
+     "on": "",
+     "sound": "a note per hop, rising"
+    },
+    {
+     "beat": "3C",
+     "id": "3C.2",
+     "seconds": 13,
+     "move": "Trace a path",
+     "shows": "The ring arrives, the five nearest passages light, and the counter stops.",
+     "vo": "Long hops first, then short ones. In a handful of steps it arrives, having checked a few hundred passages instead of all of them.",
+     "on": "about 200 comparisons, not 12,000",
+     "at": 8,
+     "sound": "a chime on arrival"
+    }
+   ]
+  },
+  "Chapter 4": {
+   "section": "shots",
+   "shots": [
+    {
+     "beat": "4A",
+     "id": "4A.1",
+     "seconds": 9,
+     "move": "Populate",
+     "shows": "The five passages leave the map and stack into a list.",
+     "vo": "Meaning has a weak spot too: exact things, like a product name or an error code.",
+     "on": "matched meaning: same idea, other words",
+     "at": 5.5,
+     "sound": "soft thuds"
+    },
+    {
+     "beat": "4A",
+     "id": "4A.2",
+     "seconds": 9,
+     "move": "Bring back",
+     "shows": "The word list from chapter 1 slides back in beside it.",
+     "vo": "So real search keeps both lists: the word matches and the meaning matches.",
+     "on": "matched words: exact names and codes",
+     "at": 5,
+     "sound": "one thud, lower"
+    },
+    {
+     "beat": "4B",
+     "id": "4B.1",
+     "seconds": 10,
+     "move": "Merge",
+     "shows": "Rows from both lists slide to the centre, and a page found in both joins into one row.",
+     "vo": "Then it merges them by position. A page near the top of either list moves up.",
+     "on": "",
+     "sound": "a converging sweep"
+    },
+    {
+     "beat": "4B",
+     "id": "4B.2",
+     "seconds": 10,
+     "move": "Sort",
+     "shows": "The merged list settles into its order.",
+     "vo": "A page that's near the top of both moves up the most.",
+     "on": "Sign-in help · Account recovery · Password policy",
+     "at": 5,
+     "sound": "a tick as it settles"
+    },
+    {
+     "beat": "4C",
+     "id": "4C.1",
+     "seconds": 11,
+     "move": "Compare",
+     "shows": "The chip stops at each of the top three rows; the passage opens beside it and a bar fills.",
+     "vo": "Last, a slower, more careful model reads your question next to each of the top few.",
+     "on": "",
+     "sound": "a soft tone per row"
+    },
+    {
+     "beat": "4C",
+     "id": "4C.2",
+     "seconds": 11,
+     "move": "Sort",
+     "shows": "The rows reorder and “Account recovery” moves to first place.",
+     "vo": "It can afford to: there are only a handful left. And it moves the best answer to first place.",
+     "on": "Account recovery · Sign-in help · Password policy",
+     "at": 6,
+     "sound": "the chapter's hit as the top row lands"
+    }
+   ]
+  },
+  "Close": {
+   "section": "shots",
+   "shots": [
+    {
+     "beat": "C1",
+     "id": "C1.1",
+     "seconds": 8,
+     "move": "One camera over real UI",
+     "shows": "The camera pulls back and the list turns out to be the results under the search box.",
+     "vo": "And that's what comes back to the search box, a moment after you typed.",
+     "on": "Account recovery",
+     "at": 5,
+     "sound": "a resolving chord"
+    },
+    {
+     "beat": "C1",
+     "id": "C1.2",
+     "seconds": 8,
+     "move": "Highlight",
+     "shows": "The page opens and one line is highlighted.",
+     "vo": "Account recovery, opened at the line that answers you.",
+     "on": "Locked out? We'll email you a link to get back in.",
+     "at": 3.5,
+     "sound": "a soft click"
+    },
+    {
+     "beat": "C2",
+     "id": "C2.1",
+     "seconds": 10,
+     "move": "Trace a path",
+     "shows": "The route draws itself with four stops, each lighting as it is named.",
+     "vo": "Four stops got it there: match the words, turn meaning into a position, find the nearest, re-read the best few.",
+     "on": "words · position · nearest · re-read",
+     "at": 2,
+     "sound": "four notes, rising"
+    },
+    {
+     "beat": "C2",
+     "id": "C2.2",
+     "seconds": 9,
+     "move": "Word-by-word on the voiceover",
+     "shows": "The last line appears as it is spoken, then holds.",
+     "vo": "Search doesn't look for your words. It looks for your meaning, nearby.",
+     "on": "Search looks for your meaning, nearby.",
+     "at": 4.5,
+     "sound": "the final chord, then the tail"
+    }
+   ]
+  }
+ },
+ "reader": {
+  "chapter": "Chapter 3",
+  "note": "“Chapter 3”, at beat 3A: it opens on a result with no reason. Say why measuring every distance is slow before the number.",
+  "keep": "The map of meaning that chapters 2 and 3 share."
+ },
+ "revisions": {
+  "Brief": [
+   {
+    "anchor": "idea",
+    "field": "text",
+    "text": "Search finds the page you mean by comparing where meanings sit, then re-reading the best few, not by matching your words."
+   }
+  ],
+  "Spine": [
+   {
+    "anchor": "A",
+    "field": "text",
+    "text": "The query “reset my password” is followed through every stage of the search, from the box it was typed in to the page it lands on: “Account recovery”."
+   }
+  ],
+  "Chapters": [
+   {
+    "anchor": "open",
+    "field": "asks",
+    "text": "You typed “reset my password” and got “Account recovery”. Not one word matches. How did search find it?"
+   },
+   {
+    "anchor": "ch1",
+    "field": "asks",
+    "text": "Why can't search just look up the words you typed?"
+   },
+   {
+    "anchor": "ch2",
+    "field": "asks",
+    "text": "If not words, could a meaning have a place on a map that search can compare?"
+   },
+   {
+    "anchor": "ch3",
+    "field": "asks",
+    "text": "With twelve thousand passages on the map, how does it find the nearest one without measuring them all?"
+   },
+   {
+    "anchor": "ch4",
+    "field": "asks",
+    "text": "Exact names and error codes still need exact words. Can search keep both kinds of match?"
+   },
+   {
+    "anchor": "close",
+    "field": "asks",
+    "text": "So what comes back to the search box, a moment after you typed?"
+   }
+  ],
+  "Sound and look": [
+   {
+    "anchor": "music",
+    "field": "text",
+    "text": "A quiet pulse under the voice. It drops out when word matching fails, comes back as the map fills, and resolves on the answer."
+   }
+  ],
+  "Open": [
+   {
+    "anchor": "O1",
+    "field": "takeaway",
+    "text": "Nothing you typed appears in the page that answers you."
+   },
+   {
+    "anchor": "O1.1",
+    "field": "shows",
+    "text": "The search box fills the frame, the cursor blinks, and the query is typed one letter at a time."
+   }
+  ],
+  "Chapter 1": [
+   {
+    "anchor": "1A",
+    "field": "takeaway",
+    "text": "Classic search looks up each word you typed in an index of the pages that contain it."
+   },
+   {
+    "anchor": "1A.1",
+    "field": "vo",
+    "text": "The classic way is simple: split the question into its words."
+   }
+  ],
+  "Chapter 2": [
+   {
+    "anchor": "2A",
+    "field": "takeaway",
+    "text": "A model reads the whole question and turns it into a long list of numbers."
+   },
+   {
+    "anchor": "2A.1",
+    "field": "vo",
+    "text": "Modern search hands your whole question to a model that reads it at once."
+   },
+   {
+    "anchor": "2B",
+    "field": "takeaway",
+    "text": "Those numbers are coordinates: they pin the text to one point on a map of meaning."
+   },
+   {
+    "anchor": "2B.1",
+    "field": "vo",
+    "text": "Think of those numbers as coordinates, like the latitude and longitude of a meaning."
+   }
+  ],
+  "Chapter 3": [
+   {
+    "anchor": "3A",
+    "field": "takeaway",
+    "text": "Measuring the distance to every passage works, but it slows down as the docs grow."
+   },
+   {
+    "anchor": "3A.1",
+    "field": "vo",
+    "text": "Finding the nearest dot sounds easy: measure the distance to every one of them."
+   }
+  ],
+  "Chapter 4": [
+   {
+    "anchor": "4A",
+    "field": "takeaway",
+    "text": "Meaning can blur exact names and error codes, so search keeps the list of word matches as well."
+   },
+   {
+    "anchor": "4A.1",
+    "field": "vo",
+    "text": "Meaning has a weak spot as well: exact things, like a product name or an error code."
+   }
+  ],
+  "Close": [
+   {
+    "anchor": "C1",
+    "field": "takeaway",
+    "text": "The search box now shows the page you meant, opened at the line that answers you."
+   },
+   {
+    "anchor": "C1.1",
+    "field": "vo",
+    "text": "And that is what comes back to the search box, a moment after you typed."
+   }
+  ],
+  "Claims": [
+   {
+    "anchor": "c7",
+    "field": "claim",
+    "text": "Measuring the distance to every passage is too slow once the docs grow."
+   }
+  ]
+ }
+}

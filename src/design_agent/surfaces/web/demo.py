@@ -15,6 +15,14 @@ It plays one small job end to end so every part of the app can be seen working:
    teaser's frames, a GIF of it, a stat card) as their sources allow: a storyboard waits for its
    sign-off, the teaser for its render, and the rest follow. It files each under its id and
    marks the kinds it does not make as skipped.
+5. **A brief, then a plan in words.** Asked for an episode, it runs the real `episode_plan`
+   pipeline and publishes what each run wrote: the brief and its ledger first; once that is
+   signed off, the plan's top layer (the spine, the chapters, the sound and the look); then, once
+   that is signed off, each chapter's beats and the shots written from them, with the one
+   chapter a first reader sends back written again. A beat someone refines goes back through
+   the pipeline, so its shots are written again from it; a frame or a row of the brief or the
+   top layer is a small edit it makes itself. The words come from the scripted writers
+   (`demo_episode.py`): one sample plan, whatever the material.
 
 Each step reads what the previous tool printed; a gate that fails ends the job with a line
 saying so, as the offline demo does. Anything else gets a short reply.
@@ -24,6 +32,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -36,6 +45,7 @@ from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
+from design_agent.surfaces.web import demo_episode as sample
 from design_agent.surfaces.web.catalog import CAPABILITIES, capability
 from design_agent.testing.demo_script import card_html, teaser_html
 from design_agent.testing.scripted_model import last_json, last_tool_results, reply, tool_calls
@@ -46,7 +56,29 @@ TEASER = f"{PROJECT}/teaser"
 FILM = f"{PROJECT}/renders/teaser.mp4"
 SIZE = "1920x1080"
 NOTICE = "[Runtime notice"
+#: The harness's word on the thread's computer (middleware/workspace.py): never the person's.
+STATUS = "<workspace-status>"
 FAILED = "I stopped:"
+
+#: A plan's top layer signed off: the plan, and what is still to write.
+TOP_LAYER = re.compile(r"Approved the top layer of “([^”]+)”\. (.*?) Board b_")
+#: What a sign-off asks for: the chapters to write in full, and the ones to write only frames for.
+IN_FULL = re.compile(r"Write its chapters in full: (.*?\))\.")
+FRAMES_ONLY = re.compile(r"Write only the frames of (.*?\)), from the beats as they stand")
+#: One chapter to write, as a sign-off names it: its name and its length.
+CHAPTER = re.compile(r"“([^”]+)” \(([\d.]+) s\)")
+#: One part of a plan to rewrite, and nothing else: its section, the plan, and the row, if any.
+REFINE = re.compile(r"Refine only “([^”]+)” of “([^”]+)”(?:, at (?:beat |frame )?([^:]+))?:")
+#: One chapter of a plan to write ahead of the rest: its name, its length, and the plan.
+WRITE = re.compile(r"Write “([^”]+)” \(([\d.]+) s\) of “([^”]+)” in full now")
+#: One chapter whose beats stand, to write only the frames of: its name, its length, the plan.
+WRITE_FRAMES = re.compile(
+    r"Write only the frames of “([^”]+)” \(([\d.]+) s\) of “([^”]+)”, from its beats"
+)
+#: The notice that an `episode_plan` run ended; its report follows, as JSON.
+PLAN_RUN = re.compile(r"\(episode_plan\): done in [^\n]*Its report:\n")
+#: A tool result that holds a board's notes (`canvas_read_feedback`).
+FEEDBACK = "Notes are people's feedback"
 
 Step = Callable[[Sequence[BaseMessage]], AIMessage]
 
@@ -392,6 +424,8 @@ def _person_turn(messages: Sequence[BaseMessage]) -> tuple[str, int, int]:
             if mid.startswith(("today:", "running:", "steer:")):
                 continue
             content = message.content if isinstance(message.content, str) else str(message.content)
+            if content.startswith(STATUS):
+                continue
             return content, replies, index
     return "", replies, 0
 
@@ -412,24 +446,33 @@ def _phase(text: str, before: Sequence[BaseMessage]) -> str:
     return "chat"
 
 
+def _feedback_of(message: ToolMessage) -> dict[str, Any]:
+    """What one `canvas_read_feedback` returned: frames with open notes, note ids, authors, and
+    the rows the notes are on."""
+    text = str(message.content)
+    data = last_json([AIMessage(content=""), message])
+    frames = [
+        f for f in (data.get("frames", []) if isinstance(data, dict) else []) if isinstance(f, dict)
+    ]
+    return {
+        "asked": [
+            str(f.get("frame")) for f in frames if f.get("open") or f.get("verdict") == "changes"
+        ],
+        "notes": [str(n) for f in frames for n in f.get("open") or []],
+        "authors": sorted(set(re.findall(r"^\s+cm_[0-9a-f]+ ([^:]+):", text, re.M))),
+        "rows": {str(f.get("frame")): [str(r) for r in f.get("rows") or []] for f in frames},
+        "open_by_frame": {
+            str(f.get("frame")): [str(n) for n in f.get("open") or []] for f in frames
+        },
+    }
+
+
 def _feedback(messages: Sequence[BaseMessage]) -> dict[str, Any]:
-    """What `canvas_read_feedback` returned this turn: frames with open notes, note ids, authors."""
+    """What `canvas_read_feedback` returned this turn."""
     for message in reversed(messages):
-        if isinstance(message, ToolMessage) and "Notes are people's feedback" in str(
-            message.content
-        ):
-            text = str(message.content)
-            data = last_json([AIMessage(content=""), message])
-            frames = data.get("frames", []) if isinstance(data, dict) else []
-            asked = [
-                str(f.get("frame"))
-                for f in frames
-                if isinstance(f, dict) and (f.get("open") or f.get("verdict") == "changes")
-            ]
-            notes = [str(n) for f in frames if isinstance(f, dict) for n in f.get("open") or []]
-            authors = sorted(set(re.findall(r"^\s+cm_[0-9a-f]+ ([^:]+):", text, re.M)))
-            return {"asked": asked, "notes": notes, "authors": authors}
-    return {"asked": [], "notes": [], "authors": []}
+        if isinstance(message, ToolMessage) and FEEDBACK in str(message.content):
+            return _feedback_of(message)
+    return {"asked": [], "notes": [], "authors": [], "rows": {}, "open_by_frame": {}}
 
 
 def _asked(messages: Sequence[BaseMessage]) -> list[str]:
@@ -513,6 +556,8 @@ class Track:
     delivered: set[str] = field(default_factory=set)
     skipped: set[str] = field(default_factory=set)
     rendering: set[str] = field(default_factory=set)
+    #: What the `episode_plan` pipeline has been started for: a project's brief, or its plan.
+    planning: set[str] = field(default_factory=set)
 
 
 def _text(message: BaseMessage) -> str:
@@ -581,6 +626,10 @@ def track_assets(messages: Sequence[BaseMessage]) -> Track:
             elif call["name"] == "start_render_job":
                 command = str(args.get("command") or "")
                 track.rendering.update(re.findall(r"renders/(as_[0-9a-f]+)\.mp4", command))
+            elif call["name"] == "run_pipeline" and args.get("name") == "episode_plan":
+                asked = _json_object(str(args.get("args_json")))
+                part = "brief" if asked.get("stage") == "brief" else "plan"
+                track.planning.add(f"{asked.get('project')}/{part}")
     return track
 
 
@@ -599,10 +648,27 @@ def asset_plan(messages: Sequence[BaseMessage], text: str, start: int) -> list[S
     known = {a.id for a in assets}
     track = track_assets(messages[:start])
     approved_now, noted_now = _signoffs(text, track)
+    layered_now = {track.by_title[t]: _to_write(todo) for t, todo in TOP_LAYER.findall(text)}
+    refined_now = [(track.by_title[t], s, r.strip()) for s, t, r in REFINE.findall(text)]
+    written_now = [(track.by_title[t], s, float(n), True) for s, n, t in WRITE.findall(text)]
+    written_now += [
+        (track.by_title[t], s, float(n), False) for s, n, t in WRITE_FRAMES.findall(text)
+    ]
     ready = track.approved | track.delivered | track.skipped | approved_now
     steps: list[Step] = []
     lines: list[str] = []
-    if text.startswith(NOTICE):
+    if text.startswith(NOTICE) and (report := _plan_report(text)) is not None:
+        part = "brief" if report.get("stage") == "brief" else "plan"
+        planned = next(
+            (a for a in assets if _planning(a) == f"{report.get('project')}/{part}"), None
+        )
+        if planned is None:
+            return [lambda _: reply("[quiet]")]
+        steps += plan_landed(planned, track.boards.get(planned.id, ""), report)
+        lines.append(_landed_line(planned, report))
+    elif text.startswith(NOTICE) and "(episode_plan): failed" in text:
+        return [lambda _: reply(f"{FAILED} the plan's writers did not finish. Say “continue”.")]
+    elif text.startswith(NOTICE):
         landed = [a for a in assets if a.id in track.rendering and a.id not in track.delivered]
         if not landed or "finished" not in text.lower():
             return [lambda _: reply("[quiet]")]
@@ -617,7 +683,42 @@ def asset_plan(messages: Sequence[BaseMessage], text: str, start: int) -> list[S
         elif asset.id in approved_now and asset.kind in ("still", "thumbs"):
             steps += deliver_asset_board(asset)
             lines.append(f"“{asset.title}” is delivered.")
-        if asset.id in noted_now and asset.kind in ("board", "video") and asset.id in track.boards:
+        if asset.id in layered_now and asset.kind == "plan" and asset.id in track.boards:
+            full, frames = layered_now[asset.id]
+            if full:
+                steps += plan_chapters(asset, full)
+                lines.append(
+                    f"I'm writing each chapter of “{asset.title}”: its beats first, then its "
+                    "frames, written from those beats. They land on the canvas for your sign-off."
+                )
+            if frames:
+                steps += plan_frames(asset, frames, messages[:start])
+                lines.append(
+                    f"I'm writing the frames of {len(frames)} chapter{'s' if len(frames) != 1 else ''} "
+                    "from the beats as they stand."
+                )
+        for target, name, row in refined_now:
+            if target == asset.id and asset.kind in WORDS and asset.id in track.boards:
+                made, line = refine_plan(asset, track.boards[asset.id], name, row)
+                steps += made
+                lines.append(line)
+        for target, name, length, whole in written_now:
+            if target != asset.id or asset.kind != "plan" or asset.id not in track.boards:
+                continue
+            if whole:
+                steps += plan_chapters(asset, {name: length})
+                lines.append(
+                    f"I'm writing “{name}” now: its beats first, then its frames from those beats."
+                )
+            else:
+                steps += plan_frames(asset, {name: length}, messages[:start])
+                lines.append(f"I'm writing the frames of “{name}” from its beats as they stand.")
+        if asset.id in noted_now and asset.kind in WORDS and asset.id in track.boards:
+            steps += revise_plan(asset, track.boards[asset.id])
+            lines.append(f"A new version of “{asset.title}” answers the notes.")
+        elif (
+            asset.id in noted_now and asset.kind in ("board", "video") and asset.id in track.boards
+        ):
             steps += revise_asset(asset, track.boards[asset.id])
             lines.append(f"A new version of “{asset.title}” answers the notes.")
         elif asset.id in noted_now:
@@ -625,7 +726,9 @@ def asset_plan(messages: Sequence[BaseMessage], text: str, start: int) -> list[S
                 f"The demo lead revises storyboards only; approve “{asset.title}” instead."
             )
     begun = set(track.boards) | track.delivered | track.skipped | track.rendering
-    begun |= approved_now | noted_now
+    begun |= {a.id for a in assets if _planning(a) in track.planning}
+    begun |= approved_now | noted_now | set(layered_now)
+    begun |= {a for a, _, _ in refined_now} | {a for a, _, _, _ in written_now}
     for asset in assets:
         if asset.id in begun or not all(s in ready or s not in known for s in asset.sources):
             continue
@@ -643,6 +746,18 @@ def asset_plan(messages: Sequence[BaseMessage], text: str, start: int) -> list[S
 
 def make_asset(asset: Asked, assets: Sequence[Asked]) -> tuple[list[Step], str]:
     kinds = {a.id: a.kind for a in assets}
+    if asset.kind == "brief":
+        return plan_brief(asset), (
+            f"I'm writing “{asset.title}” from what you brought: the one idea, who it is for, "
+            "and each fact it may state with the material's own words. It lands on the canvas "
+            "for your sign-off, and nothing is planned before it."
+        )
+    if asset.kind == "plan":
+        return plan_top(asset), (
+            f"I'm planning “{asset.title}” in words from the brief: the spine first, then the "
+            "chapter list, written from the spine. The top layer lands on the canvas for your "
+            "sign-off."
+        )
     if asset.kind == "board":
         return asset_storyboard(asset), f"“{asset.title}” is on the canvas for your sign-off."
     if asset.kind == "video" and any(kinds.get(s) == "board" for s in asset.sources):
@@ -737,6 +852,324 @@ def asset_storyboard(asset: Asked, *, title: str = "") -> list[Step]:
         return tool_calls(("canvas_publish_board", board))
 
     return [pose, _checked(render, "a pose"), _checked(publish, "a pose")]
+
+
+# -- an episode's plan: the pipeline writes it, the lead publishes it ---------------------------
+
+
+#: The assets whose review is a board of words: an episode's brief, and its plan.
+WORDS = ("brief", "plan")
+
+
+def _plan_project(asset: Asked) -> str:
+    """An episode's folder: its brief's, which the plan made from that brief shares."""
+    root = asset.sources[0] if asset.kind == "plan" and asset.sources else asset.id
+    return f"episode-{root}"
+
+
+def _planning(asset: Asked) -> str:
+    """What a pipeline run for this asset is tracked as: its project, and which part of it."""
+    return f"{_plan_project(asset)}/{'brief' if asset.kind == 'brief' else 'plan'}"
+
+
+def _json_object(text: str) -> dict[str, Any]:
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _plan_folder(asset: Asked) -> str:
+    return f"/workspace/projects/{_plan_project(asset)}/plan"
+
+
+def _plan_report(text: str) -> dict[str, Any] | None:
+    """The result of the `episode_plan` run a notice says ended, or None when it names none."""
+    found = PLAN_RUN.search(text)
+    if found is None:
+        return None
+    try:
+        report, _ = json.JSONDecoder().raw_decode(text[found.end() :].lstrip())
+    except json.JSONDecodeError:
+        return None
+    return report if isinstance(report, dict) else None
+
+
+def _plan_rows(messages: Sequence[BaseMessage], title: str) -> dict[str, list[str]]:
+    """Every row of each section the team has asked to have written again so far, so a second
+    pass keeps what the first one changed."""
+    rows: dict[str, list[str]] = {}
+    for message in messages:
+        if isinstance(message, HumanMessage):
+            for name, plan, row in REFINE.findall(_text(message)):
+                if plan == title:
+                    rows.setdefault(name, []).append(row.strip() or sample.ALL)
+        elif isinstance(message, ToolMessage) and FEEDBACK in str(message.content):
+            feedback = _feedback_of(message)
+            for name in feedback["asked"]:
+                rows.setdefault(name, []).extend(feedback["rows"].get(name) or [sample.ALL])
+    return rows
+
+
+def _run_plan(asset: Asked, said: str, **args: Any) -> Step:
+    def start(_: Sequence[BaseMessage]) -> AIMessage:
+        asked = {"project": _plan_project(asset), **args}
+        return tool_calls(
+            _making(asset),
+            ("run_pipeline", {"name": "episode_plan", "args_json": json.dumps(asked)}),
+            content=said,
+        )
+
+    return start
+
+
+def _publish_plan(
+    asset: Asked,
+    frames: Sequence[dict[str, Any]],
+    *,
+    replaces: str = "",
+    answers: Sequence[str] = (),
+) -> AIMessage:
+    board: dict[str, Any] = {
+        "project": _plan_project(asset),
+        "title": asset.title,
+        "kind": asset.kind if asset.kind in WORDS else "plan",
+        "frames": [{**frame, "note": _plan_note(str(frame["name"]))} for frame in frames],
+        "asset": asset.id,
+    }
+    if replaces:
+        board["replaces"] = replaces
+    if answers:
+        board["answers"] = list(answers)
+    return tool_calls(("canvas_publish_board", board))
+
+
+def _plan_note(name: str) -> str:
+    """One line on a section, as its frame carries it: a chapter's title, or what a list holds."""
+    notes = {
+        "Brief": "The idea, who it is for and how long",
+        "Claims": "What the film may state, with the material's own words",
+        "Spine": "Three candidates and the pick",
+        "Chapters": "Each chapter's question and result, and the first and last line",
+        "Sound and look": "The voice, the music and the look, in words",
+    }
+    titles = {str(r["label"]): str(r["title"]) for r in sample.PLAN["chapters"]["rows"]}
+    return notes.get(name) or titles.get(name, "")
+
+
+def _material(asset: Asked) -> str:
+    return f"/workspace/projects/{_plan_project(asset)}/material.md"
+
+
+def plan_brief(asset: Asked) -> list[Step]:
+    """The brief and its ledger, from the material: the sample's post, kept as a file so every
+    quote in the ledger can be looked up in it."""
+
+    def keep(_: Sequence[BaseMessage]) -> AIMessage:
+        kept = {"file_path": _material(asset), "content": sample.MATERIAL}
+        return tool_calls(
+            _making(asset), ("write_file", kept), content="Keeping the material in the project."
+        )
+
+    said = "Writing the brief: the idea, who it is for, and the ledger of what it may state."
+    return [keep, _run_plan(asset, said, stage="brief", material=[_material(asset)])]
+
+
+def plan_top(asset: Asked) -> list[Step]:
+    said = "Planning in words: the spine from the brief, then the chapter list from the spine."
+    return [_run_plan(asset, said, stage="top")]
+
+
+def plan_chapters(asset: Asked, lengths: dict[str, float], notes: str = "") -> list[Step]:
+    """The chapters named, each in full: the pipeline writes a chapter's beats, then its shots,
+    and a first reader goes through them. A part a person asked to have rewritten has notes, and
+    no reader but them."""
+    said = "Writing each chapter: its beats first, then its frames, from those beats."
+    extra = {"notes": notes, "review": False} if notes else {}
+    return [_run_plan(asset, said, stage="chapters", chapters=lengths, **extra)]
+
+
+def plan_frames(
+    asset: Asked, lengths: dict[str, float], messages: Sequence[BaseMessage]
+) -> list[Step]:
+    """Only the frames of the chapters named, from their beats as they stand. The notes carry
+    every row written again so far, so the scripted writers hand back the beats as they are."""
+    rows = _plan_rows(messages, asset.title)
+    notes = "\n".join(
+        sample.note_line(n, r) for n in lengths for r in dict.fromkeys(rows.get(n, []))
+    )
+    said = "Writing the frames from the beats as they stand."
+    extra = {"notes": notes} if notes else {}
+    return [_run_plan(asset, said, stage="shots", chapters=lengths, **extra)]
+
+
+def _to_write(todo: str) -> tuple[dict[str, float], dict[str, float]]:
+    """What a top-layer sign-off asks for: the chapters to write in full, and the ones whose
+    beats stand, to write only the frames of."""
+
+    def named(found: list[str]) -> dict[str, float]:
+        return {name: float(length) for part in found for name, length in CHAPTER.findall(part)}
+
+    return named(IN_FULL.findall(todo)), named(FRAMES_ONLY.findall(todo))
+
+
+def plan_landed(asset: Asked, board: str, report: dict[str, Any]) -> list[Step]:
+    """What a run wrote goes on the plan's board, in the order the run gives: a chapter's beats,
+    then its shots. A part written again answers the notes that asked for it."""
+    frames = [{"name": str(f["name"]), "path": str(f["path"])} for f in report.get("publish") or []]
+    names = {frame["name"] for frame in frames}
+
+    def read(_: Sequence[BaseMessage]) -> AIMessage:
+        return tool_calls(("canvas_read_feedback", {"board": board}))
+
+    def publish(messages: Sequence[BaseMessage]) -> AIMessage:
+        if not frames:
+            return reply(f"{FAILED} the plan's writers left nothing to publish.")
+        noted = _feedback(messages)["open_by_frame"] if board else {}
+        answers = [note for name, notes in noted.items() if name in names for note in notes]
+        return _publish_plan(asset, frames, replaces=board, answers=answers)
+
+    return [*([read] if board else []), _checked(publish, "the plan")]
+
+
+def _landed_line(asset: Asked, report: dict[str, Any]) -> str:
+    if report.get("stage") == "brief":
+        return (
+            f"“{asset.title}” is on the canvas for your sign-off: the idea, who it is for, and "
+            "the ledger of what the film may state. Nothing is planned before you sign it off."
+        )
+    if report.get("stage") == "top":
+        return (
+            f"The top layer of “{asset.title}” is on the canvas for your sign-off: the spine, "
+            "the chapters, and the film's first and last line. No chapter is written before you "
+            "sign it off."
+        )
+    names = list(dict.fromkeys(str(f["name"]) for f in report.get("publish") or []))
+    what = f"“{names[0]}” is" if len(names) == 1 else f"{len(names)} chapters are"
+    if report.get("stage") == "shots":
+        whose = "its" if len(names) == 1 else "their"
+        return f"{what} whole again: the frames are written from {whose} beats as they stand."
+    back = list((report.get("reader") or {}).get("sent_back") or {})
+    read = (
+        f" A first reader sent {' and '.join(f'“{name}”' for name in back)} back once, and it "
+        "is written again."
+        if back
+        else ""
+    )
+    return f"{what} written in full: the beats, and the frames written from them.{read}"
+
+
+def _by_hand(asset: Asked, name: str, rows: Sequence[str]) -> list[tuple[str, dict[str, Any]]]:
+    """A small edit the lead makes itself, with the rows asked for written again: a section of
+    the brief or the top layer, or a chapter's shots. A chapter's beats go with its shots, in
+    that order, because the words a shot says are its beat's. Empty for a section the board
+    does not have."""
+    folder = _plan_folder(asset)
+    if name in sample.PLAN["shots"] and asset.kind == "plan":
+        stem = sample.stem(name)
+        return [
+            (f"{folder}/{stem}.beats.json", sample.beats(name, rows)),
+            (f"{folder}/{stem}.shots.json", sample.shots(name, rows)),
+        ]
+    files = sample.BRIEF if asset.kind == "brief" else sample.TOP
+    if name in files:
+        return [(f"{folder}/{files[name][1]}", sample.top(name, rows))]
+    return []
+
+
+def _piped(name: str, rows: Sequence[str]) -> bool:
+    """Whether a part goes back through the pipeline: a chapter's beat, or the chapter as a
+    whole. Its shots are written again from the beat, so the order stays the pipeline's."""
+    return name in sample.PLAN["beats"] and any("." not in row for row in rows)
+
+
+def _write(path: str, section: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    content = json.dumps(section, ensure_ascii=False, indent=1)
+    return "write_file", {"file_path": path, "content": content}
+
+
+def refine_plan(asset: Asked, board: str, name: str, row: str) -> tuple[list[Step], str]:
+    """One part written again, every other section left as it is."""
+    at = (
+        f" at {'frame' if '.' in row else 'beat'} {row}"
+        if row and _piped(name, [row or "*"])
+        else ""
+    )
+    if _piped(name, [row or sample.ALL]):
+
+        def start(messages: Sequence[BaseMessage]) -> AIMessage:
+            rows = list(dict.fromkeys(_plan_rows(messages, asset.title).get(name, [sample.ALL])))
+            notes = "\n".join(sample.note_line(name, r) for r in rows)
+            lengths = {name: sample.lengths()[name]}
+            return plan_chapters(asset, lengths, notes)[0](messages)
+
+        return [start], (
+            f"I'm writing “{name}” again{at}: the beat first, then the frames written from it. "
+            f"The rest of “{asset.title}” stays as it is."
+        )
+
+    def read(_: Sequence[BaseMessage]) -> AIMessage:
+        return tool_calls(("canvas_read_feedback", {"board": board}))
+
+    def rewrite(messages: Sequence[BaseMessage]) -> AIMessage:
+        rows = _plan_rows(messages, asset.title).get(name, [sample.ALL])
+        edits = _by_hand(asset, name, rows)
+        if not edits:
+            return reply(f"“{name}” isn't part of “{asset.title}”.")
+        return tool_calls(*(_write(*edit) for edit in edits), content=f"Rewriting “{name}” only.")
+
+    def publish(messages: Sequence[BaseMessage]) -> AIMessage:
+        answers = _feedback(messages)["open_by_frame"].get(name, [])
+        frames = [{"name": name, "path": path} for path, _ in _by_hand(asset, name, [])]
+        return _publish_plan(asset, frames, replaces=board, answers=answers)
+
+    return [read, rewrite, _checked(publish, "the rewritten part")], (
+        f"“{name}” is rewritten; the rest of “{asset.title}” is as it was."
+    )
+
+
+def revise_plan(asset: Asked, board: str) -> list[Step]:
+    """The team's notes on a plan: small edits are made here, and a chapter with a note on a beat
+    goes back through the pipeline."""
+
+    def split(messages: Sequence[BaseMessage]) -> tuple[list[str], list[str]]:
+        feedback = _feedback(messages)
+        asked = [n for n in feedback["asked"] if _by_hand(asset, n, [])]
+        piped = [n for n in asked if _piped(n, feedback["rows"].get(n) or [sample.ALL])]
+        return [n for n in asked if n not in piped], piped
+
+    def read(_: Sequence[BaseMessage]) -> AIMessage:
+        return tool_calls(("canvas_read_feedback", {"board": board}))
+
+    def rewrite(messages: Sequence[BaseMessage]) -> AIMessage:
+        hand, piped = split(messages)
+        rows = _plan_rows(messages, asset.title)
+        calls = [_write(*edit) for n in hand for edit in _by_hand(asset, n, rows.get(n, []))]
+        if piped:
+            notes = "\n".join(
+                sample.note_line(n, r) for n in piped for r in dict.fromkeys(rows.get(n, []))
+            )
+            run = plan_chapters(asset, {n: sample.lengths()[n] for n in piped}, notes)[0](messages)
+            calls += [(call["name"], call["args"]) for call in run.tool_calls]
+        if not calls:
+            return reply(f"I don't see open notes on “{asset.title}”.")
+        return tool_calls(*calls, content="Rewriting only the parts with notes.")
+
+    def publish(messages: Sequence[BaseMessage]) -> AIMessage:
+        hand, piped = split(messages)
+        feedback = _feedback(messages)
+        if not hand:
+            return reply(
+                f"I'm writing {len(piped)} chapter{'s' if len(piped) != 1 else ''} of "
+                f"“{asset.title}” again: the beats with notes first, then the frames written "
+                "from them."
+            )
+        frames = [{"name": n, "path": path} for n in hand for path, _ in _by_hand(asset, n, [])]
+        answers = [note for n in hand for note in feedback["open_by_frame"].get(n, [])]
+        return _publish_plan(asset, frames, replaces=board, answers=answers)
+
+    return [read, rewrite, _checked(publish, "a rewritten part")]
 
 
 def revise_asset(asset: Asked, board: str) -> list[Step]:
@@ -1036,3 +1469,27 @@ class DemoDirector(BaseChatModel):
         **kwargs: Any,  # noqa: ARG002
     ) -> ChatResult:
         return ChatResult(generations=[ChatGeneration(message=next_step(messages))])
+
+
+class DemoWriter(DemoDirector):
+    """The demo's helpers: the scripted writers the `episode_plan` pipeline runs (`demo_episode`).
+    `pause` is how long each takes to write, in seconds, so a step can be seen running."""
+
+    model_name: str = "house-demo-writer"
+    pause: float = 0.0
+
+    @property
+    def _llm_type(self) -> str:
+        return "house-demo-writer"
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,  # noqa: ARG002 - provider signature
+        run_manager: CallbackManagerForLLMRun | None = None,  # noqa: ARG002
+        **kwargs: Any,  # noqa: ARG002
+    ) -> ChatResult:
+        step = sample.next_step(messages)
+        if step.tool_calls and self.pause:
+            time.sleep(self.pause)  # a sync call: LangChain runs it off the event loop
+        return ChatResult(generations=[ChatGeneration(message=step)])

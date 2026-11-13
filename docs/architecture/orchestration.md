@@ -98,6 +98,27 @@ and label. A re-run after an answer, a restart or `resume_task("p-…")` replays
 instantly and runs only the rest. Pipelines must be deterministic: no clock, randomness or
 environment inside them.
 
+Two ship (`design_agent.pipelines`). `launch_film` runs a film's production from its approved
+animatic to the final render. `episode_plan` writes a long explainer's brief and plan in words, each level
+from the one above it: the brief and its ledger of claims from the material, the spine from the
+brief, the chapter list from the spine, each chapter's beats from its row, and that chapter's
+shots from its beats (five stages: `brief`, `top`, `chapters`, `shots` for a chapter whose beats
+stand, and `review` for the first reader alone). A step's brief carries what the step before it returned, each result is checked by
+`design_agent.episode`, and a writer whose section does not pass gets it back once with what is
+wrong. What only reading the words shows (a figure left for the voice to read, one technique on
+most of a chapter's beats) is sent back the same way, but does not hold a chapter's shots back.
+The chapters stage ends with a first reader, a helper that judges and does not fix: it is handed
+how each chapter's beats explain, counted by code, and each chapter it sends back is written
+once more with its notes, three chapters at most. Its verdict is a file in the plan folder and
+a note to the lead as soon as it reports, so a run stopped during the rewrites has still said
+what it found.
+
+A step can carry a time limit (`ctx.agent(..., within=seconds)`). A model call can hang for as
+long as its stall ceiling allows (half an hour at `xhigh`), far longer than a step should take,
+and nothing else notices: past the limit the helper is stopped and the step fails like any
+other, memoized so a replay takes the same path. `episode_plan` sets one per effort, about
+twice the longest such step has run, and re-issues a stopped step once.
+
 ## Parallel looks
 
 `Looks` (`harness/branches.py`) copies a project into `looks/<id>/` per creative direction

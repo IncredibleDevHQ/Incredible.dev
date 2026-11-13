@@ -16,10 +16,10 @@ thumbnails, the cards and the posts, in channels you can steer and on a canvas y
 
 ### 1. Start from your material
 
-Ask in a channel and attach what you have, or place a template: Launch kit, Explainer, Post to
-social, Ad set, Pitch pack, Social pack or Talk to clips.
+Ask in a channel and attach what you have, or place a template: Launch kit, Explainer, Episode,
+Post to social, Ad set, Pitch pack, Social pack or Talk to clips.
 
-![Seven templates, each a set of linked assets for a common job](docs/images/templates.png)
+![Templates, each a set of linked assets for a common job](docs/images/templates.png)
 
 ### 2. Research your code
 

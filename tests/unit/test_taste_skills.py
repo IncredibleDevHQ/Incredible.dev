@@ -1,7 +1,7 @@
 """The design-judgment runtime skills: format, references and the contracts they name, offline.
 
 Covers skills/{content-brief, brand-design, design-wiki, motion-direction, launch-film,
-reference-study}. A skill that names a tool, gate, script, skill or CLI command that does not exist
+reference-study, episode-plan}. A skill that names a tool, gate, script, skill or CLI command that does not exist
 teaches the model to call something it cannot, so every name is checked against the code.
 """
 
@@ -27,6 +27,7 @@ SKILLS = (
     "motion-direction",
     "launch-film",
     "reference-study",
+    "episode-plan",
 )
 NODE = shutil.which("node")
 SAMPLE_BRAND = ROOT / "examples" / "brands" / "example-studio"
@@ -39,6 +40,7 @@ DEEPAGENTS_TOOLS = frozenset(
 NOT_TOOLS = frozenset(
     {
         "launch_film",  # the pipeline's name, passed to run_pipeline
+        "episode_plan",  # the other pipeline's name
         "builders_at_once",  # a launch_film argument
         "wake_on_progress",  # a start_task argument
         "job_kind",  # artifact-contract fields
@@ -472,3 +474,98 @@ def test_the_name_checks_know_the_real_tools_and_catch_a_wrong_one() -> None:
         "audio-lint",
     } <= gate_names()
     assert {"render", "snapshot", "check", "lint", "catalog", "add"} <= cli_commands()
+
+
+# -- episode-plan is what the episode_plan pipeline points its helpers at ------------------------
+
+
+def _plan_source() -> str:
+    return _text(ROOT / "src" / "design_agent" / "pipelines" / "episode_plan.py")
+
+
+def test_every_file_the_plan_pipeline_points_at_exists() -> None:
+    source = _plan_source()
+    constants = dict(re.findall(r'^(SKILL|BRIEFS|SECTIONS) = "([^"]+)"', source, re.MULTILINE))
+    assert set(constants) == {"SKILL", "BRIEFS", "SECTIONS"}
+    assert _sandbox(constants["SKILL"]).is_file() and _sandbox(constants["SECTIONS"]).is_file()
+    named = set(re.findall(r"\{BRIEFS\}/([\w-]+\.md)", source))
+    assert named == {"brief.md", "spine.md", "chapters.md", "beats.md", "shots.md", "reader.md"}
+    for name in named:
+        assert (_sandbox(constants["BRIEFS"]) / name).is_file(), f"helpers are sent to {name}"
+
+
+def test_the_plan_skill_describes_the_pipeline_it_runs() -> None:
+    source = _plan_source()
+    skill = _text(ROOT / "skills" / "episode-plan" / "SKILL.md")
+    stages = re.search(
+        r'^BRIEF, TOP, CHAPTERS, SHOTS, REVIEW = "(\w+)", "(\w+)", "(\w+)", "(\w+)", "(\w+)"',
+        source,
+        re.MULTILINE,
+    )
+    brief, top, chapters, shots, review = stages.groups()  # type: ignore[union-attr]
+    assert f'"stage": "{review}", "chapters": {{' in skill
+    assert f'"stage": "{brief}", "material": [' in skill
+    assert f'run_pipeline("episode_plan", \'{{"project": "<slug>", "stage": "{top}"}}\')' in skill
+    assert f'"stage": "{chapters}", "chapters": {{' in skill
+    assert f'"stage": "{shots}", "chapters": {{' in skill
+    for effort in set(re.findall(r'effort="(\w+)"', source)):
+        assert f"(`{effort}`)" in skill, f"the pipeline runs a step at {effort}"
+    assert '"review": false' in skill and "review: bool = True" in source
+    for key in ("open", "bare", "failed", "reader"):  # what its result says is left
+        assert f'"{key}"' in source and f"`{key}`" in skill
+
+
+def test_the_plans_sections_are_the_ones_the_code_reads() -> None:
+    """Every example in sections.md is a section the canvas takes, and it names every kind."""
+    from design_agent import episode
+
+    reference = _text(ROOT / "skills" / "episode-plan" / "references" / "sections.md")
+    examples = [
+        json.loads(block) for block in re.findall(r"```json\n(.*?)```", reference, re.DOTALL)
+    ]
+    assert {e["section"] for e in examples} == set(episode.KINDS)
+    for example in examples:
+        section = episode.read(json.dumps(example).encode())
+        found = [f for f in episode.faults(section) if "candidates" not in f]  # one candidate shown
+        assert not found, f"{example['section']}: {found}"
+    brief_rows = (*episode.BRIEF_ROWS, "label", "leaves")
+    for row in (*brief_rows, "voice", "music", "look", "picture"):
+        assert f"`{row}`" in reference
+    # The closed lists a writer picks from are the ones the code takes, in the brief that
+    # teaches each.
+    briefs = ROOT / "skills" / "episode-plan" / "briefs"
+    for status in episode.STATUSES:
+        assert f"`{status}`" in reference and f"`{status}`" in _text(briefs / "brief.md")
+    for hook in episode.HOOKS:
+        assert hook in reference and hook in _text(briefs / "chapters.md")
+    for technique in episode.TECHNIQUES:
+        assert technique in reference and technique in _text(briefs / "beats.md")
+    for landing in episode.LANDINGS:
+        assert landing in reference and landing in _text(briefs / "chapters.md")
+    # The numbers a writer is told are the ones the checks hold the words to.
+    spelled = {4: "four", 6: "six", 9: "nine"}
+    voice = _text(briefs / "beats.md")
+    assert f"A chapter of {spelled[episode.MIX_BEATS]} beats or more" in voice
+    assert (
+        f"A chapter of {spelled[episode.BREATH_SENTENCES]} sentences or more with none under "
+        f"{spelled[episode.BREATH_WORDS]} words"
+    ) in voice
+    assert f"the last in {episode.LAST_WORDS_MOST}" in _text(briefs / "chapters.md")
+    # The table of how long a field runs is the one the code holds a section to.
+    limits = {
+        "A row of a list or the spine": episode.MOST_WORDS["row"],
+        "A row of the ledger": episode.MOST_WORDS["claim"],
+        "A row of the chapter list": episode.MOST_WORDS["chapter"],
+        "A beat": episode.MOST_WORDS["beat"],
+        "A shot": episode.MOST_WORDS["shot"],
+    }
+    for label, most in limits.items():
+        line = next(row for row in reference.splitlines() if row.startswith(f"| {label} |"))
+        assert dict(re.findall(r"`(\w+)` (\d+)", line)) == {k: str(n) for k, n in most.items()}
+    numbers = _text(ROOT / "skills" / "episode-plan" / "briefs" / "shots.md")
+    assert f"{episode.WORDS_PER_SECOND} words a second" in numbers
+    assert (
+        f"about {episode.SHOT_WORDS} spoken words, never more than {episode.SHOT_WORDS_MOST}"
+        in numbers
+    )
+    assert f"{episode.READ_SECONDS_PER_WORD} seconds a word" in numbers

@@ -35,10 +35,12 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from design_agent import episode
 from design_agent.config import Settings
 from design_agent.harness import events as ev
 from design_agent.harness import tasks
 from design_agent.harness.notices import should_post
+from design_agent.middleware.background import CANCELLERS
 from design_agent.middleware.meter import METER
 from design_agent.surfaces.web import catalog, pages, preview
 from design_agent.surfaces.web.hub import Hub
@@ -65,7 +67,9 @@ SAFE_NAME = re.compile(r"[^A-Za-z0-9._ -]+")
 STOP_WORDS = re.compile(r"^\s*(stop|cancel|abort|never\s?mind)\b", re.IGNORECASE)
 #: A follow-up that only says stop ends the running turn and starts nothing of its own.
 ONLY_STOP = re.compile(r"^\s*(stop|cancel|abort|never\s?mind)[\s.!]*$", re.IGNORECASE)
-BOARD_KINDS = ("storyboard", "layout", "stills", "thumbnails", "looks")
+BOARD_KINDS = ("storyboard", "layout", "stills", "thumbnails", "looks", "plan", "brief")
+#: Boards whose frames are sections in words (JSON), not pictures: an episode's brief and plan.
+WORD_BOARDS = ("plan", "brief")
 #: Where an asset stands. The agent sets the first three itself; boards, sign-offs and
 #: deliveries move it through the rest.
 AGENT_STATUSES = ("making", "blocked", "skipped")
@@ -332,6 +336,12 @@ class AgentHost:
             self._stops.add(thread_id)
 
     def cancel_work(self, thread_id: str, work_id: str) -> str:
+        """Stop a piece of background work from the canvas: a pipeline run or a render watch,
+        as the agent's own cancel would, or a helper."""
+        for canceller in CANCELLERS:
+            handled = canceller(work_id, thread_id)
+            if handled is not None:
+                return handled
         return tasks.cancel(work_id, thread_id)
 
     # -- the thread's project folder, read-only ----------------------------------------------
@@ -806,6 +816,10 @@ class AgentHost:
         row = self._work_from(event, data)
         if row is not None:
             self.hub.publish("work.updated", work=row)
+        if event.kind == ev.PIPELINE_STEP and data.get("state") in ("done", "failed"):
+            self._step_helper_ended(event, data)
+        if event.kind in ev.TERMINAL_KINDS and event.source.startswith("p-"):
+            self._pipeline_ended(event)
         if event.kind == ev.JOB_ATTENTION:
             options = [str(o) for o in data.get("options") or [] if str(o).strip()]
             if options:
@@ -823,6 +837,67 @@ class AgentHost:
             )
         elif event.kind != ev.USAGE or thread["status"] == "working":
             self._settle_status(event.thread_id)
+
+    def _step_helper_ended(self, event: ev.Event, data: Mapping[str, Any]) -> None:
+        """A pipeline's step ended, and with it the helper that ran it. A pipeline runs its
+        helpers inside its own task, so no task event ever says so; the step's does."""
+        helper = self.store.work_item(str(data.get("task_id") or ""))
+        if helper is None and data.get("state") == "failed":
+            # A step stopped for running past its time never learned its helper's id: it is the
+            # one still running under the step's name.
+            helper = next(
+                (
+                    row
+                    for row in self.store.work(event.thread_id)
+                    if row["kind"] == "helper"
+                    and row["status"] == "running"
+                    and row["label"] == str(data.get("step") or "")
+                ),
+                None,
+            )
+        if helper is None or helper["kind"] != "helper" or helper["status"] != "running":
+            return
+        row = self.store.upsert_work(
+            helper["id"],
+            event.thread_id,
+            "helper",
+            status=str(data["state"]),
+            finished_at=event.at,
+        )
+        self.hub.publish("work.updated", work=row)
+
+    def _pipeline_ended(self, event: ev.Event) -> None:
+        """A pipeline ended with steps still running (it was cancelled, failed or was
+        interrupted): they ended with it, and so did the helpers that ran them. No step event
+        says so, and a step left running reads as work that is still under way."""
+        job = self.store.work_item(event.source)
+        open_steps = {
+            str(step.get("title"))
+            for step in (job["steps"] if job else [])
+            if step.get("status") == "running"
+        }
+        if job is None or not open_steps:
+            return
+        steps = [
+            {**step, "status": "failed"} if step.get("status") == "running" else step
+            for step in job["steps"]
+        ]
+        row = self.store.upsert_work(job["id"], event.thread_id, "pipeline", steps=steps)
+        self.hub.publish("work.updated", work=row)
+        for helper in self.store.work(event.thread_id):
+            if (
+                helper["kind"] == "helper"
+                and helper["status"] == "running"
+                and helper["label"] in open_steps
+            ):
+                closed = self.store.upsert_work(
+                    helper["id"],
+                    event.thread_id,
+                    "helper",
+                    status=event.kind.split(".", 1)[1],
+                    finished_at=event.at,
+                )
+                self.hub.publish("work.updated", work=closed)
 
     def _work_from(self, event: ev.Event, data: Mapping[str, Any]) -> Row | None:
         kind = event.kind
@@ -858,6 +933,14 @@ class AgentHost:
             values = {"note": event.text[:400]} if kind == ev.PIPELINE_STEP else {}
             if kind == ev.JOB_PHASE:
                 values["phase"] = event.label or event.text[:60]
+            status = _STEP_STATES.get(str(data.get("state") or ""))
+            if kind == ev.PIPELINE_STEP and data.get("step") and status:
+                # Each step the pipeline names, with where it stands: what runs now, and in what
+                # order it got there.
+                name = str(data["step"])
+                found = self.store.work_item(event.source)
+                steps = [s for s in (found["steps"] if found else []) if s.get("id") != name]
+                values["steps"] = [*steps, {"id": name, "title": name, "status": status}][-40:]
             return self.store.upsert_work(event.source, event.thread_id, "pipeline", **values)
         return None
 
@@ -999,6 +1082,9 @@ class AgentHost:
         if len(frames) > MAX_FRAMES:
             return f"A board holds at most {MAX_FRAMES} frames; split it."
         kind = kind if kind in BOARD_KINDS else "storyboard"
+        replaced = self.store.board(replaces) if replaces else None
+        if replaced is not None:
+            kind = str(replaced["kind"])
         try:
             backend = require_backend(runtime.binding.backend_for, tool_runtime)
             images = [
@@ -1007,6 +1093,18 @@ class AgentHost:
             ]
         except WorkspaceError as error:
             return f"Nothing was published: {error}"
+        sections: Sequence[dict[str, Any] | None] = [None] * len(images)
+        if kind in WORD_BOARDS:
+            standing = self._plan_sections(str(replaced["id"])) if replaced is not None else {}
+            try:
+                frames, placed, whole = _plan_placed(frames, images, standing)
+                if kind == "brief":
+                    placed = await _brief_checked(placed, whole, backend)
+            except ValueError as error:
+                return f"Nothing was published: {error}"
+            sections = placed
+            images = [json.dumps(s, ensure_ascii=False, indent=1).encode("utf-8") for s in placed]
+        suffix = ".json" if kind in WORD_BOARDS else ".png"
         now = time.time()
         if replaces:
             board = self.store.board(replaces)
@@ -1015,13 +1113,13 @@ class AgentHost:
             version = int(board["version"]) + 1
             existing = {f["name"]: f for f in self.store.frames(board["id"])}
             position = len(existing)
-            for spec, image in zip(frames, images, strict=True):
+            for spec, image, section in zip(frames, images, sections, strict=True):
                 name = str(spec.get("name") or f"Frame {position + 1}")
                 saved = self.save_file(
-                    thread_id, f"{board['id']}-v{version}-{name}.png", image, origin="frame"
+                    thread_id, f"{board['id']}-v{version}-{name}{suffix}", image, origin="frame"
                 )
                 found = existing.get(name)
-                entry = {"v": version, "file_id": saved["id"], "at": now}
+                entry = _version(version, str(saved["id"]), now, section)
                 if found is not None:
                     self.store.update_frame(
                         found["id"],
@@ -1065,10 +1163,12 @@ class AgentHost:
                 }
             )
             board_id = board["id"]
-            for position, (spec, image) in enumerate(zip(frames, images, strict=True)):
+            for position, (spec, image, section) in enumerate(
+                zip(frames, images, sections, strict=True)
+            ):
                 name = str(spec.get("name") or f"Frame {position + 1}")
                 saved = self.save_file(
-                    thread_id, f"{board_id}-v1-{name}.png", image, origin="frame"
+                    thread_id, f"{board_id}-v1-{name}{suffix}", image, origin="frame"
                 )
                 self.store.add_frame(
                     {
@@ -1076,7 +1176,7 @@ class AgentHost:
                         "position": position,
                         "name": name,
                         "note": str(spec.get("note") or ""),
-                        "versions": [{"v": 1, "file_id": saved["id"], "at": now}],
+                        "versions": [_version(1, str(saved["id"]), now, section)],
                     }
                 )
             said = f"“{title}” is on the canvas as board {board_id} with {len(frames)} frames."
@@ -1087,8 +1187,32 @@ class AgentHost:
             f"{said} It is the review of {filed['id']} “{filed['title']}”. People review it there: "
             "they pin notes to frames, ask for changes or approve the board, and that reaches you "
             "as a message in this thread. Read their notes with `canvas_read_feedback` before you "
-            "change anything."
+            f"change anything.{self._brief_flags(board_id) if kind == 'brief' else ''}"
         )
+
+    def _brief_flags(self, board_id: str) -> str:
+        """What a brief's checks flag, said to the agent as it publishes: a quote that is not in
+        the material is the agent's to mend before the team reads the ledger."""
+        flags = [
+            str(row["text"])
+            for row in episode.brief_checks(self._plan_sections(board_id))
+            if row["state"] == "fail"
+        ]
+        if not flags:
+            return ""
+        return (
+            f" Its checks flag: {'; '.join(flags)}. Mend the ledger now and publish it again: a "
+            "quote is the material's own words, word for word, and a claim the material does "
+            "not make comes out or is marked unconfirmed."
+        )
+
+    def _plan_sections(self, board_id: str) -> dict[str, dict[str, Any]]:
+        """A plan's sections as its board holds them now, by name."""
+        return {
+            str(frame["name"]): frame["versions"][-1]["data"]
+            for frame in self.store.frames(board_id)
+            if frame["versions"] and frame["versions"][-1].get("data")
+        }
 
     def feedback_text(self, thread_id: str, board_id: str) -> str:
         board = self.store.board(board_id)
@@ -1110,13 +1234,17 @@ class AgentHost:
             for note in notes:
                 replies = [c for c in frame["comments"] if c["parent_id"] == note["id"]]
                 answered = f" [answered in v{note['answered_in']}]" if note["answered_in"] else ""
-                lines.append(f"    {note['id']} {note['author']}: {note['text']}{answered}")
+                row = f"[{note['anchor']}] " if note.get("anchor") else ""
+                lines.append(f"    {note['id']} {note['author']}: {row}{note['text']}{answered}")
                 lines.extend(f"      ↳ {r['author']}: {r['text']}" for r in replies)
             machine.append(
                 {
                     "frame": frame["name"],
                     "verdict": frame["verdict"],
                     "open": [n["id"] for n in notes if not n["answered_in"]],
+                    "rows": sorted(
+                        {n["anchor"] for n in notes if n.get("anchor") and not n["answered_in"]}
+                    ),
                 }
             )
         lines.append(json.dumps({"board": board_id, "status": board["status"], "frames": machine}))
@@ -1133,6 +1261,7 @@ class AgentHost:
         x: float | None,
         y: float | None,
         parent_id: str = "",
+        anchor: str = "",
     ) -> Row:
         frame = self.store.frame(frame_id)
         if frame is None:
@@ -1147,6 +1276,7 @@ class AgentHost:
                 "text": text,
                 "x": x,
                 "y": y,
+                "anchor": anchor,
                 "version": version,
             }
         )
@@ -1176,7 +1306,17 @@ class AgentHost:
         view = self.board_view(board_id)
         title = f"“{board['title']}”"  # as the agent named it: never recased
         held = self._holder(board_id)
-        if approve:
+        if approve and board["kind"] == "plan" and not _plan_written(view):
+            # Only the top layer is signed off: the chapters still to write are written next, and
+            # the plan's own sign-off waits for them. A chapter written early keeps its own state.
+            self.store.update_board(board_id, status="review")
+            for frame in view["frames"]:
+                if (frame.get("data") or {}).get("layer") == "top":
+                    self.store.update_frame(frame["id"], verdict="approved", verdict_by=by)
+            if held is not None:
+                self._set_asset(held["id"], status="making")
+            text = f"Approved the top layer of {title}. {_plan_to_write(view)} Board {board_id}."
+        elif approve:
             self.store.update_board(board_id, status="approved")
             for frame in view["frames"]:
                 self.store.update_frame(frame["id"], verdict="approved", verdict_by=by)
@@ -1202,6 +1342,79 @@ class AgentHost:
             listing = ", ".join(asked) if asked else "no frame in particular"
             text = f"I left notes on {title}: {listing}. Board {board_id}."
         self.hub.publish("board.updated", board=self.board_view(board_id))
+        thread = self.store.thread(board["thread_id"])
+        if thread is None:
+            raise KeyError(board["thread_id"])
+        return self.post(
+            channel_id=thread["channel_id"],
+            author_id=by,
+            text=text,
+            to_agent=True,
+            thread_id=board["thread_id"],
+        )
+
+    def refine_plan(
+        self, board_id: str, frame_id: str, *, by: str, text: str, row: str = ""
+    ) -> Row:
+        """Refine one part of a plan and nothing else: a section, or one row of it (a chapter, a
+        beat, a frame). The ask is kept as a note on that row and goes to the agent right away."""
+        board = self.store.board(board_id)
+        frame = self.store.frame(frame_id)
+        if board is None or frame is None or frame["board_id"] != board_id:
+            raise KeyError(frame_id)
+        if board["kind"] not in WORD_BOARDS:
+            raise ValueError(
+                "Only a brief or a plan is refined part by part; leave notes on this board."
+            )
+        words = text.strip()
+        if not words:
+            raise ValueError("Say what should change.")
+        self.add_comment(frame_id, author_id=by, text=words, x=None, y=None, anchor=row)
+        self.store.update_frame(frame_id, verdict="changes", verdict_by=by)
+        self.store.update_board(board_id, status="changes")
+        held = self._holder(board_id)
+        if held is not None:
+            self._set_asset(held["id"], status="changes")
+        self.hub.publish("board.updated", board=self.board_view(board_id))
+        at = (
+            f", at {_plan_row(self._plan_sections(board_id).get(frame['name']), row)}"
+            if row
+            else ""
+        )
+        said = words if words.endswith((".", "?", "!")) else f"{words}."
+        return self._to_agent(
+            board,
+            by,
+            f"Refine only “{frame['name']}” of “{board['title']}”{at}: {said} Leave every other "
+            f"section as it is. Board {board_id}.",
+        )
+
+    def write_chapter(self, board_id: str, name: str, *, by: str) -> Row:
+        """Have one chapter of a plan written in full before the rest, to read its beats and
+        frames early. The top layer's sign-off still writes the others."""
+        board = self.store.board(board_id)
+        if board is None or board["kind"] != "plan":
+            raise KeyError(board_id)
+        view = self.board_view(board_id)
+        lengths = _plan_chapters(view)
+        if name not in lengths:
+            raise KeyError(name)
+        standing = self._plan_sections(board_id).get(name)
+        if episode.written(standing):
+            raise ValueError(f"“{name}” is already written.")
+        held = self._holder(board_id)
+        if held is not None:
+            self._set_asset(held["id"], status="making")
+        chapter = f"“{name}” ({_seconds(lengths[name])} s) of “{board['title']}”"
+        if standing is not None:
+            # Its beats are on the board: only its frames are missing, or written from a beat
+            # as it was. The beats stand as the team left them.
+            text = f"Write only the frames of {chapter}, from its beats as they stand."
+        else:
+            text = f"Write {chapter} in full now, before the rest."
+        return self._to_agent(board, by, f"{text} Board {board_id}.")
+
+    def _to_agent(self, board: Row, by: str, text: str) -> Row:
         thread = self.store.thread(board["thread_id"])
         if thread is None:
             raise KeyError(board["thread_id"])
@@ -1855,10 +2068,31 @@ class AgentHost:
                     "verdict_by": frame["verdict_by"],
                     "version": versions[-1]["v"] if versions else 1,
                     "versions": versions,
+                    "data": frame["versions"][-1].get("data") if frame["versions"] else None,
+                    "was": frame["versions"][-2].get("data")
+                    if len(frame["versions"]) > 1
+                    else None,
                     "comments": mine,
                 }
             )
-        return {**board, "frames": frames}
+        view = {**board, "frames": frames}
+        if board["kind"] == "plan":
+            brief = self._brief_of(str(board["thread_id"]))
+            _plan_derived(view, self._plan_sections(str(brief["id"])) if brief else {})
+            if brief is not None:
+                view["brief"] = _brief_card(brief, self.store.frames(brief["id"]))
+        elif board["kind"] == "brief":
+            for frame in frames:
+                if frame.get("data") and frame.get("was"):
+                    frame["data"]["changed"] = episode.changed(frame["data"], frame["was"])
+            sections = {f["name"]: f["data"] for f in frames if f.get("data")}
+            view["checks"] = episode.brief_checks(sections)
+        return view
+
+    def _brief_of(self, thread_id: str) -> Row | None:
+        """The brief a thread's plan is written from: its latest board of that kind."""
+        briefs = [b for b in self.store.boards(thread_id) if b["kind"] == "brief"]
+        return briefs[-1] if briefs else None
 
     def canvas_view(self, channel_id: str) -> list[dict[str, Any]]:
         """The channel's canvas: one frame per task, holding what it started from, its assets
@@ -1888,6 +2122,179 @@ def _media(asset: Row) -> str:
     """What an asset hands back, as other work is made from it."""
     made = catalog.capability(str(asset["kind"]))
     return made.makes if made is not None else "doc"
+
+
+def _plan_placed(
+    frames: Sequence[Mapping[str, Any]],
+    images: Sequence[bytes],
+    standing: Mapping[str, dict[str, Any]],
+) -> tuple[list[Mapping[str, Any]], list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    """A plan's or a brief's sections as they go on its board, one per name, in the order they
+    were given, and every section the board holds once they are on it, by name.
+
+    A chapter's beats come without shots; its shots come as a section of their own and go under
+    the beats the board already holds for that name (or the ones earlier in this same call). So a
+    shot is never on the board without the beat it was written from, and a beat that changes
+    marks its old shots stale until they are published again. Raises ValueError with what to do
+    when a section does not pass."""
+    current = dict(standing)
+    placed: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
+    for position, (spec, image) in enumerate(zip(frames, images, strict=True)):
+        name = str(spec.get("name") or f"Frame {position + 1}")
+        section = episode.read(image)
+        found = episode.faults(section)
+        if found:
+            more = f"; and {len(found) - 8} more" if len(found) > 8 else ""
+            raise ValueError(f"“{name}” does not pass: {'; '.join(found[:8])}{more}")
+        base = current.get(name)
+        chapter = base if base is not None and base.get("section") == episode.CHAPTER else None
+        if section["section"] == episode.SHOTS:
+            if chapter is None:
+                raise ValueError(
+                    f"“{name}” has no beats on the board. Publish its beats first: shots are "
+                    "written from them and go under them."
+                )
+            try:
+                section = episode.with_shots(chapter, section)
+            except ValueError as error:
+                raise ValueError(f"“{name}”: {error}") from error
+        elif section["section"] == episode.CHAPTER:
+            section = episode.with_beats(section, chapter)
+        current[name] = section
+        note = str(spec.get("note") or (placed[name][0]["note"] if name in placed else ""))
+        placed[name] = ({"name": name, "note": note}, section)
+    specs: list[Mapping[str, Any]] = [spec for spec, _ in placed.values()]
+    return specs, [section for _, section in placed.values()], current
+
+
+async def _brief_checked(
+    placed: Sequence[dict[str, Any]], whole: Mapping[str, dict[str, Any]], backend: Any
+) -> list[dict[str, Any]]:
+    """A brief's sections, held to what a brief needs as a whole, with every quote in its ledger
+    looked up in the material its `source` row names. A file that cannot be read leaves the
+    quotes unmarked, which the board shows as not checked. Raises ValueError with what to do
+    when the brief does not pass."""
+    brief = next((s for s in whole.values() if s.get("section") == episode.LIST), None)
+    claims = next((s for s in whole.values() if s.get("section") == episode.CLAIMS), None)
+    if brief is None:
+        raise ValueError("a brief's board holds its “Brief” section; publish it with the ledger")
+    found = episode.brief_faults(brief, claims)
+    if found:
+        raise ValueError(f"the brief does not pass: {'; '.join(found[:8])}")
+    try:
+        texts = [
+            (await read_bytes(backend, path, cap_mb=FRAME_CAP_MB)).decode("utf-8", "ignore")
+            for path in episode.material(brief)
+        ]
+    except WorkspaceError:
+        return list(placed)
+    return [
+        episode.quoted(section, "\n".join(texts))
+        if section.get("section") == episode.CLAIMS
+        else section
+        for section in placed
+    ]
+
+
+def _brief_card(board: Mapping[str, Any], frames: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """The brief a plan is written from, as the plan's review shows it: its idea, where it
+    stands, and the frame that opens it."""
+    idea = next(
+        (
+            str(row.get("text") or "")
+            for frame in frames
+            if frame["versions"]
+            for row in (frame["versions"][-1].get("data") or {}).get("rows") or []
+            if isinstance(row, dict) and row.get("id") == "idea"
+        ),
+        "",
+    )
+    return {
+        "board_id": board["id"],
+        "frame_id": frames[0]["id"] if frames else "",
+        "status": board["status"],
+        "idea": idea,
+    }
+
+
+def _plan_derived(view: dict[str, Any], brief: Mapping[str, dict[str, Any]]) -> None:
+    """A plan's board as people read it: every section with its clock worked out, the version
+    before it the same way (so what changed can be marked), and the plan's checks, which hold
+    it to the brief it was written from as well."""
+    frames = [f for f in view["frames"] if f.get("data")]
+    now = episode.timed({f["name"]: f["data"] for f in frames})
+    before = episode.timed({f["name"]: f.get("was") or f["data"] for f in frames})
+    for frame in frames:
+        frame["data"] = now[frame["name"]]
+        if frame.get("was"):
+            frame["was"] = before[frame["name"]]
+            frame["data"]["changed"] = episode.changed(frame["data"], frame["was"])
+    view["checks"] = episode.checks({**{f"brief: {k}": v for k, v in brief.items()}, **now})
+
+
+def _version(v: int, file_id: str, at: float, section: dict[str, Any] | None) -> dict[str, Any]:
+    """One version of a frame: its file, and for a plan's frame the section it holds."""
+    entry: dict[str, Any] = {"v": v, "file_id": file_id, "at": at}
+    if section is not None:
+        entry["data"] = section
+    return entry
+
+
+def _layer(frame: Mapping[str, Any]) -> str:
+    return str((frame.get("data") or {}).get("layer") or "")
+
+
+def _plan_chapters(view: Mapping[str, Any]) -> dict[str, float]:
+    """The chapters a plan's top layer lists, by name, with how long each runs."""
+    return {
+        str(row.get("label") or ""): episode.seconds_of(row)
+        for frame in view.get("frames", [])
+        if (frame.get("data") or {}).get("section") == episode.CHAPTERS
+        for row in (frame["data"].get("rows") or [])
+    }
+
+
+def _plan_written(view: Mapping[str, Any]) -> bool:
+    """Whether every chapter a plan lists is written in full: its beats, and shots written from
+    each beat as it stands. With no list, whatever chapters it holds stand for it."""
+    chapters = {f["name"]: f.get("data") for f in view.get("frames", []) if _layer(f) == "chapter"}
+    names = list(_plan_chapters(view)) or list(chapters)
+    return bool(names) and all(episode.written(chapters.get(name)) for name in names)
+
+
+def _plan_to_write(view: Mapping[str, Any]) -> str:
+    """What is still to write, as the agent is told it: the chapters with nothing on the board
+    are written in full, and the ones whose beats stand get only their frames, each named with
+    its length."""
+    chapters = {f["name"]: f.get("data") for f in view.get("frames", []) if _layer(f) == "chapter"}
+    full: list[str] = []
+    frames: list[str] = []
+    for name, length in _plan_chapters(view).items():
+        if not episode.written(chapters.get(name)):
+            (frames if chapters.get(name) else full).append(f"“{name}” ({_seconds(length)} s)")
+    said = [f"Write its chapters in full: {', '.join(full)}."] if full else []
+    if frames:
+        said.append(f"Write only the frames of {', '.join(frames)}, from the beats as they stand.")
+    return " ".join(said)
+
+
+def _plan_row(section: Mapping[str, Any] | None, row: str) -> str:
+    """How a refine names the row it is on: a chapter's beat, one of a beat's frames (the plan's
+    word for a shot), or a row of a list by its id."""
+    for beat in (section or {}).get("beats") or []:
+        if beat.get("id") == row:
+            return f"beat {row}"
+        if any(shot.get("id") == row for shot in beat.get("shots") or []):
+            return f"frame {row}"
+    return row
+
+
+def _seconds(length: float) -> str:
+    return str(int(length)) if float(length).is_integer() else f"{length:.1f}"
+
+
+#: A pipeline step's state (`PIPELINE_STEP`), as a job's step reads on the canvas.
+_STEP_STATES = {"started": "running", "retry": "running", "done": "done", "failed": "failed"}
 
 
 def _jsonable(value: Any) -> bool:

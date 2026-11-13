@@ -276,7 +276,8 @@ class FrameSpec(BaseModel):
 
     path: str = Field(
         description="The frame's rendered image under /workspace, e.g. "
-        "/workspace/projects/<slug>/board/poses/beat-03a-1920x1080.png"
+        "/workspace/projects/<slug>/board/poses/beat-03a-1920x1080.png. A brief's or a plan's "
+        "frame is one of its sections as a JSON file"
     )
     name: str = Field(
         description="Its name on the board, after its beat or size: 'Beat 3a · The turn'. A new "
@@ -333,8 +334,11 @@ class CanvasToolsMiddleware(AgentMiddleware[AgentState[Any], Any, Any]):
             Use it for work people sign off or nudge: a storyboard's poses (one frame per pose,
             named after its beat), layouts, an ad set's sizes, thumbnails, or looks to pick from.
             `project` is the folder under /workspace/projects; `kind` is storyboard, layout,
-            stills, thumbnails or looks; `asset` is the id (as_...) of the canvas asset this board
-            reviews, when the thread names one. To show a new version after feedback, pass the
+            stills, thumbnails, looks, brief or plan (an episode's brief and its plan, in words:
+            one JSON file per section, a chapter's beats before its shots, as `episode-plan`
+            says); `asset` is the
+            id (as_...) of the canvas asset this board reviews, when the thread names one. To
+            show a new version after feedback, pass the
             board's id as `replaces`, only the frames you changed (same names), and in `answers`
             the ids of the notes the new version answers. Returns the board's id. Finished files
             go out with canvas_deliver (an asset's) or upload_files.
