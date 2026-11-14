@@ -330,6 +330,58 @@ async def _elevenlabs_request(
     return response
 
 
+@dataclass(frozen=True)
+class Spoken:
+    """One line as ElevenLabs said it: the mp3, how long it runs and when each word starts."""
+
+    audio: bytes
+    seconds: float
+    words: list[dict[str, JsonValue]]
+
+
+async def speak(
+    keys: MediaKeys,
+    text: str,
+    voice_id: str,
+    *,
+    previous_text: str | None = None,
+    next_text: str | None = None,
+    model: str = "eleven_v4",
+) -> Spoken | str:
+    """One line spoken by ElevenLabs, for host code that needs the audio itself (an episode's
+    narration) rather than a file on a thread's computer. Returns the reason when there is none.
+    Every call spends credits."""
+    if not VOICE_ID.fullmatch(voice_id):
+        return "rejected: voice_id must be an ElevenLabs voice id."
+    body: dict[str, JsonValue] = {"text": text, "model_id": model}
+    if previous_text:
+        body["previous_text"] = previous_text
+    if next_text:
+        body["next_text"] = next_text
+    try:
+        response = await _elevenlabs_request(
+            keys.elevenlabs,
+            f"text-to-speech/{voice_id}/with-timestamps",
+            "line.mp3",
+            body,
+            "mp3_44100_192",
+            timeout=180,
+        )
+        if isinstance(response, str):
+            return response
+        payload = response.json()
+        data = base64.b64decode(payload.get("audio_base64") or "", validate=True)
+        if not data:
+            return "generation returned no audio."
+        alignment = payload.get("alignment") or {}
+        ends = alignment.get("character_end_times_seconds") or []
+        return Spoken(data, round(float(max(ends)), 3) if ends else 0.0, _word_timings(alignment))
+    except httpx.HTTPError:
+        return "voiceover request failed."
+    except (ValueError, TypeError, KeyError, AttributeError, binascii.Error):
+        return "voiceover unavailable: invalid configuration or provider response."
+
+
 def build_media_tools(settings: Settings, backend_for: BackendFor) -> list[BaseTool]:
     """The media tools, bound to these settings' keys and the profile's sandbox accessor."""
     keys = MediaKeys.from_settings(settings)

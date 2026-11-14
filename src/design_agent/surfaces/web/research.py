@@ -8,6 +8,9 @@ environment: no API keys or base URLs, and none of the session variables of what
 house, so it runs as the person's own install does, on their own plan. It streams JSON lines, and
 `parse` turns each into what the canvas shows: a step ("Reading src/session.go"), a note on the
 way, the answer, or the session a follow-up resumes and a branch forks.
+
+The same agents write an episode (`episode_workers.py`): there a run is given one folder of its
+own and may change files in it and nothing else (`writes`), under a guide of the caller's.
 """
 
 from __future__ import annotations
@@ -43,6 +46,8 @@ tools: Read, Glob, Grep
 """
 #: Claude Code's tools a research run may not use, on top of plan mode.
 CLAUDE_BLOCKED = "Edit,Write,NotebookEdit,ExitPlanMode"
+#: Claude Code's tools when a run writes in its folder: files, and no shell, web or helpers.
+CLAUDE_WRITER_TOOLS = "Read,Write,Edit,Glob,Grep"
 #: What a CLI keeps of the house's environment: enough to find itself and its sign-in.
 KEPT_ENV = ("HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR")
 #: Where the CLIs' installers put them, ahead of whatever PATH the house was started with.
@@ -140,27 +145,26 @@ def command(
     session: str,
     profile: Path,
     fork: bool = False,
+    guide: str = GUIDE,
+    writes: bool = False,
 ) -> tuple[list[str], str | None]:
     """The CLI's arguments for one run, and what goes in on stdin (so a prompt that starts with a
     dash is never read as an option). With `fork`, the run continues a copy of `session` under a
-    new id and leaves the original as it was."""
+    new id and leaves the original as it was. With `writes`, the run may change files in `repo`
+    (its own folder) and still has no shell and no network; `profile` is then Kimi Code's
+    writing profile."""
     if harness.id == "claude":
-        argv = [
-            binary,
-            "-p",
-            "--output-format",
-            "stream-json",
-            "--verbose",
-            "--permission-mode",
-            "plan",
-            f"--disallowedTools={CLAUDE_BLOCKED}",
-            "--append-system-prompt",
-            GUIDE,
-        ]
+        argv = [binary, "-p", "--output-format", "stream-json", "--verbose"]
+        if writes:
+            argv += ["--permission-mode", "acceptEdits", "--tools", CLAUDE_WRITER_TOOLS]
+        else:
+            argv += ["--permission-mode", "plan", f"--disallowedTools={CLAUDE_BLOCKED}"]
+        argv += ["--append-system-prompt", guide]
         if session:
             argv += ["--resume", session] + (["--fork-session"] if fork else [])
         return argv, prompt
     if harness.id == "codex":
+        sandbox = "workspace-write" if writes else "read-only"
         if session:
             return [
                 binary,
@@ -169,7 +173,7 @@ def command(
                 "--json",
                 "--skip-git-repo-check",
                 "-c",
-                'sandbox_mode="read-only"',
+                f'sandbox_mode="{sandbox}"',
                 session,
                 "-",
             ], prompt
@@ -178,12 +182,12 @@ def command(
             "exec",
             "--json",
             "--sandbox",
-            "read-only",
+            sandbox,
             "--cd",
             str(repo),
             "--skip-git-repo-check",
             "-",
-        ], f"{GUIDE}\n\n{prompt}"
+        ], f"{guide}\n\n{prompt}"
     return [
         binary,
         "--agent-file",
@@ -203,9 +207,12 @@ async def run(
     fork: bool = False,
     profile: Path,
     timeout: float = RUN_SECONDS,
+    guide: str = GUIDE,
+    writes: bool = False,
 ) -> AsyncGenerator[Event, None]:
-    """One research run: the CLI in the repository, its stream read as it comes. Closing the
-    iterator early (a stop) ends the CLI and anything it started."""
+    """One run: the CLI in the repository (or, for a run that writes, in its own folder), its
+    stream read as it comes. Closing the iterator early (a stop) ends the CLI and anything it
+    started."""
     harness = HARNESSES[harness_id]
     binary = harness.binary()
     if binary is None:
@@ -213,7 +220,15 @@ async def run(
     if not repo.is_dir():
         raise ResearchError(f"{repo} isn't on this computer any more.")
     argv, stdin = command(
-        harness, binary, repo=repo, prompt=prompt, session=session, profile=profile, fork=fork
+        harness,
+        binary,
+        repo=repo,
+        prompt=prompt,
+        session=session,
+        profile=profile,
+        fork=fork,
+        guide=guide,
+        writes=writes,
     )
     process = await asyncio.create_subprocess_exec(
         *argv,
@@ -339,6 +354,10 @@ def _codex(record: Mapping[str, Any]) -> list[Event]:
         return [Event("step", f"Searching the web for “{_clip(str(item.get('query') or ''))}”")]
     if kind == "item.started" and what == "mcp_tool_call":
         return [Event("step", f"Using {item.get('tool') or 'a tool'}")]
+    if kind == "item.completed" and what == "file_change":
+        paths = [str(c.get("path") or "") for c in item.get("changes") or [] if isinstance(c, dict)]
+        named = ", ".join(Path(p).name for p in paths[:3] if p)
+        return [Event("step", f"Writing {named or 'a file'}")]
     if kind == "item.completed" and what == "agent_message":
         text = str(item.get("text") or "").strip()
         return [Event("note", text)] if text else []
@@ -381,6 +400,10 @@ def describe(tool: str, args: Any, repo: Path) -> str:
     place = _relative(str(where), repo) if where else ""
     if name in ("read", "readfile", "view", "cat"):
         return f"Reading {place or 'a file'}"
+    if name in ("write", "writefile", "create"):
+        return f"Writing {place or 'a file'}"
+    if name in ("edit", "multiedit", "strreplace", "applypatch"):
+        return f"Editing {place or 'a file'}"
     if name in ("grep", "search", "rg"):
         pattern = _clip(str(given.get("pattern") or given.get("query") or ""))
         return f"Searching for “{pattern}”" + (f" in {place}" if place else "")

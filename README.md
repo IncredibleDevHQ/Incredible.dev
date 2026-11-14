@@ -44,6 +44,14 @@ and card has its own address, so a link takes a teammate straight to it.
 
 ![A launch kit on the canvas: the source note, the storyboard, the teaser, thumbnails, social cards and a GIF](docs/images/canvas.png)
 
+### An episode, planned and recorded
+
+An episode is a presenter-led explainer of one idea. Start one from your notes or a research
+frame: an agent you pick (Claude Code, Codex or Kimi Code on your computer, or the built-in one)
+writes the plan in stages, and code checks each stage before the next. You approve the plan once,
+then work chapter by chapter in one screen: the script, the frame for each line, and who has it.
+Record each chapter in the browser, and the pictures are timed to how you said it.
+
 ### 5. Steer it in a thread
 
 Every task is a thread with its own lead agent and computer. Reply to steer the work, approve a
@@ -81,7 +89,7 @@ so don't expose it on a network.
   sandbox of its own, skills for each kind of work, and checks it runs on its renders (brand,
   motion, output). A cost meter tracks every run.
 - **The app.** The server in `src/design_agent/surfaces/web/` (API, live events, store, canvas
-  tools, research, brands) and the web app in `web/` (React, Vite, TypeScript), plugged in through
+  tools, research, episodes, brands) and the web app in `web/` (React, Vite, TypeScript), plugged in through
   one presenter hook, `src/design_agent/surfaces/presenter.py`.
 
 More: [architecture](docs/architecture/README.md) · [instructions.md](instructions.md) ·

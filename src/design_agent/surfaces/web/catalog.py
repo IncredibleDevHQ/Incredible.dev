@@ -43,6 +43,9 @@ class Capability:
     accepts: tuple[str, ...]
     #: What it can be made from: the material, or another asset's `makes`.
     takes: tuple[str, ...]
+    #: It is made in a studio of its own (`episode_desk.py`), never by asking the agent for it
+    #: in the thread.
+    studio: bool = False
 
 
 @dataclass(frozen=True)
@@ -228,6 +231,18 @@ CAPABILITIES: tuple[Capability, ...] = (
         "doc",
         ("doc", "image"),
         (MATERIAL, "video"),
+    ),
+    Capability(
+        "episode",
+        "Episode",
+        "A presenter-led explainer, planned, recorded and rendered",
+        "an episode (planned from the notes, then recorded and rendered in its studio)",
+        "episode",
+        "",
+        "video",
+        (),
+        (MATERIAL,),
+        studio=True,
     ),
 )
 

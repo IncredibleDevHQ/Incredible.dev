@@ -16,6 +16,37 @@
 
 ### Added in this fork
 
+- Episodes: a presenter-led explainer of one idea, taken from notes to a rendered film in a
+  studio of its own (`surfaces/web/episode_desk.py`, `design_agent/episode/`, the `episode`
+  skill). It starts from a channel's material or a research frame's notes.
+  - The plan is written in stages (the brief, the script, a frame for every line) by a writer
+    the person picks: Claude Code, Codex or Kimi Code on this computer, in a folder of the
+    episode's own where it may change files and nothing else, or the built-in agent on the
+    episode's thread. After each stage the words are read by a typed classifier (Jev with
+    `TYPESAFE_API_KEY`; otherwise the writer's own model answers the same questions) and held
+    to the checks by code, and the report opens the writer's next turn. The writer never types
+    a label or a number.
+  - The studio is the plan and the recording in one place: the film's page (its chapters, the
+    look, the voice, the pictures' level) and, per chapter, the script, the frame for the
+    picked line and that line's choices (who has the frame, the layout, a simple picture or a
+    rich one posed as stills for the person's go). A pick is kept beside the plan and never
+    undone by a later stage.
+  - Each picture is one HyperFrames sub-composition built by the same writer, in the channel's
+    brand: its colours by role and its type, staged on the thread's computer. Every time in it
+    comes from a clock block code rewrites, so a recording never sends a picture back to its
+    builder. Each is held to the renderer's own check (lint, runtime, layout, contrast) and
+    posed as a still at the end of every line, with a draft clip; a rich picture's builder
+    looks at its stills once before the person does.
+  - A chapter is recorded in the browser as one take (Space starts the next line), or brought as
+    a file; where each line starts in the take sets how long it runs in the film and when its
+    picture's cues land. The film is one HyperFrames page written by code and rendered on the
+    thread's computer; before anything is recorded it renders as a draft with a stand-in.
+  - `DESIGN_AGENT_NARRATOR_VOICE_ID` (with `ELEVENLABS_API_KEY`) narrates the lines no take
+    covers when a film's voice is the narrator.
+- Every run of an agent is a row in the house's own store (`runs`): what it was told, each step
+  and note on the way, what it said, and the session it ran under. A local agent's own session
+  is a shortcut to that record: when one can no longer be resumed, research and episodes start
+  the turn again, told what was said from the record.
 - One presentation hook in place of the Slack slot: `surfaces/presenter.py`'s `Presenter`, set on
   `RuntimeProfile.presenter` (`build_local_runtime(presenter=...)`). With none, runs are headless.
 - Summarization counts each image at what it costs, for the lead and every helper

@@ -13,6 +13,11 @@ branch from a passage of another's answer, so a frame grows into a tree. What ea
 - a follow-up resumes the agent's own session where its CLI allows, and otherwise starts again,
   told what was said.
 
+The history is the house's own. Every run is kept as a row (`runs`): what the agent was told,
+each step and note on the way, and what it said. An agent's session is only a shortcut to
+that: when one can no longer be resumed (its files are gone, the house moved to another
+computer), the run starts again, told what was said from the house's own record.
+
 Once something is made from a research frame it is a task like any other, and its notes are what
 it started from: `notes_markdown` is the file the engine is handed. Runs happen here, on the host,
 through `research.run`; nothing of them reaches the engine's computer but the notes people keep.
@@ -57,6 +62,8 @@ CONTEXT_CHARS = 6_000
 NOTE_CHARS = 600
 #: Steps a turn card keeps.
 STEPS_KEPT = 40
+#: Steps and notes a run's record keeps.
+RUN_EVENTS = 400
 
 
 def _installed(harness: str) -> bool:
@@ -235,10 +242,11 @@ class ResearchDesk:
             to_agent=True,
         )
         self.hub.publish("message.created", message=message)
+        retold = self._so_far(conversation, words)
         if HARNESSES[conversation["harness"]].resumes and conversation["session"]:
-            self._start(conversation, words, session=str(conversation["session"]))
+            self._start(conversation, words, session=str(conversation["session"]), retold=retold)
         else:
-            self._start(conversation, self._so_far(conversation, words), session="")
+            self._start(conversation, retold, session="")
         return message
 
     def _fresh(self, frame_id: str, question: str) -> str:
@@ -328,6 +336,9 @@ class ResearchDesk:
 
     def restore(self) -> None:
         """A conversation that was answering when the house stopped is stopped, and says so."""
+        for record in self.store.working_runs():
+            if not record["lane"]:
+                self.store.update_run(str(record["id"]), state="stopped", ended_at=time.time())
         for channel in self.store.channels():
             for thread in self.store.threads(channel["id"]):
                 if thread["kind"] != CONVERSATION or thread["status"] != "working":
@@ -345,15 +356,28 @@ class ResearchDesk:
                 )
                 self.store.update_thread(thread["id"], status="failed")
 
-    def _start(self, conversation: Row, prompt: str, *, session: str, fork: bool = False) -> None:
+    def _start(
+        self,
+        conversation: Row,
+        prompt: str,
+        *,
+        session: str,
+        fork: bool = False,
+        retold: str = "",
+    ) -> None:
+        """Start a conversation's run. `retold` is what it is told instead, with no session,
+        when the agent's own session can't be picked up."""
         conversation_id = str(conversation["id"])
         self._set_status(conversation_id, "working")
         self._runs[conversation_id] = asyncio.get_running_loop().create_task(
-            self._run(conversation, prompt, session, fork), name=f"research {conversation_id}"
+            self._run(conversation, prompt, session, fork, retold),
+            name=f"research {conversation_id}",
         )
         self._changed(str(conversation["frame_id"]))
 
-    async def _run(self, conversation: Row, prompt: str, session: str, fork: bool) -> None:
+    async def _run(
+        self, conversation: Row, prompt: str, session: str, fork: bool, retold: str = ""
+    ) -> None:
         conversation_id = str(conversation["id"])
         frame_id = str(conversation["frame_id"])
         harness = HARNESSES[conversation["harness"]]
@@ -375,6 +399,10 @@ class ResearchDesk:
         notes: list[str] = []
         answer = failure = ""
         stopped = False
+        record = self.store.add_run(
+            thread_id=conversation_id, lane="", harness=harness.id, prompt=prompt, session=session
+        )
+        heard: list[dict[str, Any]] = []
 
         def show(**change: Any) -> None:
             turn["data"] = {**turn["data"], "steps": steps[-STEPS_KEPT:], "notes": notes[-3:]}
@@ -393,8 +421,12 @@ class ResearchDesk:
             )
             async with contextlib.aclosing(events):
                 async for event in events:
+                    if event.kind in ("step", "note"):
+                        heard.append({"kind": event.kind, "text": event.text, "at": time.time()})
+                        self.store.update_run(str(record["id"]), steps=heard[-RUN_EVENTS:])
                     if event.kind == "session":
                         self.store.update_conversation(conversation_id, session=event.text)
+                        self.store.update_run(str(record["id"]), session=event.text)
                     elif event.kind == "step":
                         for step in steps:
                             step["status"] = "done"
@@ -419,6 +451,19 @@ class ResearchDesk:
             failure = f"It stopped: {type(error).__name__}."
         if not answer and notes and not (failure or stopped):
             answer = notes[-1]
+        self.store.update_run(
+            str(record["id"]),
+            answer=answer,
+            failure=failure,
+            state="stopped" if stopped else "failed" if failure and not answer else "done",
+            ended_at=time.time(),
+        )
+        if session and retold and failure and not (answer or heard or stopped):
+            # The agent's own session is gone: tell it what was said, from the house's record.
+            self.store.update_conversation(conversation_id, session="")
+            show(state="stopped", ended_at=time.time())
+            await self._run({**conversation, "session": ""}, retold, "", False)
+            return
         for step in steps:
             step["status"] = "done"
         show(state="stopped" if stopped else "done", ended_at=time.time())

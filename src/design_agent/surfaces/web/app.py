@@ -25,6 +25,14 @@ runtime), the store of channels, messages and boards, and this API:
   `POST /api/research/{id}/conversations` (another, or a branch from a passage),
   `POST /api/research/{id}/notes`, `PATCH /api/notes/{id}`, `DELETE /api/notes/{id}`; a
   conversation's follow-ups and stops go through its thread's routes
+- episodes (`episode_desk.py`): `GET /api/episodes/options` (who can write one, the looks),
+  `POST /api/channels/{id}/episodes` (one from material or a research frame's notes),
+  `GET /api/episodes/{id}` (everything its studio draws), `POST /api/episodes/{id}/approve`,
+  `POST /api/episodes/{id}/choices` (the look, who has the frame, a picture's level),
+  `POST /api/episodes/{id}/again` and `/stop` (its planning),
+  `POST /api/episodes/{id}/pictures/{unit}/go` and `/note` (a picture's stills),
+  `POST /api/episodes/{id}/takes` (a recording), `POST /api/episodes/{id}/takes/{take}/keep`,
+  `DELETE /api/episodes/{id}/takes/{take}`, `POST /api/episodes/{id}/film` (render it)
 - what the agent works with: `GET /api/brand` (a channel's with `?channel=`), `GET /api/skills`,
   `GET /api/computer`
 - brands (`brands.py`): `GET /api/brands`, `POST /api/brands` (read one from a website),
@@ -43,13 +51,13 @@ import contextlib
 import html
 import json
 import mimetypes
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -164,6 +172,57 @@ class NoteEditIn(BaseModel):
     text: str = Field(min_length=1, max_length=8_000)
 
 
+class EpisodeSettingsIn(BaseModel):
+    seconds: int | None = Field(default=None, ge=60, le=1_200)
+    presenter: str | None = Field(default=None, pattern=r"^(on|off)$")
+    theme: str | None = Field(default=None, max_length=60)
+    voice: str | None = Field(default=None, pattern=r"^(live|narrator)$")
+    level: str | None = Field(default=None, pattern=r"^(simple|rich)$")
+    writer: str | None = Field(default=None, pattern=r"^(claude|codex|kimi|builtin|demo)$")
+
+
+class EpisodeIn(BaseModel):
+    title: str = Field(default="", max_length=120)
+    #: The notes it starts from (with or without text files), or a word to go with a frame's.
+    text: str = Field(default="", max_length=200_000)
+    files: list[str] = Field(default_factory=list, max_length=MAX_UPLOADS)
+    #: A research frame whose notes it is made from, in that frame.
+    from_frame: str = Field(default="", max_length=64)
+    settings: EpisodeSettingsIn = Field(default_factory=EpisodeSettingsIn)
+
+
+class FramePickIn(BaseModel):
+    presence: str | None = Field(default=None, pattern=r"^(person|both|content)$")
+    layout: str | None = Field(default=None, max_length=60)
+
+
+class UnitPickIn(BaseModel):
+    level: str = Field(pattern=r"^(simple|rich)$")
+
+
+class ChoicesIn(BaseModel):
+    settings: EpisodeSettingsIn = Field(default_factory=EpisodeSettingsIn)
+    #: Who has the frame, and in which layout: for a line, a chapter, or every line.
+    frames: dict[str, FramePickIn] = Field(default_factory=dict)
+    chapters: dict[str, FramePickIn] = Field(default_factory=dict)
+    all: FramePickIn | None = None
+    #: Lines (or chapters) whose pick is taken back.
+    clear: list[str] = Field(default_factory=list, max_length=400)
+    units: dict[str, UnitPickIn] = Field(default_factory=dict)
+
+
+class AgainIn(BaseModel):
+    writer: str = Field(default="", pattern=r"^(claude|codex|kimi|builtin|demo|)$")
+
+
+class PictureNoteIn(BaseModel):
+    text: str = Field(min_length=1, max_length=600)
+
+
+class KeepIn(BaseModel):
+    keep: bool = True
+
+
 class BrandReadIn(BaseModel):
     url: str = Field(min_length=3, max_length=2_000)
     #: A channel that wears the brand once it is read.
@@ -185,10 +244,18 @@ def create_app(
     data_dir = workspace / "house"
     store = Store(data_dir / "house.sqlite")
     hub = Hub()
-    host = AgentHost(settings=settings, store=store, hub=hub, data_dir=data_dir, demo=demo)
+    host = AgentHost(
+        settings=settings,
+        store=store,
+        hub=hub,
+        data_dir=data_dir,
+        demo=demo,
+        project_root=project_root,
+    )
     shelf = BrandShelf(
         store=store, hub=hub, settings=settings, project_root=project_root, data_dir=data_dir
     )
+    host.episodes.brand_for = shelf.brand_for
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001 - FastAPI's signature
@@ -511,6 +578,131 @@ def create_app(
         return message
 
     # -- a film's final look -----------------------------------------------------------------
+
+    # -- episodes: an explainer planned, recorded and rendered in its own studio --------------
+
+    def episode_call(run: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+        try:
+            return run()
+        except KeyError:
+            raise HTTPException(status_code=404, detail="no such episode") from None
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.get("/api/episodes/options")
+    async def episode_options(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        return await asyncio.to_thread(host.episodes.options)
+
+    @app.post("/api/channels/{channel_id}/episodes")
+    async def new_episode(
+        channel_id: str, body: EpisodeIn, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        if store.channel(channel_id) is None:
+            raise HTTPException(status_code=404, detail="no such channel")
+        files = [*body.files, *(await linked(body.text, me))]
+        return episode_call(
+            lambda: host.episodes.create(
+                channel_id,
+                by=me,
+                title=body.title,
+                text=body.text,
+                file_ids=files,
+                frame_id=body.from_frame,
+                settings=body.settings.model_dump(exclude_none=True),
+            )
+        )
+
+    @app.get("/api/episodes/{episode_id}")
+    async def episode(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        return episode_call(lambda: host.episodes.view(episode_id))
+
+    @app.post("/api/episodes/{episode_id}/approve")
+    async def approve_episode(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.approve(episode_id, by=me))
+
+    @app.post("/api/episodes/{episode_id}/choices")
+    async def choose_episode(
+        episode_id: str, body: ChoicesIn, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        change = body.model_dump(exclude_none=True)
+        change["settings"] = body.settings.model_dump(exclude_none=True)
+        return episode_call(lambda: host.episodes.choose(episode_id, by=me, change=change))
+
+    @app.post("/api/episodes/{episode_id}/again")
+    async def plan_again(
+        episode_id: str,
+        body: AgainIn,
+        me: str = Depends(person),  # noqa: ARG001
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.again(episode_id, writer=body.writer))
+
+    @app.post("/api/episodes/{episode_id}/stop")
+    async def stop_episode(episode_id: str, me: str = Depends(person)) -> dict[str, bool]:  # noqa: ARG001
+        if store.episode(episode_id) is None:
+            raise HTTPException(status_code=404, detail="no such episode")
+        host.episodes.stop(episode_id)
+        return {"ok": True}
+
+    @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/go")
+    async def picture_go(
+        episode_id: str, unit_id: str, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.go(episode_id, unit_id, by=me))
+
+    @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/note")
+    async def picture_note(
+        episode_id: str, unit_id: str, body: PictureNoteIn, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(
+            lambda: host.episodes.send_back(episode_id, unit_id, by=me, note=body.text)
+        )
+
+    @app.post("/api/episodes/{episode_id}/takes")
+    async def add_take(
+        episode_id: str,
+        file: UploadFile = File(...),  # noqa: B008 - FastAPI's declaration style
+        chapter: str = Form(...),
+        frame: str = Form(default=""),
+        marks: str = Form(default="[]"),
+        me: str = Depends(person),
+    ) -> dict[str, Any]:
+        content = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="the recording is over 200 MiB")
+        try:
+            given = json.loads(marks)
+            if not isinstance(given, list) or not all(isinstance(m, dict) for m in given):
+                raise ValueError("marks must be a list")
+            return await host.episodes.add_take(
+                episode_id,
+                by=me,
+                chapter=chapter,
+                frame=frame,
+                marks=given,
+                name=file.filename or "take.webm",
+                content=content,
+            )
+        except KeyError:
+            raise HTTPException(status_code=404, detail="no such episode or chapter") from None
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.post("/api/episodes/{episode_id}/takes/{take_id}/keep")
+    async def keep_take(
+        episode_id: str,
+        take_id: str,
+        body: KeepIn,
+        me: str = Depends(person),  # noqa: ARG001
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.keep_take(episode_id, take_id, keep=body.keep))
+
+    @app.delete("/api/episodes/{episode_id}/takes/{take_id}")
+    async def drop_take(episode_id: str, take_id: str, me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        return episode_call(lambda: host.episodes.keep_take(episode_id, take_id, keep=False))
+
+    @app.post("/api/episodes/{episode_id}/film")
+    async def render_episode(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.render(episode_id, by=me))
 
     # -- research: questions about the person's repositories, asked on this computer --------
 

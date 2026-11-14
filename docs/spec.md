@@ -687,6 +687,30 @@ manifest | fonts verify | test (model|sandbox|db)`, with `--json` where useful.
 
 Removed in this fork (`mda dev` in LangSmith Studio).
 
+### 14.5 The web app's episodes
+
+An episode is a presenter-led explainer of one idea, made in a studio of its own on the web
+app's canvas, from a channel's material or a research frame's notes.
+
+- **The plan** is written by a writer the person picks (a coding agent on their computer, or the
+  built-in agent), in stages: the brief, the script, a frame for every line. A typed classifier
+  reads the words and gives every label; code derives every number and holds each stage to the
+  checks before the next. The person approves the plan once.
+- **The studio** is the plan and the recording in one place. Per chapter: the script, the frame
+  for the picked line, and that line's choices (who has the frame, the layout, a simple picture
+  or a rich one posed as stills for the person's go). A person's pick is kept beside the plan
+  and applied every time it is read.
+- **Pictures** are HyperFrames sub-compositions built by the writer. Code sets every time in
+  them, from the plan's clock while they are posed and from the take's once a chapter is
+  recorded.
+- **A take** per chapter is recorded in the browser or brought as a file. Where each line
+  starts in it sets the film's clock for that chapter.
+- **The film** is one HyperFrames page written by code and rendered on the thread's computer.
+
+Acceptance: the same plan, picks, takes and pictures render the same film; a recording never
+sends a picture back to its builder; every agent run is in the house's own record, and a turn
+whose agent session is gone is told what was said from it.
+
 ## 15. Runtime profiles, persistence and deployment
 
 | Profile | Graph | Persistence | Sandbox | Schedules |

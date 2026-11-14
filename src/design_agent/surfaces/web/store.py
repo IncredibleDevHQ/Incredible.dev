@@ -4,8 +4,11 @@ The engine keeps the agent's side of a thread: its conversation (the checkpointe
 (the sandbox), its helpers, watches and events. This keeps the people's side: who is in the
 workspace, the channels, every message (a person's, the agent's reply, a turn's progress), the
 files that went in and out, each task's assets on the canvas (with the boards their review goes up
-as) and the feedback people leave on them, and the research a task can start from (the questions
-asked of a coding agent on this computer, and the notes kept from its answers).
+as) and the feedback people leave on them, the research a task can start from (the questions
+asked of a coding agent on this computer, and the notes kept from its answers), every run of such
+an agent (what it was told, what it did and what it said, so a conversation's history is the
+house's own and not only the agent's), and episodes: the plan, the pictures built for it and the
+takes recorded.
 
 One connection, one lock: writes are small and the app is one process.
 """
@@ -89,6 +92,33 @@ CREATE TABLE IF NOT EXISTS notes (
   author_id TEXT NOT NULL, position INTEGER NOT NULL, created_at REAL NOT NULL,
   updated_at REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS notes_by_frame ON notes(frame_id, position);
+CREATE TABLE IF NOT EXISTS runs (
+  id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, lane TEXT NOT NULL DEFAULT '',
+  harness TEXT NOT NULL, session TEXT NOT NULL DEFAULT '', prompt TEXT NOT NULL,
+  answer TEXT NOT NULL DEFAULT '', failure TEXT NOT NULL DEFAULT '', state TEXT NOT NULL,
+  steps TEXT NOT NULL DEFAULT '[]', started_at REAL NOT NULL, ended_at REAL);
+CREATE INDEX IF NOT EXISTS runs_by_thread ON runs(thread_id, lane, started_at);
+CREATE TABLE IF NOT EXISTS episodes (
+  id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, asset_id TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL, status TEXT NOT NULL, material TEXT NOT NULL DEFAULT '',
+  settings TEXT NOT NULL DEFAULT '{}', stage TEXT NOT NULL DEFAULT '{}',
+  plan TEXT NOT NULL DEFAULT '{}', labels TEXT NOT NULL DEFAULT '{}',
+  picks TEXT NOT NULL DEFAULT '{}', report TEXT NOT NULL DEFAULT '{}',
+  film TEXT NOT NULL DEFAULT '{}', approved INTEGER NOT NULL DEFAULT 0,
+  started_by TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS episodes_by_thread ON episodes(thread_id, created_at);
+CREATE TABLE IF NOT EXISTS pictures (
+  id TEXT PRIMARY KEY, episode_id TEXT NOT NULL, unit TEXT NOT NULL, sig TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL, html TEXT NOT NULL DEFAULT '', stills TEXT NOT NULL DEFAULT '{}',
+  clip TEXT NOT NULL DEFAULT '', go_sig TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '',
+  failure TEXT NOT NULL DEFAULT '', updated_at REAL NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS pictures_by_unit ON pictures(episode_id, unit);
+CREATE TABLE IF NOT EXISTS takes (
+  id TEXT PRIMARY KEY, episode_id TEXT NOT NULL, chapter TEXT NOT NULL,
+  frame TEXT NOT NULL DEFAULT '', n INTEGER NOT NULL, seconds REAL NOT NULL,
+  marks TEXT NOT NULL DEFAULT '[]', video TEXT NOT NULL DEFAULT '', audio TEXT NOT NULL DEFAULT '',
+  kept INTEGER NOT NULL DEFAULT 1, added_by TEXT NOT NULL, created_at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS takes_by_episode ON takes(episode_id, chapter, created_at);
 """
 #: A research conversation's thread: it lives on its research frame, not in the channel.
 CONVERSATION = "conversation"
@@ -102,9 +132,29 @@ ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
 )
 
 #: Columns that hold JSON, decoded on the way out.
-JSON_COLUMNS = frozenset({"data", "footer", "versions", "steps", "sources", "files", "preview"})
+JSON_COLUMNS = frozenset(
+    {
+        "data",
+        "footer",
+        "versions",
+        "steps",
+        "sources",
+        "files",
+        "preview",
+        # an episode's
+        "settings",
+        "stage",
+        "plan",
+        "labels",
+        "picks",
+        "report",
+        "film",
+        "stills",
+        "marks",
+    }
+)
 #: Columns that hold a SQLite boolean.
-BOOL_COLUMNS = frozenset({"agent", "task", "to_agent", "resolved", "gate"})
+BOOL_COLUMNS = frozenset({"agent", "task", "to_agent", "resolved", "gate", "approved", "kept"})
 
 AGENT_ID = "agent"
 #: The workspace a fresh store starts with: you, two teammates to review with, and the agent.
@@ -509,6 +559,128 @@ class Store:
     def delete_note(self, note_id: str) -> None:
         with self._lock:
             self._db.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+
+    # -- runs: what an agent on this computer (or the engine) was told and said ----------------
+
+    def add_run(self, *, thread_id: str, lane: str, harness: str, prompt: str, session: str) -> Row:
+        row: Row = {
+            "id": new_id("run"),
+            "thread_id": thread_id,
+            "lane": lane,
+            "harness": harness,
+            "session": session,
+            "prompt": prompt,
+            "state": "working",
+            "steps": [],
+            "started_at": time.time(),
+        }
+        self._insert("runs", row)
+        found = self.run(str(row["id"]))
+        assert found is not None  # noqa: S101 - written just above
+        return found
+
+    def run(self, run_id: str) -> Row | None:
+        return self._one("SELECT * FROM runs WHERE id = ?", (run_id,))
+
+    def update_run(self, run_id: str, **values: Any) -> Row | None:
+        self._update("runs", run_id, values)
+        return self.run(run_id)
+
+    def runs(self, thread_id: str, lane: str | None = None) -> list[Row]:
+        """A thread's runs, oldest first; one lane of them when `lane` is given."""
+        if lane is None:
+            return self._all(
+                "SELECT * FROM runs WHERE thread_id = ? ORDER BY started_at", (thread_id,)
+            )
+        return self._all(
+            "SELECT * FROM runs WHERE thread_id = ? AND lane = ? ORDER BY started_at",
+            (thread_id, lane),
+        )
+
+    def working_runs(self) -> list[Row]:
+        return self._all("SELECT * FROM runs WHERE state = 'working' ORDER BY started_at")
+
+    # -- episodes: the plan, the pictures built for it, the takes recorded ----------------------
+
+    def add_episode(self, values: Mapping[str, Any]) -> Row:
+        now = time.time()
+        row: Row = {"id": new_id("ep"), "created_at": now, "updated_at": now, **values}
+        self._insert("episodes", row)
+        found = self.episode(str(row["id"]))
+        assert found is not None  # noqa: S101 - written just above
+        return found
+
+    def episode(self, episode_id: str) -> Row | None:
+        return self._one("SELECT * FROM episodes WHERE id = ?", (episode_id,))
+
+    def episodes(self, thread_id: str) -> list[Row]:
+        return self._all(
+            "SELECT * FROM episodes WHERE thread_id = ? ORDER BY created_at", (thread_id,)
+        )
+
+    def all_episodes(self) -> list[Row]:
+        return self._all("SELECT * FROM episodes ORDER BY created_at")
+
+    def update_episode(self, episode_id: str, **values: Any) -> Row | None:
+        self._update("episodes", episode_id, {**values, "updated_at": time.time()})
+        return self.episode(episode_id)
+
+    def picture(self, episode_id: str, unit: str) -> Row | None:
+        return self._one(
+            "SELECT * FROM pictures WHERE episode_id = ? AND unit = ?", (episode_id, unit)
+        )
+
+    def pictures(self, episode_id: str) -> list[Row]:
+        return self._all("SELECT * FROM pictures WHERE episode_id = ?", (episode_id,))
+
+    def set_picture(self, episode_id: str, unit: str, **values: Any) -> Row:
+        """A unit's picture, made on first use."""
+        existing = self.picture(episode_id, unit)
+        now = time.time()
+        if existing is None:
+            row: Row = {
+                "id": new_id("pic"),
+                "episode_id": episode_id,
+                "unit": unit,
+                "status": "queued",
+                "updated_at": now,
+                **values,
+            }
+            self._insert("pictures", row)
+        else:
+            self._update("pictures", str(existing["id"]), {**values, "updated_at": now})
+        found = self.picture(episode_id, unit)
+        assert found is not None  # noqa: S101 - written just above
+        return found
+
+    def add_take(self, values: Mapping[str, Any]) -> Row:
+        episode_id, chapter, frame = (str(values[k]) for k in ("episode_id", "chapter", "frame"))
+        with self._lock:
+            count = self._db.execute(
+                "SELECT COUNT(*) FROM takes WHERE episode_id = ? AND chapter = ? AND frame = ?",
+                (episode_id, chapter, frame),
+            ).fetchone()[0]
+        row: Row = {"id": new_id("tk"), "n": int(count) + 1, "created_at": time.time(), **values}
+        self._insert("takes", row)
+        found = self.take(str(row["id"]))
+        assert found is not None  # noqa: S101 - written just above
+        return found
+
+    def take(self, take_id: str) -> Row | None:
+        return self._one("SELECT * FROM takes WHERE id = ?", (take_id,))
+
+    def takes(self, episode_id: str) -> list[Row]:
+        return self._all(
+            "SELECT * FROM takes WHERE episode_id = ? ORDER BY created_at", (episode_id,)
+        )
+
+    def update_take(self, take_id: str, **values: Any) -> Row | None:
+        self._update("takes", take_id, values)
+        return self.take(take_id)
+
+    def delete_take(self, take_id: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM takes WHERE id = ?", (take_id,))
 
     # -- background work and activity --------------------------------------------------------
 

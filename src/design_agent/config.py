@@ -115,6 +115,8 @@ class Settings(BaseSettings):
     job_budget_usd: float | None = Field(default=None, gt=0)
     workspace_root: Path = Path("workspace")
     research_roots: str = "~/Documents/code"
+    #: The ElevenLabs voice that narrates an episode nobody records (with ELEVENLABS_API_KEY).
+    narrator_voice_id: str = ""
     """Comma-separated folders the web app's research looks in for the person's repositories
     (each git repository up to two levels down can be researched, read-only, on this computer)."""
 
@@ -129,6 +131,11 @@ class Settings(BaseSettings):
     )
     groq_api_key: SecretStr | None = Field(default=None, validation_alias=_alias("GROQ_API_KEY"))
     exa_api_key: SecretStr | None = Field(default=None, validation_alias=_alias("EXA_API_KEY"))
+    #: Jev, the typed classifier that reads an episode's plan. Without it the episode's own
+    #: writer answers the same questions.
+    typesafe_api_key: SecretStr | None = Field(
+        default=None, validation_alias=_alias("TYPESAFE_API_KEY")
+    )
 
     # Behavior switches (the runtime's presenter reads progress, footer and steering)
     enable_progress: bool = True
@@ -178,6 +185,7 @@ class Settings(BaseSettings):
         "elevenlabs_api_key",
         "groq_api_key",
         "exa_api_key",
+        "typesafe_api_key",
         "database_url",
         "api_tokens",
         mode="before",

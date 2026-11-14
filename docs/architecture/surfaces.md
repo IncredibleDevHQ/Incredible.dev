@@ -38,6 +38,35 @@ tools. A board or `upload_files` delivery that names no asset is filed under the
 fits (none when two fit equally), or becomes a new asset. Approving a board signs its asset off,
 and the line that reaches the lead names what that lets it start on.
 
+## The web app's episodes
+
+Code: `src/design_agent/episode/` (the plan as code handles it), `surfaces/web/episode_desk.py`,
+`episode_workers.py` and `computer.py`; the writer's instructions are the `episode` skill.
+
+An episode is an asset made in a studio of its own rather than by asking the lead for it. Three
+hands make its plan and none writes in another's: the writer (an agent) writes `plan.json`, a
+typed classifier reads the words and gives every label, and code derives every number. The desk
+runs the loop: a stage's turn, then the reading and the checks on the host, then the next turn
+opening with that report. That keeps the two kinds of writer the same shape:
+
+- a local one (`LocalWorker`): the person's own Claude Code, Codex or Kimi Code, run by
+  `research.run` with `writes`, in `workspace/house/episodes/<id>/` and nowhere else, with none
+  of the house's keys;
+- the built-in one (`BuiltinWorker`): a turn on the episode's thread (`AgentHost.told`), in
+  `/workspace/projects/<id>/` on that thread's computer.
+
+Either way the run is a row in the store's `runs` table (prompt, steps, answer, session), as a
+research run is. A local agent's session is resumed when it can be; when it cannot, or another
+agent takes the lane, the turn opens with what was said, from those rows.
+
+What no model does runs through `Computer`, the thread's sandbox for the desk's own use: staging
+the channel's brand pack as an engine run would, checking and posing a picture (`hyperframes
+check`, then a still at the end of each line), cutting a take to the film's format, rendering
+the film. A picture sits in the project's `compositions/` folder, which is where the renderer's
+checks read sub-compositions from. The film's page is
+written by `episode.film` from the plan, the person's picks, the takes and the built pictures;
+`episode.timeline` is its clock.
+
 ## Trace tags
 
 Each run is tagged with its trigger, surface (the runtime profile's `surface`, such as `cli` or
