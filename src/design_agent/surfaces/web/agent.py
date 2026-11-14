@@ -1547,8 +1547,7 @@ class AgentHost:
     def file_asset(self, asset_id: str, row: Row) -> None:
         """A finished file a desk made, on its asset's card in place of the one before it."""
         if self.store.asset(asset_id) is not None:
-            self._set_asset(asset_id, files=[{"id": row["id"], "path": ""}], status="done")
-            self._announce(str(row["thread_id"]), [row])
+            self._set_asset(asset_id, files=[{"id": row["id"], "path": ""}])
 
     def _in_thread(self, asset_id: str, thread_id: str) -> bool:
         asset = self.store.asset(asset_id)

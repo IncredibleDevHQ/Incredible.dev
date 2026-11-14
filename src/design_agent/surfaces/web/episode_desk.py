@@ -1313,8 +1313,10 @@ class EpisodeDesk:
         slug = (
             re.sub(r"[^a-z0-9]+", "-", str(episode["title"]).lower()).strip("-")[:48] or "episode"
         )
+        # Kept as the episode's own file: its card holds the film, and an earlier render
+        # never lingers on the canvas as something delivered loose.
         row = self.host.save_file(
-            str(episode["thread_id"]), f"{slug}.mp4", content, origin="delivered"
+            str(episode["thread_id"]), f"{slug}.mp4", content, origin="episode"
         )
         episode = self._episode(episode_id)
         self.store.update_episode(
@@ -1384,12 +1386,14 @@ class EpisodeDesk:
         waiting = episode["status"] == "plan" or any(
             p["status"] == "go" for p in self.store.pictures(episode_id)
         )
-        if (episode["film"] or {}).get("status") == "done":
-            status = "done"
-        elif episode["status"] == "failed":
+        if episode["status"] == "failed":
             status = "blocked"
-        elif waiting and not self._busy(episode_id):
+        elif self._busy(episode_id):
+            status = "making"
+        elif waiting:
             status = "review"
+        elif (episode["film"] or {}).get("status") == "done":
+            status = "done"
         else:
             status = "making"
         if episode["asset_id"]:
