@@ -1,0 +1,143 @@
+"""Applies a person's choices about who has the frame, and tells the planner what follows.
+
+A layout is never one right answer: the plan keeps the ranked options for every frame, and a
+person may pick another one, for one frame, for a chapter or for the whole video. A choice
+changes more than the frame. This script records the choice, works out what it breaks, and
+writes that down as feedback for the next planning pass.
+
+usage: override.py <plan.json> <overrides.json>
+
+overrides.json, any of:
+  {"presenter": "off"}                                  no speaker anywhere
+  {"frames":   {"c2.b3.f1": {"presence": "content"}}}   or {"layout": "split"}; optional "reason"
+  {"chapters": {"c4": {"presence": "content"}}}         every frame of a chapter
+  {"all":      {"layout": "panel-and-portrait"}}        the old studio's "apply to all"
+  {"clear":    ["c2.b3.f1"]}                            take a pick back
+
+The picks are kept in labels.json and applied every time the plan is read, so they survive
+re-planning. plan.json is never rewritten. feedback.json says what changed, why it matters,
+and what the planner must redo.
+"""
+
+from __future__ import annotations
+
+from design_agent.episode import layouts
+from design_agent.episode import plan as planio
+from design_agent.episode import questions as Q
+from design_agent.episode.plan import Row, beats_of, frames_of
+
+OBJ = Q.table("object_types")
+NEEDS_A_FACE = {
+    "who-is-speaking": "a greeting by name needs a face: open on the subject instead, or put the name on a card",
+    "authority": "a claim to authority needs the person: move it onto an overlay or cut it",
+    "banter": "banter has no one to say it: cut it",
+    "sign-off": "the goodbye becomes the end card's line",
+    "ask": "the ask moves onto the end card as a link, and the line shortens",
+}
+
+
+def merge(old: Row, new: Row) -> Row:
+    out = dict(old)
+    for key in ("frames", "chapters"):
+        if key in new:
+            out[key] = dict(out.get(key, {}))
+            out[key].update(new[key])
+    if "all" in new:
+        out["all"] = new["all"]
+    if "presenter" in new:
+        out["presenter"] = new["presenter"]
+    for fid in new.get("clear", []):
+        out.get("frames", {}).pop(fid, None)
+        out.get("chapters", {}).pop(fid, None)
+    return out
+
+
+def has_picture(f: Row) -> bool:
+    return any(
+        OBJ.get(o.get("type"), {}).get("family") not in ("on the person", None)
+        for o in f.get("objects", [])
+    ) or bool(f.get("shows"))
+
+
+def apply(plan: Row, new: Row) -> list[Row]:
+    """Record a person's picks on a merged plan (in place) and say what each one changes: what
+    was, what is now, why, and what the writer has to redo, if anything."""
+    before = {f["id"]: (f.get("presence"), f.get("layout")) for _, _, f in frames_of(plan)}
+    was_off = plan.get("brief", {}).get("presenter", "on") == "off"
+    plan["_overrides"] = merge(plan.get("_overrides", {}), new)
+    brief = plan.setdefault("brief", {})
+    feedback: list[Row] = []
+    if plan["_overrides"].get("presenter") == "off" and not was_off:
+        brief["theme_before"], brief["presenter"], brief["theme"] = (
+            brief.get("theme"),
+            "off",
+            "voice-only",
+        )
+        feedback.append(
+            {
+                "where": "brief",
+                "was": "presenter on",
+                "now": "presenter off",
+                "why": "no speaker",
+                "do": "the theme is now voice-only: every frame shows content and nothing is recorded on camera",
+            }
+        )
+    off = brief.get("presenter", "on") == "off"
+    layouts.settle_frames(plan)
+    planio.inherit_holds(plan)
+    for _ch, b in beats_of(plan):
+        if off and not was_off and b.get("subtype") in NEEDS_A_FACE:
+            feedback.append(
+                {
+                    "where": b["id"],
+                    "was": b.get("subtype"),
+                    "now": "no one on screen",
+                    "why": "no speaker",
+                    "do": "rewrite the line: " + NEEDS_A_FACE[b["subtype"]],
+                }
+            )
+    for _ch, _b, f in frames_of(plan):
+        was_p, was_l = before.get(f["id"], (None, None))
+        now_p, now_l = f.get("presence"), f.get("layout")
+        if was_p is None or (was_p, was_l) == (now_p, now_l):
+            continue
+        why = "no speaker" if off else (f.get("override") or {}).get("reason", "picked by a person")
+        item: Row = {
+            "where": f["id"],
+            "was": f"{was_p} / {was_l}",
+            "now": f"{now_p} / {now_l}",
+            "why": why,
+        }
+        if was_p == "person" and now_p != "person":
+            item["do"] = (
+                "nothing to redo: a picture was already written"
+                if f.get("shows")
+                else "nothing to redo: it holds the picture before"
+                if f.get("hold")
+                else "the line was said to camera and now needs a picture: write `shows`, objects and cues for it, or mark it `hold` on the picture before"
+            )
+        elif was_p != "person" and now_p == "person":
+            item["do"] = (
+                "the picture is gone: keep at most one term as an overlay and move what must be seen to the frame before or after"
+                if has_picture(f)
+                else "nothing to redo"
+            )
+        elif was_p == "both" and now_p == "content":
+            item["do"] = (
+                "nothing to redo: the picture stays as written, unless its `shows` or an object names the presenter"
+                if off
+                else "nothing to redo: the person leaves the frame. Look at the person-away check and at the take's switches"
+            )
+        elif was_p == "content" and now_p == "both":
+            item["do"] = (
+                "nothing to redo: the person returns beside the picture. Keep the picture clear of the person's side"
+            )
+        else:
+            item["do"] = "nothing to redo: the layout changed within the same presence"
+        feedback.append(item)
+    return feedback
+
+
+def redo(feedback: list[Row]) -> list[Row]:
+    """The picks that leave the writer something to do."""
+    return [x for x in feedback if not str(x["do"]).startswith("nothing to redo")]

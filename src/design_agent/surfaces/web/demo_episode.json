@@ -1,0 +1,4871 @@
+{
+ "plan": {
+  "brief": {
+   "title": "How a browser decides to reuse a response",
+   "idea": "The server, not the browser, decides when a stored copy may be reused: fresh means no request at all, stale means a tiny fingerprint check, and changing the file's name is how you ship a fix.",
+   "gap": "The viewer sees cache headers like max-age, no-cache and ETag but cannot say what the browser actually does with them, or why a fix they shipped does not reach users.",
+   "for": "web developers who ship sites but have never reasoned through HTTP caching",
+   "seconds": 300,
+   "presenter": "on",
+   "theme": "corner-window",
+   "series": "none",
+   "case": {
+    "text": "A small shop site with three files: logo.png changes once a year, app.js changes every deploy, and the /cart response is different for each user.",
+    "from": "notes"
+   },
+   "voice": {
+    "sentence_words": 12,
+    "person": "you"
+   }
+  },
+  "material": [
+   {
+    "id": "m1",
+    "text": "Each page load asks for dozens of files (HTML, CSS, scripts, images, fonts), and most have not changed since the last visit."
+   },
+   {
+    "id": "m2",
+    "text": "A cache is a local store of earlier responses; the browser looks there before it sends a request."
+   },
+   {
+    "id": "m3",
+    "text": "The question the browser must answer for each file: use my stored copy, or ask the server?"
+   },
+   {
+    "id": "m4",
+    "text": "The server sets the rules, not the browser, as response headers sent with each file."
+   },
+   {
+    "id": "m5",
+    "text": "Cache-Control: max-age=N marks the copy fresh for N seconds; while fresh, the browser uses it without contacting the server at all. Zero network, the fastest outcome."
+   },
+   {
+    "id": "m6",
+    "text": "A copy older than max-age is stale. Stale does not mean wrong; it means the browser must check before using it."
+   },
+   {
+    "id": "m7",
+    "text": "That check is revalidation. The server gave the file a fingerprint, the ETag header (a short string that changes when the content changes); the browser sends it back in If-None-Match."
+   },
+   {
+    "id": "m8",
+    "text": "If the fingerprint still matches, the server answers 304 Not Modified with no body, a few hundred bytes instead of the whole file; the browser keeps its copy and the freshness clock restarts."
+   },
+   {
+    "id": "m9",
+    "text": "If the fingerprint does not match, the server answers 200 with the new file and a new ETag."
+   },
+   {
+    "id": "m10",
+    "text": "Last-Modified / If-Modified-Since is the older form of the same check, using a date; dates have one-second resolution, which is why ETag is preferred."
+   },
+   {
+    "id": "m11",
+    "text": "Every request ends one of three ways: fresh hit (no request), revalidated (small request, 304), or miss (full download)."
+   },
+   {
+    "id": "m12",
+    "text": "no-cache does not mean do not cache: it means store it, but revalidate every time before using it. The name misleads almost everyone."
+   },
+   {
+    "id": "m13",
+    "text": "no-store means keep no copy at all; use it for private data such as a bank statement."
+   },
+   {
+    "id": "m14",
+    "text": "The hard problem: with a long max-age, users keep the old file until it expires, and you cannot reach into their cache to ship a fix."
+   },
+   {
+    "id": "m15",
+    "text": "The standard answer is to change the URL when the content changes: build tools put a content hash in the file name (app.3f9a1c.js), so a new build is a new cache entry and the old one is never asked for again."
+   },
+   {
+    "id": "m16",
+    "text": "Hashed files can be cached for good: Cache-Control: max-age=31536000, immutable (one year; immutable tells the browser not to revalidate even on reload)."
+   },
+   {
+    "id": "m17",
+    "text": "The HTML page that points at hashed files must stay revalidated (no-cache), or users never learn the new file names."
+   },
+   {
+    "id": "m18",
+    "text": "The common recipe: HTML no-cache; hashed assets one year, immutable; API responses with private data no-store or private."
+   },
+   {
+    "id": "m19",
+    "text": "private means only the user's own browser may store the response; shared caches such as a CDN must not. public allows shared caches."
+   },
+   {
+    "id": "m20",
+    "text": "A CDN is a shared cache between many users and the server, following the same rules and headers; s-maxage sets a freshness time for shared caches only."
+   },
+   {
+    "id": "m21",
+    "text": "Rule of thumb: the cheapest request is the one that is never sent."
+   }
+  ],
+  "chapters": [
+   {
+    "id": "c1",
+    "question": "What will you understand by the end?",
+    "wants": "introduction",
+    "beats": [
+     {
+      "id": "c1.b1",
+      "wants": "promise",
+      "says": "In the next five minutes, you'll see how a browser decides to reuse a file it already has, and why a fix you ship sometimes never reaches your users.",
+      "uses": [],
+      "made_up": false
+     },
+     {
+      "id": "c1.b2",
+      "wants": "definition",
+      "says": "This is HTTP caching. The browser keeps the files, but the server writes the rules for reusing them.",
+      "uses": [
+       "m2",
+       "m4"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c1.b2.f1",
+        "shows": "The browser on the left holding a small cache box, the server on the right, and a card of rules travelling from the server into the cache.",
+        "focal": "a3",
+        "objects": [
+         {
+          "id": "a1",
+          "what": "the browser with a cache box inside it",
+          "words": "Browser · cache",
+          "state": "plain"
+         },
+         {
+          "id": "a2",
+          "what": "the server",
+          "words": "Server",
+          "state": "plain"
+         },
+         {
+          "id": "a3",
+          "what": "a card of rules on the line between them",
+          "words": "Rules",
+          "state": "active"
+         }
+        ],
+        "cues": [
+         {
+          "at": "browser keeps",
+          "object": "a1",
+          "does": "draws itself on the left, its cache box filling with files"
+         },
+         {
+          "at": "server writes",
+          "object": "a2",
+          "does": "draws itself on the right"
+         },
+         {
+          "at": "reusing them",
+          "object": "a3",
+          "does": "pops in at the server and travels along the line into the cache"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c1.b3",
+      "wants": "agenda",
+      "says": "Three parts: when a copy is fresh, what happens when it goes stale, and how to ship changes anyway.",
+      "uses": [],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c1.b3.f1",
+        "shows": "Three numbered chips in a row: Fresh, Stale, Ship a fix.",
+        "focal": "a4",
+        "objects": [
+         {
+          "id": "a4",
+          "what": "first chip",
+          "words": "1 · Fresh",
+          "state": "active"
+         },
+         {
+          "id": "a5",
+          "what": "second chip",
+          "words": "2 · Stale",
+          "state": "plain"
+         },
+         {
+          "id": "a6",
+          "what": "third chip",
+          "words": "3 · Ship a fix",
+          "state": "plain"
+         }
+        ],
+        "cues": [
+         {
+          "at": "fresh",
+          "object": "a4",
+          "does": "pops in on the left"
+         },
+         {
+          "at": "stale",
+          "object": "a5",
+          "does": "pops in beside it"
+         },
+         {
+          "at": "ship changes",
+          "object": "a6",
+          "does": "pops in on the right"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "c2",
+    "question": "Who decides whether a stored copy can be reused?",
+    "wants": "concept",
+    "beats": [
+     {
+      "id": "c2.b1",
+      "wants": "question",
+      "says": "So when the browser already has a file, who decides whether it can reuse it?",
+      "uses": [],
+      "made_up": false
+     },
+     {
+      "id": "c2.b2",
+      "wants": "definition",
+      "says": "A cache is a local store of earlier responses. Before any request goes out, the browser looks there and asks: can I use my stored copy, or must I ask the server?",
+      "uses": [
+       "m2",
+       "m3"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c2.b2.f1",
+        "shows": "A pipeline left to right: the browser, its cache box in the middle, the server on the right, and a question callout above the cache.",
+        "focal": "b2",
+        "objects": [
+         {
+          "id": "b1",
+          "what": "the browser",
+          "words": "Browser",
+          "state": "plain"
+         },
+         {
+          "id": "b2",
+          "what": "the cache, a labelled box between browser and server",
+          "words": "Cache",
+          "state": "active"
+         },
+         {
+          "id": "b3",
+          "what": "the server",
+          "words": "Server",
+          "state": "dim"
+         },
+         {
+          "id": "b4",
+          "what": "a question callout over the cache",
+          "words": "Use my copy, or ask?",
+          "state": "plain"
+         }
+        ],
+        "cues": [
+         {
+          "at": "A cache",
+          "object": "b2",
+          "does": "draws its outline and fills in the middle"
+         },
+         {
+          "at": "browser looks",
+          "object": "b1",
+          "does": "pops in on the left and a line grows from it into the cache"
+         },
+         {
+          "at": "stored copy",
+          "object": "b4",
+          "does": "types on above the cache"
+         },
+         {
+          "at": "ask the server",
+          "object": "b3",
+          "does": "draws itself on the right, a dashed line reaching it"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c2.b3",
+      "wants": "worked-example",
+      "says": "Take a small shop site. Its logo changes once a year. Its script, app dot js, changes every deploy. And its cart page is different for every shopper.",
+      "uses": [],
+      "made_up": true,
+      "frames": [
+       {
+        "id": "c2.b3.f1",
+        "hold": true,
+        "objects": [
+         {
+          "id": "b5",
+          "what": "file chip inside the cache",
+          "words": "logo.png",
+          "state": "plain"
+         },
+         {
+          "id": "b6",
+          "what": "file chip inside the cache",
+          "words": "app.js",
+          "state": "plain"
+         },
+         {
+          "id": "b7",
+          "what": "file chip inside the cache",
+          "words": "/cart",
+          "state": "plain"
+         }
+        ],
+        "cues": [
+         {
+          "at": "logo",
+          "object": "b5",
+          "does": "pops into the cache box"
+         },
+         {
+          "at": "app dot js",
+          "object": "b6",
+          "does": "pops in under the logo"
+         },
+         {
+          "at": "cart page",
+          "object": "b7",
+          "does": "pops in last"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c2.b4",
+      "wants": "mechanism",
+      "says": "Each visit, the browser asks for those files and dozens more, and most haven't changed since last time.",
+      "uses": [
+       "m1"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c2.b4.f1",
+        "hold": true,
+        "objects": [
+         {
+          "id": "b8",
+          "what": "a wall of small faded file tiles behind the three chips",
+          "words": "+ dozens more",
+          "state": "dim"
+         }
+        ],
+        "cues": [
+         {
+          "at": "asks for",
+          "object": "b1",
+          "does": "glows as a request line runs to the cache"
+         },
+         {
+          "at": "dozens more",
+          "object": "b8",
+          "does": "appears tile by tile behind the three chips"
+         },
+         {
+          "at": "haven't changed",
+          "object": "b8",
+          "does": "most tiles change to good, marked unchanged"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c2.b5",
+      "wants": "mechanism",
+      "says": "The answer isn't the browser's to make. The server decides, and sends its rules as response headers on every file.",
+      "uses": [
+       "m4"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c2.b5.f1",
+        "hold": true,
+        "objects": [
+         {
+          "id": "b9",
+          "what": "a small header tag hung on each of the three file chips",
+          "words": "headers",
+          "state": "active"
+         }
+        ],
+        "cues": [
+         {
+          "at": "browser's",
+          "object": "b1",
+          "does": "dims"
+         },
+         {
+          "at": "server decides",
+          "object": "b3",
+          "does": "changes from dim to active and glows"
+         },
+         {
+          "at": "response headers",
+          "object": "b9",
+          "does": "travels from the server along the line and lands as a tag on each file chip"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c2.b6",
+      "wants": "so-what",
+      "says": "This means that to understand caching, you read the headers.",
+      "uses": [],
+      "made_up": false
+     }
+    ]
+   },
+   {
+    "id": "c3",
+    "question": "How long can a copy be reused without asking the server?",
+    "wants": "how-it-works",
+    "beats": [
+     {
+      "id": "c3.b1",
+      "wants": "signpost",
+      "says": "Let's start with the first rule, which is about time.",
+      "uses": [],
+      "made_up": false
+     },
+     {
+      "id": "c3.b2",
+      "wants": "mechanism",
+      "says": "A header called Cache-Control can carry max-age, a number of seconds. For that long the copy is fresh, and the browser uses it without contacting the server at all.",
+      "uses": [
+       "m5"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c3.b2.f1",
+        "shows": "A header line at the top, a freshness bar under it, the browser with its cache on the left and a dim server on the right with a cross on the line between them.",
+        "focal": "c2",
+        "objects": [
+         {
+          "id": "c1",
+          "what": "a header set as a code line",
+          "words": "Cache-Control: max-age=N",
+          "state": "plain"
+         },
+         {
+          "id": "c2",
+          "what": "a freshness bar labelled in seconds",
+          "words": "fresh for N seconds",
+          "state": "active"
+         },
+         {
+          "id": "c3",
+          "what": "the browser with its cache",
+          "words": "Browser · cache",
+          "state": "plain"
+         },
+         {
+          "id": "c4",
+          "what": "the server",
+          "words": "Server",
+          "state": "dim"
+         },
+         {
+          "id": "c5",
+          "what": "a cross on the line to the server",
+          "words": "no request",
+          "state": "bad"
+         }
+        ],
+        "cues": [
+         {
+          "at": "Cache-Control",
+          "object": "c1",
+          "does": "types on at the top"
+         },
+         {
+          "at": "number of seconds",
+          "object": "c2",
+          "does": "appears empty under the header"
+         },
+         {
+          "at": "fresh",
+          "object": "c2",
+          "does": "fills to full and turns good"
+         },
+         {
+          "at": "browser uses",
+          "object": "c3",
+          "does": "glows as the copy comes out of the cache"
+         },
+         {
+          "at": "server at all",
+          "object": "c5",
+          "does": "pops onto the line to the dim server"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c3.b3",
+      "wants": "so-what",
+      "says": "That means zero network. No request, no waiting. It's the fastest outcome there is.",
+      "uses": [
+       "m5"
+      ],
+      "made_up": false
+     },
+     {
+      "id": "c3.b4",
+      "wants": "worked-example",
+      "says": "Say the shop's logo arrives with a max-age of one day. All that day, every page shows it straight from the cache.",
+      "uses": [
+       "m5"
+      ],
+      "made_up": true,
+      "frames": [
+       {
+        "id": "c3.b4.f1",
+        "shows": "The shop's logo in the cache with its header, a one-day freshness bar, and a row of page icons each drawing the logo from the cache.",
+        "focal": "d3",
+        "objects": [
+         {
+          "id": "d1",
+          "what": "the logo file chip in the cache",
+          "words": "logo.png",
+          "state": "plain"
+         },
+         {
+          "id": "d2",
+          "what": "its header as a code line",
+          "words": "max-age=86400",
+          "state": "plain"
+         },
+         {
+          "id": "d3",
+          "what": "a freshness bar for one day",
+          "words": "fresh · 1 day",
+          "state": "good"
+         },
+         {
+          "id": "d4",
+          "what": "a row of page icons, each with a short line from the cache",
+          "words": "page views",
+          "state": "plain"
+         }
+        ],
+        "cues": [
+         {
+          "at": "logo",
+          "object": "d1",
+          "does": "pops into the cache"
+         },
+         {
+          "at": "one day",
+          "object": "d2",
+          "does": "types on beside the logo as the bar under it fills"
+         },
+         {
+          "at": "every page",
+          "object": "d4",
+          "does": "page icons pop in one after another, a line to the cache for each"
+         },
+         {
+          "at": "from the cache",
+          "object": "d1",
+          "does": "glows"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c3.b5",
+      "wants": "mechanism",
+      "says": "Once the day is up, the copy is stale. Stale doesn't mean wrong. It means the browser must check before using it.",
+      "uses": [
+       "m6"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c3.b5.f1",
+        "hold": true,
+        "objects": [
+         {
+          "id": "d5",
+          "what": "a pill on the logo chip",
+          "words": "stale",
+          "state": "active"
+         },
+         {
+          "id": "d6",
+          "what": "a callout with an arrow toward a server off to the right",
+          "words": "check first",
+          "state": "plain"
+         }
+        ],
+        "cues": [
+         {
+          "at": "day is up",
+          "object": "d3",
+          "does": "runs down to empty and turns dim"
+         },
+         {
+          "at": "stale",
+          "object": "d5",
+          "does": "pops onto the logo, which stays plain, not crossed"
+         },
+         {
+          "at": "must check",
+          "object": "d6",
+          "does": "types on with an arrow growing toward the server"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c3.b6",
+      "wants": "turn",
+      "says": "But checking doesn't mean downloading again.",
+      "uses": [],
+      "made_up": false
+     }
+    ]
+   },
+   {
+    "id": "c4",
+    "question": "How does the browser check a stale copy without downloading it?",
+    "wants": "how-it-works",
+    "beats": [
+     {
+      "id": "c4.b1",
+      "wants": "definition",
+      "says": "That check is called revalidation. When the server first sent the file, it gave it a fingerprint: the ETag, a short string that changes whenever the content does.",
+      "uses": [
+       "m7"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c4.b1.f1",
+        "shows": "Two lifelines, the browser on the left and the server on the right, under a title; the first response has crossed from server to browser carrying the file with a fingerprint tag.",
+        "focal": "e4",
+        "objects": [
+         {
+          "id": "e1",
+          "what": "title line",
+          "words": "Revalidation",
+          "state": "plain"
+         },
+         {
+          "id": "e2",
+          "what": "browser lifeline",
+          "words": "Browser",
+          "state": "plain"
+         },
+         {
+          "id": "e3",
+          "what": "server lifeline",
+          "words": "Server",
+          "state": "plain"
+         },
+         {
+          "id": "e5",
+          "what": "first response message, server to browser",
+          "words": "200 · the file",
+          "state": "plain"
+         },
+         {
+          "id": "e4",
+          "what": "fingerprint tag on that file",
+          "words": "ETag: \"abc\"",
+          "state": "active"
+         }
+        ],
+        "cues": [
+         {
+          "at": "revalidation",
+          "object": "e1",
+          "does": "types on at the top"
+         },
+         {
+          "at": "server first sent",
+          "object": "e5",
+          "does": "travels from the server lifeline to the browser"
+         },
+         {
+          "at": "fingerprint",
+          "object": "e4",
+          "does": "pops onto the file as a tag"
+         },
+         {
+          "at": "changes whenever",
+          "object": "e4",
+          "does": "glows"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c4.b2",
+      "wants": "mechanism",
+      "says": "To revalidate, the browser sends that fingerprint back in a header called If-None-Match. Is this still the one?",
+      "uses": [
+       "m7"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c4.b2.f1",
+        "hold": true,
+        "objects": [
+         {
+          "id": "e6",
+          "what": "request message, browser to server",
+          "words": "If-None-Match: \"abc\"",
+          "state": "active"
+         }
+        ],
+        "cues": [
+         {
+          "at": "sends that fingerprint",
+          "object": "e6",
+          "does": "travels from the browser lifeline to the server"
+         },
+         {
+          "at": "Is this still",
+          "object": "e6",
+          "does": "glows at the server, the tag on the file ringed with it"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c4.b3",
+      "wants": "mechanism",
+      "says": "If it matches, the server answers three-oh-four, Not Modified, with no body. A few hundred bytes instead of the whole file. The browser keeps its copy, and the freshness clock starts again.",
+      "uses": [
+       "m8"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c4.b3.f1",
+        "hold": true,
+        "objects": [
+         {
+          "id": "e7",
+          "what": "reply message, server to browser, thin",
+          "words": "304 Not Modified · no body",
+          "state": "good"
+         },
+         {
+          "id": "e8",
+          "what": "callout beside the reply",
+          "words": "a few hundred bytes",
+          "state": "plain"
+         },
+         {
+          "id": "e9",
+          "what": "a freshness bar beside the browser",
+          "words": "fresh again",
+          "state": "good"
+         }
+        ],
+        "cues": [
+         {
+          "at": "If it matches",
+          "object": "e4",
+          "does": "turns good"
+         },
+         {
+          "at": "three-oh-four",
+          "object": "e7",
+          "does": "travels from the server to the browser"
+         },
+         {
+          "at": "few hundred bytes",
+          "object": "e8",
+          "does": "pops in beside the thin reply"
+         },
+         {
+          "at": "clock starts again",
+          "object": "e9",
+          "does": "fills from empty"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c4.b4",
+      "wants": "mechanism",
+      "says": "If it doesn't match, the server answers two hundred, with the new file and a new fingerprint.",
+      "uses": [
+       "m9"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c4.b4.f1",
+        "hold": true,
+        "objects": [
+         {
+          "id": "e10",
+          "what": "an alternative reply below the 304, dashed",
+          "words": "200 · new file",
+          "state": "plain"
+         },
+         {
+          "id": "e11",
+          "what": "a new fingerprint tag on it",
+          "words": "ETag: \"xyz\"",
+          "state": "active"
+         }
+        ],
+        "cues": [
+         {
+          "at": "doesn't match",
+          "object": "e7",
+          "does": "dims"
+         },
+         {
+          "at": "two hundred",
+          "object": "e10",
+          "does": "travels from the server to the browser below the 304"
+         },
+         {
+          "at": "new fingerprint",
+          "object": "e11",
+          "does": "pops onto the new file"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c4.b5",
+      "wants": "worked-example",
+      "says": "So the shop's logo, a day old, costs one tiny three-oh-four, and another day of free reuse.",
+      "uses": [
+       "m8"
+      ],
+      "made_up": true,
+      "frames": [
+       {
+        "id": "c4.b5.f1",
+        "hold": true,
+        "objects": [
+         {
+          "id": "e12",
+          "what": "a label on the file the browser holds",
+          "words": "logo.png",
+          "state": "plain"
+         }
+        ],
+        "cues": [
+         {
+          "at": "shop's logo",
+          "object": "e12",
+          "does": "pops onto the file as the 200 branch dims"
+         },
+         {
+          "at": "three-oh-four",
+          "object": "e7",
+          "does": "changes back to good and glows"
+         },
+         {
+          "at": "another day",
+          "object": "e9",
+          "does": "fills again, labelled one more day"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c4.b6",
+      "wants": "contrast",
+      "says": "You'll also meet an older check, Last-Modified, which uses a date instead. Dates only count whole seconds, so the fingerprint wins.",
+      "uses": [
+       "m10"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c4.b6.f1",
+        "shows": "Two comparison cards side by side: ETag with a fingerprint on the left marked preferred, Last-Modified with a date on the right, dimmed, with a note about one-second resolution under it.",
+        "focal": "f1",
+        "objects": [
+         {
+          "id": "f1",
+          "what": "comparison card, left",
+          "words": "ETag · fingerprint",
+          "state": "plain"
+         },
+         {
+          "id": "f2",
+          "what": "comparison card, right",
+          "words": "Last-Modified · date",
+          "state": "plain"
+         },
+         {
+          "id": "f3",
+          "what": "callout under the right card",
+          "words": "1-second resolution",
+          "state": "bad"
+         },
+         {
+          "id": "f4",
+          "what": "verdict pill on the left card",
+          "words": "preferred",
+          "state": "good"
+         }
+        ],
+        "cues": [
+         {
+          "at": "Last-Modified",
+          "object": "f2",
+          "does": "pops in on the right, facing the ETag card on the left"
+         },
+         {
+          "at": "whole seconds",
+          "object": "f3",
+          "does": "types on under the right card as that card dims"
+         },
+         {
+          "at": "fingerprint wins",
+          "object": "f4",
+          "does": "pops onto the ETag card, which turns good"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c4.b7",
+      "wants": "milestone",
+      "says": "So now we have all three outcomes: a fresh hit, a revalidation, or a full download.",
+      "uses": [
+       "m11"
+      ],
+      "made_up": false
+     }
+    ]
+   },
+   {
+    "id": "c5",
+    "question": "If a copy stays fresh for long, how do you ship a fix?",
+    "wants": "how-it-works",
+    "beats": [
+     {
+      "id": "c5.b1",
+      "wants": "need",
+      "says": "Now the hard part. A long max-age is fast, but users keep the old file until it expires, and you can't reach into their cache.",
+      "uses": [
+       "m14"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c5.b1.f1",
+        "shows": "The server on the left, a user's cache on the right holding an old file under a long freshness bar, and the line between them crossed.",
+        "focal": "g3",
+        "objects": [
+         {
+          "id": "g1",
+          "what": "the server",
+          "words": "Server",
+          "state": "plain"
+         },
+         {
+          "id": "g2",
+          "what": "a user's cache box",
+          "words": "User's cache",
+          "state": "plain"
+         },
+         {
+          "id": "g4",
+          "what": "a long freshness bar over the cache",
+          "words": "max-age: long",
+          "state": "good"
+         },
+         {
+          "id": "g3",
+          "what": "file chip in the cache",
+          "words": "app.js · old",
+          "state": "plain"
+         },
+         {
+          "id": "g5",
+          "what": "a cross on the line from server to cache",
+          "words": "no way in",
+          "state": "bad"
+         }
+        ],
+        "cues": [
+         {
+          "at": "long max-age",
+          "object": "g4",
+          "does": "grows long across the cache"
+         },
+         {
+          "at": "old file",
+          "object": "g3",
+          "does": "pops into the cache"
+         },
+         {
+          "at": "until it expires",
+          "object": "g4",
+          "does": "its far end glows"
+         },
+         {
+          "at": "can't reach",
+          "object": "g5",
+          "does": "pops onto the line from the server"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c5.b2",
+      "wants": "worked-example",
+      "says": "Say the shop ships a bug fix in app dot js. Anyone holding last week's copy keeps running the bug.",
+      "uses": [
+       "m14"
+      ],
+      "made_up": true,
+      "frames": [
+       {
+        "id": "c5.b2.f1",
+        "hold": true,
+        "objects": [
+         {
+          "id": "g6",
+          "what": "file chip at the server",
+          "words": "app.js · fixed",
+          "state": "good"
+         },
+         {
+          "id": "g7",
+          "what": "a bug sticker",
+          "words": "bug",
+          "state": "bad"
+         }
+        ],
+        "cues": [
+         {
+          "at": "bug fix",
+          "object": "g6",
+          "does": "pops in at the server"
+         },
+         {
+          "at": "last week's copy",
+          "object": "g3",
+          "does": "glows in the cache"
+         },
+         {
+          "at": "running the bug",
+          "object": "g7",
+          "does": "pops onto the old copy, which turns bad"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c5.b3",
+      "wants": "turn",
+      "says": "But there's a way out, and it isn't waiting.",
+      "uses": [],
+      "made_up": false
+     },
+     {
+      "id": "c5.b4",
+      "wants": "mechanism",
+      "says": "The standard answer: change the address when the content changes. Build tools put a content hash in the file name, like app dot three f nine a one c dot js.",
+      "uses": [
+       "m15"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c5.b4.f1",
+        "shows": "A pipeline: the file app.js on the left goes into a build step and comes out on the right as app.3f9a1c.js, the hash part marked.",
+        "focal": "h3",
+        "objects": [
+         {
+          "id": "h1",
+          "what": "file chip, left",
+          "words": "app.js",
+          "state": "plain"
+         },
+         {
+          "id": "h2",
+          "what": "build step node in the middle",
+          "words": "Build",
+          "state": "plain"
+         },
+         {
+          "id": "h3",
+          "what": "file chip, right",
+          "words": "app.3f9a1c.js",
+          "state": "active"
+         },
+         {
+          "id": "h4",
+          "what": "keyword pointing at the hash",
+          "words": "content hash",
+          "state": "plain"
+         }
+        ],
+        "cues": [
+         {
+          "at": "change the address",
+          "object": "h1",
+          "does": "glows"
+         },
+         {
+          "at": "Build tools",
+          "object": "h2",
+          "does": "pops in and the file travels into it"
+         },
+         {
+          "at": "content hash",
+          "object": "h3",
+          "does": "comes out on the right with the keyword under it"
+         },
+         {
+          "at": "three f nine",
+          "object": "h4",
+          "does": "the hash part of the name lights"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c5.b5",
+      "wants": "mechanism",
+      "says": "A new build means a new name, so a new cache entry. The old one is simply never asked for again.",
+      "uses": [
+       "m15"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c5.b5.f1",
+        "hold": true,
+        "objects": [
+         {
+          "id": "h5",
+          "what": "second file chip from the next build",
+          "words": "app.7b2e04.js",
+          "state": "active"
+         },
+         {
+          "id": "h6",
+          "what": "a cache box on the far right",
+          "words": "Cache",
+          "state": "plain"
+         }
+        ],
+        "cues": [
+         {
+          "at": "new name",
+          "object": "h5",
+          "does": "comes out of the build under the first name"
+         },
+         {
+          "at": "new cache entry",
+          "object": "h5",
+          "does": "moves into the cache box beside the old one"
+         },
+         {
+          "at": "never asked",
+          "object": "h3",
+          "does": "dims in the cache"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c5.b6",
+      "wants": "advice",
+      "says": "So cache hashed files for good. Give them a max-age of one year, plus immutable, which tells the browser not to revalidate even on reload.",
+      "uses": [
+       "m16"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c5.b6.f1",
+        "shows": "A code card with one header, Cache-Control: max-age=31536000, immutable, with a callout reading 1 year under the number and one reading no revalidate on reload under immutable.",
+        "focal": "i2",
+        "objects": [
+         {
+          "id": "i1",
+          "what": "first part of the header in a code card",
+          "words": "max-age=31536000",
+          "state": "plain"
+         },
+         {
+          "id": "i3",
+          "what": "callout under the number",
+          "words": "1 year",
+          "state": "plain"
+         },
+         {
+          "id": "i2",
+          "what": "second part of the header",
+          "words": "immutable",
+          "state": "active"
+         },
+         {
+          "id": "i4",
+          "what": "callout under immutable",
+          "words": "no revalidate, even on reload",
+          "state": "plain"
+         }
+        ],
+        "cues": [
+         {
+          "at": "one year",
+          "object": "i1",
+          "does": "types on with its callout popping in under it"
+         },
+         {
+          "at": "immutable",
+          "object": "i2",
+          "does": "types on after a comma and lights"
+         },
+         {
+          "at": "even on reload",
+          "object": "i4",
+          "does": "pops in under immutable"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c5.b7",
+      "wants": "turn",
+      "says": "But the HTML page that names those files can't be cached like that. It must be revalidated, or users never learn the new names.",
+      "uses": [
+       "m17"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c5.b7.f1",
+        "shows": "An HTML page card on the left with a link line to the hashed file on the right; a crossed-out one-year pill and a revalidate pill sit on the page.",
+        "focal": "j1",
+        "objects": [
+         {
+          "id": "j1",
+          "what": "HTML page card",
+          "words": "index.html",
+          "state": "active"
+         },
+         {
+          "id": "j2",
+          "what": "a crossed-out pill on the page",
+          "words": "1 year ✕",
+          "state": "bad"
+         },
+         {
+          "id": "j3",
+          "what": "a pill on the page",
+          "words": "revalidate every time",
+          "state": "good"
+         },
+         {
+          "id": "j4",
+          "what": "hashed file chip linked from the page",
+          "words": "app.3f9a1c.js",
+          "state": "plain"
+         }
+        ],
+        "cues": [
+         {
+          "at": "HTML page",
+          "object": "j1",
+          "does": "pops in on the left"
+         },
+         {
+          "at": "cached like that",
+          "object": "j2",
+          "does": "pops onto the page and is crossed out"
+         },
+         {
+          "at": "must be revalidated",
+          "object": "j3",
+          "does": "replaces the crossed pill"
+         },
+         {
+          "at": "new names",
+          "object": "j4",
+          "does": "appears on the right as the link line grows to it"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "c6",
+    "question": "Which header goes on which of the shop's files?",
+    "wants": "advice",
+    "beats": [
+     {
+      "id": "c6.b1",
+      "wants": "bridge",
+      "says": "That's how a fix gets through. Now let's put a header on each of the shop's files.",
+      "uses": [],
+      "made_up": false
+     },
+     {
+      "id": "c6.b2",
+      "wants": "advice",
+      "says": "Give the HTML no-cache. And don't trust the name: no-cache doesn't mean don't store it. It means store it, but revalidate before every use.",
+      "uses": [
+       "m12",
+       "m17",
+       "m18"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c6.b2.f1",
+        "shows": "A stack of rows, one per shop file; only the first is there: HTML, no-cache, with a crossed-out misreading and the true meaning beside it.",
+        "focal": "k1",
+        "objects": [
+         {
+          "id": "k1",
+          "what": "first list row",
+          "words": "HTML → no-cache",
+          "state": "active"
+         },
+         {
+          "id": "k2",
+          "what": "a crossed-out keyword beside the row",
+          "words": "don't store",
+          "state": "bad"
+         },
+         {
+          "id": "k3",
+          "what": "callout beside it",
+          "words": "store + revalidate each use",
+          "state": "good"
+         }
+        ],
+        "cues": [
+         {
+          "at": "no-cache",
+          "object": "k1",
+          "does": "pops in at the top of the stack"
+         },
+         {
+          "at": "doesn't mean",
+          "object": "k2",
+          "does": "types on and is struck through"
+         },
+         {
+          "at": "store it, but",
+          "object": "k3",
+          "does": "types on beside it"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c6.b3",
+      "wants": "worked-example",
+      "says": "App dot js, with its hashed name, gets one year and immutable. Give the logo a hashed name and it can have the same.",
+      "uses": [
+       "m16",
+       "m18"
+      ],
+      "made_up": true,
+      "frames": [
+       {
+        "id": "c6.b3.f1",
+        "hold": true,
+        "objects": [
+         {
+          "id": "k4",
+          "what": "second list row",
+          "words": "app.3f9a1c.js → 1 year, immutable",
+          "state": "good"
+         },
+         {
+          "id": "k5",
+          "what": "third list row",
+          "words": "logo.[hash].png → same",
+          "state": "good"
+         }
+        ],
+        "cues": [
+         {
+          "at": "App dot js",
+          "object": "k1",
+          "does": "dims as the next row pops in under it"
+         },
+         {
+          "at": "one year",
+          "object": "k4",
+          "does": "pops in as the second row"
+         },
+         {
+          "at": "logo",
+          "object": "k5",
+          "does": "pops in as the third row"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c6.b4",
+      "wants": "advice",
+      "says": "The cart is private data. Give it no-store, which keeps no copy at all, or private, which lets only the shopper's own browser keep one.",
+      "uses": [
+       "m13",
+       "m18",
+       "m19"
+      ],
+      "made_up": true,
+      "frames": [
+       {
+        "id": "c6.b4.f1",
+        "hold": true,
+        "objects": [
+         {
+          "id": "k6",
+          "what": "fourth list row with two options",
+          "words": "/cart → no-store | private",
+          "state": "active"
+         }
+        ],
+        "cues": [
+         {
+          "at": "cart",
+          "object": "k6",
+          "does": "pops in as the last row"
+         },
+         {
+          "at": "no-store",
+          "object": "k6",
+          "does": "its no-store option lights"
+         },
+         {
+          "at": "private, which",
+          "object": "k6",
+          "does": "its private option lights"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c6.b5",
+      "wants": "definition",
+      "says": "Private matters because of shared caches, like a CDN between many users and your server. Public lets a CDN store a response, and s-maxage sets a freshness time for shared caches only.",
+      "uses": [
+       "m19",
+       "m20"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c6.b5.f1",
+        "shows": "A CDN node in the middle, a group of users on the left and the server on the right; a public response sits inside the CDN and an s-maxage line under it.",
+        "focal": "l1",
+        "objects": [
+         {
+          "id": "l3",
+          "what": "the server, right",
+          "words": "Server",
+          "state": "plain"
+         },
+         {
+          "id": "l1",
+          "what": "the CDN node in the middle",
+          "words": "CDN · shared cache",
+          "state": "active"
+         },
+         {
+          "id": "l2",
+          "what": "a group of user icons, left",
+          "words": "many users",
+          "state": "plain"
+         },
+         {
+          "id": "l4",
+          "what": "a response chip",
+          "words": "public",
+          "state": "good"
+         },
+         {
+          "id": "l5",
+          "what": "a code line under the CDN",
+          "words": "s-maxage",
+          "state": "plain"
+         }
+        ],
+        "cues": [
+         {
+          "at": "shared caches",
+          "object": "l1",
+          "does": "draws itself to the left of the server"
+         },
+         {
+          "at": "many users",
+          "object": "l2",
+          "does": "pop in on the left with lines to the CDN"
+         },
+         {
+          "at": "Public",
+          "object": "l4",
+          "does": "travels from the server into the CDN and stays"
+         },
+         {
+          "at": "s-maxage",
+          "object": "l5",
+          "does": "types on under the CDN"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c6.b6",
+      "wants": "principle",
+      "says": "Under all of it sits one rule: the cheapest request is the one that's never sent.",
+      "uses": [
+       "m21"
+      ],
+      "made_up": false
+     }
+    ]
+   },
+   {
+    "id": "c7",
+    "question": "So what does the browser decide on the shop's next visit?",
+    "wants": "outro",
+    "beats": [
+     {
+      "id": "c7.b1",
+      "wants": "landing",
+      "says": "So a browser never guesses. Fresh means no request, stale means a tiny check, and a new name is how your fix gets through.",
+      "uses": [
+       "m11"
+      ],
+      "made_up": false,
+      "frames": [
+       {
+        "id": "c7.b1.f1",
+        "shows": "Three chips in a row: fresh means no request, stale means a 304 check, a new name means the fix ships.",
+        "focal": "n3",
+        "objects": [
+         {
+          "id": "n1",
+          "what": "first chip",
+          "words": "Fresh → no request",
+          "state": "good"
+         },
+         {
+          "id": "n2",
+          "what": "second chip",
+          "words": "Stale → 304 check",
+          "state": "plain"
+         },
+         {
+          "id": "n3",
+          "what": "third chip",
+          "words": "New name → fix ships",
+          "state": "active"
+         }
+        ],
+        "cues": [
+         {
+          "at": "Fresh",
+          "object": "n1",
+          "does": "pops in on the left"
+         },
+         {
+          "at": "stale",
+          "object": "n2",
+          "does": "pops in beside it"
+         },
+         {
+          "at": "new name",
+          "object": "n3",
+          "does": "pops in on the right and glows"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "c7.b2",
+      "wants": "ask",
+      "says": "Open your own site's network panel, look at the headers on each file, and tell me in the comments which one surprised you.",
+      "uses": [],
+      "made_up": false
+     },
+     {
+      "id": "c7.b3",
+      "wants": "sign-off",
+      "says": "Thanks for watching. See you next time.",
+      "uses": [],
+      "made_up": false
+     }
+    ]
+   }
+  ]
+ },
+ "labels": {
+  "brief": {
+   "route": "what-why-how",
+   "route_p": 0.64,
+   "hook": "promise",
+   "landing": "distillation"
+  },
+  "material": {
+   "m1": {
+    "kind": "problem",
+    "p": 0.95,
+    "h": "0f102d14b6bc"
+   },
+   "m2": {
+    "kind": "definition",
+    "p": 0.69,
+    "h": "3f9a2e32e137"
+   },
+   "m3": {
+    "kind": "problem",
+    "p": 0.17,
+    "h": "6898b85ae7cc"
+   },
+   "m4": {
+    "kind": "mechanism",
+    "p": 0.7,
+    "h": "919bb59d83a2"
+   },
+   "m5": {
+    "kind": "mechanism",
+    "p": 0.8,
+    "h": "d80f40583a0c"
+   },
+   "m6": {
+    "kind": "definition",
+    "p": 0.89,
+    "h": "5243f9af6915"
+   },
+   "m7": {
+    "kind": "mechanism",
+    "p": 0.91,
+    "h": "c6155f775350"
+   },
+   "m8": {
+    "kind": "mechanism",
+    "p": 0.99,
+    "h": "00f303362ddc"
+   },
+   "m9": {
+    "kind": "mechanism",
+    "p": 0.99,
+    "h": "27d215854760"
+   },
+   "m10": {
+    "kind": "difference",
+    "p": 0.8,
+    "h": "5f5e1dc92b93"
+   },
+   "m11": {
+    "kind": "mechanism",
+    "p": 0.39,
+    "h": "ec528adc1de5"
+   },
+   "m12": {
+    "kind": "definition",
+    "p": 0.66,
+    "h": "b97f4020c0cb"
+   },
+   "m13": {
+    "kind": "advice",
+    "p": 0.68,
+    "h": "84413ed7a85c"
+   },
+   "m14": {
+    "kind": "problem",
+    "p": 1.0,
+    "h": "f3959282072a"
+   },
+   "m15": {
+    "kind": "mechanism",
+    "p": 0.77,
+    "h": "701683af4f47"
+   },
+   "m16": {
+    "kind": "advice",
+    "p": 0.45,
+    "h": "224a7e61bee5"
+   },
+   "m17": {
+    "kind": "advice",
+    "p": 0.92,
+    "h": "e6a67199da39"
+   },
+   "m18": {
+    "kind": "advice",
+    "p": 0.87,
+    "h": "5a251791ddff"
+   },
+   "m19": {
+    "kind": "definition",
+    "p": 0.64,
+    "h": "d3ef8abdd753"
+   },
+   "m20": {
+    "kind": "definition",
+    "p": 0.69,
+    "h": "47059aabdf7c"
+   },
+   "m21": {
+    "kind": "advice",
+    "p": 1.0,
+    "h": "db689375820f"
+   }
+  },
+  "chapters": {
+   "c1": {
+    "type": "introduction",
+    "part": "open",
+    "p": 1.0,
+    "reads": [
+     {
+      "id": "introduction",
+      "p": 1.0
+     }
+    ],
+    "one_question": 0.81,
+    "episode": 0.0,
+    "by": "read",
+    "h": "44bd986d17f0"
+   },
+   "c2": {
+    "type": "concept",
+    "part": "explain",
+    "p": 0.65,
+    "reads": [
+     {
+      "id": "concept",
+      "p": 0.67
+     },
+     {
+      "id": "how-it-works",
+      "p": 0.19
+     },
+     {
+      "id": "worked-example",
+      "p": 0.08
+     }
+    ],
+    "one_question": 0.82,
+    "episode": 0.0,
+    "by": "read",
+    "h": "45af726f63b6"
+   },
+   "c3": {
+    "type": "how-it-works",
+    "part": "explain",
+    "p": 0.61,
+    "reads": [
+     {
+      "id": "how-it-works",
+      "p": 0.64
+     },
+     {
+      "id": "concept",
+      "p": 0.34
+     },
+     {
+      "id": "options-compared",
+      "p": 0.01
+     }
+    ],
+    "one_question": 0.71,
+    "episode": 0.0,
+    "by": "read",
+    "h": "e4f30b77369f"
+   },
+   "c4": {
+    "type": "how-it-works",
+    "part": "explain",
+    "p": 0.85,
+    "reads": [
+     {
+      "id": "how-it-works",
+      "p": 0.86
+     },
+     {
+      "id": "options-compared",
+      "p": 0.13
+     },
+     {
+      "id": "concept",
+      "p": 0.01
+     }
+    ],
+    "one_question": 0.75,
+    "episode": 0.0,
+    "by": "read",
+    "h": "0c50e2ec3d88"
+   },
+   "c5": {
+    "type": "how-it-works",
+    "part": "explain",
+    "p": 0.41,
+    "reads": [
+     {
+      "id": "how-it-works",
+      "p": 0.45
+     },
+     {
+      "id": "advice",
+      "p": 0.3
+     },
+     {
+      "id": "questions",
+      "p": 0.07
+     }
+    ],
+    "one_question": 0.73,
+    "episode": 0.0,
+    "by": "read",
+    "h": "a0ce9ff9bb01"
+   },
+   "c6": {
+    "type": "advice",
+    "part": "judge",
+    "p": 0.38,
+    "reads": [
+     {
+      "id": "advice",
+      "p": 0.42
+     },
+     {
+      "id": "build",
+      "p": 0.3
+     },
+     {
+      "id": "options-compared",
+      "p": 0.2
+     }
+    ],
+    "one_question": 0.62,
+    "episode": 0.0,
+    "by": "read",
+    "h": "13d0e767220c"
+   },
+   "c7": {
+    "type": "outro",
+    "part": "close",
+    "p": 0.74,
+    "reads": [
+     {
+      "id": "outro",
+      "p": 0.76
+     },
+     {
+      "id": "recap",
+      "p": 0.16
+     },
+     {
+      "id": "how-it-works",
+      "p": 0.03
+     }
+    ],
+    "one_question": 0.3,
+    "episode": 0.0,
+    "by": "read",
+    "h": "4b67f37c1d7f"
+   }
+  },
+  "beats": {
+   "c1.b1": {
+    "subtype": "promise",
+    "type": "open",
+    "p": 0.97,
+    "reads": [
+     {
+      "id": "promise",
+      "p": 0.97
+     },
+     {
+      "id": "hook",
+      "p": 0.03
+     }
+    ],
+    "by": "read",
+    "h": "c12196891ae3"
+   },
+   "c1.b2": {
+    "subtype": "definition",
+    "type": "explain",
+    "p": 0.89,
+    "reads": [
+     {
+      "id": "definition",
+      "p": 0.89
+     },
+     {
+      "id": "mechanism",
+      "p": 0.06
+     },
+     {
+      "id": "principle",
+      "p": 0.03
+     }
+    ],
+    "by": "read",
+    "h": "7043078d0e80"
+   },
+   "c1.b3": {
+    "subtype": "agenda",
+    "type": "open",
+    "p": 0.98,
+    "reads": [
+     {
+      "id": "agenda",
+      "p": 0.98
+     },
+     {
+      "id": "list",
+      "p": 0.01
+     },
+     {
+      "id": "signpost",
+      "p": 0.01
+     }
+    ],
+    "by": "read",
+    "h": "8589b0e63a3b"
+   },
+   "c2.b1": {
+    "subtype": "question",
+    "type": "turn",
+    "p": 0.98,
+    "reads": [
+     {
+      "id": "question",
+      "p": 0.98
+     },
+     {
+      "id": "bridge",
+      "p": 0.02
+     }
+    ],
+    "by": "read",
+    "h": "f2e0e5efbb43"
+   },
+   "c2.b2": {
+    "subtype": "definition",
+    "type": "explain",
+    "p": 0.58,
+    "reads": [
+     {
+      "id": "definition",
+      "p": 0.59
+     },
+     {
+      "id": "mechanism",
+      "p": 0.33
+     },
+     {
+      "id": "question",
+      "p": 0.07
+     }
+    ],
+    "by": "read",
+    "h": "1b84ccc0372e"
+   },
+   "c2.b3": {
+    "subtype": "worked-example",
+    "type": "explain",
+    "p": 0.99,
+    "reads": [
+     {
+      "id": "worked-example",
+      "p": 0.99
+     },
+     {
+      "id": "list",
+      "p": 0.01
+     }
+    ],
+    "by": "read",
+    "h": "8592ffafc02f"
+   },
+   "c2.b4": {
+    "subtype": "mechanism",
+    "type": "explain",
+    "p": 0.27,
+    "reads": [
+     {
+      "id": "worked-example",
+      "p": 0.29
+     },
+     {
+      "id": "mechanism",
+      "p": 0.27
+     },
+     {
+      "id": "turn",
+      "p": 0.13
+     }
+    ],
+    "by": "intent",
+    "h": "15e7f7d6bb51"
+   },
+   "c2.b5": {
+    "subtype": "mechanism",
+    "type": "explain",
+    "p": 0.34,
+    "reads": [
+     {
+      "id": "mechanism",
+      "p": 0.35
+     },
+     {
+      "id": "turn",
+      "p": 0.25
+     },
+     {
+      "id": "principle",
+      "p": 0.18
+     }
+    ],
+    "by": "read",
+    "h": "94fbca0b9358"
+   },
+   "c2.b6": {
+    "subtype": "so-what",
+    "type": "turn",
+    "p": 0.47,
+    "reads": [
+     {
+      "id": "so-what",
+      "p": 0.48
+     },
+     {
+      "id": "bridge",
+      "p": 0.27
+     },
+     {
+      "id": "advice",
+      "p": 0.2
+     }
+    ],
+    "by": "read",
+    "h": "db36be5f2694"
+   },
+   "c3.b1": {
+    "subtype": "signpost",
+    "type": "guide",
+    "p": 0.96,
+    "reads": [
+     {
+      "id": "signpost",
+      "p": 0.96
+     },
+     {
+      "id": "agenda",
+      "p": 0.02
+     },
+     {
+      "id": "go-line",
+      "p": 0.02
+     }
+    ],
+    "by": "read",
+    "h": "4923730dbfc7"
+   },
+   "c3.b2": {
+    "subtype": "mechanism",
+    "type": "explain",
+    "p": 0.85,
+    "reads": [
+     {
+      "id": "mechanism",
+      "p": 0.85
+     },
+     {
+      "id": "principle",
+      "p": 0.14
+     },
+     {
+      "id": "definition",
+      "p": 0.01
+     }
+    ],
+    "by": "read",
+    "h": "a7b41b88ce97"
+   },
+   "c3.b3": {
+    "subtype": "so-what",
+    "type": "turn",
+    "p": 0.97,
+    "reads": [
+     {
+      "id": "so-what",
+      "p": 0.97
+     },
+     {
+      "id": "mechanism",
+      "p": 0.02
+     },
+     {
+      "id": "judgment",
+      "p": 0.01
+     }
+    ],
+    "by": "read",
+    "h": "0e756e8c8bd0"
+   },
+   "c3.b4": {
+    "subtype": "worked-example",
+    "type": "explain",
+    "p": 0.98,
+    "reads": [
+     {
+      "id": "worked-example",
+      "p": 0.98
+     },
+     {
+      "id": "analogy",
+      "p": 0.01
+     },
+     {
+      "id": "mechanism",
+      "p": 0.01
+     }
+    ],
+    "by": "read",
+    "h": "ceffef50383f"
+   },
+   "c3.b5": {
+    "subtype": "mechanism",
+    "type": "explain",
+    "p": 0.74,
+    "reads": [
+     {
+      "id": "definition",
+      "p": 0.75
+     },
+     {
+      "id": "mechanism",
+      "p": 0.13
+     },
+     {
+      "id": "bridge",
+      "p": 0.04
+     }
+    ],
+    "by": "intent",
+    "h": "7cfcbef5f632"
+   },
+   "c3.b6": {
+    "subtype": "turn",
+    "type": "turn",
+    "p": 0.42,
+    "reads": [
+     {
+      "id": "contrast",
+      "p": 0.43
+     },
+     {
+      "id": "turn",
+      "p": 0.17
+     },
+     {
+      "id": "so-what",
+      "p": 0.16
+     }
+    ],
+    "by": "intent",
+    "h": "42abe18a1478"
+   },
+   "c4.b1": {
+    "subtype": "definition",
+    "type": "explain",
+    "p": 0.52,
+    "reads": [
+     {
+      "id": "definition",
+      "p": 0.53
+     },
+     {
+      "id": "mechanism",
+      "p": 0.47
+     }
+    ],
+    "by": "read",
+    "h": "caa63c82c73b"
+   },
+   "c4.b2": {
+    "subtype": "mechanism",
+    "type": "explain",
+    "p": 0.83,
+    "reads": [
+     {
+      "id": "mechanism",
+      "p": 0.83
+     },
+     {
+      "id": "step",
+      "p": 0.13
+     },
+     {
+      "id": "question",
+      "p": 0.04
+     }
+    ],
+    "by": "read",
+    "h": "76a0095131d9"
+   },
+   "c4.b3": {
+    "subtype": "mechanism",
+    "type": "explain",
+    "p": 0.96,
+    "reads": [
+     {
+      "id": "mechanism",
+      "p": 0.96
+     },
+     {
+      "id": "worked-example",
+      "p": 0.01
+     },
+     {
+      "id": "step",
+      "p": 0.01
+     }
+    ],
+    "by": "read",
+    "h": "aea4c39f52a2"
+   },
+   "c4.b4": {
+    "subtype": "mechanism",
+    "type": "explain",
+    "p": 0.84,
+    "reads": [
+     {
+      "id": "mechanism",
+      "p": 0.84
+     },
+     {
+      "id": "turn",
+      "p": 0.06
+     },
+     {
+      "id": "worked-example",
+      "p": 0.04
+     }
+    ],
+    "by": "read",
+    "h": "c5a746dba305"
+   },
+   "c4.b5": {
+    "subtype": "worked-example",
+    "type": "explain",
+    "p": 0.71,
+    "reads": [
+     {
+      "id": "worked-example",
+      "p": 0.72
+     },
+     {
+      "id": "analogy",
+      "p": 0.14
+     },
+     {
+      "id": "so-what",
+      "p": 0.08
+     }
+    ],
+    "by": "read",
+    "h": "716f32a4268a"
+   },
+   "c4.b6": {
+    "subtype": "contrast",
+    "type": "explain",
+    "p": 0.79,
+    "reads": [
+     {
+      "id": "contrast",
+      "p": 0.79
+     },
+     {
+      "id": "mechanism",
+      "p": 0.08
+     },
+     {
+      "id": "judgment",
+      "p": 0.06
+     }
+    ],
+    "by": "read",
+    "h": "4f13885c2100"
+   },
+   "c4.b7": {
+    "subtype": "milestone",
+    "type": "guide",
+    "p": 0.8,
+    "reads": [
+     {
+      "id": "milestone",
+      "p": 0.8
+     },
+     {
+      "id": "recap",
+      "p": 0.14
+     },
+     {
+      "id": "list",
+      "p": 0.04
+     }
+    ],
+    "by": "read",
+    "h": "99d4c6593d2d"
+   },
+   "c5.b1": {
+    "subtype": "need",
+    "type": "open",
+    "p": 0.63,
+    "reads": [
+     {
+      "id": "turn",
+      "p": 0.64
+     },
+     {
+      "id": "need",
+      "p": 0.28
+     },
+     {
+      "id": "contrast",
+      "p": 0.03
+     }
+    ],
+    "by": "intent",
+    "h": "5d4d3329d2a9"
+   },
+   "c5.b2": {
+    "subtype": "worked-example",
+    "type": "explain",
+    "p": 0.81,
+    "reads": [
+     {
+      "id": "worked-example",
+      "p": 0.81
+     },
+     {
+      "id": "need",
+      "p": 0.09
+     },
+     {
+      "id": "so-what",
+      "p": 0.06
+     }
+    ],
+    "by": "read",
+    "h": "c22a002df007"
+   },
+   "c5.b3": {
+    "subtype": "turn",
+    "type": "turn",
+    "p": 0.61,
+    "reads": [
+     {
+      "id": "bridge",
+      "p": 0.62
+     },
+     {
+      "id": "turn",
+      "p": 0.27
+     },
+     {
+      "id": "signpost",
+      "p": 0.04
+     }
+    ],
+    "by": "intent",
+    "h": "54a79f4afae2"
+   },
+   "c5.b4": {
+    "subtype": "mechanism",
+    "type": "explain",
+    "p": 0.74,
+    "reads": [
+     {
+      "id": "mechanism",
+      "p": 0.75
+     },
+     {
+      "id": "worked-example",
+      "p": 0.09
+     },
+     {
+      "id": "principle",
+      "p": 0.09
+     }
+    ],
+    "by": "read",
+    "h": "4891fa69fd67"
+   },
+   "c5.b5": {
+    "subtype": "mechanism",
+    "type": "explain",
+    "p": 0.89,
+    "reads": [
+     {
+      "id": "mechanism",
+      "p": 0.89
+     },
+     {
+      "id": "so-what",
+      "p": 0.08
+     },
+     {
+      "id": "worked-example",
+      "p": 0.01
+     }
+    ],
+    "by": "read",
+    "h": "467343915068"
+   },
+   "c5.b6": {
+    "subtype": "advice",
+    "type": "close",
+    "p": 0.92,
+    "reads": [
+     {
+      "id": "advice",
+      "p": 0.92
+     },
+     {
+      "id": "step",
+      "p": 0.04
+     },
+     {
+      "id": "worked-example",
+      "p": 0.02
+     }
+    ],
+    "by": "read",
+    "h": "754ddd3515d6"
+   },
+   "c5.b7": {
+    "subtype": "turn",
+    "type": "turn",
+    "p": 0.5,
+    "reads": [
+     {
+      "id": "turn",
+      "p": 0.51
+     },
+     {
+      "id": "advice",
+      "p": 0.2
+     },
+     {
+      "id": "contrast",
+      "p": 0.14
+     }
+    ],
+    "by": "read",
+    "h": "30f093989e4e"
+   },
+   "c6.b1": {
+    "subtype": "bridge",
+    "type": "guide",
+    "p": 0.65,
+    "reads": [
+     {
+      "id": "bridge",
+      "p": 0.66
+     },
+     {
+      "id": "signpost",
+      "p": 0.14
+     },
+     {
+      "id": "go-line",
+      "p": 0.1
+     }
+    ],
+    "by": "read",
+    "h": "6a4147ce4387"
+   },
+   "c6.b2": {
+    "subtype": "advice",
+    "type": "close",
+    "p": 0.34,
+    "reads": [
+     {
+      "id": "advice",
+      "p": 0.35
+     },
+     {
+      "id": "definition",
+      "p": 0.23
+     },
+     {
+      "id": "step",
+      "p": 0.17
+     }
+    ],
+    "by": "read",
+    "h": "bb9615fdbee1"
+   },
+   "c6.b3": {
+    "subtype": "worked-example",
+    "type": "explain",
+    "p": 0.8,
+    "reads": [
+     {
+      "id": "worked-example",
+      "p": 0.8
+     },
+     {
+      "id": "advice",
+      "p": 0.1
+     },
+     {
+      "id": "list",
+      "p": 0.05
+     }
+    ],
+    "by": "read",
+    "h": "1e593fac9ccd"
+   },
+   "c6.b4": {
+    "subtype": "advice",
+    "type": "close",
+    "p": 0.85,
+    "reads": [
+     {
+      "id": "advice",
+      "p": 0.85
+     },
+     {
+      "id": "worked-example",
+      "p": 0.07
+     },
+     {
+      "id": "step",
+      "p": 0.02
+     }
+    ],
+    "by": "read",
+    "h": "200e9c86a003"
+   },
+   "c6.b5": {
+    "subtype": "definition",
+    "type": "explain",
+    "p": 0.46,
+    "reads": [
+     {
+      "id": "mechanism",
+      "p": 0.47
+     },
+     {
+      "id": "list",
+      "p": 0.27
+     },
+     {
+      "id": "definition",
+      "p": 0.16
+     }
+    ],
+    "by": "intent",
+    "h": "4aec77e58f3e"
+   },
+   "c6.b6": {
+    "subtype": "principle",
+    "type": "turn",
+    "p": 0.94,
+    "reads": [
+     {
+      "id": "principle",
+      "p": 0.94
+     },
+     {
+      "id": "bridge",
+      "p": 0.04
+     },
+     {
+      "id": "so-what",
+      "p": 0.02
+     }
+    ],
+    "by": "read",
+    "h": "24e6f7a2fa1f"
+   },
+   "c7.b1": {
+    "subtype": "landing",
+    "type": "close",
+    "p": 0.45,
+    "reads": [
+     {
+      "id": "recap",
+      "p": 0.46
+     },
+     {
+      "id": "landing",
+      "p": 0.28
+     },
+     {
+      "id": "mechanism",
+      "p": 0.18
+     }
+    ],
+    "by": "intent",
+    "h": "bb78d608e40e"
+   },
+   "c7.b2": {
+    "subtype": "ask",
+    "type": "close",
+    "p": 0.74,
+    "reads": [
+     {
+      "id": "ask",
+      "p": 0.75
+     },
+     {
+      "id": "question-back",
+      "p": 0.23
+     },
+     {
+      "id": "step",
+      "p": 0.01
+     }
+    ],
+    "by": "read",
+    "h": "49584a6ee119"
+   },
+   "c7.b3": {
+    "subtype": "sign-off",
+    "type": "close",
+    "p": 1.0,
+    "reads": [
+     {
+      "id": "sign-off",
+      "p": 1.0
+     }
+    ],
+    "by": "read",
+    "h": "52b36f7c9695"
+   }
+  },
+  "frames": {
+   "c1.b1.f1": {
+    "presence": "person",
+    "layout": "full-frame",
+    "options": [
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.83
+     },
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.16
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.06
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.01
+     }
+    ],
+    "presence_p": {
+     "person": 0.83,
+     "both": 0.15,
+     "content": 0.02
+    },
+    "picture": "camera",
+    "relation": "new-topic",
+    "transition": "none",
+    "h": "c454eb6da11c",
+    "hd": "ec6bc435df73"
+   },
+   "c1.b2.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.93
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.33
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.07
+     }
+    ],
+    "presence_p": {
+     "person": 0.0,
+     "both": 0.85,
+     "content": 0.15
+    },
+    "picture": "illustration",
+    "picture_p": 0.47,
+    "arrangement": "two-sides",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "ee4f2e1579e5",
+    "hd": "ec0af9435d4a"
+   },
+   "c1.b3.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.92
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.32
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.07
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.01
+     }
+    ],
+    "presence_p": {
+     "person": 0.01,
+     "both": 0.9,
+     "content": 0.09
+    },
+    "picture": "chips",
+    "picture_p": 1.0,
+    "arrangement": "row",
+    "relation": "next-step",
+    "transition": "push",
+    "h": "e4b3b27c7f4a",
+    "hd": "a79c248fecbb"
+   },
+   "c2.b1.f1": {
+    "presence": "person",
+    "layout": "full-frame",
+    "options": [
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.76
+     },
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.22
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.08
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.02
+     }
+    ],
+    "presence_p": {
+     "person": 0.76,
+     "both": 0.22,
+     "content": 0.02
+    },
+    "picture": "camera",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "dfd275929caa",
+    "hd": "5bf224d6f643"
+   },
+   "c2.b2.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.93
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.33
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.07
+     }
+    ],
+    "presence_p": {
+     "person": 0.0,
+     "both": 0.9,
+     "content": 0.1
+    },
+    "picture": "diagram",
+    "picture_p": 1.0,
+    "arrangement": "pipeline",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "30037bbbcd09",
+    "hd": "cbe3074d3289"
+   },
+   "c2.b3.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.87
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.3
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.07
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.06
+     }
+    ],
+    "presence_p": {
+     "person": 0.07,
+     "both": 0.74,
+     "content": 0.19
+    },
+    "picture": "diagram",
+    "arrangement": "pipeline",
+    "relation": "same-picture",
+    "transition": "none",
+    "h": "b064d8fd9379",
+    "hd": "667314af94b2"
+   },
+   "c2.b4.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.85
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.3
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.09
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.06
+     }
+    ],
+    "presence_p": {
+     "person": 0.09,
+     "both": 0.8,
+     "content": 0.11
+    },
+    "picture": "diagram",
+    "arrangement": "pipeline",
+    "relation": "same-picture",
+    "transition": "none",
+    "h": "b0ba5914ae00",
+    "hd": "31b6a89352cc"
+   },
+   "c2.b5.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.83
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.29
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.11
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.06
+     }
+    ],
+    "presence_p": {
+     "person": 0.11,
+     "both": 0.81,
+     "content": 0.08
+    },
+    "picture": "diagram",
+    "arrangement": "pipeline",
+    "relation": "same-picture",
+    "transition": "none",
+    "h": "e8ddb6cacb3d",
+    "hd": "c0c7ed506f0f"
+   },
+   "c2.b6.f1": {
+    "presence": "person",
+    "layout": "full-frame",
+    "options": [
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.68
+     },
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.3
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.1
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.02
+     }
+    ],
+    "presence_p": {
+     "person": 0.68,
+     "both": 0.27,
+     "content": 0.05
+    },
+    "picture": "camera",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "b373463b4bea",
+    "hd": "6ef763fc31c2"
+   },
+   "c3.b1.f1": {
+    "presence": "person",
+    "layout": "full-frame",
+    "options": [
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.96
+     },
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.04
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.01
+     }
+    ],
+    "presence_p": {
+     "person": 0.96,
+     "both": 0.03,
+     "content": 0.01
+    },
+    "picture": "camera",
+    "relation": "same-picture",
+    "transition": "none",
+    "h": "8440b27c344a",
+    "hd": "5710a973b5f2"
+   },
+   "c3.b2.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.93
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.33
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.07
+     }
+    ],
+    "presence_p": {
+     "person": 0.0,
+     "both": 0.8,
+     "content": 0.2
+    },
+    "picture": "diagram",
+    "picture_p": 0.95,
+    "arrangement": "pipeline",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "cae2336ecda2",
+    "hd": "e6f0c435e5c3"
+   },
+   "c3.b3.f1": {
+    "presence": "person",
+    "layout": "full-frame",
+    "options": [
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.71
+     },
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.27
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.09
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.02
+     }
+    ],
+    "presence_p": {
+     "person": 0.71,
+     "both": 0.21,
+     "content": 0.08
+    },
+    "picture": "camera",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "fa897e73f11b",
+    "hd": "2fbb90e3c3bc"
+   },
+   "c3.b4.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.93
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.33
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.07
+     }
+    ],
+    "presence_p": {
+     "person": 0.0,
+     "both": 0.82,
+     "content": 0.18
+    },
+    "picture": "diagram",
+    "picture_p": 0.73,
+    "arrangement": "stack",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "09b5c5bcd908",
+    "hd": "69d9b63bb3e2"
+   },
+   "c3.b5.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.62
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.22
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.34
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.04
+     }
+    ],
+    "presence_p": {
+     "person": 0.34,
+     "both": 0.57,
+     "content": 0.09
+    },
+    "picture": "diagram",
+    "arrangement": "stack",
+    "relation": "same-picture",
+    "transition": "none",
+    "h": "c230028ed0ba",
+    "hd": "628f8da6b7f1"
+   },
+   "c3.b6.f1": {
+    "presence": "person",
+    "layout": "full-frame",
+    "options": [
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.86
+     },
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.13
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.05
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.01
+     }
+    ],
+    "presence_p": {
+     "person": 0.86,
+     "both": 0.13,
+     "content": 0.01
+    },
+    "picture": "camera",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "9d103912e893",
+    "hd": "e64363f38469"
+   },
+   "c4.b1.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.93
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.33
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.07
+     }
+    ],
+    "presence_p": {
+     "person": 0.0,
+     "both": 0.79,
+     "content": 0.21
+    },
+    "picture": "diagram",
+    "picture_p": 0.99,
+    "arrangement": "two-sides",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "003674c1aa7d",
+    "hd": "e343b32f8f87"
+   },
+   "c4.b2.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.86
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.3
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.08
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.06
+     }
+    ],
+    "presence_p": {
+     "person": 0.08,
+     "both": 0.86,
+     "content": 0.06
+    },
+    "picture": "diagram",
+    "arrangement": "two-sides",
+    "relation": "same-picture",
+    "transition": "none",
+    "h": "e3c1f8e60e55",
+    "hd": "947d923f377a"
+   },
+   "c4.b3.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.92
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.32
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.07
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.01
+     }
+    ],
+    "presence_p": {
+     "person": 0.01,
+     "both": 0.91,
+     "content": 0.08
+    },
+    "picture": "diagram",
+    "arrangement": "two-sides",
+    "relation": "same-picture",
+    "transition": "none",
+    "h": "1737f9ea4e14",
+    "hd": "553a096f76f7"
+   },
+   "c4.b4.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.92
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.32
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.06
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.02
+     }
+    ],
+    "presence_p": {
+     "person": 0.02,
+     "both": 0.87,
+     "content": 0.11
+    },
+    "picture": "diagram",
+    "arrangement": "two-sides",
+    "relation": "same-picture",
+    "transition": "none",
+    "h": "e382549df1ed",
+    "hd": "01079d18d809"
+   },
+   "c4.b5.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.69
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.24
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.26
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.05
+     }
+    ],
+    "presence_p": {
+     "person": 0.26,
+     "both": 0.47,
+     "content": 0.27
+    },
+    "picture": "diagram",
+    "arrangement": "two-sides",
+    "relation": "same-picture",
+    "transition": "none",
+    "h": "5aed1e6138e5",
+    "hd": "4aac438ea954"
+   },
+   "c4.b6.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.93
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.33
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.07
+     }
+    ],
+    "presence_p": {
+     "person": 0.0,
+     "both": 0.85,
+     "content": 0.15
+    },
+    "picture": "diagram",
+    "picture_p": 0.75,
+    "arrangement": "two-sides",
+    "relation": "next-step",
+    "transition": "push",
+    "h": "e0ca52b259a4",
+    "hd": "e5cbc17b9b6d"
+   },
+   "c4.b7.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.61
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.21
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.35
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.04
+     }
+    ],
+    "presence_p": {
+     "person": 0.35,
+     "both": 0.57,
+     "content": 0.08
+    },
+    "line_only": true,
+    "picture": "diagram",
+    "arrangement": "two-sides",
+    "relation": "same-picture",
+    "transition": "none",
+    "h": "343f5d75ebe7",
+    "hd": "2bb972b7f8fd"
+   },
+   "c5.b1.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.93
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.33
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.07
+     }
+    ],
+    "presence_p": {
+     "person": 0.0,
+     "both": 0.87,
+     "content": 0.13
+    },
+    "picture": "diagram",
+    "picture_p": 0.78,
+    "arrangement": "two-sides",
+    "relation": "next-step",
+    "transition": "push",
+    "h": "7fff7d73e2a8",
+    "hd": "88cc1bedac4c"
+   },
+   "c5.b2.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.78
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.27
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.16
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.06
+     }
+    ],
+    "presence_p": {
+     "person": 0.16,
+     "both": 0.71,
+     "content": 0.13
+    },
+    "picture": "diagram",
+    "arrangement": "two-sides",
+    "relation": "same-picture",
+    "transition": "none",
+    "h": "85833d7dcf93",
+    "hd": "aef951b1516d"
+   },
+   "c5.b3.f1": {
+    "presence": "person",
+    "layout": "full-frame",
+    "options": [
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.98
+     },
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.02
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.01
+     }
+    ],
+    "presence_p": {
+     "person": 0.98,
+     "both": 0.01,
+     "content": 0.01
+    },
+    "picture": "camera",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "299b6eae1793",
+    "hd": "2f9fbea5f84d"
+   },
+   "c5.b4.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.93
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.33
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.07
+     }
+    ],
+    "presence_p": {
+     "person": 0.0,
+     "both": 0.87,
+     "content": 0.13
+    },
+    "picture": "diagram",
+    "picture_p": 0.99,
+    "arrangement": "pipeline",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "d3b9bf2e9610",
+    "hd": "00b3d44b8bae"
+   },
+   "c5.b5.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.85
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.3
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.09
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.06
+     }
+    ],
+    "presence_p": {
+     "person": 0.09,
+     "both": 0.8,
+     "content": 0.11
+    },
+    "picture": "diagram",
+    "arrangement": "pipeline",
+    "relation": "same-picture",
+    "transition": "none",
+    "h": "06e6b103bf6a",
+    "hd": "2951eb1f4774"
+   },
+   "c5.b6.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.93
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.33
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.07
+     }
+    ],
+    "presence_p": {
+     "person": 0.0,
+     "both": 0.71,
+     "content": 0.29
+    },
+    "picture": "typeset-code",
+    "picture_p": 0.99,
+    "arrangement": "code-panel",
+    "relation": "next-step",
+    "transition": "push",
+    "h": "378a7fbd347e",
+    "hd": "1f8a98b1879b"
+   },
+   "c5.b7.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.92
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.32
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.07
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.01
+     }
+    ],
+    "presence_p": {
+     "person": 0.01,
+     "both": 0.84,
+     "content": 0.15
+    },
+    "picture": "diagram",
+    "picture_p": 0.74,
+    "arrangement": "two-sides",
+    "relation": "next-step",
+    "transition": "push",
+    "h": "f9cc13b3ffbf",
+    "hd": "2d486bfb6710"
+   },
+   "c6.b1.f1": {
+    "presence": "person",
+    "layout": "full-frame",
+    "options": [
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.73
+     },
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.25
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.09
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.02
+     }
+    ],
+    "presence_p": {
+     "person": 0.73,
+     "both": 0.23,
+     "content": 0.04
+    },
+    "picture": "camera",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "879d3cb60de2",
+    "hd": "96362f952116"
+   },
+   "c6.b2.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.93
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.33
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.07
+     }
+    ],
+    "presence_p": {
+     "person": 0.0,
+     "both": 0.78,
+     "content": 0.22
+    },
+    "picture": "list",
+    "picture_p": 0.51,
+    "arrangement": "stack",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "68a85cf68ce6",
+    "hd": "f6781c3a7dbb"
+   },
+   "c6.b3.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.89
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.31
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.06
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.05
+     }
+    ],
+    "presence_p": {
+     "person": 0.05,
+     "both": 0.8,
+     "content": 0.15
+    },
+    "picture": "list",
+    "arrangement": "stack",
+    "relation": "same-picture",
+    "transition": "none",
+    "h": "1f43d0c290b3",
+    "hd": "e028715e1544"
+   },
+   "c6.b4.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.81
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.28
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.13
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.06
+     }
+    ],
+    "presence_p": {
+     "person": 0.13,
+     "both": 0.81,
+     "content": 0.06
+    },
+    "picture": "list",
+    "arrangement": "stack",
+    "relation": "same-picture",
+    "transition": "none",
+    "h": "195ce9b407e5",
+    "hd": "8298bf15f89b"
+   },
+   "c6.b5.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.93
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.33
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.07
+     }
+    ],
+    "presence_p": {
+     "person": 0.0,
+     "both": 0.92,
+     "content": 0.08
+    },
+    "picture": "diagram",
+    "picture_p": 0.93,
+    "arrangement": "pipeline",
+    "relation": "next-step",
+    "transition": "push",
+    "h": "1a6588c63126",
+    "hd": "c01d94275ae7"
+   },
+   "c6.b6.f1": {
+    "presence": "person",
+    "layout": "full-frame",
+    "options": [
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.61
+     },
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.36
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.13
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.03
+     }
+    ],
+    "presence_p": {
+     "person": 0.61,
+     "both": 0.18,
+     "content": 0.21
+    },
+    "picture": "camera",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "34437f2647bb",
+    "hd": "e1dc6643e10d"
+   },
+   "c7.b1.f1": {
+    "presence": "both",
+    "layout": "corner-window",
+    "options": [
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.92
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.32
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.07
+     },
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.01
+     }
+    ],
+    "presence_p": {
+     "person": 0.01,
+     "both": 0.95,
+     "content": 0.04
+    },
+    "picture": "chips",
+    "picture_p": 0.99,
+    "arrangement": "row",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "9f0d68eb0c86",
+    "hd": "d4ddb6eacae2"
+   },
+   "c7.b2.f1": {
+    "presence": "person",
+    "layout": "full-frame",
+    "options": [
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.69
+     },
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.29
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.1
+     },
+     {
+      "layout": "graphic-on-ground",
+      "presence": "content",
+      "p": 0.02
+     }
+    ],
+    "presence_p": {
+     "person": 0.69,
+     "both": 0.15,
+     "content": 0.16
+    },
+    "picture": "camera",
+    "relation": "swap",
+    "transition": "cut",
+    "h": "ef10a4139153",
+    "hd": "cfdb38ac7fce"
+   },
+   "c7.b3.f1": {
+    "presence": "person",
+    "layout": "full-frame",
+    "options": [
+     {
+      "layout": "full-frame",
+      "presence": "person",
+      "p": 0.98
+     },
+     {
+      "layout": "corner-window",
+      "presence": "both",
+      "p": 0.02
+     },
+     {
+      "layout": "split",
+      "presence": "both",
+      "p": 0.01
+     }
+    ],
+    "presence_p": {
+     "person": 0.98,
+     "both": 0.0,
+     "content": 0.02
+    },
+    "picture": "camera",
+    "relation": "same-picture",
+    "transition": "none",
+    "h": "e06578d9f21c",
+    "hd": "a5f111647845"
+   }
+  },
+  "objects": {
+   "c1.b2.f1/a1": {
+    "type": "container",
+    "p": 0.42,
+    "h": "b3a7ab4921c8"
+   },
+   "c1.b2.f1/a2": {
+    "type": "node",
+    "p": 0.36,
+    "h": "cae77b4b4400"
+   },
+   "c1.b2.f1/a3": {
+    "type": "card",
+    "p": 0.98,
+    "h": "dcf69becf2dc"
+   },
+   "c1.b3.f1/a4": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "667e6c322a95"
+   },
+   "c1.b3.f1/a5": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "10d0ffac667f"
+   },
+   "c1.b3.f1/a6": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "2cd05bc3a6b3"
+   },
+   "c2.b2.f1/b1": {
+    "type": "node",
+    "p": 0.55,
+    "h": "707c67b05f2b"
+   },
+   "c2.b2.f1/b2": {
+    "type": "container",
+    "p": 0.87,
+    "h": "d4945fcfcda8"
+   },
+   "c2.b2.f1/b3": {
+    "type": "node",
+    "p": 0.58,
+    "h": "cae77b4b4400"
+   },
+   "c2.b2.f1/b4": {
+    "type": "callout",
+    "p": 1.0,
+    "h": "304cab4dfda2"
+   },
+   "c2.b3.f1/b5": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "ac835e8f0291"
+   },
+   "c2.b3.f1/b6": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "ac835e8f0291"
+   },
+   "c2.b3.f1/b7": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "ac835e8f0291"
+   },
+   "c2.b4.f1/b8": {
+    "type": "tile-wall",
+    "p": 1.0,
+    "h": "641afffd6648"
+   },
+   "c2.b5.f1/b9": {
+    "type": "sticker",
+    "p": 0.76,
+    "h": "5184fa4b812c"
+   },
+   "c3.b2.f1/c1": {
+    "type": "code-line",
+    "p": 1.0,
+    "h": "e27c2a9b8ca7"
+   },
+   "c3.b2.f1/c2": {
+    "type": "dial",
+    "p": 0.59,
+    "h": "2cd5f4cf771c"
+   },
+   "c3.b2.f1/c3": {
+    "type": "interface-mock",
+    "p": 0.44,
+    "h": "6dfcb4ebf081"
+   },
+   "c3.b2.f1/c4": {
+    "type": "node",
+    "p": 0.45,
+    "h": "cae77b4b4400"
+   },
+   "c3.b2.f1/c5": {
+    "type": "cross",
+    "p": 0.93,
+    "h": "a8780d293fb8"
+   },
+   "c3.b4.f1/d1": {
+    "type": "chip",
+    "p": 0.98,
+    "h": "696f1f63b0b9"
+   },
+   "c3.b4.f1/d2": {
+    "type": "code-line",
+    "p": 1.0,
+    "h": "c18aac1b8c4c"
+   },
+   "c3.b4.f1/d3": {
+    "type": "timeline",
+    "p": 0.35,
+    "h": "b3fa475a562b"
+   },
+   "c3.b4.f1/d4": {
+    "type": "list-row",
+    "p": 0.48,
+    "h": "e75f7de0d697"
+   },
+   "c3.b5.f1/d5": {
+    "type": "verdict-pill",
+    "p": 0.67,
+    "h": "7cca2b9428a1"
+   },
+   "c3.b5.f1/d6": {
+    "type": "callout",
+    "p": 0.99,
+    "h": "66794d37094a"
+   },
+   "c4.b1.f1/e1": {
+    "type": "title-line",
+    "p": 0.99,
+    "h": "a54c086695d0"
+   },
+   "c4.b1.f1/e2": {
+    "type": "lifeline",
+    "p": 1.0,
+    "h": "368f63e9534e"
+   },
+   "c4.b1.f1/e3": {
+    "type": "lifeline",
+    "p": 1.0,
+    "h": "cb4a31fa8962"
+   },
+   "c4.b1.f1/e5": {
+    "type": "lifeline",
+    "p": 0.58,
+    "h": "83fc87af7ada"
+   },
+   "c4.b1.f1/e4": {
+    "type": "sticker",
+    "p": 0.68,
+    "h": "bfc5d8b64362"
+   },
+   "c4.b2.f1/e6": {
+    "type": "lifeline",
+    "p": 0.38,
+    "h": "dc6a6a50713b"
+   },
+   "c4.b3.f1/e7": {
+    "type": "lifeline",
+    "p": 0.35,
+    "h": "116293aaabb5"
+   },
+   "c4.b3.f1/e8": {
+    "type": "callout",
+    "p": 1.0,
+    "h": "beed4ff8b863"
+   },
+   "c4.b3.f1/e9": {
+    "type": "dial",
+    "p": 0.63,
+    "h": "1c346bf5f745"
+   },
+   "c4.b4.f1/e10": {
+    "type": "connector",
+    "p": 0.37,
+    "h": "16a2593fda38"
+   },
+   "c4.b4.f1/e11": {
+    "type": "sticker",
+    "p": 0.64,
+    "h": "bce611f044be"
+   },
+   "c4.b5.f1/e12": {
+    "type": "sticker",
+    "p": 0.74,
+    "h": "be00e9214d5a"
+   },
+   "c4.b6.f1/f1": {
+    "type": "comparison-card",
+    "p": 0.95,
+    "h": "8eb4bedb29fd"
+   },
+   "c4.b6.f1/f2": {
+    "type": "comparison-card",
+    "p": 0.96,
+    "h": "86741900a19b"
+   },
+   "c4.b6.f1/f3": {
+    "type": "callout",
+    "p": 1.0,
+    "h": "eb53ac7d280c"
+   },
+   "c4.b6.f1/f4": {
+    "type": "verdict-pill",
+    "p": 1.0,
+    "h": "96492c9c8a0e"
+   },
+   "c5.b1.f1/g1": {
+    "type": "node",
+    "p": 0.36,
+    "h": "cae77b4b4400"
+   },
+   "c5.b1.f1/g2": {
+    "type": "container",
+    "p": 0.73,
+    "h": "e8b8a5953389"
+   },
+   "c5.b1.f1/g4": {
+    "type": "ribbon",
+    "p": 0.46,
+    "h": "18a1f77cd42b"
+   },
+   "c5.b1.f1/g3": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "4d2aa4ba04d6"
+   },
+   "c5.b1.f1/g5": {
+    "type": "cross",
+    "p": 0.96,
+    "h": "9f18d094d62f"
+   },
+   "c5.b2.f1/g6": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "b85898034fac"
+   },
+   "c5.b2.f1/g7": {
+    "type": "sticker",
+    "p": 1.0,
+    "h": "5d89228cd4cc"
+   },
+   "c5.b4.f1/h1": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "566897bc1531"
+   },
+   "c5.b4.f1/h2": {
+    "type": "node",
+    "p": 1.0,
+    "h": "5d66e6c412c0"
+   },
+   "c5.b4.f1/h3": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "9c6004307636"
+   },
+   "c5.b4.f1/h4": {
+    "type": "keyword",
+    "p": 0.99,
+    "h": "6e2f419649a1"
+   },
+   "c5.b5.f1/h5": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "7218d18dcddf"
+   },
+   "c5.b5.f1/h6": {
+    "type": "container",
+    "p": 0.91,
+    "h": "e112a79cc416"
+   },
+   "c5.b6.f1/i1": {
+    "type": "code-line",
+    "p": 0.69,
+    "h": "08cb4943f625"
+   },
+   "c5.b6.f1/i3": {
+    "type": "callout",
+    "p": 1.0,
+    "h": "e3f55200d32a"
+   },
+   "c5.b6.f1/i2": {
+    "type": "keyword",
+    "p": 0.64,
+    "h": "0f8dacfcd67b"
+   },
+   "c5.b6.f1/i4": {
+    "type": "callout",
+    "p": 1.0,
+    "h": "a9a6648ee9d9"
+   },
+   "c5.b7.f1/j1": {
+    "type": "card",
+    "p": 1.0,
+    "h": "569698f0a132"
+   },
+   "c5.b7.f1/j2": {
+    "type": "verdict-pill",
+    "p": 0.71,
+    "h": "52964814b45e"
+   },
+   "c5.b7.f1/j3": {
+    "type": "verdict-pill",
+    "p": 0.6,
+    "h": "ef9e821abe13"
+   },
+   "c5.b7.f1/j4": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "e26814557381"
+   },
+   "c6.b2.f1/k1": {
+    "type": "list-row",
+    "p": 1.0,
+    "h": "d02a791618c9"
+   },
+   "c6.b2.f1/k2": {
+    "type": "keyword",
+    "p": 0.93,
+    "h": "8e94a6200a84"
+   },
+   "c6.b2.f1/k3": {
+    "type": "callout",
+    "p": 1.0,
+    "h": "d0f9eb8dd880"
+   },
+   "c6.b3.f1/k4": {
+    "type": "list-row",
+    "p": 1.0,
+    "h": "dc01070613bf"
+   },
+   "c6.b3.f1/k5": {
+    "type": "list-row",
+    "p": 0.99,
+    "h": "c0a715ddd67b"
+   },
+   "c6.b4.f1/k6": {
+    "type": "list-row",
+    "p": 0.99,
+    "h": "e21afa35d325"
+   },
+   "c6.b5.f1/l3": {
+    "type": "node",
+    "p": 0.71,
+    "h": "2f0b67914512"
+   },
+   "c6.b5.f1/l1": {
+    "type": "node",
+    "p": 0.88,
+    "h": "232361a2e878"
+   },
+   "c6.b5.f1/l2": {
+    "type": "icon-label",
+    "p": 0.72,
+    "h": "0d2c3685afca"
+   },
+   "c6.b5.f1/l4": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "6bdddf673c78"
+   },
+   "c6.b5.f1/l5": {
+    "type": "code-line",
+    "p": 0.99,
+    "h": "f481cc9729a7"
+   },
+   "c7.b1.f1/n1": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "667e6c322a95"
+   },
+   "c7.b1.f1/n2": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "10d0ffac667f"
+   },
+   "c7.b1.f1/n3": {
+    "type": "chip",
+    "p": 1.0,
+    "h": "2cd05bc3a6b3"
+   }
+  },
+  "cues": {
+   "c1.b2.f1/0": {
+    "move": "reveal",
+    "p": 0.88,
+    "h": "3f4bd91cfc14"
+   },
+   "c1.b2.f1/1": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "a08634a1015f"
+   },
+   "c1.b2.f1/2": {
+    "move": "morph",
+    "p": 0.57,
+    "h": "e086c01ca35e"
+   },
+   "c1.b3.f1/0": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "21cca84e9f38"
+   },
+   "c1.b3.f1/1": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "26c1357dd568"
+   },
+   "c1.b3.f1/2": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "167101d02370"
+   },
+   "c2.b2.f1/0": {
+    "move": "reveal",
+    "p": 0.92,
+    "h": "84c735067636"
+   },
+   "c2.b2.f1/1": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "981c87e2341e"
+   },
+   "c2.b2.f1/2": {
+    "move": "reveal",
+    "p": 0.99,
+    "h": "442bb184229c"
+   },
+   "c2.b2.f1/3": {
+    "move": "reveal",
+    "p": 0.98,
+    "h": "23ce47b73a76"
+   },
+   "c2.b3.f1/0": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "008889afb55e"
+   },
+   "c2.b3.f1/1": {
+    "move": "reveal",
+    "p": 0.99,
+    "h": "61c8a283cd70"
+   },
+   "c2.b3.f1/2": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "3bebc0ab405b"
+   },
+   "c2.b4.f1/0": {
+    "move": "reveal",
+    "p": 0.48,
+    "h": "d6e1b90098a6"
+   },
+   "c2.b4.f1/1": {
+    "move": "reveal",
+    "p": 0.99,
+    "h": "ff04ae2a1c05"
+   },
+   "c2.b4.f1/2": {
+    "move": "morph",
+    "p": 1.0,
+    "h": "a283992b8f98"
+   },
+   "c2.b5.f1/0": {
+    "move": "emphasise",
+    "p": 0.82,
+    "h": "c55924fd2fe0"
+   },
+   "c2.b5.f1/1": {
+    "move": "emphasise",
+    "p": 0.86,
+    "h": "317c7bac41c1"
+   },
+   "c2.b5.f1/2": {
+    "move": "morph",
+    "p": 0.99,
+    "h": "66d42ee96b49"
+   },
+   "c3.b2.f1/0": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "c276d33f5100"
+   },
+   "c3.b2.f1/1": {
+    "move": "reveal",
+    "p": 0.88,
+    "h": "164b595689b2"
+   },
+   "c3.b2.f1/2": {
+    "move": "count",
+    "p": 0.91,
+    "h": "f1fdf38fba36"
+   },
+   "c3.b2.f1/3": {
+    "move": "emphasise",
+    "p": 0.87,
+    "h": "1eb92ac9b339"
+   },
+   "c3.b2.f1/4": {
+    "move": "reveal",
+    "p": 0.98,
+    "h": "ca97e37bc7c3"
+   },
+   "c3.b4.f1/0": {
+    "move": "reveal",
+    "p": 0.99,
+    "h": "cc20dac51dbe"
+   },
+   "c3.b4.f1/1": {
+    "move": "reveal",
+    "p": 0.52,
+    "h": "55b5984a03e7"
+   },
+   "c3.b4.f1/2": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "a6fb034f06a1"
+   },
+   "c3.b4.f1/3": {
+    "move": "emphasise",
+    "p": 1.0,
+    "h": "4597b4d49f2f"
+   },
+   "c3.b5.f1/0": {
+    "move": "count",
+    "p": 0.65,
+    "h": "d207c7156f69"
+   },
+   "c3.b5.f1/1": {
+    "move": "reveal",
+    "p": 0.91,
+    "h": "f01660e773b2"
+   },
+   "c3.b5.f1/2": {
+    "move": "reveal",
+    "p": 0.99,
+    "h": "ea1120521980"
+   },
+   "c4.b1.f1/0": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "c276d33f5100"
+   },
+   "c4.b1.f1/1": {
+    "move": "morph",
+    "p": 0.95,
+    "h": "40b4464f0218"
+   },
+   "c4.b1.f1/2": {
+    "move": "reveal",
+    "p": 0.99,
+    "h": "e45827cb33b0"
+   },
+   "c4.b1.f1/3": {
+    "move": "emphasise",
+    "p": 1.0,
+    "h": "4597b4d49f2f"
+   },
+   "c4.b2.f1/0": {
+    "move": "morph",
+    "p": 0.94,
+    "h": "ddc688c7e8b8"
+   },
+   "c4.b2.f1/1": {
+    "move": "emphasise",
+    "p": 1.0,
+    "h": "aa2ea72fb898"
+   },
+   "c4.b3.f1/0": {
+    "move": "morph",
+    "p": 0.52,
+    "h": "2f1074d4ab2f"
+   },
+   "c4.b3.f1/1": {
+    "move": "morph",
+    "p": 0.93,
+    "h": "4594945b3a2d"
+   },
+   "c4.b3.f1/2": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "2d0adaee1248"
+   },
+   "c4.b3.f1/3": {
+    "move": "count",
+    "p": 0.95,
+    "h": "7c3da9197813"
+   },
+   "c4.b4.f1/0": {
+    "move": "emphasise",
+    "p": 0.89,
+    "h": "c55924fd2fe0"
+   },
+   "c4.b4.f1/1": {
+    "move": "morph",
+    "p": 0.96,
+    "h": "46bf17cfd755"
+   },
+   "c4.b4.f1/2": {
+    "move": "reveal",
+    "p": 0.96,
+    "h": "4e0263a2fe81"
+   },
+   "c4.b5.f1/0": {
+    "move": "reveal",
+    "p": 0.66,
+    "h": "c29d21553d62"
+   },
+   "c4.b5.f1/1": {
+    "move": "emphasise",
+    "p": 0.65,
+    "h": "4f03e4875ad2"
+   },
+   "c4.b5.f1/2": {
+    "move": "count",
+    "p": 0.84,
+    "h": "c5bd71a92952"
+   },
+   "c4.b6.f1/0": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "f490b090716d"
+   },
+   "c4.b6.f1/1": {
+    "move": "reveal",
+    "p": 0.98,
+    "h": "e36cbae40abf"
+   },
+   "c4.b6.f1/2": {
+    "move": "reveal",
+    "p": 0.95,
+    "h": "871dd680eb34"
+   },
+   "c5.b1.f1/0": {
+    "move": "reveal",
+    "p": 0.39,
+    "h": "a1b2b9f6569b"
+   },
+   "c5.b1.f1/1": {
+    "move": "reveal",
+    "p": 0.98,
+    "h": "cc20dac51dbe"
+   },
+   "c5.b1.f1/2": {
+    "move": "emphasise",
+    "p": 0.99,
+    "h": "1321e479d678"
+   },
+   "c5.b1.f1/3": {
+    "move": "reveal",
+    "p": 0.96,
+    "h": "f2147bd19f52"
+   },
+   "c5.b2.f1/0": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "f99f8297c2d7"
+   },
+   "c5.b2.f1/1": {
+    "move": "emphasise",
+    "p": 1.0,
+    "h": "144c06d7eaa2"
+   },
+   "c5.b2.f1/2": {
+    "move": "reveal",
+    "p": 0.66,
+    "h": "524644d14cc8"
+   },
+   "c5.b4.f1/0": {
+    "move": "emphasise",
+    "p": 1.0,
+    "h": "4597b4d49f2f"
+   },
+   "c5.b4.f1/1": {
+    "move": "reveal",
+    "p": 0.73,
+    "h": "48208c115689"
+   },
+   "c5.b4.f1/2": {
+    "move": "reveal",
+    "p": 0.82,
+    "h": "9118825508d3"
+   },
+   "c5.b4.f1/3": {
+    "move": "emphasise",
+    "p": 0.99,
+    "h": "3bde19471d39"
+   },
+   "c5.b5.f1/0": {
+    "move": "morph",
+    "p": 0.71,
+    "h": "287d1e3d6e31"
+   },
+   "c5.b5.f1/1": {
+    "move": "morph",
+    "p": 0.98,
+    "h": "82dfa92a20d4"
+   },
+   "c5.b5.f1/2": {
+    "move": "emphasise",
+    "p": 0.6,
+    "h": "4e67df7df008"
+   },
+   "c5.b6.f1/0": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "6a9c527fb46d"
+   },
+   "c5.b6.f1/1": {
+    "move": "reveal",
+    "p": 0.7,
+    "h": "3281c4689158"
+   },
+   "c5.b6.f1/2": {
+    "move": "reveal",
+    "p": 0.99,
+    "h": "54125cec4121"
+   },
+   "c5.b7.f1/0": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "21cca84e9f38"
+   },
+   "c5.b7.f1/1": {
+    "move": "reveal",
+    "p": 0.91,
+    "h": "d9f324df7ded"
+   },
+   "c5.b7.f1/2": {
+    "move": "morph",
+    "p": 0.65,
+    "h": "faad7afd3b35"
+   },
+   "c5.b7.f1/3": {
+    "move": "reveal",
+    "p": 0.99,
+    "h": "2e106512b434"
+   },
+   "c6.b2.f1/0": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "f0c30a3904a1"
+   },
+   "c6.b2.f1/1": {
+    "move": "reveal",
+    "p": 0.85,
+    "h": "0049a18d6e27"
+   },
+   "c6.b2.f1/2": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "26c9e01f219e"
+   },
+   "c6.b3.f1/0": {
+    "move": "emphasise",
+    "p": 0.73,
+    "h": "28b72e833267"
+   },
+   "c6.b3.f1/1": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "d621500c9b4d"
+   },
+   "c6.b3.f1/2": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "87f1109acfc9"
+   },
+   "c6.b4.f1/0": {
+    "move": "reveal",
+    "p": 0.99,
+    "h": "058cded157be"
+   },
+   "c6.b4.f1/1": {
+    "move": "emphasise",
+    "p": 1.0,
+    "h": "e2e8d09a2ac9"
+   },
+   "c6.b4.f1/2": {
+    "move": "emphasise",
+    "p": 1.0,
+    "h": "7c6de8e3bed9"
+   },
+   "c6.b5.f1/0": {
+    "move": "reveal",
+    "p": 0.63,
+    "h": "79f240265ac2"
+   },
+   "c6.b5.f1/1": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "259da755e013"
+   },
+   "c6.b5.f1/2": {
+    "move": "morph",
+    "p": 0.98,
+    "h": "37f9db2aae68"
+   },
+   "c6.b5.f1/3": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "02ece17d1bd3"
+   },
+   "c7.b1.f1/0": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "21cca84e9f38"
+   },
+   "c7.b1.f1/1": {
+    "move": "reveal",
+    "p": 1.0,
+    "h": "26c1357dd568"
+   },
+   "c7.b1.f1/2": {
+    "move": "reveal",
+    "p": 0.96,
+    "h": "5b215971f06d"
+   }
+  },
+  "overrides": {}
+ }
+}

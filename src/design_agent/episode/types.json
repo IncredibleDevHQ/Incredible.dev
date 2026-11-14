@@ -1,0 +1,396 @@
+{
+  "kind": "concept explainer",
+  "about": "The closed lists a concept-explainer plan may use. Every label in a plan comes from here and is assigned by the classifier, never by the writer. `reads_as` is what the classifier is told to look for.",
+  "parts": [
+    { "id": "open", "name": "Open", "job": "Earn the next minute: say what this is and why to stay.", "words_share": [ 4, 12 ] },
+    { "id": "explain", "name": "Explain", "job": "Make it understood: what it is, how it works, how the options differ.", "words_share": [ 45, 75 ] },
+    { "id": "show", "name": "Show and build", "job": "Make it believed: the thing running, or built step by step.", "words_share": [ 0, 25 ] },
+    { "id": "judge", "name": "Judge", "job": "Say what to do with it: advice, doubts answered, when to use which.", "words_share": [ 0, 30 ] },
+    { "id": "series", "name": "Series", "job": "Place this video among its episodes. Only when the notes say it is part of a series.", "words_share": [ 0, 35 ] },
+    { "id": "close", "name": "Close", "job": "Leave something to keep: the idea landed, the ask, the goodbye.", "words_share": [ 3, 12 ] }
+  ],
+  "chapter_types": [
+    { "id": "introduction", "name": "Introduction", "part": "open", "reads_as": "Opens the video: a hook or a promise, a first plain statement of what the thing is, and the parts ahead.", "recipe": [ "promise", "definition", "agenda" ], "words": [ 60, 140 ], "beats": [ 2, 6 ], "starts": "the person fills the frame" },
+    { "id": "demo-first", "name": "Demo first", "part": "open", "reads_as": "Opens the video on the thing working before anything is explained, then says what was just seen and what will be learned.", "recipe": [ "proof-first", "definition", "promise", "agenda" ], "words": [ 90, 120 ], "beats": [ 3, 5 ], "starts": "the product is on screen" },
+    { "id": "problem", "name": "Problem", "part": "explain", "reads_as": "What goes wrong without it: the pain, the risk or the limit, before any answer is given.", "recipe": [ "need", "worked-example", "evidence", "turn" ], "words": [ 120, 220 ], "beats": [ 3, 6 ], "starts": "the picture holds" },
+    { "id": "story", "name": "Story", "part": "explain", "reads_as": "How it came about, told as events in the first person: what was tried, what failed, what changed.", "recipe": [ "story", "first-attempt", "turn", "story" ], "words": [ 140, 190 ], "beats": [ 4, 6 ], "starts": "the person fills the frame" },
+    { "id": "concept", "name": "Concept", "part": "explain", "reads_as": "What the thing is and why it matters. Often opens on a question and answers it with a definition and an example.", "recipe": [ "question", "definition", "worked-example", "so-what" ], "words": [ 110, 320 ], "beats": [ 3, 12 ], "starts": "the person fills the frame" },
+    { "id": "how-it-works", "name": "How it works", "part": "explain", "reads_as": "A mechanism, a pipeline or an architecture walked through part by part, cause and effect.", "recipe": [ "signpost", "mechanism", "worked-example", "mechanism", "so-what" ], "words": [ 60, 340 ], "beats": [ 2, 10 ], "starts": "the picture holds" },
+    { "id": "options-compared", "name": "Options compared", "part": "explain", "reads_as": "One option or pattern among several, or two set against each other: what it is, how it handles the case, what it costs.", "recipe": [ "signpost", "definition", "mechanism", "worked-example", "so-what", "turn" ], "words": [ 70, 320 ], "beats": [ 2, 11 ], "starts": "the picture holds" },
+    { "id": "worked-example", "name": "Worked example", "part": "explain", "reads_as": "Sets up the one concrete case the video keeps returning to: the scenario, what it needs, why the obvious answer is not enough.", "recipe": [ "worked-example", "first-attempt", "turn" ], "words": [ 50, 200 ], "beats": [ 2, 5 ], "starts": "the picture holds" },
+    { "id": "demo", "name": "Demo", "part": "show", "reads_as": "The thing running: what is done, what comes back, and what that shows.", "recipe": [ "signpost", "step", "demonstration", "so-what" ], "words": [ 150, 260 ], "beats": [ 4, 7 ], "starts": "the person fills the frame" },
+    { "id": "build", "name": "Build", "part": "show", "reads_as": "Steps, code or configuration, in the order they are done, each with its reason.", "recipe": [ "signpost", "step", "code", "demonstration", "milestone" ], "words": [ 150, 340 ], "beats": [ 5, 10 ], "starts": "the picture holds" },
+    { "id": "feature-tour", "name": "Feature tour", "part": "show", "reads_as": "What you get, one item after another: benefits, features or tricks, each with what it buys.", "recipe": [ "signpost", "list", "so-what", "evidence" ], "words": [ 150, 270 ], "beats": [ 5, 10 ], "starts": "the picture holds" },
+    { "id": "advice", "name": "Advice", "part": "judge", "reads_as": "Rules of thumb, costs, traps and when to use which, said as guidance to the viewer.", "recipe": [ "advice", "principle", "contrast", "advice" ], "words": [ 120, 380 ], "beats": [ 3, 14 ], "starts": "the picture holds" },
+    { "id": "questions", "name": "Questions", "part": "judge", "reads_as": "A doubt or a common question the viewer would raise, stated and then answered.", "recipe": [ "objection", "principle", "evidence", "contrast" ], "words": [ 100, 170 ], "beats": [ 3, 5 ], "starts": "the picture holds" },
+    { "id": "series", "name": "Series recap or map", "part": "series", "reads_as": "What one earlier episode covered, what a coming episode will cover, or where this video sits in its series.", "recipe": [ "series-recap", "map-of-the-series", "look-ahead" ], "words": [ 25, 120 ], "beats": [ 1, 6 ], "starts": "the picture holds" },
+    { "id": "recap", "name": "Recap", "part": "close", "reads_as": "The video in a few points, ending on the one line to keep.", "recipe": [ "recap", "landing" ], "words": [ 50, 100 ], "beats": [ 1, 3 ], "starts": "the person fills the frame" },
+    { "id": "outro", "name": "Outro", "part": "close", "reads_as": "The idea landed once more, then the ask and the goodbye.", "recipe": [ "landing", "ask", "sign-off" ], "words": [ 30, 110 ], "beats": [ 2, 4 ], "starts": "the person fills the frame" }
+  ],
+  "beat_types": [
+    { "id": "open", "name": "Open", "job": "Earn the next minute." },
+    { "id": "explain", "name": "Explain", "job": "Make it understood." },
+    { "id": "prove", "name": "Prove", "job": "Make it believed." },
+    { "id": "turn", "name": "Turn", "job": "Give it a reason to go on." },
+    { "id": "guide", "name": "Guide", "job": "Say where we are." },
+    { "id": "close", "name": "Close", "job": "Leave something to keep." }
+  ],
+  "beat_subtypes": [
+    { "id": "hook", "code": "hk", "name": "Hook", "type": "open", "reads_as": "The opening grab: a question the viewer already has, a bold claim, a shared pain, a scenario. Only at the very start of the video." },
+    { "id": "promise", "code": "pr", "name": "Promise", "type": "open", "reads_as": "What the viewer will know or be able to do by the end of the video." },
+    { "id": "need", "code": "nd", "name": "Need", "type": "open", "reads_as": "The pain, the limit or the wish that the product or the idea answers, said before the answer." },
+    { "id": "announcement", "code": "an", "name": "Announcement", "type": "open", "reads_as": "The news itself: it is out, it is new, we are introducing it." },
+    { "id": "who-is-speaking", "code": "ws", "name": "Who is speaking", "type": "open", "reads_as": "A name and a greeting, or the show's name." },
+    { "id": "authority", "code": "au", "name": "Authority", "type": "open", "reads_as": "Why this person is worth listening to on this subject." },
+    { "id": "agenda", "code": "ag", "name": "Agenda", "type": "open", "reads_as": "The parts ahead, named in order." },
+    { "id": "go-line", "code": "go", "name": "Go line", "type": "open", "reads_as": "The last short line before the first part, such as: let's get started." },
+    { "id": "banter", "code": "bn", "name": "Banter", "type": "open", "reads_as": "Social talk, a joke or a reaction that carries no content." },
+    { "id": "definition", "code": "df", "name": "Definition", "type": "explain", "reads_as": "What a thing is, in plain words, and what it is for. Names or introduces the thing." },
+    { "id": "analogy", "code": "al", "name": "Analogy", "type": "explain", "reads_as": "Something familiar from another world that behaves the same way." },
+    { "id": "mechanism", "code": "me", "name": "Mechanism", "type": "explain", "reads_as": "How it works inside, one part after another, cause and effect. Describes the thing itself, not a made-up case." },
+    { "id": "worked-example", "code": "we", "name": "Worked example", "type": "explain", "reads_as": "A concrete case or scenario with particulars (a customer, an order, a named request), set up or returned to, used to show the idea at work." },
+    { "id": "step", "code": "st", "name": "A step", "type": "explain", "reads_as": "An instruction, or what is being done now, in the order it is done." },
+    { "id": "code", "code": "cd", "name": "Code", "type": "explain", "reads_as": "Code, a configuration or a screen is read out part by part, with the reason for each part." },
+    { "id": "list", "code": "li", "name": "A list", "type": "explain", "reads_as": "Several parallel items named one after another, each with a line or two: features, benefits, parts, tools." },
+    { "id": "contrast", "code": "ct", "name": "Contrast", "type": "explain", "reads_as": "This, not that: two things set against each other so the difference is the point." },
+    { "id": "story", "code": "sy", "name": "Story", "type": "explain", "reads_as": "How it came about, told as events, often in the first person." },
+    { "id": "proof-first", "code": "pf", "name": "Proof first", "type": "prove", "reads_as": "A result or a demo shown at the very start, before anything is explained." },
+    { "id": "demonstration", "code": "dm", "name": "Demonstration", "type": "prove", "reads_as": "It is run and the result is read out." },
+    { "id": "what-we-built", "code": "wb", "name": "What we built", "type": "prove", "reads_as": "A finished result told in the first person: we built this, and here it is." },
+    { "id": "evidence", "code": "ev", "name": "Evidence", "type": "prove", "reads_as": "A figure, a benchmark or a study given as proof." },
+    { "id": "witness", "code": "wi", "name": "A witness", "type": "prove", "reads_as": "Someone else says it: a customer, a guest, the community." },
+    { "id": "question", "code": "qu", "name": "The question", "type": "turn", "reads_as": "A question asked aloud that the following lines will answer." },
+    { "id": "first-attempt", "code": "fa", "name": "First attempt", "type": "turn", "reads_as": "The obvious or naive way of doing it, described so that the next lines can show where it falls short." },
+    { "id": "turn", "code": "tu", "name": "The turn", "type": "turn", "reads_as": "The obvious answer breaks, a limit appears, or the case changes: but there is a problem. Short." },
+    { "id": "objection", "code": "ob", "name": "Objection", "type": "turn", "reads_as": "A doubt the viewer might have is voiced by the speaker (you might think, but is it not) and then answered." },
+    { "id": "judgment", "code": "bj", "name": "Judgment", "type": "turn", "reads_as": "The speaker's own verdict or opinion on something: what they hold to be good, bad, important or overrated." },
+    { "id": "so-what", "code": "sw", "name": "So-what", "type": "turn", "reads_as": "The gain or the consequence of what was just explained: this means, so, that is why. It adds no new mechanism." },
+    { "id": "principle", "code": "pn", "name": "Principle", "type": "turn", "reads_as": "A general rule stated as a rule, holding beyond this case. Not addressed to the viewer as a tip." },
+    { "id": "signpost", "code": "sp", "name": "Signpost", "type": "guide", "reads_as": "Announces what comes next or where we are: now let's look at, next, first. Carries no content of its own." },
+    { "id": "naming-the-tool", "code": "nt", "name": "Naming the tool", "type": "guide", "reads_as": "The product's name said once, and where to find it, when it is not news." },
+    { "id": "hand-over", "code": "ho", "name": "Hand-over", "type": "guide", "reads_as": "Thanks to one speaker and over to the next." },
+    { "id": "hosts-question", "code": "hq", "name": "Host's question", "type": "guide", "reads_as": "One speaker asks another what the viewer would ask." },
+    { "id": "community-question", "code": "cq", "name": "Community question", "type": "guide", "reads_as": "A viewer's question read out." },
+    { "id": "series-recap", "code": "sr", "name": "Series recap", "type": "guide", "reads_as": "What an earlier episode covered and where this one sits." },
+    { "id": "map-of-the-series", "code": "ms", "name": "Map of the series", "type": "guide", "reads_as": "The episodes or the season named one at a time, or what one coming episode will teach." },
+    { "id": "milestone", "code": "mi", "name": "Milestone", "type": "guide", "reads_as": "Where we have got to, in a few words, with nothing new: so now we have." },
+    { "id": "bridge", "code": "br", "name": "Bridge", "type": "guide", "reads_as": "One line that closes the part just finished and opens the next: that is the what, now the how." },
+    { "id": "recap", "code": "rc", "name": "Recap", "type": "close", "reads_as": "Points already made earlier are repeated in short, for the whole video or for the part just finished. Nothing new is added." },
+    { "id": "advice", "code": "ad", "name": "Advice", "type": "close", "reads_as": "A tip, a rule of thumb, a warning or a best practice addressed to the viewer: do this, avoid that, use it when." },
+    { "id": "where-to-get-it", "code": "wg", "name": "Where to get it", "type": "close", "reads_as": "Where it is available and where to start." },
+    { "id": "ask", "code": "ak", "name": "The ask", "type": "close", "reads_as": "A request to the viewer: links, comment, subscribe, try it, join." },
+    { "id": "sign-off", "code": "so", "name": "Sign-off", "type": "close", "reads_as": "Thanks and goodbye." },
+    { "id": "landing", "code": "ld", "name": "Landing", "type": "close", "reads_as": "The main idea of the whole video said once more in one line, just before the asks and the goodbye, often by returning to the opening or to the carried example." },
+    { "id": "look-ahead", "code": "la", "name": "Look ahead", "type": "close", "reads_as": "What the next video covers." },
+    { "id": "question-back", "code": "qb", "name": "A question back", "type": "close", "reads_as": "A question put to the viewer to answer for themselves or in the comments." },
+    { "id": "tag", "code": "tg", "name": "Tag", "type": "close", "reads_as": "A gag after the goodbye." }
+  ],
+  "material_kinds": [
+    { "id": "definition", "name": "Definition", "reads_as": "Says what a thing is.", "becomes": [ "definition" ] },
+    { "id": "mechanism", "name": "Mechanism", "reads_as": "Says how something works: parts, order, cause and effect.", "becomes": [ "mechanism" ] },
+    { "id": "step", "name": "Step or command", "reads_as": "Something to do, or a command, in an order.", "becomes": [ "step" ] },
+    { "id": "code", "name": "Code or configuration", "reads_as": "Code, configuration, a schema or an API call.", "becomes": [ "code" ] },
+    { "id": "list", "name": "List", "reads_as": "Several features, parts or options named side by side.", "becomes": [ "list" ] },
+    { "id": "difference", "name": "Difference", "reads_as": "How two things differ, or a trade-off between them.", "becomes": [ "contrast" ] },
+    { "id": "number", "name": "Number or evidence", "reads_as": "A figure, a limit, a cost, a benchmark, a date.", "becomes": [ "evidence" ] },
+    { "id": "advice", "name": "Advice", "reads_as": "A rule of thumb, a warning, when to use which.", "becomes": [ "advice", "principle" ] },
+    { "id": "background", "name": "Background", "reads_as": "Who made it, why, how it came about.", "becomes": [ "story", "authority" ] },
+    { "id": "problem", "name": "Problem", "reads_as": "A pain, a risk or a limit that the idea answers.", "becomes": [ "need" ] },
+    { "id": "demo", "name": "Real demo", "reads_as": "A demonstration that exists and can be shown.", "becomes": [ "demonstration", "proof-first" ] },
+    { "id": "availability", "name": "Availability", "reads_as": "Where to get it, links, what to read next.", "becomes": [ "where-to-get-it", "ask" ] },
+    { "id": "series", "name": "Series fact", "reads_as": "What another episode of the same series covers.", "becomes": [ "series-recap", "map-of-the-series", "look-ahead" ] }
+  ],
+  "routes": [
+    { "id": "what-why-how", "name": "What, why, how", "reads_as": "The notes are about one thing: what it is, why it matters, how it works or is used." },
+    { "id": "options", "name": "Options", "reads_as": "The notes hold several options, patterns or designs and how to choose among them." },
+    { "id": "problem-fix-proof", "name": "Problem, fix, proof", "reads_as": "The notes hold a pain, the thing that fixes it and proof that it works." },
+    { "id": "questions", "name": "Questions", "reads_as": "The notes are best read as a chain of questions, each answered." },
+    { "id": "steps", "name": "Steps", "reads_as": "The notes are a procedure in the order it is done." },
+    { "id": "series", "name": "Series", "reads_as": "The notes are mostly about the episodes of a series: what each covered or will cover." }
+  ],
+  "hooks": [
+    { "id": "question", "name": "Question", "reads_as": "Opens on a question the viewer already has." },
+    { "id": "surprising-number", "name": "Surprising number", "reads_as": "Opens on a figure the viewer would not expect." },
+    { "id": "counterintuitive-claim", "name": "Counterintuitive claim", "reads_as": "Opens on a claim that contradicts what the viewer believes." },
+    { "id": "shared-pain", "name": "Shared pain", "reads_as": "Opens on a frustration the viewer knows first-hand." },
+    { "id": "metaphor", "name": "Metaphor", "reads_as": "Opens on a comparison with something from another world." },
+    { "id": "scenario", "name": "Scenario", "reads_as": "Opens inside a concrete situation." },
+    { "id": "stakes", "name": "Stakes", "reads_as": "Opens on what is gained or lost." },
+    { "id": "promise", "name": "Promise", "reads_as": "Opens by saying what the viewer will know or be able to do." },
+    { "id": "proof", "name": "Proof", "reads_as": "Opens on the thing working, or on a result." },
+    { "id": "none", "name": "No hook", "reads_as": "Opens on a greeting or a plain statement of the subject." }
+  ],
+  "landings": [
+    { "id": "callback", "name": "Callback", "reads_as": "Returns to the opening or to the carried example." },
+    { "id": "distillation", "name": "Distillation", "reads_as": "States the idea in one short sentence." },
+    { "id": "generalization", "name": "Generalization", "reads_as": "Widens the idea beyond this case." },
+    { "id": "invitation", "name": "Invitation", "reads_as": "Hands it to the viewer: now you build." },
+    { "id": "none", "name": "No landing", "reads_as": "Ends on the ask or the goodbye with no line that lands the idea." }
+  ],
+  "presence": [
+    { "id": "person", "name": "Person", "reads_as": "The speaker talks to the viewer and nothing has to be shown: a promise, a greeting, a question, a turn, an opinion, a bridge, the ask, the goodbye." },
+    { "id": "both", "name": "Person with content", "reads_as": "The usual case when a presenter explains something that has to be seen: a diagram, a list, code or a screen is shown and the speaker stays in view beside it." },
+    { "id": "content", "name": "Content", "reads_as": "Rare with a presenter. Only when what is shown needs the whole frame or runs on its own: a full-screen recording or demo, a title card, an end card." }
+  ],
+  "layouts": [
+    { "id": "full-frame", "name": "Full frame", "presence": "person", "reads_as": "The person fills the frame. The promise, a turn, a judgment, the goodbye.", "from": "study" },
+    { "id": "full-frame-close", "name": "Full frame, close", "presence": "person", "reads_as": "A closer framing for a change of gear inside one speech: an aside, an analogy told to camera.", "from": "study" },
+    { "id": "framed-on-ground", "name": "Framed on a ground", "presence": "person", "reads_as": "The person in a rounded window on the brand ground: a softer full frame.", "from": "study" },
+    { "id": "glass-card", "name": "Person behind a glass card", "presence": "both", "reads_as": "The person fills the frame and a translucent card of a title and a few points sits over one side. A short list or an agenda said to camera.", "from": "studio" },
+    { "id": "split", "name": "Split", "presence": "both", "reads_as": "The frame is halved between the person and the content. An agenda, a recap, a step, an objection answered on a diagram.", "from": "study" },
+    { "id": "panel-and-portrait", "name": "Panel and portrait", "presence": "both", "reads_as": "The content builds in a large panel and the person stays in a tall portrait beside it. Long explanations in one layout.", "from": "study" },
+    { "id": "corner-window", "name": "Corner window", "presence": "both", "reads_as": "The content fills the frame and the person sits in a small window in one corner. A mechanism, a worked example, code, a terminal.", "from": "study" },
+    { "id": "avatar-bubble", "name": "Avatar and a speech bubble", "presence": "both", "reads_as": "The person as a small cut-out with speech bubbles: a worked example read as a dialogue.", "from": "study" },
+    { "id": "graphic-on-ground", "name": "Graphic on a plain ground", "presence": "content", "reads_as": "A diagram or an illustration that needs the whole frame, with nobody on screen.", "from": "study" },
+    { "id": "card-on-ground", "name": "Card on the ground", "presence": "content", "reads_as": "One figure, one statement or one block of code set as a card on the ground.", "from": "study" },
+    { "id": "recording-fills", "name": "Recording fills the frame", "presence": "content", "reads_as": "A product screen, an editor or a terminal, edge to edge.", "from": "study" },
+    { "id": "title-card", "name": "Title card", "presence": "content", "reads_as": "A name on its own: the video's title, a chapter's title, the end card.", "from": "study" }
+  ],
+  "overlays": [
+    { "id": "name-lower-third", "name": "Name lower third", "reads_as": "Who is speaking. Once, for four to eight seconds." },
+    { "id": "term", "name": "A term beside the person", "reads_as": "A new term, the moment it is first said." },
+    { "id": "stacked-chips", "name": "Stacked chips", "reads_as": "A short list, one chip per item as it is named." },
+    { "id": "numbered-questions", "name": "A title and numbered questions", "reads_as": "The chapter's question, before the diagram takes over." },
+    { "id": "link-pill", "name": "A name and a link pill", "reads_as": "The tool just named, and where to find it." },
+    { "id": "caption-question", "name": "A question as a caption", "reads_as": "A viewer's question held on screen while it is answered." }
+  ],
+  "picture_types": [
+    { "id": "camera", "name": "Camera only", "group": "person", "reads_as": "The person and the set, nothing else." },
+    { "id": "camera-and-type", "name": "Camera and type", "group": "person", "reads_as": "A few words set on or beside the person: a name, a term, a question." },
+    { "id": "list", "name": "List", "group": "text", "reads_as": "Bullets that build, one per phrase." },
+    { "id": "chips", "name": "Chips and cards", "group": "text", "reads_as": "Short labels in boxes, one per item." },
+    { "id": "number-card", "name": "Number card", "group": "text", "reads_as": "One figure, large, on its own." },
+    { "id": "title-card", "name": "Title or chapter card", "group": "text", "reads_as": "A name on its own: the video, a chapter, the end." },
+    { "id": "slide", "name": "Slide", "group": "text", "reads_as": "A heading, a few lines and a picture." },
+    { "id": "diagram", "name": "Diagram", "group": "built", "reads_as": "Boxes, arrows, a pipeline, a loop or a comparison that builds with the voice." },
+    { "id": "illustration", "name": "Illustration", "group": "built", "reads_as": "A picture drawn for this one idea: a metaphor or a scene." },
+    { "id": "typeset-code", "name": "Typeset code", "group": "built", "reads_as": "Code set as a card, with lines lit as they are read." },
+    { "id": "terminal", "name": "Terminal or editor", "group": "recorded", "reads_as": "A real session: commands, output, an editor." },
+    { "id": "product-screen", "name": "Product screen", "group": "recorded", "reads_as": "The product's own interface in use." },
+    { "id": "document", "name": "Document or page", "group": "recorded", "reads_as": "A paper, a plan or a web page." },
+    { "id": "product-output", "name": "What the product made", "group": "recorded", "reads_as": "The output itself: an answer, an image, a video." }
+  ],
+  "object_types": [
+    { "id": "title-line", "name": "Title line", "family": "structure" },
+    { "id": "container", "name": "Container with a label", "family": "structure" },
+    { "id": "node", "name": "Node", "family": "structure" },
+    { "id": "connector", "name": "Connector", "family": "structure" },
+    { "id": "pipeline", "name": "Pipeline", "family": "structure" },
+    { "id": "tree", "name": "Tree", "family": "structure" },
+    { "id": "flowchart", "name": "Flowchart", "family": "structure" },
+    { "id": "cycle", "name": "Cycle", "family": "structure" },
+    { "id": "lifeline", "name": "Lifeline and message", "family": "structure" },
+    { "id": "timeline", "name": "Timeline and marker", "family": "structure" },
+    { "id": "comparison-card", "name": "Comparison card", "family": "structure" },
+    { "id": "chip", "name": "Chip", "family": "items" },
+    { "id": "list-row", "name": "List row", "family": "items" },
+    { "id": "card", "name": "Card", "family": "items" },
+    { "id": "icon-label", "name": "Icon with a label", "family": "items" },
+    { "id": "number", "name": "Number", "family": "items" },
+    { "id": "dial", "name": "Dial or gauge", "family": "items" },
+    { "id": "verdict-pill", "name": "Verdict pill", "family": "items" },
+    { "id": "ribbon", "name": "Ribbon", "family": "items" },
+    { "id": "sticker", "name": "Sticker", "family": "items" },
+    { "id": "cross", "name": "Cross", "family": "items" },
+    { "id": "headline", "name": "Headline", "family": "text" },
+    { "id": "typed-sentence", "name": "Typed sentence", "family": "text" },
+    { "id": "keyword", "name": "Keyword", "family": "text" },
+    { "id": "callout", "name": "Callout caption", "family": "text" },
+    { "id": "section-pill", "name": "Section pill", "family": "text" },
+    { "id": "code-card", "name": "Code card", "family": "text" },
+    { "id": "code-line", "name": "Code line", "family": "text" },
+    { "id": "prompt-line", "name": "Prompt line with an output", "family": "text" },
+    { "id": "illustration", "name": "Illustration", "family": "pictures" },
+    { "id": "hero-object", "name": "Hero object", "family": "pictures" },
+    { "id": "waveform", "name": "Waveform", "family": "pictures" },
+    { "id": "dot-field", "name": "Dot field", "family": "pictures" },
+    { "id": "ring-chart", "name": "Ring chart", "family": "pictures" },
+    { "id": "interface-mock", "name": "Phone or interface mock", "family": "pictures" },
+    { "id": "recording-card", "name": "Recording inside a card", "family": "pictures" },
+    { "id": "tile-wall", "name": "Tile wall", "family": "pictures" },
+    { "id": "logo", "name": "Logo", "family": "pictures" },
+    { "id": "name-block", "name": "Name block", "family": "on the person" },
+    { "id": "term", "name": "Term", "family": "on the person" },
+    { "id": "link-pill", "name": "Link pill", "family": "on the person" },
+    { "id": "numbered-questions", "name": "Numbered questions", "family": "on the person" },
+    { "id": "key-point", "name": "Key-point caption", "family": "on the person" },
+    { "id": "topic-label", "name": "Topic label", "family": "on the person" },
+    { "id": "ask-pill", "name": "Ask pill", "family": "on the person" }
+  ],
+  "object_states": [
+    "plain",
+    "active",
+    "good",
+    "bad",
+    "dim"
+  ],
+  "moves": [
+    { "id": "reveal", "name": "Reveal", "reads_as": "Something that was not on screen arrives: a box draws itself, a word types on, a card pops in, a line grows.", "from": "HyperFrames: entrance and reveal" },
+    { "id": "count", "name": "Count", "reads_as": "A value changes in place: a number counts up, a bar or a ring fills to its value.", "from": "HyperFrames: data in motion" },
+    { "id": "emphasise", "name": "Emphasise", "reads_as": "Something already on screen is pointed at without changing: a glow, a ring, an underline, a lit line of code, the rest dimming.", "from": "HyperFrames: emphasis" },
+    { "id": "morph", "name": "Morph", "reads_as": "Something already on screen becomes something else or moves to a new place: its state or label changes, a card grows into a panel, items regroup, a token travels along a path.", "from": "HyperFrames: morph and reposition" },
+    { "id": "camera", "name": "Camera", "reads_as": "The view itself moves: a push in on one part, a pan to the next station, a pull back to the whole.", "from": "HyperFrames: camera" },
+    { "id": "carry", "name": "Carry", "reads_as": "An object from the frame before stays on screen across the cut and becomes part of this picture.", "from": "the product: a carrier crosses the cut" },
+    { "id": "hold", "name": "Hold", "reads_as": "Nothing new happens: the finished picture stays still so it can be read.", "from": "HyperFrames: end on a still read" }
+  ],
+  "marks": [
+    { "id": "title-sting", "name": "Title sting", "seconds": [ 2, 5 ], "where": "the first 25 seconds" },
+    { "id": "chapter-card", "name": "Chapter title in the panel", "seconds": [ 2, 4 ], "where": "a chapter start, when the theme uses one" },
+    { "id": "end-card", "name": "End card", "seconds": [ 4, 20 ], "where": "the last frame, always" }
+  ],
+  "themes": [
+    { "id": "corner-window", "name": "Presenter with a corner window", "presenter": "on", "stage": "full bleed: the set, or a white ground", "kit": [ "corner-window", "full-frame", "split", "graphic-on-ground" ], "default": { "person": "full-frame", "both": "corner-window", "content": "graphic-on-ground" }, "overlays": [ "name-lower-third", "term", "link-pill" ], "marks": [ "end-card" ], "motion": "outline-then-fill", "shares": { "person": 0.24, "both": 0.71, "content": 0.05 }, "person_from": 0.5 },
+    { "id": "panel-and-portrait", "name": "Panel and portrait", "presenter": "on", "stage": "one ground, a panel on the left and a portrait on the right", "kit": [ "panel-and-portrait", "graphic-on-ground", "full-frame" ], "default": { "person": "full-frame", "both": "panel-and-portrait", "content": "graphic-on-ground" }, "overlays": [ "name-lower-third" ], "marks": [ "chapter-card", "end-card" ], "motion": "pop-in-order", "shares": { "person": 0.03, "both": 0.92, "content": 0.05 }, "person_from": 0.9 },
+    { "id": "framed-stage", "name": "Framed stage", "presenter": "on", "stage": "a coloured ground with the picture in a rounded window that never leaves", "kit": [ "framed-on-ground", "corner-window", "graphic-on-ground", "avatar-bubble", "panel-and-portrait", "glass-card" ], "default": { "person": "framed-on-ground", "both": "corner-window", "content": "graphic-on-ground" }, "overlays": [ "name-lower-third", "stacked-chips" ], "marks": [ "title-sting", "end-card" ], "motion": "type-on-and-pop", "shares": { "person": 0.25, "both": 0.45, "content": 0.3 }, "person_from": 0.5 },
+    { "id": "expert-to-camera", "name": "Expert to camera", "presenter": "on", "stage": "the set, full bleed; diagrams on a plain ground", "kit": [ "full-frame", "graphic-on-ground", "split", "glass-card" ], "default": { "person": "full-frame", "both": "split", "content": "graphic-on-ground" }, "overlays": [ "name-lower-third", "numbered-questions", "term" ], "marks": [ "end-card" ], "motion": "outline-then-fill", "shares": { "person": 0.54, "both": 0.2, "content": 0.26 }, "person_from": 0.45 },
+    { "id": "voice-only", "name": "Voice only", "presenter": "off", "stage": "one ground, edge to edge", "kit": [ "graphic-on-ground", "card-on-ground", "recording-fills", "title-card" ], "default": { "person": "card-on-ground", "both": "graphic-on-ground", "content": "graphic-on-ground" }, "overlays": [], "marks": [ "title-sting", "end-card" ], "motion": "carry-across-cuts", "shares": { "person": 0.0, "both": 0.0, "content": 1.0 }, "person_from": 2 }
+  ],
+  "motion_styles": [
+    { "id": "outline-then-fill", "name": "Outline, then fill", "reveal": "an object draws its outline, then fills", "ease": "one smooth ease, no bounce", "primary_transition": "cut", "accent": "one accent colour marks the active object" },
+    { "id": "pop-in-order", "name": "Pop in order", "reveal": "chips and cards pop in, one per phrase", "ease": "one smooth ease, a small spring on chips only", "primary_transition": "crossfade", "accent": "the active chip takes the accent" },
+    { "id": "type-on-and-pop", "name": "Type on and pop", "reveal": "text types on; objects pop", "ease": "one smooth ease, no bounce", "primary_transition": "cut", "accent": "the brand shapes carry the joins" },
+    { "id": "carry-across-cuts", "name": "Carry across cuts", "reveal": "the focal object keeps developing; support arrives when it explains", "ease": "one smooth ease, no bounce", "primary_transition": "push", "accent": "anchors stay put" }
+  ],
+  "numbers": {
+    "words_per_second": 2.6,
+    "seconds": [
+      240,
+      600
+    ],
+    "beat_words": [
+      8,
+      60
+    ],
+    "beat_words_middle": 24,
+    "beats_per_minute": [
+      4.5,
+      7.5
+    ],
+    "chapters": [
+      4,
+      12
+    ],
+    "first_substance_seconds": 30,
+    "first_substance_beats": 3,
+    "close_words": [
+      25,
+      110
+    ],
+    "turn_every_seconds": 150,
+    "guide_every_seconds": 120,
+    "example_every_seconds": 200,
+    "made_up_share": [
+      4,
+      35
+    ],
+    "notes_share_least": 40,
+    "type_share": {
+      "open": [
+        2,
+        15
+      ],
+      "explain": [
+        40,
+        72
+      ],
+      "prove": [
+        0,
+        12
+      ],
+      "turn": [
+        7,
+        22
+      ],
+      "guide": [
+        1,
+        16
+      ],
+      "close": [
+        4,
+        24
+      ]
+    },
+    "mix_beats": 4,
+    "frame_words": {
+      "person": 45,
+      "both": 70,
+      "content": 60
+    },
+    "frame_words_middle": {
+      "person": 18,
+      "both": 40,
+      "content": 20
+    },
+    "person_away_seconds": 64,
+    "cues_per_beat": {
+      "mechanism": 4,
+      "list": 3,
+      "contrast": 3,
+      "worked-example": 3,
+      "code": 3,
+      "agenda": 3,
+      "recap": 3,
+      "definition": 2,
+      "so-what": 2,
+      "advice": 2,
+      "evidence": 2,
+      "principle": 2,
+      "step": 2,
+      "signpost": 1,
+      "question": 1,
+      "turn": 1,
+      "analogy": 1,
+      "landing": 1
+    },
+    "cue_gap_seconds": [
+      1.0,
+      8
+    ],
+    "last_words_most": 26,
+    "cues_per_frame_most": 9,
+    "settle_seconds": 1.0,
+    "read_seconds_per_word": 0.3,
+    "transition_types_most": 3,
+    "reveal_seconds": [
+      0.2,
+      0.8
+    ],
+    "first_cue_share": 25,
+    "turn_words_most": 45,
+    "frame_share_distance": 0.3,
+    "end_card_seconds": 5,
+    "length_tolerance": 0.15,
+    "line_only_person": 0.35,
+    "intent_presence": 0.25,
+    "title_sting_seconds": 3
+  },
+  "relations": [
+    { "id": "same-picture", "name": "The same picture goes on", "reads_as": "This frame keeps the picture of the frame before and adds to it.", "transition": "none" },
+    { "id": "next-step", "name": "The next step", "reads_as": "This frame is the next item in a sequence the frame before belongs to: the next step, the next option, the next item.", "transition": "push" },
+    { "id": "deeper-layer", "name": "A deeper layer", "reads_as": "This frame shows the same thing as the frame before at another level: what is inside it, or what lies under it.", "transition": "crossfade" },
+    { "id": "into-a-detail", "name": "Into a detail", "reads_as": "This frame goes into one part of the picture before.", "transition": "zoom-through" },
+    { "id": "new-topic", "name": "A new topic", "reads_as": "This frame starts something unrelated to the picture before.", "transition": "cut" },
+    { "id": "swap", "name": "Person and content swap", "reads_as": "The subject is the same; only who has the frame changes, from the person to the content or back.", "transition": "cut" }
+  ],
+  "transitions": [
+    { "id": "none", "name": "No transition", "seconds": 0 },
+    { "id": "cut", "name": "Cut", "seconds": 0 },
+    { "id": "crossfade", "name": "Crossfade", "seconds": 0.4 },
+    { "id": "push", "name": "Push", "seconds": 0.4 },
+    { "id": "zoom-through", "name": "Zoom through", "seconds": 0.5 }
+  ],
+  "arrangements": [
+    { "id": "single", "name": "One thing, centred", "reads_as": "One object or one statement holds the frame: a term, a figure, a single hero picture." },
+    { "id": "row", "name": "A row", "reads_as": "A few equal items side by side: three options, three cards, a short set of chips." },
+    { "id": "stack", "name": "A stack", "reads_as": "Items one under another: a list, bullet rows, layers named top to bottom." },
+    { "id": "pipeline", "name": "A pipeline", "reads_as": "Stages in a line with connectors: input, steps, output; a request passing through parts." },
+    { "id": "hub", "name": "A hub", "reads_as": "One thing in the middle with others around it and lines between: an agent and its tools, a router and its specialists." },
+    { "id": "tree", "name": "A tree", "reads_as": "One thing at the top with branches under it: a hierarchy, a family of variants, choices that fork." },
+    { "id": "loop", "name": "A loop", "reads_as": "Stages that return to the start: a cycle that repeats." },
+    { "id": "two-sides", "name": "Two sides", "reads_as": "Two things set against each other, left and right: before and after, this and that." },
+    { "id": "layers", "name": "Layers", "reads_as": "One thing inside or on top of another: a stack of levels, a box within a box." },
+    { "id": "timeline", "name": "A timeline", "reads_as": "Points along a line in time order: episodes, versions, moments in a session." },
+    { "id": "grid", "name": "A grid", "reads_as": "Many small equal items in rows and columns: a matrix, a wall of tiles." },
+    { "id": "code-panel", "name": "A code panel", "reads_as": "A block of code or configuration with lines that light as they are read." }
+  ]
+}
