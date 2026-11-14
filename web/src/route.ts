@@ -4,6 +4,7 @@
 //   /c/lily/canvas                its canvas
 //   /c/lily/canvas/th_…           a task's frame on it, brought into view
 //   /c/lily/canvas/th_…/as_…      a card in that frame (a conversation's opens with its chat)
+//   /c/lily/episode/ep_…          an episode's studio, over the channel
 //   …?thread=th_…                 with that thread open beside it
 //   /needs-you, /brand, /brand/<kit>, /brand/new, /skills, /computer
 // The address follows the app: a page, a channel, or its chat or canvas is a step Back returns
@@ -13,7 +14,7 @@ import type { CanvasTask } from "./api";
 import { useHouse, type Focus, type Mode, type State } from "./store";
 
 type Route =
-  | { page: "channel"; channel?: string; mode: Mode; task?: string; node?: string; thread?: string }
+  | { page: "channel"; channel?: string; mode: Mode; task?: string; node?: string; thread?: string; episode?: string }
   | { page: "brand"; kit?: string }
   | { page: "read-brand"; for?: string }
   | { page: "needs" | "skills" | "computer" };
@@ -36,6 +37,7 @@ export function parse(path: string, search: string): Route {
   const query = new URLSearchParams(search);
   if (head === "c" && rest[0]) {
     const [channel, view, task, node] = rest;
+    if (view === "episode" && task) return { page: "channel", channel, mode: "canvas", episode: task };
     if (view !== "canvas") return { page: "channel", channel, mode: "chat", thread: query.get("thread") ?? undefined };
     return { page: "channel", channel, mode: "canvas", task, node, thread: query.get("thread") ?? undefined };
   }
@@ -59,6 +61,7 @@ export function addressOf(s: State): string {
     case "channel": {
       const channel = s.channels.find((c) => c.id === s.channelId);
       if (!channel) return "/";
+      if (s.episodeId) return `/c/${q(channel.name)}/episode/${q(s.episodeId)}`;
       const canvas = s.mode === "canvas";
       const spot = canvas && s.focus ? `/${q(s.focus.task)}${s.focus.node ? `/${q(s.focus.node)}` : ""}` : "";
       // A conversation's card is picked with its chat open, so its address needs no ?thread.
@@ -84,6 +87,7 @@ export function go(route: Route) {
       const channel = house.channels.find((c) => c.name === route.channel || c.id === route.channel) ?? house.channels[0];
       if (!channel) return;
       void house.openChannel(channel.id, route.mode);
+      if ((route.episode ?? null) !== useHouse.getState().episodeId) void house.openEpisode(route.episode ?? null);
       const focus = route.mode === "canvas" && route.task ? { task: route.task, node: route.node ?? null, reveal: true } : null;
       house.focusOn(focus);
       const open = useHouse.getState().threadId;
@@ -131,7 +135,12 @@ export function followAddress() {
     if (!following) return;
     const next = addressOf(s);
     if (next === here()) return;
-    const step = s.page !== before.page || s.channelId !== before.channelId || s.mode !== before.mode || s.brandSlug !== before.brandSlug;
+    const step =
+      s.page !== before.page ||
+      s.channelId !== before.channelId ||
+      s.mode !== before.mode ||
+      s.brandSlug !== before.brandSlug ||
+      s.episodeId !== before.episodeId;
     if (step) history.pushState(null, "", next);
     else history.replaceState(null, "", next);
   });

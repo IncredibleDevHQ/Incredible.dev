@@ -4,10 +4,10 @@
 // approved), add an asset made from any card, or place a template that sets several up at once;
 // all of it reaches the agent in the task's thread. A research frame starts further back: questions
 // about a repository, the conversations they grow into, and the notes its assets are made from.
-import { ArrowLeft, Check, LayoutTemplate, Maximize, MessageSquare, Minus, Paperclip, Play, Plus, Send, Telescope } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, LayoutTemplate, Maximize, MessageSquare, Minus, Paperclip, Play, Plus, Podcast, Send, Telescope } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api, type Asset, type Board, type CanvasTask, type Capability, type FileView, type FrameView, type Work } from "../api";
+import { api, type Asset, type Board, type CanvasTask, type Capability, type EpisodeCard, type FileView, type FrameView, type Work } from "../api";
 import { useFocused, useHouse, type Focus } from "../store";
 import { Avatar, FileList, FooterLine, KindIcon, makesOf, StatusChip } from "../ui";
 import { columnsOf, Lines, useLines, type Edge } from "./Flow";
@@ -160,6 +160,10 @@ export function Canvas({ channelId }: { channelId: string }) {
           <button type="button" className="btn" aria-expanded={Boolean(picking)} onClick={() => pickTemplate(picking ? null : {})}>
             <LayoutTemplate />
             Templates
+          </button>
+          <button type="button" className="btn" onClick={() => useHouse.getState().startEpisode({})}>
+            <Podcast />
+            Episode
           </button>
         </div>
       )}
@@ -364,6 +368,7 @@ function AssetCard({ asset, task, onHot }: { asset: Asset; task: CanvasTask; onH
   const finished = asset.files.length > 0 && (asset.status === "done" || !board);
   const reviewing = asset.preview && (asset.status === "review" || asset.status === "changes");
   const draft = isDraft(asset);
+  const episode = task.episodes?.find((e) => e.asset_id === asset.id);
   const live = asset.status === "making" && task.thread.status === "working";
   const chip = CHIPS[asset.status];
   const focused = useFocused(task.thread.id, asset.id);
@@ -395,6 +400,7 @@ function AssetCard({ asset, task, onHot }: { asset: Asset; task: CanvasTask; onH
         )}
       </header>
       <div className="node-body">
+        {episode && <EpisodeFace episode={episode} />}
         {reviewing ? (
           <FilmPreview asset={asset} />
         ) : finished ? (
@@ -405,7 +411,7 @@ function AssetCard({ asset, task, onHot }: { asset: Asset; task: CanvasTask; onH
         ) : board ? (
           <BoardPreview board={board} />
         ) : null}
-        <AssetLine asset={asset} task={task} live={live} />
+        {!episode && <AssetLine asset={asset} task={task} live={live} />}
       </div>
       <button
         type="button"
@@ -419,6 +425,38 @@ function AssetCard({ asset, task, onHot }: { asset: Asset; task: CanvasTask; onH
       </button>
       {making && <MakeMenu task={task} from={asset} anchor={making} onClose={() => setMaking(null)} />}
     </article>
+  );
+}
+
+// An episode's card: where it stands in one line, and the way into its studio.
+function EpisodeFace({ episode }: { episode: EpisodeCard }) {
+  const openEpisode = useHouse((s) => s.openEpisode);
+  const p = episode.pictures;
+  const line =
+    episode.status === "planning"
+      ? episode.stage.said || "The plan is being written"
+      : episode.status === "failed"
+        ? episode.stage.said || "The plan stopped"
+        : episode.status === "plan"
+          ? `${episode.chapters} chapters planned. Approve it to start.`
+          : episode.film.status === "rendering"
+            ? `Rendering the film · ${Math.round((episode.film.fraction ?? 0) * 100)}%`
+            : p.go
+              ? `${p.go} ${p.go === 1 ? "picture needs" : "pictures need"} your go`
+              : p.making
+                ? `${p.making} ${p.making === 1 ? "picture" : "pictures"} being made`
+                : `${episode.recorded} of ${episode.chapters} chapters recorded`;
+  return (
+    <div className="ep-face">
+      <p className="node-line">
+        {episode.status === "planning" && <span className="spin" style={{ width: 10, height: 10, borderWidth: 1.5 }} />}
+        {line}
+      </p>
+      <button type="button" className="btn" onClick={() => void openEpisode(episode.id)}>
+        Open the studio
+        <ArrowRight />
+      </button>
+    </div>
   );
 }
 
@@ -627,7 +665,8 @@ function MakeMenu({ task, from, anchor, onClose }: { task: CanvasTask; from?: As
   const [busy, setBusy] = useState(false);
   const [place, setPlace] = useState<{ top: number; left: number } | null>(null);
   const media = from ? makesOf(from.kind) : "material";
-  const kinds = catalog.capabilities.filter((c) => c.takes.includes(media));
+  // An episode is started from its own sheet (below), not asked of the agent here.
+  const kinds = catalog.capabilities.filter((c) => c.takes.includes(media) && !c.studio);
   const finished = from && READY.has(from.status) && from.status !== "skipped";
   // A research frame's notes are what it started from; templates that start from material join it.
   const notes = !from && task.thread.kind === "research";
@@ -711,6 +750,21 @@ function MakeMenu({ task, from, anchor, onClose }: { task: CanvasTask; from?: As
         <>
           <h3>{title}</h3>
           <div className="pop-list">
+            {notes && (
+              <button
+                type="button"
+                onClick={() => {
+                  useHouse.getState().startEpisode({ frame: task.thread.id });
+                  onClose();
+                }}
+              >
+                <Podcast size={16} />
+                <span>
+                  <b>Episode</b>
+                  <small>A presenter-led explainer, planned from the notes and recorded in its studio</small>
+                </span>
+              </button>
+            )}
             {kinds.map((k) => (
               <button type="button" key={k.id} onClick={() => setChosen(k)}>
                 <KindIcon kind={k.id} />

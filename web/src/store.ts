@@ -11,6 +11,8 @@ import {
   type CanvasTask,
   type Catalog,
   type Channel,
+  type EpisodeCard,
+  type EpisodeView,
   type FileView,
   type Message,
   type Person,
@@ -23,6 +25,8 @@ import {
 } from "./api";
 
 export type Page = "channel" | "needs" | "brand" | "read-brand" | "skills" | "computer";
+// The sheet an episode is started from: open, with the research frame its notes come from if any.
+export type EpisodeStart = { frame?: string };
 export type Mode = "chat" | "canvas";
 // The template picker on the canvas: open on the list, or on one template (started from an asset,
 // or placed onto a research frame, made from its notes).
@@ -57,6 +61,10 @@ export type State = {
   picking: TemplatePick | null;
   preview: OpenPreview | null;
   viewing: OpenFiles | null;
+  // The episode whose studio is open over the channel, and everything that studio draws.
+  episodeId: string | null;
+  episode: EpisodeView | null;
+  startingEpisode: EpisodeStart | null;
   // The coding agents on this computer and the repositories they can research.
   research: ResearchOptions | null;
   // The house's brands, and the reads from websites still running or just finished.
@@ -81,6 +89,9 @@ export type State = {
   pickTemplate: (pick: TemplatePick | null) => void;
   openPreview: (preview: OpenPreview | null) => void;
   openFiles: (viewing: OpenFiles | null) => void;
+  openEpisode: (id: string | null) => Promise<void>;
+  setEpisode: (episode: EpisodeView) => void;
+  startEpisode: (start: EpisodeStart | null) => void;
   loadResearch: () => Promise<ResearchOptions>;
   loadBrands: () => Promise<void>;
   say: (text: string | null) => void;
@@ -124,6 +135,9 @@ export const useHouse = create<State>((set, get) => ({
   picking: null,
   preview: null,
   viewing: null,
+  episodeId: null,
+  episode: null,
+  startingEpisode: null,
   research: null,
   brands: [],
   reads: [],
@@ -229,6 +243,26 @@ export const useHouse = create<State>((set, get) => ({
 
   openFiles(viewing) {
     set({ viewing });
+  },
+
+  async openEpisode(id) {
+    if (!id) return set({ episodeId: null, episode: null });
+    const kept = get().episode;
+    set({ episodeId: id, episode: kept?.id === id ? kept : null });
+    try {
+      const episode = await api.episode(id);
+      if (get().episodeId === id) set({ episode });
+    } catch (error) {
+      set({ episodeId: null, episode: null, toast: (error as Error).message });
+    }
+  },
+
+  setEpisode(episode) {
+    if (get().episodeId === episode.id) set({ episode });
+  },
+
+  startEpisode(start) {
+    set({ startingEpisode: start });
   },
 
   async loadBrands() {
@@ -366,6 +400,21 @@ export const useHouse = create<State>((set, get) => ({
         if (read.status === "failed" && s.page !== "read-brand") set({ toast: read.message ?? "The read stopped." });
         break;
       }
+      case "episode.updated": {
+        const card = event.card as EpisodeCard;
+        set({
+          canvas: mapTask(s.canvas, event.thread_id as string, (t) => ({
+            ...t,
+            episodes: upsert(t.episodes ?? [], card),
+          })),
+        });
+        // The open studio follows: its progress at once, everything else read again soon.
+        if (s.episodeId === card.id) {
+          if (s.episode) set({ episode: { ...s.episode, ...card } });
+          refreshEpisode(card.id);
+        }
+        break;
+      }
       case "research.updated": {
         const research = event.research as ResearchView;
         set({ canvas: mapTask(s.canvas, event.thread_id as string, (t) => ({ ...t, research })) });
@@ -378,6 +427,18 @@ export const useHouse = create<State>((set, get) => ({
     }
   },
 }));
+
+// The open studio's episode, read again a moment after the last change to it.
+let episodeTimer = 0;
+function refreshEpisode(id: string) {
+  window.clearTimeout(episodeTimer);
+  episodeTimer = window.setTimeout(() => {
+    void api
+      .episode(id)
+      .then((episode) => useHouse.getState().setEpisode(episode))
+      .catch(() => undefined);
+  }, 350);
+}
 
 function channelCounts(channelId: string, threads: Record<string, Thread>) {
   const mine = Object.values(threads).filter((t) => t.channel_id === channelId);

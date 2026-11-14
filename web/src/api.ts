@@ -130,6 +130,8 @@ export type Capability = {
   makes: string;
   accepts: string[];
   takes: string[];
+  // Made in a studio of its own (an episode), never by asking the agent for it in a thread.
+  studio?: boolean;
 };
 // One piece of a template: what it is, what it is made from, what the person gets, and the shape
 // of each piece it makes ("16:9", "9:16", "210:297" for a page).
@@ -210,12 +212,127 @@ export type CanvasTask = {
   thread: Thread;
   material: Material;
   research?: ResearchView | null;
+  // The episodes in this task, each as its card shows it.
+  episodes?: EpisodeCard[];
   assets: Asset[];
   boards: Board[];
   files: FileView[];
   work: Work[];
 };
 export type FolderFile = { path: string; size: number; modified: number };
+
+// -- episodes: a planned explainer, recorded and rendered in its studio (episode_desk.py) --------
+export type Presence = "person" | "both" | "content";
+export type Level = "simple" | "rich";
+export type WriterId = HarnessId | "builtin" | "demo";
+export type Box = [number, number, number, number];
+export type LayoutSpot = { person: Box | null; picture: Box | null; person_radius: number; picture_radius: number; glass: boolean; zoom: number };
+export type EpisodeOptions = {
+  writers: { id: WriterId; title: string; ready: boolean; local: boolean }[];
+  themes: { id: string; name: string; presenter: "on" | "off"; stage: string }[];
+  seconds: { least: number; most: number; usual: number };
+  // Who reads the plan's words: Jev, or the writer's own model.
+  reader: "jev" | "writer" | "demo";
+  narrator: boolean;
+  geometry: { frame: [number, number]; layouts: Record<string, LayoutSpot> };
+};
+export type EpisodeSettings = { seconds: number; presenter: "on" | "off"; theme: string; voice: "live" | "narrator"; level: Level; writer: WriterId };
+export type EpisodeCue = { at: string; object: string; does: string; move?: string; t?: number };
+export type EpisodeObject = { id: string; what: string; words?: string; state?: string; type?: string };
+export type EpisodeFrame = {
+  id: string;
+  vo: string;
+  presence: Presence;
+  layout: string;
+  options?: { layout: string; presence: Presence; p: number }[];
+  shows?: string;
+  hold?: boolean;
+  start: number;
+  seconds: number;
+  words: number;
+  objects?: EpisodeObject[];
+  cues?: EpisodeCue[];
+  picture?: string;
+  transition?: string;
+  override?: { presence: Presence; layout: string; reason: string };
+};
+export type EpisodeBeat = { id: string; says: string; subtype?: string; type?: string; frames: EpisodeFrame[] };
+export type EpisodeChapter = { id: string; question: string; type?: string; part?: string; beats: EpisodeBeat[]; start: number; seconds: number; words: number };
+export type EpisodePlan = {
+  title: string;
+  brief: { idea?: string; gap?: string; for?: string; seconds?: number; presenter?: string; theme?: string };
+  chapters: EpisodeChapter[];
+  totals: { seconds: number; words: number; chapters: number; beats: number; frames: number; cues: number };
+};
+export type PictureStatus = "none" | "queued" | "making" | "posing" | "go" | "made" | "failed";
+export type EpisodeUnit = {
+  id: string;
+  chapter: string;
+  kind: "picture" | "undesigned";
+  frames: string[];
+  canvas: [number, number];
+  layout: string;
+  shows: string;
+  kind_of_picture: string;
+  seconds: number;
+  level: Level;
+  suggest: Level;
+  picture: { status: PictureStatus; stills: Record<string, FileView>; clip: FileView | null; stale: boolean; failure: string; note: string };
+};
+export type EpisodeTake = {
+  id: string;
+  chapter: string;
+  frame: string;
+  n: number;
+  seconds: number;
+  marks: { frame: string; t: number }[];
+  kept: boolean;
+  video: FileView | null;
+  audio: FileView | null;
+  created_at: number;
+};
+export type EpisodeLine = { frame: string; chapter: string; start: number; seconds: number; source: { kind: "take" | "voice" | "plan"; take?: string; offset?: number } };
+export type EpisodeClock = { total: number; chapters: { id: string; start: number; seconds: number }[]; lines: EpisodeLine[]; cues: Record<string, number> };
+export type EpisodeCard = {
+  id: string;
+  thread_id: string;
+  asset_id: string;
+  title: string;
+  status: "planning" | "plan" | "studio" | "failed";
+  approved: boolean;
+  stage: { name?: string; state?: string; said?: string; round?: number };
+  writer: WriterId;
+  chapters: number;
+  recorded: number;
+  pictures: { made: number; go: number; making: number; failed: number };
+  film: { status?: "rendering" | "done" | "failed"; fraction?: number; failure?: string };
+};
+export type EpisodeCheck = { group: string; rule: string; level: "must" | "look"; where: string; text: string };
+export type EpisodeRun = { id: string; lane: string; harness: string; state: string; asked: string; said: string; steps: number; started_at: number; ended_at: number | null };
+export type EpisodeView = EpisodeCard & {
+  channel_id: string;
+  settings: EpisodeSettings;
+  steps: { id: string; label: string }[];
+  plan: EpisodePlan | null;
+  // What the writer has put down so far, shown while the plan is still being written.
+  written: { material: number; idea: string; chapters: { id: string; question: string; beats: number }[] };
+  clock: EpisodeClock | null;
+  units: EpisodeUnit[];
+  takes: EpisodeTake[];
+  film_state: { status?: "rendering" | "done" | "failed"; fraction?: number; failure?: string; file?: FileView | null; stale?: boolean; seconds?: number };
+  checks: EpisodeCheck[];
+  runs: EpisodeRun[];
+  options: EpisodeOptions;
+};
+export type EpisodePick = { presence?: Presence; layout?: string };
+export type EpisodeChoices = {
+  settings?: Partial<EpisodeSettings>;
+  frames?: Record<string, EpisodePick>;
+  chapters?: Record<string, EpisodePick>;
+  all?: EpisodePick;
+  clear?: string[];
+  units?: Record<string, { level: Level }>;
+};
 export type Session = {
   me: string;
   people: Person[];
@@ -342,6 +459,28 @@ export const api = {
     call<Asset>("POST", `/api/threads/${threadId}/assets`, body),
   placeTemplate: (channelId: string, body: { template: string; text: string; files: string[]; from_asset: string; from_frame?: string }) =>
     call<Message>("POST", `/api/channels/${channelId}/templates`, body),
+  episodeOptions: () => call<EpisodeOptions>("GET", "/api/episodes/options"),
+  newEpisode: (channelId: string, body: { title: string; text: string; files: string[]; from_frame?: string; settings: Partial<EpisodeSettings> }) =>
+    call<EpisodeView>("POST", `/api/channels/${channelId}/episodes`, body),
+  episode: (id: string) => call<EpisodeView>("GET", `/api/episodes/${id}`),
+  approveEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/approve`),
+  chooseEpisode: (id: string, body: EpisodeChoices) => call<EpisodeView>("POST", `/api/episodes/${id}/choices`, body),
+  planAgain: (id: string, writer: WriterId | "" = "") => call<EpisodeView>("POST", `/api/episodes/${id}/again`, { writer }),
+  stopEpisode: (id: string) => call<{ ok: boolean }>("POST", `/api/episodes/${id}/stop`),
+  pictureGo: (id: string, unit: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/go`),
+  pictureNote: (id: string, unit: string, text: string) =>
+    call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/note`, { text }),
+  addTake: (id: string, take: { chapter: string; frame?: string; marks: { frame: string; t: number }[]; file: Blob; name: string }) => {
+    const form = new FormData();
+    form.append("file", take.file, take.name);
+    form.append("chapter", take.chapter);
+    form.append("frame", take.frame ?? "");
+    form.append("marks", JSON.stringify(take.marks));
+    return call<EpisodeView>("POST", `/api/episodes/${id}/takes`, form);
+  },
+  keepTake: (id: string, take: string) => call<EpisodeView>("POST", `/api/episodes/${id}/takes/${take}/keep`, { keep: true }),
+  dropTake: (id: string, take: string) => call<EpisodeView>("DELETE", `/api/episodes/${id}/takes/${take}`),
+  renderEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/film`),
   researchOptions: () => call<ResearchOptions>("GET", "/api/research"),
   openResearch: (channelId: string, body: { repo: string; harness: HarnessId; question: string }) =>
     call<{ thread: Thread; conversation: ConversationRow }>("POST", `/api/channels/${channelId}/research`, body),
