@@ -604,8 +604,9 @@ class EpisodeDesk:
                 f"{root}/material/notes.md.\n\nThe person chose: {chosen.get('seconds')} seconds, "
                 f"presenter {presenter}, theme `{chosen.get('theme')}`, working title "
                 f"“{episode['title']}”. Put these in the brief as given.\n\nWrite "
-                f"{root}/plan.json with `material` and `brief` only. Reply with the idea in one "
-                "sentence and what the material lacks."
+                f"{root}/plan.json with `material` and `brief` only. Deliver nothing: the house "
+                "reads plan.json from your folder. Reply with the idea in one sentence and what "
+                "the material lacks."
             )
         if stage == "script":
             return (
@@ -777,8 +778,8 @@ class EpisodeDesk:
         prompt = (
             f"Stage: picture.\n\nBuild one picture of the episode. Your folder is {root}. Read "
             f"{skill}/briefs/picture.md, then the brief at {root}/pictures/{comp}.brief.json, "
-            f"and write {root}/{brief['file']}."
-            + (f"\n\nThe person's note on it: {note}" if note else "")
+            f"and write {root}/{brief['file']}. Deliver nothing: the house reads the file from "
+            "your folder." + (f"\n\nThe person's note on it: {note}" if note else "")
         )
         html = ""
         faults: list[str] = []

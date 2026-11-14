@@ -82,6 +82,9 @@ One HyperFrames sub-composition, complete in itself:
 - **The look is the brief's.** Colours come from its palette and nothing else. The motion
   follows its motion note.
 
+Write the file and stop: do not render it, upload it or deliver it. Code reads it from your
+folder, checks it and poses its stills.
+
 Reply in two lines: the file you wrote, and anything in the brief you could not draw as asked.
 When a turn opens with faults or a person's note on a still, change only what it names.
 

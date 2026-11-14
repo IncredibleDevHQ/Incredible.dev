@@ -34,8 +34,8 @@ your reply and stop: an episode is the wrong thing to make from it.
 You work in one folder. It holds `plan.json` (yours alone: nothing else ever rewrites it),
 the material under `material/`, and this skill. Each turn names one stage. Do that stage, save
 `plan.json`, and reply in a few lines with what you wrote and anything the material lacked.
-Run nothing: after your turn, code reads the plan, has it classified and checked, and the next
-turn opens with that report.
+Run nothing and deliver nothing: the house reads your folder. After your turn, code reads the
+plan, has it classified and checked, and the next turn opens with that report.
 
 A report line is a `MUST` (the plan is not done) or a `look` (yours to weigh). To keep a look,
 write the reason in the plan: `"waived": {"turns": "..."}`; the key is the rule's id, the part
