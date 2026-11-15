@@ -30,7 +30,12 @@
     look, the voice, the pictures' level) and, per chapter, the script, the frame for the
     picked line and that line's choices (who has the frame, the layout, a simple picture or a
     rich one posed as stills for the person's go). A pick is kept beside the plan and never
-    undone by a later stage.
+    undone by a later stage. A layout can be used for the chapter or the film, a picture can
+    sit beside the person or fill the screen, and the line that brings a picture in can be
+    given another type of picture and another transition (cut, push, crossfade, zoom), which
+    the film renders by moving the picture's whole box. A new look redraws every picture, so
+    the film's page says how many and waits for a yes; while pictures are being made it shows
+    how far they are with a Stop, and the ones that stopped are made again on request.
   - Each picture is one HyperFrames sub-composition built by the same writer, in the channel's
     brand: its colours by role and its type, staged on the thread's computer. Every time in it
     comes from a clock block code rewrites, so a recording never sends a picture back to its

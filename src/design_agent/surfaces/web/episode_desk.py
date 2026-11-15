@@ -165,6 +165,9 @@ class EpisodeDesk:
             "reader": "demo" if self.demo else "jev" if self._jev_key() else "writer",
             "narrator": self._narrator_ready(),
             "geometry": geometry.view(),
+            # what a person may pick for the line that brings a picture in
+            "pictures": list(override.PICTURES),
+            "transitions": list(override.TRANSITIONS),
         }
 
     def _jev_key(self) -> str:
@@ -641,9 +644,14 @@ class EpisodeDesk:
         )
 
     def stop(self, episode_id: str) -> None:
+        """Stop what is under way for an episode: its plan, and every picture being made or
+        waiting its turn. A stopped picture stays stopped until a person asks for it again."""
         job = self._jobs.get(episode_id)
         if job is not None and not job.done():
             job.cancel()
+        for (owner, _), build in list(self._builds.items()):
+            if owner == episode_id and not build.done():
+                build.cancel()
 
     def again(self, episode_id: str, *, writer: str = "") -> Row:
         """Pick the planning up where it stopped, with another writer if one is named: the
@@ -686,6 +694,7 @@ class EpisodeDesk:
         episode = self._episode(episode_id)
         merged = self._merged(episode)
         new: Row = {k: change[k] for k in ("frames", "chapters", "all", "clear") if change.get(k)}
+        override.refuse(new)
         if chosen.get("presenter") == "off" and before.get("presenter") != "off":
             new["presenter"] = "off"
         feedback: list[Row] = []
@@ -713,7 +722,13 @@ class EpisodeDesk:
         full = self._full(episode)
         if full is None or not episode["approved"] or self._closing:
             return
-        for unit in self._units(episode, full):
+        found = self._units(episode, full)
+        planned = {unit["id"] for unit in found}
+        for row in self.store.pictures(episode_id):
+            # a line that lost its picture takes the picture's row with it
+            if row["unit"] not in planned and (episode_id, row["unit"]) not in self._builds:
+                self.store.delete_picture(episode_id, str(row["unit"]))
+        for unit in found:
             if unit["kind"] != "picture":
                 continue
             have = self.store.picture(episode_id, unit["id"])
@@ -958,6 +973,19 @@ class EpisodeDesk:
         self._say(
             self._episode(episode_id), "Gave the go on a picture's stills.", by=by, quiet=True
         )
+        self._settle(episode_id)
+        return self.view(episode_id)
+
+    def make(self, episode_id: str, *, by: str) -> Row:
+        """Every picture that stopped or failed is asked for again, as the plan stands."""
+        episode = self._episode(episode_id)
+        left = [p for p in self.store.pictures(episode_id) if p["status"] == "failed"]
+        if not episode["approved"] or not left:
+            raise ValueError("Every picture is made or on its way.")
+        for have in left:
+            self.store.set_picture(episode_id, str(have["unit"]), sig="")
+        self._queue_pictures(episode_id)
+        self._say(episode, "Asked for the pictures that were not made.", by=by, quiet=True)
         self._settle(episode_id)
         return self.view(episode_id)
 
@@ -1452,6 +1480,9 @@ class EpisodeDesk:
                         "failure": "Stopped when the house restarted.",
                     },
                 )
+            # nothing is running now: its card and its thread say where it stands, not where
+            # the last process left it
+            self._settle(episode_id)
 
     async def close(self) -> None:
         self._closing = True

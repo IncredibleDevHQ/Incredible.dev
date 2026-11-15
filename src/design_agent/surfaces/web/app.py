@@ -29,7 +29,8 @@ runtime), the store of channels, messages and boards, and this API:
   `POST /api/channels/{id}/episodes` (one from material or a research frame's notes),
   `GET /api/episodes/{id}` (everything its studio draws), `POST /api/episodes/{id}/approve`,
   `POST /api/episodes/{id}/choices` (the look, who has the frame, a picture's level),
-  `POST /api/episodes/{id}/again` and `/stop` (its planning),
+  `POST /api/episodes/{id}/again` (its planning), `/stop` (the plan and the pictures under
+  way), `POST /api/episodes/{id}/pictures` (make the ones that stopped),
   `POST /api/episodes/{id}/pictures/{unit}/go` and `/note` (a picture's stills),
   `POST /api/episodes/{id}/takes` (a recording), `POST /api/episodes/{id}/takes/{take}/keep`,
   `DELETE /api/episodes/{id}/takes/{take}`, `POST /api/episodes/{id}/film` (render it)
@@ -192,8 +193,16 @@ class EpisodeIn(BaseModel):
 
 
 class FramePickIn(BaseModel):
+    """A person's picks for a line, a chapter or the film. A value of null takes that pick
+    back and leaves the others."""
+
     presence: str | None = Field(default=None, pattern=r"^(person|both|content)$")
     layout: str | None = Field(default=None, max_length=60)
+    #: A layout for every line of one presence (a chapter's or the film's picks only).
+    layouts: dict[str, str | None] | None = Field(default=None, max_length=3)
+    #: The type of the picture a line brings in, and how it comes in (a line's picks only).
+    picture: str | None = Field(default=None, max_length=40)
+    transition: str | None = Field(default=None, max_length=40)
 
 
 class UnitPickIn(BaseModel):
@@ -624,7 +633,8 @@ def create_app(
     async def choose_episode(
         episode_id: str, body: ChoicesIn, me: str = Depends(person)
     ) -> dict[str, Any]:
-        change = body.model_dump(exclude_none=True)
+        # what was sent, as it was sent: a null is a pick taken back, not a pick left out
+        change = body.model_dump(exclude_unset=True)
         change["settings"] = body.settings.model_dump(exclude_none=True)
         return episode_call(lambda: host.episodes.choose(episode_id, by=me, change=change))
 
@@ -642,6 +652,10 @@ def create_app(
             raise HTTPException(status_code=404, detail="no such episode")
         host.episodes.stop(episode_id)
         return {"ok": True}
+
+    @app.post("/api/episodes/{episode_id}/pictures")
+    async def make_pictures(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.make(episode_id, by=me))
 
     @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/go")
     async def picture_go(

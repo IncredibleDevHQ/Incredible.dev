@@ -445,9 +445,11 @@ function EpisodeFace({ episode }: { episode: EpisodeCard }) {
               ? `${p.go} ${p.go === 1 ? "picture needs" : "pictures need"} your go`
               : p.making
                 ? `${p.making} ${p.making === 1 ? "picture" : "pictures"} being made`
-                : episode.film.status === "done" && episode.recorded === episode.chapters
-                  ? "Recorded and rendered"
-                  : `${episode.recorded} of ${episode.chapters} chapters recorded`;
+                : p.failed
+                  ? `${p.failed} ${p.failed === 1 ? "picture" : "pictures"} not made`
+                  : episode.film.status === "done" && episode.recorded === episode.chapters
+                    ? "Recorded and rendered"
+                    : `${episode.recorded} of ${episode.chapters} chapters recorded`;
   return (
     <div className="ep-face">
       <p className="node-line">

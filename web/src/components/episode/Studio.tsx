@@ -6,7 +6,26 @@
 import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Circle, Clapperboard, Play, RotateCcw, Square, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type EpisodeChapter, type EpisodeChoices, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Level, type Presence, type WriterId } from "../../api";
-import { chapterName, chapterState, clockLine, LAYOUTS, linesOf, LOOKS, mmss, PICTURES, pictureWords, PRESENCE, STATE_WORDS, takeOf, unitOf } from "../../episode";
+import {
+  allLines,
+  chapterName,
+  chapterState,
+  clockLine,
+  LAYOUTS,
+  linesIn,
+  linesOf,
+  LOOKS,
+  mmss,
+  pictureCount,
+  PICTURES,
+  pictureWords,
+  PRESENCE,
+  redrawnBy,
+  STATE_WORDS,
+  takeOf,
+  TRANSITIONS,
+  unitOf,
+} from "../../episode";
 import { useHouse } from "../../store";
 import { AgentMark } from "../../ui";
 import { ProgressTracker } from "../ProgressTracker";
@@ -195,6 +214,14 @@ function FilmPage({ view, run, busy, onAt }: { view: EpisodeView; run: Run; busy
   const recorded = plan.chapters.filter((c) => takeOf(view, c.id)).length;
   const set = (settings: EpisodeChoices["settings"]) => run(() => api.chooseEpisode(view.id, { settings }));
   const presenterOff = view.settings.presenter === "off";
+  const pictures = pictureCount(view);
+  // A look the person asked for that would redraw pictures already made: it waits for a yes.
+  const [asked, setAsked] = useState<string | null>(null);
+  const look = (id: string) => {
+    if (id === view.settings.theme) return;
+    if (view.approved && pictures.all > 0) setAsked(id);
+    else void set({ theme: id });
+  };
   return (
     <main className="ep-film">
       <section className="ep-film-left">
@@ -221,6 +248,29 @@ function FilmPage({ view, run, busy, onAt }: { view: EpisodeView; run: Run; busy
             );
           })}
         </ol>
+        {view.approved && pictures.making > 0 && (
+          <div className="ep-row">
+            <p className="ep-said" aria-live="polite">
+              <span className="spin" />
+              {pictures.made} of {pictures.all} pictures made
+            </p>
+            <button type="button" className="btn" onClick={() => void api.stopEpisode(view.id).catch((e: Error) => useHouse.getState().say(e.message))}>
+              <Square />
+              Stop
+            </button>
+          </div>
+        )}
+        {view.approved && pictures.making === 0 && pictures.stopped > 0 && (
+          <div className="ep-row">
+            <p className="ep-said">
+              {pictures.stopped} {pictures.stopped === 1 ? "picture" : "pictures"} not made
+            </p>
+            <button type="button" className="btn" disabled={busy} onClick={() => void run(() => api.makePictures(view.id))}>
+              <RotateCcw />
+              {pictures.stopped === 1 ? "Make it" : "Make them"}
+            </button>
+          </div>
+        )}
         {!view.approved ? (
           <button type="button" className="btn primary ep-next" disabled={busy} onClick={() => void run(() => api.approveEpisode(view.id))}>
             Approve the plan
@@ -301,14 +351,47 @@ function FilmPage({ view, run, busy, onAt }: { view: EpisodeView; run: Run; busy
         <dl className="ep-settings">
           <div>
             <dt>Look</dt>
-            <dd className="ep-looks">
-              {view.options.themes
-                .filter((t) => (t.presenter === "off") === presenterOff)
-                .map((t) => (
-                  <button type="button" key={t.id} aria-pressed={view.settings.theme === t.id} disabled={busy} title={t.stage} onClick={() => void set({ theme: t.id })}>
-                    {LOOKS[t.id] ?? t.name}
+            <dd>
+              <span className="ep-looks">
+                {view.options.themes
+                  .filter((t) => (t.presenter === "off") === presenterOff)
+                  .map((t) => (
+                    <button type="button" key={t.id} aria-pressed={view.settings.theme === t.id} disabled={busy} title={t.stage} onClick={() => look(t.id)}>
+                      {LOOKS[t.id] ?? t.name}
+                    </button>
+                  ))}
+              </span>
+              {asked && (
+                <p
+                  className="ep-confirm"
+                  role="alertdialog"
+                  aria-label={`Change the look to ${LOOKS[asked] ?? asked}`}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Escape") return;
+                    e.stopPropagation();
+                    setAsked(null);
+                  }}
+                >
+                  <span>
+                    {LOOKS[asked] ?? asked} redraws all {pictures.all} pictures.
+                  </span>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    autoFocus
+                    disabled={busy}
+                    onClick={() => {
+                      setAsked(null);
+                      void set({ theme: asked });
+                    }}
+                  >
+                    Change the look
                   </button>
-                ))}
+                  <button type="button" className="btn" onClick={() => setAsked(null)}>
+                    Cancel
+                  </button>
+                </p>
+              )}
             </dd>
           </div>
           <div>
@@ -707,6 +790,43 @@ function Choices({
   const setPresence = (presence: Presence) => choose({ frames: { [line.id]: { presence } } });
   const setLayout = (layout: string) => choose({ frames: { [line.id]: { layout } } });
   const setLevel = (level: Level) => unit && choose({ units: { [unit.id]: { level } } });
+
+  // A layout used for the chapter or the film reaches every line of this presence there. It is
+  // asked first when it would redraw more than one picture.
+  const scope = line.override?.scope;
+  const [wide, setWide] = useState<{ film: boolean; redraws: number } | null>(null);
+  useEffect(() => setWide(null), [line.id, line.layout]);
+  const applyFor = (film: boolean) => {
+    const set = { layouts: { [line.presence]: line.layout } };
+    const unset = { layouts: { [line.presence]: null } };
+    return choose({
+      // the line's own layout, and its chapter's when the film takes over, give way to it
+      frames: { [line.id]: { layout: null } },
+      chapters: { [chapter.id]: film ? unset : set },
+      ...(film ? { all: set } : {}),
+    });
+  };
+  const askFor = (film: boolean) => {
+    const redraws = redrawnBy(view, line.presence, line.layout, film ? undefined : chapter.id);
+    if (redraws > 1) setWide({ film, redraws });
+    else void applyFor(film);
+  };
+  const undo = () =>
+    scope === "film"
+      ? choose({ all: { layouts: { [line.presence]: null } } })
+      : scope === "chapter"
+        ? choose({ chapters: { [chapter.id]: { layouts: { [line.presence]: null } } } })
+        : choose({ frames: { [line.id]: { presence: null, layout: null } } });
+  const reach = scope ? linesIn(view, line.presence, scope === "chapter" ? chapter.id : undefined).filter((x) => x.line.layout === line.layout).length : 0;
+
+  // The picture this line shows is drawn once, on the line that brings it in: its type, where
+  // it sits and how it comes in are picked there, whichever of its lines is open.
+  const lead = unit ? allLines(view).find((x) => x.line.id === unit.frames[0])?.line : undefined;
+  const drawn = unit?.kind === "picture" && lead;
+  const setPlace = (presence: Presence) => unit && choose({ frames: Object.fromEntries(unit.frames.map((id) => [id, { presence }])) });
+  const planMove = line.transition && line.transition !== "none" ? line.transition : "cut";
+  const move = line.picked?.transition ?? planMove;
+  const bringsIn = drawn && lead.id === line.id && line.presence !== "person";
   return (
     <aside className="ep-choices" aria-label="Choices for this line">
       <section>
@@ -720,17 +840,6 @@ function Choices({
           ))}
         </span>
         {presenterOff && <small>Nobody is on screen in this film.</small>}
-        {line.override && (
-          <p className="ep-picked">
-            Your pick.
-            <button type="button" className="linkish" disabled={busy} onClick={() => void choose({ chapters: { [chapter.id]: { presence: line.presence, layout: line.layout } } })}>
-              Use for the chapter
-            </button>
-            <button type="button" className="linkish" disabled={busy} onClick={() => void choose({ clear: [line.id] })}>
-              Undo
-            </button>
-          </p>
-        )}
       </section>
       <section>
         <h3>
@@ -743,6 +852,61 @@ function Choices({
             </button>
           ))}
         </div>
+        {line.override && !wide && (
+          <p className="ep-picked">
+            <span>{scope ? `Set for the ${scope} · ${reach} ${reach === 1 ? "line" : "lines"}` : "Your pick"}</span>
+            {scope !== "film" && (
+              <span>
+                Use it for{" "}
+                {!scope && (
+                  <>
+                    <button type="button" className="linkish" disabled={busy} onClick={() => askFor(false)}>
+                      the chapter
+                    </button>{" or "}
+                  </>
+                )}
+                <button type="button" className="linkish" disabled={busy} onClick={() => askFor(true)}>
+                  the film
+                </button>
+              </span>
+            )}
+            <button type="button" className="linkish" disabled={busy} onClick={() => void undo()}>
+              Undo
+            </button>
+          </p>
+        )}
+        {wide && (
+          <p
+            className="ep-confirm"
+            role="alertdialog"
+            aria-label={`Use ${LAYOUTS[line.layout] ?? line.layout} for the ${wide.film ? "film" : "chapter"}`}
+            onKeyDown={(e) => {
+              if (e.key !== "Escape") return;
+              e.stopPropagation();
+              setWide(null);
+            }}
+          >
+            <span>
+              {LAYOUTS[line.layout] ?? line.layout} for the {wide.film ? "film" : "chapter"} redraws {wide.redraws} pictures.
+            </span>
+            <button
+              type="button"
+              className="btn primary"
+              autoFocus
+              disabled={busy}
+              onClick={() => {
+                const film = wide.film;
+                setWide(null);
+                void applyFor(film);
+              }}
+            >
+              Use it
+            </button>
+            <button type="button" className="btn" onClick={() => setWide(null)}>
+              Cancel
+            </button>
+          </p>
+        )}
       </section>
       <section>
         <h3>Picture</h3>
@@ -758,6 +922,18 @@ function Choices({
               disabled={busy || unit.kind === "undesigned"}
               onChange={(level) => void setLevel(level)}
             />
+            {!presenterOff && lead && (
+              <Seg<Presence>
+                label="Where the picture sits"
+                value={lead.presence}
+                options={[
+                  ["both", "Beside you"],
+                  ["content", "Full screen"],
+                ]}
+                disabled={busy}
+                onChange={(presence) => void setPlace(presence)}
+              />
+            )}
             <small>
               {unit.kind === "undesigned"
                 ? "A picture is being planned for this line."
@@ -773,7 +949,7 @@ function Choices({
       {(line.cues?.length || line.shows) && (
         <details className="ep-more">
           <summary>
-            More <span>{line.cues?.length ? `${line.cues.length} ${line.cues.length === 1 ? "step" : "steps"}` : ""}</span>
+            Motion <span>{line.cues?.length ? `${line.cues.length} ${line.cues.length === 1 ? "step" : "steps"}` : ""}</span>
           </summary>
           {line.shows && <p className="ep-shows">{line.shows}</p>}
           {line.cues && line.cues.length > 0 && (
@@ -784,6 +960,56 @@ function Choices({
                 </li>
               ))}
             </ol>
+          )}
+        </details>
+      )}
+      {bringsIn && (
+        <details className="ep-more">
+          <summary>
+            Transition <span>{TRANSITIONS[move] ?? "Cut"}</span>
+          </summary>
+          <span className="ep-looks" role="group" aria-label="How the picture comes in">
+            {view.options.transitions.map((id) => (
+              <button type="button" key={id} aria-pressed={move === id} disabled={busy} onClick={() => move !== id && void choose({ frames: { [line.id]: { transition: id === planMove ? null : id } } })}>
+                {TRANSITIONS[id] ?? id}
+              </button>
+            ))}
+          </span>
+          {line.picked?.transition && (
+            <p className="ep-picked">
+              <span>Your pick</span>
+              <button type="button" className="linkish" disabled={busy} onClick={() => void choose({ frames: { [line.id]: { transition: null } } })}>
+                Undo
+              </button>
+            </p>
+          )}
+        </details>
+      )}
+      {drawn && unit && (
+        <details className="ep-more">
+          <summary>
+            Picture type <span>{PICTURES[unit.kind_of_picture] ?? "Picture"}</span>
+          </summary>
+          <span className="ep-looks" role="group" aria-label="What kind of picture it is">
+            {view.options.pictures.map((id) => (
+              <button
+                type="button"
+                key={id}
+                aria-pressed={unit.kind_of_picture === id}
+                disabled={busy}
+                onClick={() => unit.kind_of_picture !== id && void choose({ frames: { [lead.id]: { picture: id === lead.picture ? null : id } } })}
+              >
+                {PICTURES[id] ?? id}
+              </button>
+            ))}
+          </span>
+          {lead.picked?.picture && (
+            <p className="ep-picked">
+              <span>Your pick</span>
+              <button type="button" className="linkish" disabled={busy} onClick={() => void choose({ frames: { [lead.id]: { picture: null } } })}>
+                Undo
+              </button>
+            </p>
           )}
         </details>
       )}

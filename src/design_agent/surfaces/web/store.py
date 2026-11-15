@@ -653,6 +653,12 @@ class Store:
         assert found is not None  # noqa: S101 - written just above
         return found
 
+    def delete_picture(self, episode_id: str, unit: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "DELETE FROM pictures WHERE episode_id = ? AND unit = ?", (episode_id, unit)
+            )
+
     def add_take(self, values: Mapping[str, Any]) -> Row:
         episode_id, chapter, frame = (str(values[k]) for k in ("episode_id", "chapter", "frame"))
         with self._lock:

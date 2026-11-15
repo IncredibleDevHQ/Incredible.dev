@@ -220,6 +220,72 @@ async def test_approving_the_plan_starts_its_pictures(house: AgentHost) -> None:
     assert house.store.thread(view["thread_id"])["status"] == "idle"  # type: ignore[index]
 
 
+async def test_stop_reaches_the_pictures_and_the_ones_that_stopped_are_made_on_request(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    episode_id = await planned(house)
+    # a writer slow enough for a stop to land while its pictures are being made
+    house.episodes.workers[DEMO] = DemoWorker(data_dir=tmp_path, script=SCRIPT, pause=5)
+    house.episodes.approve(episode_id, by="you")
+    await asyncio.sleep(0.05)
+    assert house.episodes.view(episode_id)["pictures"]["making"] > 0
+    house.episodes.stop(episode_id)
+    await settle(lambda: not house.episodes._busy(episode_id))
+    view = house.episodes.view(episode_id)
+    assert {u["picture"]["status"] for u in view["units"]} == {"failed"}
+    assert {u["picture"]["failure"] for u in view["units"]} == {"Stopped."}
+    assert view["pictures"] == {"made": 0, "go": 0, "making": 0, "failed": len(view["units"])}
+    # nothing starts again by itself: a person asks
+    house.episodes.workers[DEMO] = DemoWorker(data_dir=tmp_path, script=SCRIPT, pause=0)
+    house.episodes.make(episode_id, by="you")
+    await settle(lambda: not house.episodes._busy(episode_id))
+    view = house.episodes.view(episode_id)
+    assert {u["picture"]["status"] for u in view["units"]} == {"made"}
+    with pytest.raises(ValueError, match="made or on its way"):
+        house.episodes.make(episode_id, by="you")
+
+
+async def test_a_restart_stops_what_was_under_way_and_the_card_says_where_it_stands(
+    house: AgentHost,
+) -> None:
+    episode_id = await planned(house, level="rich")
+    house.episodes.approve(episode_id, by="you")
+    await settle(lambda: not house.episodes._busy(episode_id))
+    view = house.episodes.view(episode_id)
+    one, other = view["units"][0]["id"], view["units"][1]["id"]
+    # as a process that died mid-work leaves it: a picture half made, the card still "making"
+    house.store.set_picture(episode_id, one, status="making")
+    house.set_asset(view["asset_id"], status="making")
+    house.store.update_thread(view["thread_id"], status="working")
+    house.episodes.restore()
+    after = house.episodes.view(episode_id)
+    stopped = next(u for u in after["units"] if u["id"] == one)["picture"]
+    assert stopped["status"] == "failed" and "restarted" in stopped["failure"]
+    assert next(u for u in after["units"] if u["id"] == other)["picture"]["status"] == "go"
+    # stills still wait for a go, so the card is for review and the thread waits on a person
+    assert house.store.asset(view["asset_id"])["status"] == "review"  # type: ignore[index]
+    assert house.store.thread(view["thread_id"])["status"] == "needs_you"  # type: ignore[index]
+
+
+async def test_a_line_that_loses_its_picture_takes_the_pictures_record_with_it(
+    house: AgentHost,
+) -> None:
+    episode_id = await planned(house, level="rich")
+    house.episodes.approve(episode_id, by="you")
+    await settle(lambda: not house.episodes._busy(episode_id))
+    before = house.episodes.view(episode_id)
+    assert before["pictures"]["go"] == len(before["units"])
+    # a picture the plan no longer has, still waiting for a go nobody can give
+    house.store.set_picture(episode_id, "c9.b9.f9", status="go", sig="gone")
+    assert (
+        house.episodes.card(house.store.episode(episode_id) or {})["pictures"]["go"]
+        == len(before["units"]) + 1
+    )
+    house.episodes._queue_pictures(episode_id)
+    assert house.store.picture(episode_id, "c9.b9.f9") is None
+    assert house.episodes.view(episode_id)["pictures"]["go"] == len(before["units"])
+
+
 async def test_a_rich_picture_waits_for_the_persons_go_and_a_note_builds_it_again(
     house: AgentHost,
 ) -> None:
@@ -364,6 +430,110 @@ async def test_a_pick_is_kept_and_a_new_layout_builds_the_picture_for_its_new_ca
     assert frame["override"]["layout"] == "split"
     undone = house.episodes.choose(episode_id, by="you", change={"clear": [first]})
     assert next(u for u in undone["units"] if u["id"] == unit["id"])["layout"] == "corner-window"
+
+
+async def test_a_layout_is_used_for_the_film_and_a_picture_sits_beside_or_fills(
+    house: AgentHost,
+) -> None:
+    episode_id = await planned(house)
+    house.episodes.approve(episode_id, by="you")
+    await settle(lambda: not house.episodes._busy(episode_id))
+    before = house.episodes.view(episode_id)
+    both = [u for u in before["units"] if u["layout"] == "corner-window"]
+    assert len(both) > 2
+    view = house.episodes.choose(
+        episode_id, by="you", change={"all": {"layouts": {"both": "split"}}}
+    )
+    assert not house.episodes.planning(episode_id), "nobody's place changed: no turn for the writer"
+    moved = [u for u in view["units"] if u["id"] in {b["id"] for b in both}]
+    assert {u["layout"] for u in moved} == {"split"}
+    assert {u["picture"]["status"] for u in moved} == {"queued"}, "each is drawn for its new box"
+    lines = [f for ch in view["plan"]["chapters"] for b in ch["beats"] for f in b["frames"]]
+    assert {
+        f["override"]["scope"] for f in lines if f["layout"] == "split" and not f.get("hold")
+    } == {"film"}
+    await settle(lambda: not house.episodes._busy(episode_id))
+    back = house.episodes.choose(episode_id, by="you", change={"all": {"layouts": {"both": None}}})
+    assert {u["layout"] for u in back["units"]} == {u["layout"] for u in before["units"]}
+    await settle(lambda: not house.episodes._busy(episode_id))
+    # a whole picture goes full screen: every line of it, and the person leaves for those lines
+    unit = next(u for u in back["units"] if len(u["frames"]) > 1)
+    full_screen = house.episodes.choose(
+        episode_id,
+        by="you",
+        change={"frames": {frame: {"presence": "content"} for frame in unit["frames"]}},
+    )
+    lines = {
+        f["id"]: f
+        for ch in full_screen["plan"]["chapters"]
+        for b in ch["beats"]
+        for f in b["frames"]
+    }
+    assert {lines[frame]["presence"] for frame in unit["frames"]} == {"content"}
+    again = next(u for u in full_screen["units"] if u["id"] == unit["id"])
+    assert again["layout"] == "graphic-on-ground" and again["canvas"] == [1920, 1080]
+    with pytest.raises(ValueError, match="not a layout for both"):
+        house.episodes.choose(
+            episode_id, by="you", change={"all": {"layouts": {"both": "full-frame"}}}
+        )
+
+
+async def test_a_picture_type_redraws_one_picture_and_a_transition_only_the_film(
+    house: AgentHost,
+) -> None:
+    episode_id = await planned(house)
+    house.episodes.approve(episode_id, by="you")
+    await settle(lambda: not house.episodes._busy(episode_id))
+    before = house.episodes.view(episode_id)
+    assert before["options"]["pictures"][0] == "diagram"
+    assert before["options"]["transitions"] == ["cut", "push", "crossfade", "zoom-through"]
+    unit = next(u for u in before["units"] if u["kind_of_picture"] == "diagram")
+    view = house.episodes.choose(
+        episode_id, by="you", change={"frames": {unit["id"]: {"picture": "list"}}}
+    )
+    statuses = {u["id"]: u["picture"]["status"] for u in view["units"]}
+    assert statuses.pop(unit["id"]) == "queued" and set(statuses.values()) == {"made"}
+    assert next(u for u in view["units"] if u["id"] == unit["id"])["kind_of_picture"] == "list"
+    await settle(lambda: not house.episodes._busy(episode_id))
+    brief = json.loads(
+        (
+            house.episodes.data_dir
+            / "episodes"
+            / episode_id
+            / "pictures"
+            / f"{picture.composition_id(unit['id'])}.brief.json"
+        ).read_text()
+    )
+    assert brief["picture"]["kind"] == "list" and "kind_chosen_by" in brief["picture"]
+    # how it comes in is the film's business: no picture is drawn again
+    moved = house.episodes.choose(
+        episode_id, by="you", change={"frames": {unit["id"]: {"transition": "zoom-through"}}}
+    )
+    assert {u["picture"]["status"] for u in moved["units"]} == {"made"}
+    line = next(
+        f
+        for ch in moved["plan"]["chapters"]
+        for b in ch["beats"]
+        for f in b["frames"]
+        if f["id"] == unit["id"]
+    )
+    assert line["picked"] == {"picture": "list", "transition": "zoom-through"}
+    # one pick taken back leaves the other
+    undone = house.episodes.choose(
+        episode_id, by="you", change={"frames": {unit["id"]: {"picture": None}}}
+    )
+    line = next(
+        f
+        for ch in undone["plan"]["chapters"]
+        for b in ch["beats"]
+        for f in b["frames"]
+        if f["id"] == unit["id"]
+    )
+    assert line["picked"] == {"transition": "zoom-through"}
+    with pytest.raises(ValueError, match="no picture type"):
+        house.episodes.choose(
+            episode_id, by="you", change={"frames": {unit["id"]: {"picture": "terminal"}}}
+        )
 
 
 async def test_the_film_has_one_look_voice_and_level_chosen_once(house: AgentHost) -> None:
@@ -694,6 +864,10 @@ def test_the_app_serves_an_episode_at_every_address(tmp_path: Path) -> None:
         assert client.get("/api/episodes/ep_missing").status_code == 404
         assert client.post("/api/episodes/ep_missing/approve").status_code == 404
         assert client.post(f"/api/episodes/{episode_id}/film").status_code == 422
+        # nothing stopped, so there is nothing to make again
+        assert client.post(f"/api/episodes/{episode_id}/pictures").status_code == 422
+        assert client.post("/api/episodes/ep_missing/pictures").status_code == 404
+        assert client.post(f"/api/episodes/{episode_id}/stop").json() == {"ok": True}
         chosen = client.post(
             f"/api/episodes/{episode_id}/choices", json={"settings": {"level": "rich"}}
         )
@@ -702,6 +876,22 @@ def test_the_app_serves_an_episode_at_every_address(tmp_path: Path) -> None:
             f"/api/episodes/{episode_id}/choices", json={"settings": {"level": "ornate"}}
         )
         assert bad.status_code == 422
+        # a null is a pick taken back: it reaches the desk as it was sent
+        line = next(
+            f["id"] for ch in view["plan"]["chapters"] for b in ch["beats"] for f in b["frames"]
+        )
+        for change in ({"transition": "push"}, {"transition": None}):
+            sent = client.post(
+                f"/api/episodes/{episode_id}/choices", json={"frames": {line: change}}
+            )
+            assert sent.status_code == 200, sent.text
+        assert (
+            client.post(
+                f"/api/episodes/{episode_id}/choices",
+                json={"frames": {line: {"transition": "wipe"}}},
+            ).status_code
+            == 422
+        )
         canvas = client.get(f"/api/channels/{channel}/canvas").json()
         assert canvas[0]["episodes"][0]["id"] == episode_id
         kinds = {c["id"]: c for c in client.get("/api/catalog").json()["capabilities"]}

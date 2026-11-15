@@ -698,14 +698,21 @@ app's canvas, from a channel's material or a research frame's notes.
   checks before the next. The person approves the plan once.
 - **The studio** is the plan and the recording in one place. Per chapter: the script, the frame
   for the picked line, and that line's choices (who has the frame, the layout, a simple picture
-  or a rich one posed as stills for the person's go). A person's pick is kept beside the plan
-  and applied every time it is read.
+  or a rich one posed as stills for the person's go). A layout may be used for every line of
+  that presence in the chapter or the film; a picture may sit beside the person or fill the
+  screen for all its lines; and the line that brings a picture in may be given another type of
+  picture and another way in (a cut, a push, a crossfade, a zoom). A person's pick is kept
+  beside the plan and applied every time it is read, and taking it back restores the plan's.
 - **Pictures** are HyperFrames sub-compositions built by the writer. Code sets every time in
   them, from the plan's clock while they are posed and from the take's once a chapter is
-  recorded.
+  recorded. A picture is drawn for its layout's box, so a new look for the film redraws every
+  picture: once pictures exist the studio says how many and waits for a yes. Stop ends the
+  pictures under way as well as the plan; the ones that stopped are made again only on request.
 - **A take** per chapter is recorded in the browser or brought as a file. Where each line
   starts in it sets the film's clock for that chapter.
 - **The film** is one HyperFrames page written by code and rendered on the thread's computer.
+  Layouts change at a cut. A picture that comes in by a move is moved as a whole box, by
+  transform and opacity, and the picture before it stays that much longer to leave the same way.
 
 Acceptance: the same plan, picks, takes and pictures render the same film; a recording never
 sends a picture back to its builder; every agent run is in the house's own record, and a turn

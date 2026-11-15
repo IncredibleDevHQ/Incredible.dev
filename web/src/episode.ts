@@ -58,10 +58,25 @@ export const PICTURES: Record<string, string> = {
   "product-output": "Output",
 };
 
+export const TRANSITIONS: Record<string, string> = { none: "Hold", cut: "Cut", push: "Push", crossfade: "Crossfade", "zoom-through": "Zoom in" };
+
 export const mmss = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
 export const linesOf = (chapter: EpisodeChapter): EpisodeFrame[] => chapter.beats.flatMap((b) => b.frames);
 export const chapterName = (chapter: EpisodeChapter) => CHAPTERS[chapter.type ?? ""] ?? "Chapter";
 export const unitOf = (view: EpisodeView, frame: string): EpisodeUnit | undefined => view.units.find((u) => u.frames.includes(frame));
+export const allLines = (view: EpisodeView): { chapter: string; line: EpisodeFrame }[] =>
+  (view.plan?.chapters ?? []).flatMap((c) => linesOf(c).map((line) => ({ chapter: c.id, line })));
+// The lines a layout set for a chapter (or the whole film) reaches: the ones of that presence.
+export const linesIn = (view: EpisodeView, presence: Presence, chapter?: string) =>
+  allLines(view).filter((x) => x.line.presence === presence && (!chapter || x.chapter === chapter));
+// The pictures a layout set that widely would redraw: each is drawn for its first line's box.
+export function redrawnBy(view: EpisodeView, presence: Presence, layout: string, chapter?: string): number {
+  const reached = new Map(linesIn(view, presence, chapter).map((x) => [x.line.id, x.line]));
+  return view.units.filter((u) => {
+    const first = reached.get(u.frames[0]);
+    return first && first.layout !== layout && !(first.override && !first.override.scope);
+  }).length;
+}
 export const takeOf = (view: EpisodeView, chapter: string): EpisodeTake | undefined => view.takes.find((t) => t.kept && t.chapter === chapter && !t.frame);
 export const clockLine = (view: EpisodeView, frame: string): EpisodeLine | undefined => view.clock?.lines.find((l) => l.frame === frame);
 export const spotOf = (view: EpisodeView, layout: string): LayoutSpot =>
@@ -84,6 +99,17 @@ export const STATE_WORDS: Record<ChapterState, string> = {
   ready: "Ready to record",
   recorded: "Recorded",
 };
+
+// Where the film's pictures stand: made, on their way, or stopped until someone asks again.
+export function pictureCount(view: EpisodeView) {
+  const all = view.units.filter((u) => u.kind === "picture");
+  return {
+    all: all.length,
+    made: all.filter((u) => u.picture.status === "go" || (u.picture.status === "made" && !u.picture.stale)).length,
+    making: all.filter((u) => ["queued", "making", "posing"].includes(u.picture.status)).length,
+    stopped: all.filter((u) => u.picture.status === "failed").length,
+  };
+}
 
 // What a picture's state reads as beside its line.
 export function pictureWords(unit: EpisodeUnit): string {

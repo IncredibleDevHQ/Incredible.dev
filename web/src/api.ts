@@ -235,6 +235,9 @@ export type EpisodeOptions = {
   reader: "jev" | "writer" | "demo";
   narrator: boolean;
   geometry: { frame: [number, number]; layouts: Record<string, LayoutSpot> };
+  // What a person may pick for the line that brings a picture in.
+  pictures: string[];
+  transitions: string[];
 };
 export type EpisodeSettings = { seconds: number; presenter: "on" | "off"; theme: string; voice: "live" | "narrator"; level: Level; writer: WriterId };
 export type EpisodeCue = { at: string; object: string; does: string; move?: string; t?: number };
@@ -254,7 +257,10 @@ export type EpisodeFrame = {
   cues?: EpisodeCue[];
   picture?: string;
   transition?: string;
-  override?: { presence: Presence; layout: string; reason: string };
+  // What the person picked over the plan's reading, for the line that brings a picture in.
+  picked?: { picture?: string; transition?: string };
+  // A pick of who has the frame or its layout: the line's own, or one set for its chapter or the film.
+  override?: { presence: Presence; layout: string; reason: string; scope?: "chapter" | "film" };
 };
 export type EpisodeBeat = { id: string; says: string; subtype?: string; type?: string; frames: EpisodeFrame[] };
 export type EpisodeChapter = { id: string; question: string; type?: string; part?: string; beats: EpisodeBeat[]; start: number; seconds: number; words: number };
@@ -324,7 +330,14 @@ export type EpisodeView = EpisodeCard & {
   runs: EpisodeRun[];
   options: EpisodeOptions;
 };
-export type EpisodePick = { presence?: Presence; layout?: string };
+// A pick for a line, a chapter or the film. null takes that pick back and leaves the others.
+export type EpisodePick = {
+  presence?: Presence | null;
+  layout?: string | null;
+  layouts?: Partial<Record<Presence, string | null>>;
+  picture?: string | null;
+  transition?: string | null;
+};
 export type EpisodeChoices = {
   settings?: Partial<EpisodeSettings>;
   frames?: Record<string, EpisodePick>;
@@ -467,6 +480,7 @@ export const api = {
   chooseEpisode: (id: string, body: EpisodeChoices) => call<EpisodeView>("POST", `/api/episodes/${id}/choices`, body),
   planAgain: (id: string, writer: WriterId | "" = "") => call<EpisodeView>("POST", `/api/episodes/${id}/again`, { writer }),
   stopEpisode: (id: string) => call<{ ok: boolean }>("POST", `/api/episodes/${id}/stop`),
+  makePictures: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures`),
   pictureGo: (id: string, unit: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/go`),
   pictureNote: (id: string, unit: string, text: string) =>
     call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/note`, { text }),

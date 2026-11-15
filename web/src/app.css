@@ -941,6 +941,9 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-looks button { height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--ink-2); font-size: 13px; }
 .ep-looks button:hover:not(:disabled) { border-color: var(--line-strong); }
 .ep-looks button[aria-pressed="true"] { background: var(--green-soft); border-color: var(--green); color: var(--green); font-weight: 600; }
+.ep-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-basis: 100%; margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line); font-size: 13px; }
+.ep-confirm span { flex: 1; min-width: 160px; color: var(--ink); }
+.ep-confirm .btn { height: 30px; }
 .ep-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--sunk); border: 1px solid var(--line-soft); }
 .ep-seg.wide { display: flex; }
 .ep-seg.wide button { flex: 1; justify-content: center; }
@@ -1017,14 +1020,17 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-stills-act, .ep-stills-note { display: flex; align-items: center; gap: 8px; }
 .ep-stills-act span { flex: 1; color: var(--amber); font-size: 13px; }
 .ep-stills-note textarea { flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); color: var(--ink); resize: none; outline: none; line-height: 1.45; }
-.ep-choices { display: flex; flex-direction: column; gap: 0; min-height: 0; overflow: auto; }
+.ep-choices { display: flex; flex-direction: column; gap: 0; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
 .ep-choices section { display: grid; gap: 9px; padding: 0 0 18px; }
 .ep-choices h3 { display: flex; align-items: baseline; gap: 8px; margin: 0; color: var(--muted); font-size: 12.5px; font-weight: 600; }
 .ep-choices h3 span { color: var(--ink-2); font-weight: 400; }
 .ep-choices small { color: var(--muted); font-size: 12.5px; line-height: 1.45; }
 .ep-seg .ep-who { margin-top: 0; }
 .ep-seg .ep-who[data-presence="both"]::after { box-shadow: none; }
-.ep-picked { display: flex; gap: 12px; margin: 0; color: var(--muted); font-size: 12.5px; }
+.ep-picked { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; color: var(--muted); font-size: 12.5px; }
+.ep-more .ep-looks, .ep-more .ep-picked { margin: 2px 0 12px 22px; }
+.ep-choices .ep-confirm { padding: 10px; }
+.ep-choices .ep-confirm span { min-width: 100%; }
 .ep-layouts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .ep-layouts button { padding: 0; border: 2px solid transparent; border-radius: 9px; background: none; }
 .ep-layouts button[aria-checked="true"] { border-color: var(--green); }
