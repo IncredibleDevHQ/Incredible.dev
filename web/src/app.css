@@ -226,6 +226,24 @@ button { cursor: pointer; }
   --ui-sel-shadow-menu: var(--shadow);
 }
 :root .brand-select .ui-sel__icon > img { border-radius: 4px; background: #f6f1e7; object-fit: contain; }
+:root :is(.ui-seg, .ui-pop, .ui-kbd) {
+  --aui-ink: var(--ink);
+  --aui-muted: var(--muted);
+  --aui-surface: var(--raised);
+  --aui-subtle: var(--sunk);
+  --aui-border: var(--line-soft);
+  --aui-focus: var(--green);
+  --aui-blue: var(--green);
+  --aui-font: var(--font);
+  --aui-overlay: var(--raised);
+  --aui-shadow-popover: 0 0 0 1px var(--line), var(--shadow);
+  --ui-seg-text: var(--ink-2);
+  --ui-seg-count: var(--wash);
+  --ui-seg-pill-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(0, 0, 0, 0.18);
+  --ui-kbd-depth: var(--line);
+}
+:root .ui-tip { --ui-tip-bg: var(--ink); --ui-tip-ink: var(--bg); --ui-tip-muted: color-mix(in srgb, var(--bg) 70%, transparent); --ui-tip-key: color-mix(in srgb, var(--bg) 14%, transparent); --ui-tip-shadow: var(--shadow); }
+:root .ui-shm-text { --ui-shm-text: var(--muted); --ui-shm-text-glow: var(--ink); }
 /* Reading a brand from a website: the address, then the read as it goes. */
 .read-brand { width: min(820px, 100%); margin: 0 auto; }
 .read-back { display: inline-flex; align-items: center; gap: 5px; margin: 0 0 14px; font-size: 13px; }
@@ -881,6 +899,9 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-bar h2 { grid-column: 2; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 650; }
 .ep-dots { grid-column: 3; display: flex; align-items: center; gap: 6px; }
 .ep-bar > .icon-btn:last-child { grid-column: 5; }
+.ep-now { grid-column: 4; justify-self: end; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ep-now .ep-said { flex: none; font-size: 13px; }
+.ep-now .btn { height: 32px; }
 .ep-film-pill { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; margin-right: 6px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--ink-2); font-size: 13px; font-weight: 600; }
 .ep-film-pill svg { width: 14px; height: 14px; }
 .ep-film-pill[aria-current] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
@@ -921,6 +942,8 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-chapters span { display: grid; gap: 2px; min-width: 0; }
 .ep-chapters strong { font-size: 14px; font-weight: 600; line-height: 1.4; }
 .ep-chapters small { color: var(--muted); font-size: 12.5px; }
+.ep-chapters button:has(.ep-touched) { grid-template-columns: 28px 1fr auto; }
+.ep-touched { align-self: center; padding: 2px 8px; border-radius: 999px; background: var(--green-soft); color: var(--green); font-size: 11.5px; font-style: normal; font-weight: 600; }
 .ep-num { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; border: 1.5px solid var(--line-strong); color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
 .ep-num[data-state="recorded"] { border-color: var(--green); background: var(--green); color: var(--green-ink); }
 .ep-num[data-state="go"], .ep-num[data-state="failed"] { border-color: var(--amber); color: var(--amber); }
@@ -941,6 +964,11 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-looks button { height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--ink-2); font-size: 13px; }
 .ep-looks button:hover:not(:disabled) { border-color: var(--line-strong); }
 .ep-looks button[aria-pressed="true"] { background: var(--green-soft); border-color: var(--green); color: var(--green); font-weight: 600; }
+/* the film's look, picked by what it does to a frame: a small picture of its usual one, named */
+.ep-look-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; width: 100%; }
+.ep-look-tiles button { display: grid; gap: 6px; padding: 5px 5px 7px; border: 1px solid var(--line-soft); border-radius: 10px; background: none; color: var(--ink-2); font-size: 12.5px; line-height: 1.3; text-align: left; }
+.ep-look-tiles button:hover:not(:disabled) { border-color: var(--line-strong); }
+.ep-look-tiles button[aria-pressed="true"] { border-color: var(--green); background: var(--green-soft); color: var(--green); font-weight: 600; }
 .ep-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-basis: 100%; margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line); font-size: 13px; }
 .ep-confirm span { flex: 1; min-width: 160px; color: var(--ink); }
 .ep-confirm .btn { height: 30px; }
@@ -973,10 +1001,36 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-unit { margin: 10px 10px 4px; color: var(--green); font-size: 12px; font-weight: 600; }
 .ep-unit[data-status="go"], .ep-unit[data-status="failed"] { color: var(--amber); }
 .ep-unit[data-status="queued"], .ep-unit[data-status="making"], .ep-unit[data-status="posing"], .ep-unit[data-status="none"] { color: var(--muted); }
+.ep-line-card { position: relative; border: 1px solid transparent; border-radius: 12px; }
+.ep-line-card[data-current] { background: var(--raised); border-color: var(--line); box-shadow: var(--card-shadow); }
+/* under the picked line's words: where it stands (recorded, to be said again), and its tools */
+.ep-line-card[data-current] .ep-line { padding-bottom: 3px; }
+.ep-line-foot { display: flex; align-items: center; gap: 2px; min-height: 28px; padding: 0 5px 5px 40px; }
+.ep-line-foot small { flex: 1; min-width: 0; color: var(--muted); font-size: 12px; }
+.ep-line-foot small[data-tone="amber"] { color: var(--amber); font-weight: 600; }
+.ep-line-foot .icon-btn { width: 28px; height: 28px; color: var(--muted); }
+.ep-line-foot .icon-btn:hover:not(:disabled) { color: var(--ink); }
+.ep-line-foot svg { width: 14px; height: 14px; }
+/* what the last change did, laid into the script: the words that went are struck and faint,
+   the words that came in sit on a soft green, and a line that was cut stays as a ghost */
+.ep-line .ep-diff { display: block; overflow: visible; -webkit-line-clamp: unset; }
+.ep-diff del { color: var(--faint); text-decoration-color: var(--line-strong); }
+.ep-diff ins { padding: 1px 3px; border-radius: 4px; background: var(--green-soft); color: var(--ink); text-decoration: none; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.ep-line-cut { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: baseline; padding: 6px 10px; color: var(--faint); font-size: 13.5px; line-height: 1.5; }
+.ep-line-cut del { grid-column: 2; text-decoration-color: var(--line-strong); }
+.ep-line-cut small { color: var(--faint); font-size: 11.5px; font-weight: 600; }
+.ep-line em { align-self: center; width: 6px; height: 6px; border-radius: 999px; background: var(--green); }
+.ep-line small[data-tone="amber"] { color: var(--amber); font-weight: 600; white-space: nowrap; }
+.ep-line-edit { display: grid; gap: 6px; padding: 9px 10px 8px 40px; border: 1px solid var(--focus-line); border-radius: 12px; background: var(--raised); box-shadow: var(--card-shadow); }
+.ep-line-edit textarea { display: block; width: 100%; padding: 0; border: 0; outline: 0; background: none; color: var(--ink); font: inherit; line-height: 1.5; resize: none; overflow: hidden; }
+.ep-line-edit p { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin: 0; color: var(--muted); font-size: 12px; }
+.ep-line-edit p span { display: inline-flex; align-items: center; gap: 5px; }
+.ep-unit[data-status="planned"] { color: var(--muted); }
 .ep-line { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: start; width: 100%; padding: 9px 10px; border: 1px solid transparent; border-radius: 12px; background: none; color: var(--ink-2); text-align: left; font-size: 13.5px; line-height: 1.5; }
 .ep-line span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .ep-line:hover:not(:disabled) { background: var(--wash); }
-.ep-line[aria-current] { background: var(--raised); border-color: var(--line); color: var(--ink); box-shadow: var(--card-shadow); }
+.ep-line[aria-current] { color: var(--ink); }
+.ep-line[aria-current]:hover:not(:disabled) { background: none; }
 .ep-line[aria-current] span { -webkit-line-clamp: unset; }
 .ep-line small { color: var(--green); font-weight: 700; }
 .ep-line:disabled { cursor: default; }
@@ -987,8 +1041,66 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-who[data-presence="content"]::before { left: 2px; top: 1px; width: 18px; height: 12px; border-radius: 2px; background: var(--green); }
 .ep-who[data-presence="both"]::before { left: 0; top: 2px; width: 14px; height: 10px; border-radius: 2px; background: var(--green); }
 .ep-who[data-presence="both"]::after { left: 12px; top: 4px; width: 10px; height: 10px; border-radius: 999px; background: var(--ink-2); box-shadow: 0 0 0 1.5px var(--bg); }
+/* the change bar: say what should change, of the line, its picture, the chapter or the film */
+.ep-ask { display: grid; gap: 8px; padding: 12px 2px 0; border-top: 1px solid var(--line-soft); }
+.ep-film-left .ep-ask { padding: 0; border-top: 0; }
+.ep-ask-working { display: flex; align-items: center; gap: 10px; }
+.ep-ask-working p { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; margin: 0; font-size: 13.5px; }
+.ep-ask-working :is(q, .faint) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ep-ask-working q { color: var(--ink-2); }
+.ep-ask-working .faint { color: var(--muted); font-size: 12.5px; }
+.ep-ask-working .btn { height: 30px; }
+/* how long a turn has run: digits of one width, so nothing beside them moves */
+.ep-elapsed { flex: none; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+/* what was asked while the writer was busy: it waits here, in the order it will be asked */
+.ep-ask-next { display: grid; gap: 1px; max-height: 84px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.ep-ask-next li { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 26px; color: var(--ink-2); font-size: 12.5px; }
+.ep-ask-next small { color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ep-ask-next span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ep-ask-next b { margin-right: 4px; color: var(--muted); font-weight: 600; }
+:is(.ep-ask-next, .ep-ask-note) .icon-btn { width: 22px; height: 22px; }
+:is(.ep-ask-next, .ep-ask-note) .icon-btn svg { width: 13px; height: 13px; }
+.ep-ask-note { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--muted); font-size: 12.5px; }
+.ep-ask-note[data-tone="red"] { color: var(--red); line-height: 1.45; }
+.ep-ask-note span { flex: 1; min-width: 0; }
+.ep-ask-note .linkish { display: inline-flex; align-items: center; gap: 4px; }
+.ep-ask-note svg { width: 13px; height: 13px; }
+.ep-ask-box { position: relative; display: grid; grid-template-columns: 1fr 30px; align-items: end; gap: 6px; padding: 7px 7px 7px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--sunk); transition: border-color 120ms ease; }
+.ep-ask-box[data-focus] { border-color: var(--focus-line); }
+.ep-ask-scope { grid-column: 1 / -1; position: relative; justify-self: start; }
+.ep-ask-scope > button { display: inline-flex; align-items: center; gap: 3px; height: 22px; padding: 0 4px 0 0; border: 0; background: none; color: var(--muted); font-size: 12px; font-weight: 600; }
+.ep-ask-scope > button:hover { color: var(--ink); }
+.ep-ask-scope svg { width: 12px; height: 12px; }
+.ep-ask-box textarea { min-height: 22px; padding: 2px 0; border: 0; outline: 0; background: none; color: var(--ink); font: inherit; line-height: 1.45; resize: none; }
+.ep-ask-box textarea::placeholder { color: var(--faint); }
+.ep-ask-key { justify-self: end; align-self: center; margin: 0 5px 4px 0; }
+.ep-ask-send { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 999px; background: var(--green); color: var(--green-ink); }
+.ep-ask-send:disabled { background: var(--line); color: var(--muted); cursor: default; }
+/* while the writer works the button does not send: it puts the words in line */
+.ep-ask-send[data-next]:not(:disabled) { background: var(--raised); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--ink); }
+.ep-ask-send svg { width: 15px; height: 15px; }
+.ep-menu [role="menu"] { display: grid; gap: 1px; margin: -6px; }
+.ep-menu [role="menu"] p { margin: 0; padding: 8px 10px 4px; color: var(--muted); font-size: 11.5px; font-weight: 600; }
+.ep-menu [role="menuitemradio"] { min-height: 32px; padding: 6px 10px; border: 0; border-radius: 8px; background: none; color: var(--ink-2); font-size: 13px; line-height: 1.35; text-align: left; }
+.ep-menu [role="menuitemradio"]:hover { background: var(--wash); }
+.ep-menu [role="menuitemradio"][aria-checked="true"] { color: var(--green); font-weight: 600; }
+.ep-ask-menu [role="menu"] { display: grid; gap: 1px; margin: -6px; }
+.ep-ask-menu [role="menuitemradio"] { height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: var(--ink-2); font-size: 13px; text-align: left; }
+.ep-ask-menu [role="menuitemradio"]:hover { background: var(--wash); }
+.ep-ask-menu [role="menuitemradio"][aria-checked="true"] { color: var(--green); font-weight: 600; }
+.ep-ask-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.ep-ask-presets button { height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--ink-2); font-size: 12.5px; }
+.ep-ask-presets button:hover { border-color: var(--line-strong); color: var(--ink); }
+.ep-picture-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ep-choices .ep-shows { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .ep-middle { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; overflow: auto; }
-.ep-stage-wrap { position: relative; }
+.ep-stage-wrap { position: relative; border-radius: 14px; }
+/* a place a file can be dropped on: it shows itself while a file is over the window, and says
+   what a drop there does; over the place itself it turns green */
+.drop { position: relative; }
+.drop-veil { position: absolute; inset: 0; z-index: 6; display: grid; place-content: center; justify-items: center; gap: 8px; padding: 16px; border: 1.5px dashed var(--line-strong); border-radius: inherit; background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--ink-2); font-size: 13.5px; font-weight: 600; text-align: center; pointer-events: none; }
+.drop-veil svg { width: 20px; height: 20px; }
+.drop[data-over] .drop-veil { border-style: solid; border-color: var(--green); background: color-mix(in srgb, var(--green-soft) 90%, transparent); color: var(--green); }
 .ep-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 14px; border: 1px solid var(--line); background: #f3efe6; container-type: inline-size; }
 .ep-stage-pic, .ep-stage-person { position: absolute; overflow: hidden; }
 .ep-stage-pic { z-index: 1; background: #ffffff; }
@@ -1009,9 +1121,18 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-pos { min-width: 86px; text-align: center; color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
 .ep-gap { flex: 1; }
 .ep-timer { font-size: 15px; font-variant-numeric: tabular-nums; }
+/* the time the take was planned to run, beside the time it has run; amber once it is well over */
+.ep-planned { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.ep-planned[data-over] { color: var(--amber); }
+/* the microphone's level: a short track that fills with the voice */
+.ep-level { position: relative; flex: none; display: inline-block; width: 40px; height: 6px; overflow: hidden; border-radius: 999px; background: var(--line); }
+.ep-level::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--green); transform: scaleX(var(--level, 0)); transform-origin: left; transition: transform 60ms linear; }
+.ep-devices { position: relative; display: inline-flex; }
+.ep-devices .btn { gap: 8px; height: 36px; padding: 0 11px; }
+.ep-devices .btn svg:last-child { width: 13px; height: 13px; color: var(--muted); }
 .ep-live-dot { width: 10px; height: 10px; border-radius: 999px; background: var(--red); animation: ep-pulse 1.2s ease-in-out infinite; }
 @keyframes ep-pulse { 50% { opacity: 0.35; } }
-.ep-recbar kbd { margin-left: 4px; padding: 1px 6px; border-radius: 5px; background: rgba(0, 0, 0, 0.18); font: 600 11px var(--font); }
+.ep-recbar .ui-kbd { margin-left: 4px; --ui-kbd-bg: rgba(0, 0, 0, 0.16); --ui-kbd-line: transparent; --ui-kbd-depth: transparent; --ui-kbd-ink: currentColor; }
 .ep-stills { display: grid; gap: 10px; padding: 12px; border-radius: 14px; background: var(--amber-soft); }
 .ep-stills-row { display: flex; gap: 8px; overflow-x: auto; }
 .ep-stills-row button { flex: none; width: 148px; aspect-ratio: 16 / 9; padding: 0; overflow: hidden; border: 2px solid transparent; border-radius: 8px; background: #fff; }
@@ -1028,6 +1149,8 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-seg .ep-who { margin-top: 0; }
 .ep-seg .ep-who[data-presence="both"]::after { box-shadow: none; }
 .ep-picked { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; color: var(--muted); font-size: 12.5px; }
+.ep-picked[data-rows] { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; line-height: 1.5; }
+.ep-picked[data-rows] > span:last-child { grid-column: 1 / -1; }
 .ep-more .ep-looks, .ep-more .ep-picked { margin: 2px 0 12px 22px; }
 .ep-choices .ep-confirm { padding: 10px; }
 .ep-choices .ep-confirm span { min-width: 100%; }
@@ -1044,7 +1167,15 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-choices footer { display: flex; align-items: center; gap: 10px; margin-top: auto; padding: 12px 0 0; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 12.5px; }
 .ep-choices footer span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ep-say { display: grid; gap: 16px; align-content: start; min-height: 0; overflow: auto; }
-.ep-say-now { margin: 0; font-size: 22px; line-height: 1.45; letter-spacing: -0.005em; }
+.ep-say header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ep-say header .ep-kicker { margin: 0; }
+/* the size of the words to say: a small A and a large one */
+.ep-say-size { display: inline-flex; align-items: baseline; gap: 2px; }
+.ep-say-size button { width: 28px; height: 28px; border: 0; border-radius: 8px; background: none; color: var(--muted); font-size: 12px; font-weight: 600; }
+.ep-say-size button:last-child { font-size: 17px; }
+.ep-say-size button:hover:not(:disabled) { background: var(--raised); color: var(--ink); }
+.ep-say-size button:disabled { color: var(--line-strong); cursor: default; }
+.ep-say-now { margin: 0; font-size: var(--say, 22px); line-height: 1.45; letter-spacing: -0.005em; }
 .ep-say-next { margin: 0; color: var(--faint); font-size: 15px; line-height: 1.5; }
 
 /* an episode's card on the canvas, and the sheet it starts from */
@@ -1059,6 +1190,8 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-new-row > span:first-child { color: var(--muted); font-size: 12.5px; font-weight: 600; }
 .ep-new-row > span:first-child b { margin-left: 6px; color: var(--ink); font-variant-numeric: tabular-nums; }
 .ep-new-row input[type="range"] { width: 100%; accent-color: var(--green); }
+.ep-new-rest { display: flex; align-items: baseline; gap: 10px; margin: 0; padding-top: 12px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 13px; }
+.ep-new-rest span { flex: 1; min-width: 0; }
 .ep-new-foot { display: flex; justify-content: flex-end; gap: 8px; padding-top: 20px; }
 @media (max-width: 1100px) {
   .ep-film, .ep-plan { grid-template-columns: minmax(0, 1fr); gap: 28px; }

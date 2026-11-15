@@ -71,16 +71,48 @@ def units(full: Row, picks: Row | None = None, *, level: str = SIMPLE) -> list[R
         unit["suggest"] = RICH if len(frames) >= RICH_LINES and cues >= RICH_CUES else SIMPLE
         picked = (chosen.get(unit["id"]) or {}).get("level")
         unit["level"] = picked if picked in LEVELS else level
-        built_from: Row = {
-            "theme": theme,
-            "canvas": unit["canvas"],
-            "layout": unit["layout"],
-            "frames": [_built_from(f) for f in frames],
-        }
+        built_from: Row = {"theme": theme, "canvas": unit["canvas"], "layout": unit["layout"]}
         if retyped:  # only a pick is part of it, so a picture made before picks existed stands
             built_from["picture"] = unit["picture"]
-        unit["sig"] = digest(json.dumps(built_from, sort_keys=True, ensure_ascii=False))
+        # What a picture is drawn from holds no spoken word: the words, and the word each step
+        # lands on, only move its clock. So a line said another way keeps its picture, whoever
+        # reworded it. `sig_was` is the signature pictures were kept under before that was so
+        # (it counted the words); one made then still stands while its words do.
+        unit["sig"] = digest(
+            json.dumps(
+                {**built_from, "frames": [_drawn_from(f) for f in frames]},
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+        )
+        unit["sig_was"] = digest(
+            json.dumps(
+                {**built_from, "frames": [_built_from(f) for f in frames]},
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+        )
     return out
+
+
+def same(sig: str, unit: Row) -> bool:
+    """Whether a picture kept under `sig` was drawn from the unit as it stands."""
+    return bool(sig) and sig in (unit["sig"], unit["sig_was"])
+
+
+def _drawn_from(f: Row) -> Row:
+    """What of a frame a picture is drawn from: what it shows, its objects, and what each step
+    does. Not its words, and not the word a step lands on."""
+    return {
+        "id": f["id"],
+        "shows": f.get("shows", ""),
+        "focal": f.get("focal", ""),
+        "objects": [
+            {k: o.get(k) for k in ("id", "what", "words", "state", "type")}
+            for o in f.get("objects", [])
+        ],
+        "cues": [{k: c.get(k) for k in ("object", "does", "move")} for c in f.get("cues", [])],
+    }
 
 
 def _unit(ch: Row, f: Row, kind: str) -> Row:
@@ -88,20 +120,25 @@ def _unit(ch: Row, f: Row, kind: str) -> Row:
 
 
 def _built_from(f: Row) -> Row:
-    """What of a frame a picture is built from. Its seconds are not part of it: a take changes
-    when things land, never what is drawn."""
+    """What a picture was kept under before its words were left out (`sig_was`): the frame
+    with its words. A person's words for the line never counted, so a picture made then
+    stands when a person rewords its line."""
+    was = f.get("by_person") or {}
+    cues = [{k: c.get(k) for k in ("at", "object", "does", "move")} for c in f.get("cues", [])]
+    landed = was.get("cues") or []
+    if len(landed) == len(cues):
+        for cue, at in zip(cues, landed, strict=True):
+            cue["at"] = at
     return {
         "id": f["id"],
-        "vo": f.get("vo", ""),
+        "vo": was.get("was") or f.get("vo", ""),
         "shows": f.get("shows", ""),
         "focal": f.get("focal", ""),
         "objects": [
             {k: o.get(k) for k in ("id", "what", "words", "state", "type")}
             for o in f.get("objects", [])
         ],
-        "cues": [
-            {k: c.get(k) for k in ("at", "object", "does", "move")} for c in f.get("cues", [])
-        ],
+        "cues": cues,
     }
 
 

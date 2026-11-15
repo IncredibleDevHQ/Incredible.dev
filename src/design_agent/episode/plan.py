@@ -107,6 +107,8 @@ def merged(plan: Row, labels: Row | None = None) -> Row:
                 f.setdefault("id", f"{b['id']}.f{i + 1}")
                 if "vo" not in f and len(b["frames"]) == 1:
                     f["vo"] = b.get("says", "")
+                if len(b["frames"]) == 1 and b.get("by_person") and "by_person" not in f:
+                    f["by_person"] = b["by_person"]  # the beat's one line is the person's words
                 _label_frame(f, b, labels)
                 pick = plan["_overrides"].get("frames", {}).get(f["id"], {})
                 picked = {k: pick[k] for k in PICKED_KEYS if pick.get(k)}
@@ -114,6 +116,142 @@ def merged(plan: Row, labels: Row | None = None) -> Row:
                     f["picked"] = picked
     inherit_holds(plan)
     return plan
+
+
+def beat_of(plan: Row, frame_id: str) -> tuple[Row, Row, Row | None] | None:
+    """The chapter, the beat and (where the writer wrote one) the frame a frame id names, in
+    the writer's own plan."""
+    for ch in plan.get("chapters", []):
+        for b in ch.get("beats", []):
+            frames = b.get("frames") or []
+            if not frames and frame_id == f"{b.get('id')}.f1":
+                return ch, b, None
+            for i, f in enumerate(frames):
+                if str(f.get("id") or f"{b.get('id')}.f{i + 1}") == frame_id:
+                    return ch, b, f
+    return None
+
+
+def reword(plan: Row, frame_id: str, text: str, *, at: float) -> str:
+    """Put a person's words on one line of the plan, in place, and return the words they
+    replace. The line keeps what it was drawn from under `by_person` (the writer's words, and
+    the word each cue landed on), so a change of words alone never sends its picture back."""
+    found = beat_of(plan, frame_id)
+    if found is None:
+        raise KeyError(frame_id)
+    _ch, b, f = found
+    frames = b.get("frames") or []
+    alone = len(frames) <= 1
+    holder = b if alone or f is None else f
+    old = str(b.get("says", "")) if alone or f is None else str(f.get("vo", ""))
+    mark = dict(holder.get("by_person") or {})
+    mark.setdefault("was", old)
+    mark.setdefault("cues", [str(c.get("at", "")) for c in (f or {}).get("cues", [])])
+    mark["at"] = at
+    holder["by_person"] = mark
+    if alone or f is None:
+        b["says"] = text
+        if f is not None and "vo" in f:
+            f["vo"] = text
+    else:
+        f["vo"] = text
+        b["says"] = " ".join(str(x.get("vo", "")).strip() for x in frames).strip()
+    return old
+
+
+def _designed_as(f: Row) -> Row:
+    """What of a frame is designed: whether it holds, what it shows, its objects and what its
+    steps do. Not its words."""
+    return {
+        "hold": bool(f.get("hold")) and not f.get("_auto_hold"),
+        "shows": f.get("shows") or "",
+        "objects": [(o.get("id"), o.get("what")) for o in f.get("objects", [])],
+        "cues": [(c.get("object"), c.get("does")) for c in f.get("cues", [])],
+    }
+
+
+def carried(labels: Row, before: Row, after: Row, *, frames_only: bool = False) -> Row:
+    """The labels of `before`, tied again to `after`: the same plan with some words changed.
+
+    A person who rewords a line keeps what the line does, so nothing is read again: who has
+    the frame stays, and so does its picture. With `frames_only` (a change the writer made at a
+    person's request) the same holds for every line the writer did not redesign: its frame
+    stays whose it was, however the new words would read, while what its chapter and beat do
+    is read again, and so is a line that was given, or lost, a picture."""
+    was = merged(before, labels)
+    now = merged(after, labels)
+    old_chapters = {ch["id"]: ch for ch in was.get("chapters", [])}
+    old_beats = {b["id"]: b for _, b in beats_of(was)}
+    old_frames = {f["id"]: f for _, _, f in frames_of(was)}
+    for ch in now.get("chapters", []):
+        had = old_chapters.get(ch["id"])
+        if not frames_only and had is not None and "type" not in ch and "type" in had:
+            ch.update(take(had, CHAPTER_KEYS))
+        for b in ch.get("beats", []):
+            had = old_beats.get(b["id"])
+            if not frames_only and had is not None and "subtype" not in b and "subtype" in had:
+                b.update(take(had, BEAT_KEYS))
+            for f in b.get("frames", []):
+                had = old_frames.get(f["id"])
+                if had is None:
+                    continue
+                if frames_only and _designed_as(had) != _designed_as(f):
+                    continue  # the writer redesigned it: it is read as a new line is
+                if "presence" not in f and "presence" in had:
+                    f.update(take(had, FRAME_KEYS))
+                if had.get("_designed") and not f.get("_designed"):
+                    f["_designed"] = True
+                    f.update(
+                        take(had, ("picture", "picture_p", "arrangement", "relation", "transition"))
+                    )
+                    by_id = {o.get("id"): o for o in had.get("objects", [])}
+                    for o in f.get("objects", []):
+                        src = by_id.get(o.get("id"))
+                        if src is not None and "type" in src and "type" not in o:
+                            o.update(take(src, OBJECT_KEYS))
+                    for k, c in enumerate(f.get("cues", [])):
+                        src_cues = had.get("cues") or []
+                        if k < len(src_cues) and "move" in src_cues[k] and "move" not in c:
+                            c.update(take(src_cues[k], CUE_KEYS))
+    return labels_of(now)
+
+
+def picks_kept(then: Row, now: Row, plan_then: Row, plan_now: Row, taken: Row | None = None) -> Row:
+    """A person's picks when a change is taken back, or put back: the plan goes to how it
+    stood (`plan_then`, picked as `then`) from how it stands (`plan_now`, picked as `now`).
+
+    A change in words never touches a pick, so the picks stand as they are now. A line or a
+    chapter that comes back with the plan brings its own, and one that goes takes its own with
+    it. `taken` is a pick that is itself what goes back (it needed the writer, who planned a
+    picture for it): what it named is as it was then."""
+    taken = taken or {}
+    cleared = set(taken.get("clear") or [])
+    out: Row = {k: copy.deepcopy(v) for k, v in now.items() if k not in ("frames", "chapters")}
+    if "all" in taken:
+        out.pop("all", None)
+        if then.get("all"):
+            out["all"] = copy.deepcopy(then["all"])
+    for kind, ids, here in (
+        (
+            "frames",
+            [f["id"] for _, _, f in frames_of(plan_then)],
+            {f["id"] for _, _, f in frames_of(plan_now)},
+        ),
+        (
+            "chapters",
+            [ch["id"] for ch in plan_then.get("chapters", [])],
+            {ch["id"] for ch in plan_now.get("chapters", [])},
+        ),
+    ):
+        kept: Row = {}
+        for key in ids:
+            as_then = key not in here or key in taken.get(kind, {}) or key in cleared
+            pick = (then if as_then else now).get(kind, {}).get(key)
+            if pick:
+                kept[key] = copy.deepcopy(pick)
+        if kept:
+            out[kind] = kept
+    return out
 
 
 def picture_of(f: Row) -> str:

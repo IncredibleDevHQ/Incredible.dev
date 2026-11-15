@@ -2,57 +2,61 @@
 // film, each chapter as a numbered dot and the one thing to do next. The film's page is the
 // chapters beside the film so far, with the look, the voice and the pictures' level as three
 // rows. A chapter is three columns and nothing else: its script, the frame for the line that is
-// picked, and that line's choices. Recording happens in the same screen.
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Circle, Clapperboard, Play, RotateCcw, Square, Upload, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type EpisodeChapter, type EpisodeChoices, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Level, type Presence, type WriterId } from "../../api";
-import {
-  allLines,
-  chapterName,
-  chapterState,
-  clockLine,
-  LAYOUTS,
-  linesIn,
-  linesOf,
-  LOOKS,
-  mmss,
-  pictureCount,
-  PICTURES,
-  pictureWords,
-  PRESENCE,
-  redrawnBy,
-  STATE_WORDS,
-  takeOf,
-  TRANSITIONS,
-  unitOf,
-} from "../../episode";
+// picked, and that line's choices. Words are changed where they are read; anything else is
+// asked for in the change bar under the script. Recording happens in the same screen.
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Circle, Clapperboard, Mic, Pencil, Play, RotateCcw, Square, Undo2, Upload, X } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { api, type EpisodeChapter, type EpisodeChoices, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type WriterId } from "../../api";
+import { chapterName, chapterState, clockLine, linesOf, LOOKS, mmss, pictureCount, PICTURES, pictureWords, PRESENCE, STATE_WORDS, takeOf, unitOf } from "../../episode";
 import { useHouse } from "../../store";
 import { AgentMark } from "../../ui";
+import { FileDrop } from "../FileDrop";
+import { Kbd } from "../Kbd";
 import { ProgressTracker } from "../ProgressTracker";
+import { SegmentedControl } from "../SegmentedControl";
+import { Tooltip } from "../Tooltip";
+import { Ask, Elapsed, turning, useWaiting, type AskHandle, type AskTarget, type Marks, type Run, type Waiting } from "./Ask";
+import { Choices } from "./Choices";
+import { Devices, Level } from "./Devices";
+import { Changed } from "./Diff";
 import { useRecorder, type Recording } from "./recorder";
 import { LayoutThumb, Stage, type Playing } from "./Stage";
 
 const FILM = "film";
 const WRITERS: Record<string, string> = { claude: "Claude Code", codex: "Codex", kimi: "Kimi Code", builtin: "the built-in agent", demo: "the demo's writer" };
-const PRESENCES: Presence[] = ["person", "both", "content"];
 
 export function EpisodeStudio() {
   const view = useHouse((s) => s.episode);
   const openEpisode = useHouse((s) => s.openEpisode);
   const [at, setAt] = useState<string>(FILM);
+  // The chapter that opens next is to be recorded at once: the run-through, once the choices are made.
+  const [recordNext, setRecordNext] = useState(false);
   const [busy, setBusy] = useState(false);
+  const go = useCallback((to: string, record = false) => {
+    setRecordNext(record);
+    setAt(to);
+  }, []);
 
   // Every change goes to the server and comes back as the whole episode.
-  const run = useCallback(async (call: () => Promise<EpisodeView>) => {
+  const run = useCallback<Run>(async (call) => {
     setBusy(true);
     try {
       useHouse.getState().setEpisode(await call());
+      return true;
     } catch (error) {
       useHouse.getState().say((error as Error).message);
+      return false;
     } finally {
       setBusy(false);
     }
   }, []);
+  const waiting = useWaiting(view);
+  // What the last change did is marked in the script when it lands here, and not for a change
+  // that was already there when the studio opened. `quiet` is the change whose marks are off.
+  const [quiet, setQuiet] = useState<number | null | "unseen">("unseen");
+  const landed = view?.last_change?.at ?? null;
+  if (view && quiet === "unseen") setQuiet(landed);
+  const marks: Marks = { on: quiet !== "unseen" && landed !== null && landed !== quiet, set: (on) => setQuiet(on ? null : landed) };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -61,6 +65,23 @@ export function EpisodeStudio() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [openEpisode]);
+
+  // Undo and its reverse on the keys every editor has them on, wherever the caret is not in a
+  // field (there they are the field's own).
+  useEffect(() => {
+    if (!view) return;
+    const onKey = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || (key !== "z" && key !== "y")) return;
+      if ((e.target as HTMLElement).closest("textarea, input, [contenteditable]") || document.querySelector(".ep-chapter[data-recording]")) return;
+      const back = key === "z" && !e.shiftKey;
+      if (busy || turning(view) || !(back ? view.last_change : view.undone)) return;
+      e.preventDefault();
+      void run(() => (back ? api.undoEpisode(view.id) : api.redoEpisode(view.id)));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [view, busy, run]);
 
   if (!view) {
     return (
@@ -76,28 +97,39 @@ export function EpisodeStudio() {
   const ready = plan !== null && view.status !== "planning" && view.status !== "failed";
   return (
     <div className="ep" role="dialog" aria-modal="true" aria-label={`Episode: ${view.title}`}>
-      <Bar view={view} at={chapter ? chapter.id : FILM} onAt={setAt} onClose={() => void openEpisode(null)} />
+      <Bar view={view} ready={ready} at={chapter ? chapter.id : FILM} onAt={go} onClose={() => void openEpisode(null)} run={run} busy={busy} />
       {!ready || !plan ? (
         <Planning view={view} run={run} busy={busy} />
       ) : chapter ? (
-        <Chapter key={chapter.id} view={view} chapter={chapter} run={run} busy={busy} onAt={setAt} />
+        <Chapter
+          key={chapter.id}
+          view={view}
+          chapter={chapter}
+          run={run}
+          busy={busy}
+          record={recordNext}
+          onAt={go}
+          waiting={waiting}
+          marks={marks}
+        />
       ) : (
-        <FilmPage view={view} run={run} busy={busy} onAt={setAt} />
+        <FilmPage view={view} run={run} busy={busy} onAt={go} waiting={waiting} />
       )}
     </div>
   );
 }
 
-type Run = (call: () => Promise<EpisodeView>) => Promise<void>;
-
-// The film, the chapters as dots, and nothing else: each page puts its own next step below.
-function Bar({ view, at, onAt, onClose }: { view: EpisodeView; at: string; onAt: (at: string) => void; onClose: () => void }) {
-  const chapters = view.status === "planning" || view.status === "failed" ? [] : (view.plan?.chapters ?? []);
+// The film, the chapters as dots, and the one thing to do next. A chapter opens as soon as the
+// plan is written, so it is read, and changed, before any picture is made.
+function Bar({ view, ready, at, onAt, onClose, run, busy }: { view: EpisodeView; ready: boolean; at: string; onAt: (at: string) => void; onClose: () => void; run: Run; busy: boolean }) {
+  const chapters = ready ? (view.plan?.chapters ?? []) : [];
   return (
     <header className="ep-bar">
-      <button type="button" className="icon-btn" aria-label="Back to the canvas" title="Back to the canvas" onClick={onClose}>
-        <ArrowLeft />
-      </button>
+      <Tooltip content="Back to the canvas" shortcut="Esc" side="bottom" align="start">
+        <button type="button" className="icon-btn" aria-label="Back to the canvas" onClick={onClose}>
+          <ArrowLeft />
+        </button>
+      </Tooltip>
       <h2>{view.title}</h2>
       {chapters.length > 0 && (
         <nav className="ep-dots" aria-label="The film and its chapters">
@@ -107,30 +139,69 @@ function Bar({ view, at, onAt, onClose }: { view: EpisodeView; at: string; onAt:
           </button>
           {chapters.map((c, i) => {
             const state = view.approved ? chapterState(view, c) : "ready";
+            const words = `${chapterName(c)} · ${view.approved ? STATE_WORDS[state] : "Planned"}`;
             return (
-              <button
-                type="button"
-                key={c.id}
-                className="ep-dot"
-                data-state={state}
-                aria-current={at === c.id || undefined}
-                aria-label={`Chapter ${i + 1}, ${chapterName(c)}, ${view.approved ? STATE_WORDS[state] : "planned"}`}
-                title={`${chapterName(c)} · ${view.approved ? STATE_WORDS[state] : "planned"}`}
-                disabled={!view.approved}
-                onClick={() => onAt(c.id)}
-              >
-                <b>{i + 1}</b>
-                {at === c.id && <span>{chapterName(c)}</span>}
-              </button>
+              <Tooltip key={c.id} content={words} side="bottom" disabled={at === c.id}>
+                <button type="button" className="ep-dot" data-state={state} aria-current={at === c.id || undefined} aria-label={`Chapter ${i + 1}, ${words}`} onClick={() => onAt(c.id)}>
+                  <b>{i + 1}</b>
+                  {at === c.id && <span>{chapterName(c)}</span>}
+                </button>
+              </Tooltip>
             );
           })}
         </nav>
       )}
+      {ready && <Now view={view} run={run} busy={busy} />}
       <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
         <X />
       </button>
     </header>
   );
+}
+
+// What happens next, said once and in one place: make the pictures, how far they are, or the
+// ones that stopped.
+function Now({ view, run, busy }: { view: EpisodeView; run: Run; busy: boolean }) {
+  const pictures = pictureCount(view);
+  if (!view.approved) {
+    return (
+      <div className="ep-now">
+        <Tooltip content={`Draws the ${pictures.all} ${pictures.all === 1 ? "picture" : "pictures"} the plan has. Everything can still change after.`} side="bottom" align="end">
+          <button type="button" className="btn primary" disabled={busy || turning(view)} onClick={() => void run(() => api.approveEpisode(view.id))}>
+            Make the pictures
+          </button>
+        </Tooltip>
+      </div>
+    );
+  }
+  if (pictures.making > 0) {
+    return (
+      <div className="ep-now">
+        <span className="ep-said" aria-live="polite">
+          <span className="spin" />
+          {pictures.made} of {pictures.all} pictures
+        </span>
+        <button type="button" className="btn" onClick={() => void api.stopEpisode(view.id).catch((e: Error) => useHouse.getState().say(e.message))}>
+          <Square />
+          Stop
+        </button>
+      </div>
+    );
+  }
+  if (pictures.stopped > 0) {
+    return (
+      <div className="ep-now">
+        <span className="ep-said">
+          {pictures.stopped} {pictures.stopped === 1 ? "picture" : "pictures"} not made
+        </span>
+        <button type="button" className="btn" disabled={busy} onClick={() => void run(() => api.makePictures(view.id))}>
+          <RotateCcw />
+          {pictures.stopped === 1 ? "Make it" : "Make them"}
+        </button>
+      </div>
+    );
+  }
+  return <div className="ep-now" />;
 }
 
 // While the plan is being written: where the writer is, and what it has put down so far.
@@ -165,6 +236,7 @@ function Planning({ view, run, busy }: { view: EpisodeView; run: Run; busy: bool
               {stage.state === "reading" ? "Reading and checking what was written" : stage.said || "Working"}
               {(stage.round ?? 0) > 0 && <span className="faint"> · fix {stage.round}</span>}
             </p>
+            {stage.at && <Elapsed since={stage.at} />}
             <button type="button" className="btn" onClick={() => void api.stopEpisode(view.id).catch((e: Error) => useHouse.getState().say(e.message))}>
               <Square />
               Stop
@@ -204,13 +276,13 @@ function WriterPick({ writers, value, onChange }: { writers: EpisodeView["option
 
 // The film: its chapters on the left with the one next step, the film so far on the right with
 // the three things chosen once for all of it.
-function FilmPage({ view, run, busy, onAt }: { view: EpisodeView; run: Run; busy: boolean; onAt: (at: string) => void }) {
+function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView; run: Run; busy: boolean; onAt: (at: string) => void; waiting: Waiting }) {
   const plan = view.plan!;
   const [hover, setHover] = useState(plan.chapters[0].id);
   const shown = plan.chapters.find((c) => c.id === hover) ?? plan.chapters[0];
   const frame = linesOf(shown)[0];
   const film = view.film_state;
-  const next = plan.chapters.find((c) => chapterState(view, c) !== "recorded");
+  const next = plan.chapters.find((c) => chapterState(view, c) !== "recorded") ?? plan.chapters[0];
   const recorded = plan.chapters.filter((c) => takeOf(view, c.id)).length;
   const set = (settings: EpisodeChoices["settings"]) => run(() => api.chooseEpisode(view.id, { settings }));
   const presenterOff = view.settings.presenter === "off";
@@ -222,17 +294,25 @@ function FilmPage({ view, run, busy, onAt }: { view: EpisodeView; run: Run; busy
     if (view.approved && pictures.all > 0) setAsked(id);
     else void set({ theme: id });
   };
+  const targets: AskTarget[] = [{ scope: "film", label: "The whole film", name: "The film", hint: "Ask for a change to the film", presets: ["Make it shorter", "A stronger opening", "Plainer words"] }];
+  // Where the last change reached: its chapters are marked, so it is found without reading them all.
+  const touched = useMemo(() => {
+    const change = view.last_change;
+    const lines = new Set([...(change?.lines ?? []), ...(change?.added ?? [])]);
+    const cut = new Set((change?.cut ?? []).map((c) => c.chapter));
+    return new Set(plan.chapters.filter((c) => cut.has(c.id) || linesOf(c).some((l) => lines.has(l.id))).map((c) => c.id));
+  }, [view.last_change, plan.chapters]);
   return (
     <main className="ep-film">
       <section className="ep-film-left">
-        <p className="ep-kicker">{view.approved ? `${recorded} of ${plan.chapters.length} chapters recorded` : "Approve once, then go chapter by chapter"}</p>
+        <p className="ep-kicker">{view.approved ? `${recorded} of ${plan.chapters.length} chapters recorded` : "Read it and change what you like, then make the pictures"}</p>
         <h1>{plan.brief.idea || view.title}</h1>
         <ol className="ep-chapters">
           {plan.chapters.map((c, i) => {
             const state = chapterState(view, c);
             return (
               <li key={c.id}>
-                <button type="button" disabled={!view.approved} onMouseEnter={() => setHover(c.id)} onFocus={() => setHover(c.id)} onClick={() => onAt(c.id)}>
+                <button type="button" onMouseEnter={() => setHover(c.id)} onFocus={() => setHover(c.id)} onClick={() => onAt(c.id)}>
                   <b className="ep-num" data-state={view.approved ? state : "ready"}>
                     {i + 1}
                   </b>
@@ -243,45 +323,17 @@ function FilmPage({ view, run, busy, onAt }: { view: EpisodeView; run: Run; busy
                       {view.approved && ` · ${STATE_WORDS[state]}`}
                     </small>
                   </span>
+                  {touched.has(c.id) && <em className="ep-touched">Changed</em>}
                 </button>
               </li>
             );
           })}
         </ol>
-        {view.approved && pictures.making > 0 && (
-          <div className="ep-row">
-            <p className="ep-said" aria-live="polite">
-              <span className="spin" />
-              {pictures.made} of {pictures.all} pictures made
-            </p>
-            <button type="button" className="btn" onClick={() => void api.stopEpisode(view.id).catch((e: Error) => useHouse.getState().say(e.message))}>
-              <Square />
-              Stop
-            </button>
-          </div>
-        )}
-        {view.approved && pictures.making === 0 && pictures.stopped > 0 && (
-          <div className="ep-row">
-            <p className="ep-said">
-              {pictures.stopped} {pictures.stopped === 1 ? "picture" : "pictures"} not made
-            </p>
-            <button type="button" className="btn" disabled={busy} onClick={() => void run(() => api.makePictures(view.id))}>
-              <RotateCcw />
-              {pictures.stopped === 1 ? "Make it" : "Make them"}
-            </button>
-          </div>
-        )}
-        {!view.approved ? (
-          <button type="button" className="btn primary ep-next" disabled={busy} onClick={() => void run(() => api.approveEpisode(view.id))}>
-            Approve the plan
-            <ArrowRight />
-          </button>
-        ) : next ? (
-          <button type="button" className="btn primary ep-next" onClick={() => onAt(next.id)}>
-            Open chapter {plan.chapters.indexOf(next) + 1}
-            <ArrowRight />
-          </button>
-        ) : null}
+        <Ask view={view} targets={targets} run={run} busy={busy} waiting={waiting} />
+        <button type="button" className={`btn ep-next ${view.approved ? "primary" : ""}`} onClick={() => onAt(next.id)}>
+          {view.approved ? "Open" : "Read"} chapter {plan.chapters.indexOf(next) + 1}
+          <ArrowRight />
+        </button>
         {view.checks.length > 0 && (
           <details className="ep-more">
             <summary>
@@ -352,14 +404,21 @@ function FilmPage({ view, run, busy, onAt }: { view: EpisodeView; run: Run; busy
           <div>
             <dt>Look</dt>
             <dd>
-              <span className="ep-looks">
+              <span className="ep-look-tiles">
                 {view.options.themes
                   .filter((t) => (t.presenter === "off") === presenterOff)
-                  .map((t) => (
-                    <button type="button" key={t.id} aria-pressed={view.settings.theme === t.id} disabled={busy} title={t.stage} onClick={() => look(t.id)}>
-                      {LOOKS[t.id] ?? t.name}
-                    </button>
-                  ))}
+                  .map((t) => {
+                    // a look is known by the frame it is named for, which its kit lists first
+                    const usual = t.kit[0];
+                    return (
+                      <Tooltip key={t.id} content={t.stage} side="top">
+                        <button type="button" aria-pressed={view.settings.theme === t.id} disabled={busy} onClick={() => look(t.id)}>
+                          {usual && <LayoutThumb view={view} layout={usual.layout} />}
+                          {LOOKS[t.id] ?? t.name}
+                        </button>
+                      </Tooltip>
+                    );
+                  })}
               </span>
               {asked && (
                 <p
@@ -396,33 +455,31 @@ function FilmPage({ view, run, busy, onAt }: { view: EpisodeView; run: Run; busy
           </div>
           <div>
             <dt>Voice</dt>
-            <dd>
-              <Seg
-                label="Voice"
+            <dd title={view.options.narrator ? undefined : "Narration needs ELEVENLABS_API_KEY and DESIGN_AGENT_NARRATOR_VOICE_ID"}>
+              <SegmentedControl
+                size="sm"
                 value={view.settings.voice}
-                options={[
-                  ["live", presenterOff ? "Recorded" : "Your voice"],
-                  ["narrator", "Narrator"],
-                ]}
-                off={view.options.narrator ? [] : ["narrator"]}
-                offWhy="Narration needs ELEVENLABS_API_KEY and DESIGN_AGENT_NARRATOR_VOICE_ID"
                 disabled={busy}
-                onChange={(voice) => void set({ voice })}
+                onChange={(voice) => voice !== view.settings.voice && void set({ voice })}
+                options={[
+                  { value: "live", label: presenterOff ? "Recorded" : "Your voice" },
+                  { value: "narrator", label: "Narrator", disabled: !view.options.narrator },
+                ]}
               />
             </dd>
           </div>
           <div>
             <dt>Pictures</dt>
             <dd>
-              <Seg
-                label="Pictures"
+              <SegmentedControl
+                size="sm"
                 value={view.settings.level}
-                options={[
-                  ["simple", "Simple"],
-                  ["rich", "Rich"],
-                ]}
                 disabled={busy}
-                onChange={(level) => void set({ level })}
+                onChange={(level) => level !== view.settings.level && void set({ level })}
+                options={[
+                  { value: "simple", label: "Simple" },
+                  { value: "rich", label: "Rich" },
+                ]}
               />
               <small>{view.settings.level === "rich" ? "Posed as stills for your go before they count" : "Made at once from the plan"}</small>
             </dd>
@@ -433,73 +490,117 @@ function FilmPage({ view, run, busy, onAt }: { view: EpisodeView; run: Run; busy
   );
 }
 
-function Seg<T extends string>({
-  label,
-  value,
-  options,
-  off = [],
-  offWhy,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: [T, string][];
-  off?: T[];
-  offWhy?: string;
-  disabled?: boolean;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <span className="ep-seg" role="radiogroup" aria-label={label}>
-      {options.map(([id, name]) => (
-        <button
-          type="button"
-          role="radio"
-          key={id}
-          aria-checked={value === id}
-          disabled={disabled || off.includes(id)}
-          title={off.includes(id) ? offWhy : undefined}
-          onClick={() => value !== id && onChange(id)}
-        >
-          {name}
-        </button>
-      ))}
-    </span>
-  );
-}
-
 // One chapter: the script, the frame for the picked line, that line's choices.
-function Chapter({ view, chapter, run, busy, onAt }: { view: EpisodeView; chapter: EpisodeChapter; run: Run; busy: boolean; onAt: (at: string) => void }) {
+function Chapter({
+  view,
+  chapter,
+  run,
+  busy,
+  record,
+  onAt,
+  waiting,
+  marks,
+}: {
+  view: EpisodeView;
+  chapter: EpisodeChapter;
+  run: Run;
+  busy: boolean;
+  record: boolean;
+  onAt: (at: string, record?: boolean) => void;
+  waiting: Waiting;
+  marks: Marks;
+}) {
   const plan = view.plan!;
   const lines = useMemo(() => linesOf(chapter), [chapter]);
   const number = plan.chapters.indexOf(chapter) + 1;
   const [picked, setPicked] = useState(lines[0].id);
+  const [editing, setEditing] = useState<string | null>(null);
   const [playing, setPlaying] = useState<Playing>(null);
+  // One line recorded again on its own, over the chapter's take.
+  const [solo, setSolo] = useState<string | null>(null);
+  const arming = useRef(false);
   const upload = useRef<HTMLInputElement>(null);
+  const ask = useRef<AskHandle>(null);
   const take = takeOf(view, chapter.id);
   const presenterOff = view.settings.presenter === "off";
+  const working = turning(view);
 
   const save = useCallback(
     async (recording: Recording) => {
-      await run(() => api.addTake(view.id, { chapter: chapter.id, marks: recording.marks, file: recording.blob, name: recording.name }));
+      await run(() => api.addTake(view.id, { chapter: chapter.id, frame: solo ?? undefined, marks: recording.marks, file: recording.blob, name: recording.name }));
+      setSolo(null);
     },
-    [run, view.id, chapter.id],
+    [run, view.id, chapter.id, solo],
   );
-  const frames = useMemo(() => lines.map((l) => l.id), [lines]);
+  const frames = useMemo(() => (solo ? [solo] : lines.map((l) => l.id)), [solo, lines]);
   const recorder = useRecorder({ frames, camera: !presenterOff, onDone: save });
   const recording = recorder.state !== "off";
-  const line = recording && recorder.state !== "saving" ? lines[recorder.index] : (lines.find((l) => l.id === picked) ?? lines[0]);
+  const said = solo ? lines.find((l) => l.id === solo) : lines[recorder.index];
+  const line = (recording && recorder.state !== "saving" ? said : undefined) ?? lines.find((l) => l.id === picked) ?? lines[0];
   const unit = unitOf(view, line.id);
   const at = lines.indexOf(line);
   const state = chapterState(view, chapter);
   const following = plan.chapters[number];
+  // How long the take was planned to run: the chapter, or the one line said again.
+  const planned = solo ? (lines.find((l) => l.id === solo)?.seconds ?? 0) : (view.clock?.chapters.find((c) => c.id === chapter.id)?.seconds ?? chapter.seconds);
+  const [sayStep, setSayStep] = useSayStep();
+  const changed = useMemo(() => new Set([...(view.last_change?.lines ?? []), ...(view.last_change?.added ?? [])]), [view.last_change]);
+  // What the last change did, laid into the script: what each changed line said before, and
+  // the lines it cut, each after the line it followed.
+  const marked = marks.on && !recording;
+  const was = view.last_change?.was ?? {};
+  const cuts = useMemo(() => {
+    const by = new Map<string, string[]>();
+    for (const c of view.last_change?.cut ?? []) {
+      if (c.chapter !== chapter.id) continue;
+      const after = lines.some((l) => l.id === c.after) ? c.after : "";
+      by.set(after, [...(by.get(after) ?? []), c.says]);
+    }
+    return by;
+  }, [view.last_change, chapter.id, lines]);
+  const cutRows = (after: string) =>
+    marked &&
+    cuts.get(after)?.map((says, n) => (
+      <li key={`cut-${after}-${n}`} className="ep-line-cut">
+        <del>{says}</del>
+        <small>Cut</small>
+      </li>
+    ));
 
-  // Space or the right arrow starts the next line while recording.
+  // A line picked to be said again: the recorder is armed once it knows it has one line.
+  const arm = recorder.arm;
+  // Opened to be recorded (the chapter before was just recorded): the camera comes up at once.
+  const opened = useRef(false);
   useEffect(() => {
-    if (recorder.state !== "recording") return;
+    if (!record || opened.current) return;
+    opened.current = true;
+    void arm();
+  }, [record, arm]);
+  useEffect(() => {
+    if (!solo || !arming.current) return;
+    arming.current = false;
+    void arm();
+  }, [solo, arm]);
+  useEffect(() => {
+    if (recorder.state === "off" && !arming.current) setSolo(null);
+  }, [recorder.state]);
+  const recordLine = (frame: string) => {
+    arming.current = true;
+    setPlaying(null);
+    setPicked(frame);
+    setSolo(frame);
+  };
+
+  // Space starts the take once the camera is ready, then starts each next line (so does the
+  // right arrow).
+  useEffect(() => {
+    if (recorder.state !== "recording" && recorder.state !== "ready") return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === " " || e.key === "ArrowRight" || e.key === "Enter") {
+      if (recorder.state === "ready") {
+        if (e.key !== " ") return;
+        e.preventDefault();
+        recorder.start();
+      } else if (e.key === " " || e.key === "ArrowRight" || e.key === "Enter") {
         e.preventDefault();
         recorder.next();
       }
@@ -523,8 +624,52 @@ function Chapter({ view, chapter, run, busy, onAt }: { view: EpisodeView; chapte
   const canPlay = Boolean((take && clockLine(view, line.id)?.source.kind === "take") || unit?.picture.clip);
   const pick = (frame: string) => {
     setPlaying(null);
+    setEditing(null);
     setPicked(frame);
   };
+  const reword = (frame: string, text: string) => {
+    setEditing(null);
+    void run(() => api.editLine(view.id, frame, text));
+  };
+  const canEdit = !recording && !working && !busy;
+
+  // Up and down move through the lines, Enter changes the words, a slash asks for a change.
+  useEffect(() => {
+    if (recording || editing) return;
+    const onKey = (e: KeyboardEvent) => {
+      const on = e.target as HTMLElement;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (on.closest("textarea, input, select, [contenteditable], [role=menu], [role=alertdialog], [role=radiogroup], details")) return;
+      if (e.key === "ArrowDown" && at < lines.length - 1) {
+        e.preventDefault();
+        pick(lines[at + 1].id);
+      } else if (e.key === "ArrowUp" && at > 0) {
+        e.preventDefault();
+        pick(lines[at - 1].id);
+      } else if (e.key === "Enter" && canEdit && (on === document.body || on.classList.contains("ep-line"))) {
+        e.preventDefault();
+        setEditing(line.id);
+      } else if (e.key === "/") {
+        e.preventDefault();
+        ask.current?.open();
+      } else if ((e.key === "r" || e.key === "R") && !busy) {
+        e.preventDefault();
+        void recorder.arm();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // What a change can be about, nearest first: this line, its picture, the chapter, the film.
+  const targets: AskTarget[] = [
+    { scope: "line", target: line.id, label: "This line", name: `Ch ${number} · line ${at + 1}`, hint: "Ask for a change to this line", presets: ["Shorter", "Plainer words", "Cut this line"] },
+    ...(unit?.kind === "picture"
+      ? [{ scope: "picture" as const, target: line.id, label: "Its picture", name: `Ch ${number} · picture of line ${at + 1}`, hint: "Ask for a change to this picture", presets: ["Simpler", "Larger text", "Show it another way"] }]
+      : []),
+    { scope: "chapter", target: chapter.id, label: "This chapter", name: `Chapter ${number}`, hint: "Ask for a change to this chapter", presets: ["Shorter", "Add an example", "Open with a question"] },
+    { scope: "film", label: "The whole film", name: "The film", hint: "Ask for a change to the film", presets: ["Make it shorter", "A stronger opening", "Plainer words"] },
+  ];
 
   return (
     <main className="ep-chapter" data-recording={recording || undefined}>
@@ -536,43 +681,102 @@ function Chapter({ view, chapter, run, busy, onAt }: { view: EpisodeView; chapte
           </span>
         </header>
         <ol>
-          {lines.map((l, i) => {
+          {cutRows("")}
+          {lines.flatMap((l, i) => {
             const mine = unitOf(view, l.id);
             const leads = mine && mine.frames[0] === l.id;
-            return (
+            const current = l.id === line.id;
+            const again = view.rerecord.includes(l.id);
+            const before = marked ? was[l.id] : undefined;
+            return [
               <li key={l.id}>
                 {leads && (
-                  <p className="ep-unit" data-status={mine.kind === "undesigned" ? "making" : mine.picture.status}>
-                    {PICTURES[mine.kind_of_picture] ?? "Picture"} · {mine.level === "rich" ? "Rich" : "Simple"} · {pictureWords(mine)}
+                  <p className="ep-unit" data-status={!view.approved ? "planned" : mine.kind === "undesigned" ? "making" : mine.picture.status}>
+                    {PICTURES[mine.kind_of_picture] ?? "Picture"} · {mine.level === "rich" ? "Rich" : "Simple"} · {pictureWords(mine, view.approved)}
                   </p>
                 )}
-                <button type="button" className="ep-line" aria-current={l.id === line.id || undefined} disabled={recording} onClick={() => pick(l.id)}>
-                  <i className="ep-who" data-presence={l.presence} aria-label={PRESENCE[l.presence]} />
-                  <span>{l.vo}</span>
-                  {take && !recording && <small aria-label="Recorded">✓</small>}
-                  {recording && i < recorder.index && <small>✓</small>}
-                </button>
-              </li>
-            );
+                {editing === l.id ? (
+                  <LineEditor line={l} onSave={(text) => reword(l.id, text)} onCancel={() => setEditing(null)} />
+                ) : (
+                  <div className="ep-line-card" data-current={current || undefined}>
+                    <button
+                      type="button"
+                      className="ep-line"
+                      aria-current={current || undefined}
+                      disabled={recording}
+                      onClick={() => pick(l.id)}
+                      onDoubleClick={() => canEdit && setEditing(l.id)}
+                    >
+                      <i className="ep-who" data-presence={l.presence} aria-label={PRESENCE[l.presence]} />
+                      {before ? <Changed was={before} now={l.vo} /> : <span>{l.vo}</span>}
+                      {/* the picked line says where it stands under its words, beside its tools */}
+                      {recording ? i < recorder.index && !solo && <small>✓</small> : current ? null : again ? <small data-tone="amber">Say again</small> : take && <small aria-label="Recorded">✓</small>}
+                      {!recording && !current && !before && changed.has(l.id) && <em aria-label="Changed" />}
+                    </button>
+                    {current && !recording && (
+                      <div className="ep-line-foot">
+                        <small data-tone={again ? "amber" : undefined}>{again ? "Say again" : take ? "Recorded" : changed.has(l.id) && !before ? "Changed" : ""}</small>
+                        {before && (
+                          <Tooltip content="Put the old words back" side="bottom">
+                            <button type="button" className="icon-btn" aria-label="Put the old words back" disabled={!canEdit} onClick={() => reword(l.id, before)}>
+                              <Undo2 />
+                            </button>
+                          </Tooltip>
+                        )}
+                        <Tooltip content="Change the words" shortcut="↵" side="bottom">
+                          <button type="button" className="icon-btn" aria-label="Change the words" disabled={!canEdit} onClick={() => setEditing(l.id)}>
+                            <Pencil />
+                          </button>
+                        </Tooltip>
+                        {take && (
+                          <Tooltip content="Record this line again" side="bottom">
+                            <button type="button" className="icon-btn" aria-label="Record this line again" disabled={busy} onClick={() => recordLine(l.id)}>
+                              <Mic />
+                            </button>
+                          </Tooltip>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </li>,
+              cutRows(l.id),
+            ];
           })}
         </ol>
+        {!recording && <Ask ref={ask} view={view} targets={targets} run={run} busy={busy} slash waiting={waiting} marks={marks} />}
       </section>
 
       <section className="ep-middle">
-        <div className="ep-stage-wrap">
+        <FileDrop
+          className="ep-stage-wrap"
+          label={`Drop a recording of chapter ${number}`}
+          refusal="A recording is a video or an audio file."
+          one
+          disabled={recording || busy}
+          accepts={(file) => /^(video|audio)\//.test(file.type) || /\.(mp4|mov|m4v|webm|mkv|m4a|mp3|wav|aac|ogg)$/i.test(file.name)}
+          onFiles={([file]) => void run(() => api.addTake(view.id, { chapter: chapter.id, marks: [], file, name: file.name }))}
+        >
           <Stage view={view} frame={line} unit={unit} take={recording ? undefined : take} stream={recorder.stream} playing={playing} onEnded={() => setPlaying(null)} />
           {recorder.state === "count" && <span className="ep-count">{recorder.count}</span>}
-        </div>
+        </FileDrop>
         {recording ? (
           <div className="ep-recbar" data-recording>
-            {recorder.state === "asking" && <span className="ep-said"><span className="spin" />Waiting for the camera and microphone</span>}
+            {recorder.state === "asking" && (
+              <span className="ep-said">
+                <span className="spin" />
+                Waiting for the camera and microphone
+              </span>
+            )}
             {recorder.state === "ready" && (
               <>
                 <button type="button" className="btn primary" onClick={recorder.start}>
                   <Circle />
                   Start recording
+                  <Kbd keys="space" size="sm" />
                 </button>
-                <span className="faint">One take for the chapter. Press Space at the end of each line.</span>
+                <Devices stream={recorder.stream} devices={recorder.devices} using={recorder.using} camera={!presenterOff} onChoose={recorder.choose} />
+                <span className="faint">{solo ? "Press Space when you have said it." : "Press Space at the end of each line."}</span>
               </>
             )}
             {recorder.state === "count" && <span className="ep-said">Get ready</span>}
@@ -580,13 +784,24 @@ function Chapter({ view, chapter, run, busy, onAt }: { view: EpisodeView; chapte
               <>
                 <span className="ep-live-dot" />
                 <b className="ep-timer">{mmss(recorder.elapsed)}</b>
+                {planned > 0 && (
+                  <span className="ep-planned" data-over={recorder.elapsed > planned * 1.25 || undefined}>
+                    of {mmss(planned)}
+                  </span>
+                )}
+                <Level stream={recorder.stream} />
                 <button type="button" className="btn primary" onClick={recorder.next}>
-                  {recorder.index + 1 >= lines.length ? "Finish" : "Next line"}
-                  <kbd>Space</kbd>
+                  {solo || recorder.index + 1 >= lines.length ? "Finish" : "Next line"}
+                  <Kbd keys="space" size="sm" />
                 </button>
               </>
             )}
-            {recorder.state === "saving" && <span className="ep-said"><span className="spin" />Saving the take</span>}
+            {recorder.state === "saving" && (
+              <span className="ep-said">
+                <span className="spin" />
+                Saving the take
+              </span>
+            )}
             {recorder.state !== "saving" && (
               <button type="button" className="btn" onClick={() => recorder.stop(false)}>
                 Cancel
@@ -595,15 +810,19 @@ function Chapter({ view, chapter, run, busy, onAt }: { view: EpisodeView; chapte
           </div>
         ) : (
           <div className="ep-controls">
-            <button type="button" className="icon-btn" aria-label="Previous line" disabled={at === 0} onClick={() => pick(lines[at - 1].id)}>
-              <ChevronLeft />
-            </button>
+            <Tooltip content="The line before" shortcut="↑" side="bottom">
+              <button type="button" className="icon-btn" aria-label="Previous line" disabled={at === 0} onClick={() => pick(lines[at - 1].id)}>
+                <ChevronLeft />
+              </button>
+            </Tooltip>
             <span className="ep-pos">
               Line {at + 1} of {lines.length}
             </span>
-            <button type="button" className="icon-btn" aria-label="Next line" disabled={at === lines.length - 1} onClick={() => pick(lines[at + 1].id)}>
-              <ChevronRight />
-            </button>
+            <Tooltip content="The line after" shortcut="↓" side="bottom">
+              <button type="button" className="icon-btn" aria-label="Next line" disabled={at === lines.length - 1} onClick={() => pick(lines[at + 1].id)}>
+                <ChevronRight />
+              </button>
+            </Tooltip>
             <button type="button" className="btn" disabled={!canPlay} onClick={() => (playing ? setPlaying(null) : play())}>
               {playing ? <Square /> : <Play />}
               {playing ? "Stop" : "Play"}
@@ -614,26 +833,32 @@ function Chapter({ view, chapter, run, busy, onAt }: { view: EpisodeView; chapte
                 Take {take.n} · {mmss(take.seconds)}
               </span>
             )}
-            {take ? (
-              <button type="button" className="icon-btn" aria-label="Bring a recording instead" title="Bring a recording instead: a video or audio file of this chapter" disabled={busy} onClick={() => upload.current?.click()}>
+            <Tooltip content="Bring a recording of this chapter: pick a video or audio file, or drop one on the frame" side="bottom">
+              <button type="button" className="icon-btn" aria-label="Bring a recording of this chapter" disabled={busy} onClick={() => upload.current?.click()}>
                 <Upload />
               </button>
-            ) : (
-              <button type="button" className="btn" title="A video or audio file of this chapter" disabled={busy} onClick={() => upload.current?.click()}>
-                <Upload />
-                Bring a recording
+            </Tooltip>
+            <Tooltip content="Opens the camera and microphone" shortcut="R" side="top">
+              <button type="button" className={`btn ${take ? "" : "primary"}`} disabled={busy} onClick={() => void recorder.arm()}>
+                <Circle />
+                {take ? "Retake" : `Record chapter ${number}`}
               </button>
-            )}
-            <button type="button" className={`btn ${take ? "" : "primary"}`} disabled={busy} onClick={() => void recorder.arm()}>
-              <Circle />
-              {take ? "Retake" : `Record chapter ${number}`}
-            </button>
+            </Tooltip>
             {take &&
               (following ? (
-                <button type="button" className="btn primary" onClick={() => onAt(following.id)}>
-                  Chapter {number + 1}
-                  <ArrowRight />
-                </button>
+                takeOf(view, following.id) ? (
+                  <button type="button" className="btn primary" onClick={() => onAt(following.id)}>
+                    Chapter {number + 1}
+                    <ArrowRight />
+                  </button>
+                ) : (
+                  <Tooltip content="Opens it with the camera on, ready for Space" side="top" align="end">
+                    <button type="button" className="btn primary" onClick={() => onAt(following.id, true)}>
+                      <Circle />
+                      Record chapter {number + 1}
+                    </button>
+                  </Tooltip>
+                )
               ) : (
                 <button type="button" className="btn primary" onClick={() => onAt(FILM)}>
                   The film
@@ -659,21 +884,114 @@ function Chapter({ view, chapter, run, busy, onAt }: { view: EpisodeView; chapte
           </p>
         )}
         {!recording && unit && <Stills view={view} unit={unit} lines={lines} picked={line.id} onPick={pick} run={run} busy={busy} />}
-        {!recording && !take && state === "making" && <p className="ep-notice">You can record now. The pictures are finished meanwhile and timed to your take.</p>}
+        {!recording && !take && view.approved && state === "making" && <p className="ep-notice">You can record now. The pictures are finished meanwhile and timed to your take.</p>}
       </section>
 
       {recording ? (
-        <section className="ep-say" aria-label="Say it" aria-live="polite">
-          <p className="ep-kicker">
-            Say it · line {Math.min(recorder.index + 1, lines.length)} of {lines.length}
-          </p>
+        <section className="ep-say" aria-label="Say it" aria-live="polite" style={{ "--say": `${SAY_SIZES[sayStep]}px` } as React.CSSProperties}>
+          <header>
+            <p className="ep-kicker">{solo ? `Say it again · line ${at + 1}` : `Say it · line ${Math.min(recorder.index + 1, lines.length)} of ${lines.length}`}</p>
+            <span className="ep-say-size" role="group" aria-label="The size of the words">
+              <button type="button" aria-label="Smaller words" disabled={sayStep === 0} onClick={() => setSayStep(sayStep - 1)}>
+                A
+              </button>
+              <button type="button" aria-label="Larger words" disabled={sayStep === SAY_SIZES.length - 1} onClick={() => setSayStep(sayStep + 1)}>
+                A
+              </button>
+            </span>
+          </header>
           <p className="ep-say-now">{line.vo}</p>
-          {lines[recorder.index + 1] && <p className="ep-say-next">{lines[recorder.index + 1].vo}</p>}
+          {!solo && lines[recorder.index + 1] && <p className="ep-say-next">{lines[recorder.index + 1].vo}</p>}
         </section>
       ) : (
-        <Choices view={view} chapter={chapter} line={line} unit={unit} run={run} busy={busy} onFilm={() => onAt(FILM)} />
+        <Choices view={view} chapter={chapter} line={line} unit={unit} run={run} busy={busy || working} onFilm={() => onAt(FILM)} onAskPicture={() => ask.current?.open("picture")} />
       )}
     </main>
+  );
+}
+
+// How large the words to say are drawn, in steps: a person reads them from where they stand to
+// be filmed, which is rarely where they sit to type. Kept on this computer.
+const SAY_SIZES = [18, 22, 28, 36];
+function useSayStep(): [number, (step: number) => void] {
+  const [step, setStep] = useState(() => {
+    try {
+      const kept = Number(localStorage.getItem("episode-say-size") ?? 1);
+      return Number.isInteger(kept) && kept >= 0 && kept < SAY_SIZES.length ? kept : 1;
+    } catch {
+      return 1;
+    }
+  });
+  const set = (to: number) => {
+    setStep(to);
+    try {
+      localStorage.setItem("episode-say-size", String(to));
+    } catch {
+      // kept for this visit only
+    }
+  };
+  return [step, set];
+}
+
+// A line's words, changed where they are read. Enter keeps them, Escape leaves them as they
+// were, and clicking away keeps them too.
+function LineEditor({ line, onSave, onCancel }: { line: EpisodeFrame; onSave: (text: string) => void; onCancel: () => void }) {
+  const [text, setText] = useState(line.vo);
+  const field = useRef<HTMLTextAreaElement>(null);
+  const done = useRef(false);
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  // the plan's own pace for this line, so the seconds read as the rest of the script's do
+  const pace = line.words && line.seconds ? line.words / line.seconds : 2.6;
+
+  useLayoutEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [text]);
+  useEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, []);
+
+  const finish = (keep: boolean) => {
+    if (done.current) return;
+    done.current = true;
+    const said = text.trim().replace(/\s+/g, " ");
+    if (keep && said && said !== line.vo) onSave(said);
+    else onCancel();
+  };
+  return (
+    <div className="ep-line-edit">
+      <textarea
+        ref={field}
+        rows={1}
+        value={text}
+        aria-label="The words of this line"
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => finish(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            finish(true);
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            finish(false);
+          }
+        }}
+      />
+      <p>
+        <span>
+          {words} {words === 1 ? "word" : "words"} · about {Math.max(1, Math.round(words / pace))} s
+        </span>
+        <span>
+          <Kbd keys="enter" size="sm" /> keeps it · <Kbd keys="esc" size="sm" /> leaves it
+        </span>
+      </p>
+    </div>
   );
 }
 
@@ -712,7 +1030,8 @@ function Stills({
   const mine = lines.filter((l) => unit.frames.includes(l.id));
   const send = () => {
     if (!note.trim()) return;
-    void run(() => api.pictureNote(view.id, unit.id, note.trim())).then(() => {
+    void run(() => api.askEpisode(view.id, { scope: "picture", target: unit.id, text: note.trim() })).then((taken) => {
+      if (!taken) return;
       setNote("");
       setNoting(false);
     });
@@ -761,266 +1080,5 @@ function Stills({
         </div>
       )}
     </div>
-  );
-}
-
-// The picked line's choices: who has the frame, the layout, the picture.
-function Choices({
-  view,
-  chapter,
-  line,
-  unit,
-  run,
-  busy,
-  onFilm,
-}: {
-  view: EpisodeView;
-  chapter: EpisodeChapter;
-  line: EpisodeFrame;
-  unit?: EpisodeUnit;
-  run: Run;
-  busy: boolean;
-  onFilm: () => void;
-}) {
-  const presenterOff = view.settings.presenter === "off";
-  const theme = view.options.themes.find((t) => t.id === view.settings.theme);
-  const layouts = (line.options ?? []).filter((o) => o.presence === line.presence).map((o) => o.layout);
-  const kit = layouts.includes(line.layout) ? layouts : [line.layout, ...layouts];
-  const choose = (body: EpisodeChoices) => run(() => api.chooseEpisode(view.id, body));
-  const setPresence = (presence: Presence) => choose({ frames: { [line.id]: { presence } } });
-  const setLayout = (layout: string) => choose({ frames: { [line.id]: { layout } } });
-  const setLevel = (level: Level) => unit && choose({ units: { [unit.id]: { level } } });
-
-  // A layout used for the chapter or the film reaches every line of this presence there. It is
-  // asked first when it would redraw more than one picture.
-  const scope = line.override?.scope;
-  const [wide, setWide] = useState<{ film: boolean; redraws: number } | null>(null);
-  useEffect(() => setWide(null), [line.id, line.layout]);
-  const applyFor = (film: boolean) => {
-    const set = { layouts: { [line.presence]: line.layout } };
-    const unset = { layouts: { [line.presence]: null } };
-    return choose({
-      // the line's own layout, and its chapter's when the film takes over, give way to it
-      frames: { [line.id]: { layout: null } },
-      chapters: { [chapter.id]: film ? unset : set },
-      ...(film ? { all: set } : {}),
-    });
-  };
-  const askFor = (film: boolean) => {
-    const redraws = redrawnBy(view, line.presence, line.layout, film ? undefined : chapter.id);
-    if (redraws > 1) setWide({ film, redraws });
-    else void applyFor(film);
-  };
-  const undo = () =>
-    scope === "film"
-      ? choose({ all: { layouts: { [line.presence]: null } } })
-      : scope === "chapter"
-        ? choose({ chapters: { [chapter.id]: { layouts: { [line.presence]: null } } } })
-        : choose({ frames: { [line.id]: { presence: null, layout: null } } });
-  const reach = scope ? linesIn(view, line.presence, scope === "chapter" ? chapter.id : undefined).filter((x) => x.line.layout === line.layout).length : 0;
-
-  // The picture this line shows is drawn once, on the line that brings it in: its type, where
-  // it sits and how it comes in are picked there, whichever of its lines is open.
-  const lead = unit ? allLines(view).find((x) => x.line.id === unit.frames[0])?.line : undefined;
-  const drawn = unit?.kind === "picture" && lead;
-  const setPlace = (presence: Presence) => unit && choose({ frames: Object.fromEntries(unit.frames.map((id) => [id, { presence }])) });
-  const planMove = line.transition && line.transition !== "none" ? line.transition : "cut";
-  const move = line.picked?.transition ?? planMove;
-  const bringsIn = drawn && lead.id === line.id && line.presence !== "person";
-  return (
-    <aside className="ep-choices" aria-label="Choices for this line">
-      <section>
-        <h3>Who has the frame</h3>
-        <span className="ep-seg wide" role="radiogroup" aria-label="Who has the frame">
-          {PRESENCES.map((p) => (
-            <button type="button" role="radio" key={p} aria-checked={line.presence === p} disabled={busy || presenterOff} onClick={() => line.presence !== p && void setPresence(p)}>
-              <i className="ep-who" data-presence={p} />
-              {PRESENCE[p]}
-            </button>
-          ))}
-        </span>
-        {presenterOff && <small>Nobody is on screen in this film.</small>}
-      </section>
-      <section>
-        <h3>
-          Layout <span>{LAYOUTS[line.layout] ?? line.layout}</span>
-        </h3>
-        <div className="ep-layouts" role="radiogroup" aria-label="Layout">
-          {kit.map((id) => (
-            <button type="button" role="radio" key={id} aria-checked={line.layout === id} aria-label={LAYOUTS[id] ?? id} title={LAYOUTS[id] ?? id} disabled={busy} onClick={() => line.layout !== id && void setLayout(id)}>
-              <LayoutThumb view={view} layout={id} />
-            </button>
-          ))}
-        </div>
-        {line.override && !wide && (
-          <p className="ep-picked">
-            <span>{scope ? `Set for the ${scope} · ${reach} ${reach === 1 ? "line" : "lines"}` : "Your pick"}</span>
-            {scope !== "film" && (
-              <span>
-                Use it for{" "}
-                {!scope && (
-                  <>
-                    <button type="button" className="linkish" disabled={busy} onClick={() => askFor(false)}>
-                      the chapter
-                    </button>{" or "}
-                  </>
-                )}
-                <button type="button" className="linkish" disabled={busy} onClick={() => askFor(true)}>
-                  the film
-                </button>
-              </span>
-            )}
-            <button type="button" className="linkish" disabled={busy} onClick={() => void undo()}>
-              Undo
-            </button>
-          </p>
-        )}
-        {wide && (
-          <p
-            className="ep-confirm"
-            role="alertdialog"
-            aria-label={`Use ${LAYOUTS[line.layout] ?? line.layout} for the ${wide.film ? "film" : "chapter"}`}
-            onKeyDown={(e) => {
-              if (e.key !== "Escape") return;
-              e.stopPropagation();
-              setWide(null);
-            }}
-          >
-            <span>
-              {LAYOUTS[line.layout] ?? line.layout} for the {wide.film ? "film" : "chapter"} redraws {wide.redraws} pictures.
-            </span>
-            <button
-              type="button"
-              className="btn primary"
-              autoFocus
-              disabled={busy}
-              onClick={() => {
-                const film = wide.film;
-                setWide(null);
-                void applyFor(film);
-              }}
-            >
-              Use it
-            </button>
-            <button type="button" className="btn" onClick={() => setWide(null)}>
-              Cancel
-            </button>
-          </p>
-        )}
-      </section>
-      <section>
-        <h3>Picture</h3>
-        {unit ? (
-          <>
-            <Seg
-              label="How the picture is made"
-              value={unit.level}
-              options={[
-                ["simple", "Simple"],
-                ["rich", "Rich"],
-              ]}
-              disabled={busy || unit.kind === "undesigned"}
-              onChange={(level) => void setLevel(level)}
-            />
-            {!presenterOff && lead && (
-              <Seg<Presence>
-                label="Where the picture sits"
-                value={lead.presence}
-                options={[
-                  ["both", "Beside you"],
-                  ["content", "Full screen"],
-                ]}
-                disabled={busy}
-                onChange={(presence) => void setPlace(presence)}
-              />
-            )}
-            <small>
-              {unit.kind === "undesigned"
-                ? "A picture is being planned for this line."
-                : unit.level === "rich"
-                  ? "Posed as stills for your go, then it counts as made."
-                  : `Made at once from the plan.${unit.suggest === "rich" ? " Rich is suggested for this one." : ""}`}
-            </small>
-          </>
-        ) : (
-          <small>{line.presence === "person" ? "None. This line is said to camera." : "None for this line."}</small>
-        )}
-      </section>
-      {(line.cues?.length || line.shows) && (
-        <details className="ep-more">
-          <summary>
-            Motion <span>{line.cues?.length ? `${line.cues.length} ${line.cues.length === 1 ? "step" : "steps"}` : ""}</span>
-          </summary>
-          {line.shows && <p className="ep-shows">{line.shows}</p>}
-          {line.cues && line.cues.length > 0 && (
-            <ol className="ep-cues">
-              {line.cues.map((c, i) => (
-                <li key={i}>
-                  <b>“{c.at}”</b> {c.does}
-                </li>
-              ))}
-            </ol>
-          )}
-        </details>
-      )}
-      {bringsIn && (
-        <details className="ep-more">
-          <summary>
-            Transition <span>{TRANSITIONS[move] ?? "Cut"}</span>
-          </summary>
-          <span className="ep-looks" role="group" aria-label="How the picture comes in">
-            {view.options.transitions.map((id) => (
-              <button type="button" key={id} aria-pressed={move === id} disabled={busy} onClick={() => move !== id && void choose({ frames: { [line.id]: { transition: id === planMove ? null : id } } })}>
-                {TRANSITIONS[id] ?? id}
-              </button>
-            ))}
-          </span>
-          {line.picked?.transition && (
-            <p className="ep-picked">
-              <span>Your pick</span>
-              <button type="button" className="linkish" disabled={busy} onClick={() => void choose({ frames: { [line.id]: { transition: null } } })}>
-                Undo
-              </button>
-            </p>
-          )}
-        </details>
-      )}
-      {drawn && unit && (
-        <details className="ep-more">
-          <summary>
-            Picture type <span>{PICTURES[unit.kind_of_picture] ?? "Picture"}</span>
-          </summary>
-          <span className="ep-looks" role="group" aria-label="What kind of picture it is">
-            {view.options.pictures.map((id) => (
-              <button
-                type="button"
-                key={id}
-                aria-pressed={unit.kind_of_picture === id}
-                disabled={busy}
-                onClick={() => unit.kind_of_picture !== id && void choose({ frames: { [lead.id]: { picture: id === lead.picture ? null : id } } })}
-              >
-                {PICTURES[id] ?? id}
-              </button>
-            ))}
-          </span>
-          {lead.picked?.picture && (
-            <p className="ep-picked">
-              <span>Your pick</span>
-              <button type="button" className="linkish" disabled={busy} onClick={() => void choose({ frames: { [lead.id]: { picture: null } } })}>
-                Undo
-              </button>
-            </p>
-          )}
-        </details>
-      )}
-      <footer>
-        <span>
-          {LOOKS[theme?.id ?? ""] ?? "Look"} · {view.settings.voice === "narrator" ? "narrator" : "your voice"} · {view.settings.level}
-        </span>
-        <button type="button" className="linkish" onClick={onFilm}>
-          Change
-        </button>
-      </footer>
-    </aside>
   );
 }

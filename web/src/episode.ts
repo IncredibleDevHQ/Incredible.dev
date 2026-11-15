@@ -60,7 +60,11 @@ export const PICTURES: Record<string, string> = {
 
 export const TRANSITIONS: Record<string, string> = { none: "Hold", cut: "Cut", push: "Push", crossfade: "Crossfade", "zoom-through": "Zoom in" };
 
-export const mmss = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
+// Whole seconds first, so 59.6 reads 1:00 and never 0:60.
+export const mmss = (seconds: number) => {
+  const whole = Math.round(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+};
 export const linesOf = (chapter: EpisodeChapter): EpisodeFrame[] => chapter.beats.flatMap((b) => b.frames);
 export const chapterName = (chapter: EpisodeChapter) => CHAPTERS[chapter.type ?? ""] ?? "Chapter";
 export const unitOf = (view: EpisodeView, frame: string): EpisodeUnit | undefined => view.units.find((u) => u.frames.includes(frame));
@@ -112,8 +116,9 @@ export function pictureCount(view: EpisodeView) {
 }
 
 // What a picture's state reads as beside its line.
-export function pictureWords(unit: EpisodeUnit): string {
+export function pictureWords(unit: EpisodeUnit, approved = true): string {
   if (unit.kind === "undesigned") return "Being planned";
+  if (!approved) return "Planned";
   const p = unit.picture;
   if (p.status === "failed") return "Failed";
   if (p.status === "go") return "Needs your go";

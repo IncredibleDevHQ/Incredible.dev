@@ -695,12 +695,32 @@ app's canvas, from a channel's material or a research frame's notes.
 - **The plan** is written by a writer the person picks (a coding agent on their computer, or the
   built-in agent), in stages: the brief, the script, a frame for every line. A typed classifier
   reads the words and gives every label; code derives every number and holds each stage to the
-  checks before the next. The person approves the plan once.
+  checks before the next. The plan can be read and changed as soon as it is written; the
+  person's one go is for its pictures to be made.
+- **Changing it** takes two forms and no others. A line's words are changed where they are
+  read: they are in at once, nothing is read or drawn again, and the writer is asked only to
+  fit a step of the line's picture whose word is gone. Anything else is asked for in words, of
+  the film, a chapter, a line or a picture: the writer makes the change (a note on how a
+  picture is drawn goes to its builder), the studio stays open while it does, and the plan as
+  it stood is kept so the change can be taken back. A change that stops leaves the plan as it
+  was and can be asked again in the same words; one the writer made nothing of says so. A
+  change keeps who has the frame for every line it does not redesign, and a picture is
+  drawn again only when what it shows changed: its lines' words only move its clock.
+- **Seeing and undoing a change.** What the last change did is laid into the script: the words
+  that went are struck, the new ones marked, a line that was cut stays as a ghost where it
+  was, and a changed line's old words go back with one click. Changes are taken back one at a
+  time, newest first (the last twelve are kept), and a change that was taken back can be put
+  back until the next change is made. A person's picks are not a change's: the ones made
+  since stay when it is taken back, except a pick that itself needed the writer, which goes
+  back with the picture planned for it.
+- **Asking ahead.** While the writer is on one change, the next can be typed: it waits, in
+  order, and is asked when that one lands. If the turn stops, what waits is held until the
+  person sends it or lets it go. What waits lives in the open studio, not in the house.
 - **The studio** is the plan and the recording in one place. Per chapter: the script, the frame
-  for the picked line, and that line's choices (who has the frame, the layout, a simple picture
-  or a rich one posed as stills for the person's go). A layout may be used for every line of
-  that presence in the chapter or the film; a picture may sit beside the person or fill the
-  screen for all its lines; and the line that brings a picture in may be given another type of
+  for the picked line, and that line's choices. One pick of a frame from the look's layouts
+  sets who has the frame and how; it is the line's own until it is widened, in one click, to
+  the picture's other lines, the chapter or the film. A picture is simple, or rich and posed
+  as stills for the person's go, and the line that brings it in may be given another kind of
   picture and another way in (a cut, a push, a crossfade, a zoom). A person's pick is kept
   beside the plan and applied every time it is read, and taking it back restores the plan's.
 - **Pictures** are HyperFrames sub-compositions built by the writer. Code sets every time in
@@ -708,8 +728,13 @@ app's canvas, from a channel's material or a research frame's notes.
   recorded. A picture is drawn for its layout's box, so a new look for the film redraws every
   picture: once pictures exist the studio says how many and waits for a yes. Stop ends the
   pictures under way as well as the plan; the ones that stopped are made again only on request.
-- **A take** per chapter is recorded in the browser or brought as a file. Where each line
-  starts in it sets the film's clock for that chapter.
+- **A take** per chapter is recorded in the browser or brought as a file (picked, or dropped
+  on the chapter's frame). Where each line starts in it sets the film's clock for that
+  chapter. One line can be recorded again on its own, and a line reworded after it was
+  recorded says so. Before the take the microphone's level shows, and the microphone and
+  camera can be chosen; the choice is kept on that computer and falls back to the browser's
+  own when the device is not there. During the take the time planned for the chapter stands
+  beside the time run, and the words to say can be drawn larger.
 - **The film** is one HyperFrames page written by code and rendered on the thread's computer.
   Layouts change at a cut. A picture that comes in by a move is moved as a whole box, by
   transform and opacity, and the picture before it stays that much longer to leave the same way.

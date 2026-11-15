@@ -119,9 +119,17 @@ CREATE TABLE IF NOT EXISTS takes (
   marks TEXT NOT NULL DEFAULT '[]', video TEXT NOT NULL DEFAULT '', audio TEXT NOT NULL DEFAULT '',
   kept INTEGER NOT NULL DEFAULT 1, added_by TEXT NOT NULL, created_at REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS takes_by_episode ON takes(episode_id, chapter, created_at);
+CREATE TABLE IF NOT EXISTS history (
+  n INTEGER PRIMARY KEY AUTOINCREMENT, episode_id TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'before', why TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '{}', data TEXT NOT NULL DEFAULT '{}', at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS history_by_episode ON history(episode_id, kind, n);
 """
 #: A research conversation's thread: it lives on its research frame, not in the channel.
 CONVERSATION = "conversation"
+#: How many of an episode's changes are kept to be taken back. Each holds the plan and its
+#: pictures as they stood, so the count is small.
+HISTORY = 12
 #: Columns added since a table was first made, put into a store that predates them.
 ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # A film's Studio preview on the thread's computer, and the proof frames that came with it.
@@ -652,6 +660,90 @@ class Store:
         found = self.picture(episode_id, unit)
         assert found is not None  # noqa: S101 - written just above
         return found
+
+    # An episode's changes, oldest first. A row is a change and the other side of it: while the
+    # change stands (`before`) it holds the episode as it stood before, and once the change is
+    # taken back (`undone`) it holds the episode as the change left it.
+
+    def put_snapshot(self, episode_id: str, *, why: str, data: Mapping[str, Any]) -> None:
+        """A change begins: the episode as it stands is kept. What was taken back before it
+        can no longer be put back, and only the newest `HISTORY` changes are kept."""
+        with self._lock:
+            self._db.execute(
+                "DELETE FROM history WHERE episode_id = ? AND kind = 'undone'", (episode_id,)
+            )
+            self._db.execute(
+                "INSERT INTO history (episode_id, kind, why, summary, data, at) "
+                "VALUES (?, 'before', ?, '{}', ?, ?)",
+                (episode_id, why, json.dumps(data), time.time()),
+            )
+            self._db.execute(
+                "DELETE FROM history WHERE episode_id = ? AND n NOT IN "
+                "(SELECT n FROM history WHERE episode_id = ? ORDER BY n DESC LIMIT ?)",
+                (episode_id, episode_id, HISTORY),
+            )
+
+    def _history(self, episode_id: str, kind: str, columns: str) -> Any:
+        # the change that stands last is the next to take back; the one taken back first is
+        # the last to put back
+        order = "DESC" if kind == "before" else "ASC"
+        with self._lock:
+            return self._db.execute(
+                f"SELECT {columns} FROM history WHERE episode_id = ? AND kind = ? "  # noqa: S608
+                f"ORDER BY n {order} LIMIT 1",
+                (episode_id, kind),
+            ).fetchone()
+
+    def snapshot(self, episode_id: str, kind: str = "before") -> Row | None:
+        """The newest change whole. `data` is large and stays text until asked for here."""
+        row = self._history(episode_id, kind, "n, why, summary, data, at")
+        if row is None:
+            return None
+        return {
+            "n": row["n"],
+            "why": row["why"],
+            "summary": json.loads(row["summary"] or "{}"),
+            "data": json.loads(row["data"] or "{}"),
+            "at": row["at"],
+        }
+
+    def snapshot_note(self, episode_id: str, kind: str = "before") -> Row | None:
+        """What the newest change did, without the snapshot's weight."""
+        row = self._history(episode_id, kind, "n, why, summary, at")
+        if row is None:
+            return None
+        return {
+            "n": row["n"],
+            "why": row["why"],
+            "summary": json.loads(row["summary"] or "{}"),
+            "at": row["at"],
+        }
+
+    def snapshots(self, episode_id: str) -> int:
+        """How many changes stand and can be taken back."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT COUNT(*) FROM history WHERE episode_id = ? AND kind = 'before' "
+                "AND summary != '{}'",
+                (episode_id,),
+            ).fetchone()
+        return int(row[0])
+
+    def note_snapshot(self, n: int, summary: Mapping[str, Any]) -> None:
+        with self._lock:
+            self._db.execute("UPDATE history SET summary = ? WHERE n = ?", (json.dumps(summary), n))
+
+    def turn_snapshot(self, n: int, *, kind: str, data: Mapping[str, Any]) -> None:
+        """A change is taken back, or put back: its row now holds the other side of it."""
+        with self._lock:
+            self._db.execute(
+                "UPDATE history SET kind = ?, data = ?, at = ? WHERE n = ?",
+                (kind, json.dumps(data), time.time(), n),
+            )
+
+    def drop_snapshot(self, n: int) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM history WHERE n = ?", (n,))
 
     def delete_picture(self, episode_id: str, unit: str) -> None:
         with self._lock:

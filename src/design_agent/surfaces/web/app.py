@@ -29,6 +29,10 @@ runtime), the store of channels, messages and boards, and this API:
   `POST /api/channels/{id}/episodes` (one from material or a research frame's notes),
   `GET /api/episodes/{id}` (everything its studio draws), `POST /api/episodes/{id}/approve`,
   `POST /api/episodes/{id}/choices` (the look, who has the frame, a picture's level),
+  `POST /api/episodes/{id}/ask` (a change in words, of the film, a chapter, a line or a
+  picture), `POST /api/episodes/{id}/lines/{frame}` (a person's own words for a line),
+  `POST /api/episodes/{id}/undo` (the last change, taken back; the one before it is next) and
+  `/redo` (put back),
   `POST /api/episodes/{id}/again` (its planning), `/stop` (the plan and the pictures under
   way), `POST /api/episodes/{id}/pictures` (make the ones that stopped),
   `POST /api/episodes/{id}/pictures/{unit}/go` and `/note` (a picture's stills),
@@ -218,6 +222,18 @@ class ChoicesIn(BaseModel):
     #: Lines (or chapters) whose pick is taken back.
     clear: list[str] = Field(default_factory=list, max_length=400)
     units: dict[str, UnitPickIn] = Field(default_factory=dict)
+
+
+class AskIn(BaseModel):
+    """A change asked for in words, of the film, a chapter, a line or a line's picture."""
+
+    scope: str = Field(pattern=r"^(film|chapter|line|picture)$")
+    target: str = Field(default="", max_length=80)
+    text: str = Field(min_length=1, max_length=2_000)
+
+
+class WordsIn(BaseModel):
+    text: str = Field(min_length=1, max_length=2_000)
 
 
 class AgainIn(BaseModel):
@@ -637,6 +653,32 @@ def create_app(
         change = body.model_dump(exclude_unset=True)
         change["settings"] = body.settings.model_dump(exclude_none=True)
         return episode_call(lambda: host.episodes.choose(episode_id, by=me, change=change))
+
+    @app.post("/api/episodes/{episode_id}/ask")
+    async def ask_episode(
+        episode_id: str, body: AskIn, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(
+            lambda: host.episodes.ask(
+                episode_id, by=me, scope=body.scope, target=body.target, text=body.text
+            )
+        )
+
+    @app.post("/api/episodes/{episode_id}/lines/{frame_id}")
+    async def edit_line(
+        episode_id: str, frame_id: str, body: WordsIn, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(
+            lambda: host.episodes.edit(episode_id, by=me, frame=frame_id, text=body.text)
+        )
+
+    @app.post("/api/episodes/{episode_id}/undo")
+    async def undo_episode(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.undo(episode_id, by=me))
+
+    @app.post("/api/episodes/{episode_id}/redo")
+    async def redo_episode(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.redo(episode_id, by=me))
 
     @app.post("/api/episodes/{episode_id}/again")
     async def plan_again(

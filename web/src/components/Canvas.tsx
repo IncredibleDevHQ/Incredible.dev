@@ -429,27 +429,25 @@ function AssetCard({ asset, task, onHot }: { asset: Asset; task: CanvasTask; onH
 }
 
 // An episode's card: where it stands in one line, and the way into its studio.
+// Where an episode stands, in the one line its card has.
+function episodeLine(episode: EpisodeCard): string {
+  const p = episode.pictures;
+  const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  if (episode.status === "planning") return episode.stage.said || "The plan is being written";
+  if (episode.status === "failed") return episode.stage.said || "The plan stopped";
+  if (episode.stage.state === "working" || episode.stage.state === "reading") return "The writer is making a change";
+  if (episode.status === "plan") return `${episode.chapters} chapters planned. Read it, then make the pictures.`;
+  if (episode.film.status === "rendering") return `Rendering the film · ${Math.round((episode.film.fraction ?? 0) * 100)}%`;
+  if (p.go) return `${count(p.go, "picture needs", "pictures need")} your go`;
+  if (p.making) return `${count(p.making, "picture", "pictures")} being made`;
+  if (p.failed) return `${count(p.failed, "picture", "pictures")} not made`;
+  if (episode.film.status === "done" && episode.recorded === episode.chapters) return "Recorded and rendered";
+  return `${episode.recorded} of ${episode.chapters} chapters recorded`;
+}
+
 function EpisodeFace({ episode }: { episode: EpisodeCard }) {
   const openEpisode = useHouse((s) => s.openEpisode);
-  const p = episode.pictures;
-  const line =
-    episode.status === "planning"
-      ? episode.stage.said || "The plan is being written"
-      : episode.status === "failed"
-        ? episode.stage.said || "The plan stopped"
-        : episode.status === "plan"
-          ? `${episode.chapters} chapters planned. Approve it to start.`
-          : episode.film.status === "rendering"
-            ? `Rendering the film · ${Math.round((episode.film.fraction ?? 0) * 100)}%`
-            : p.go
-              ? `${p.go} ${p.go === 1 ? "picture needs" : "pictures need"} your go`
-              : p.making
-                ? `${p.making} ${p.making === 1 ? "picture" : "pictures"} being made`
-                : p.failed
-                  ? `${p.failed} ${p.failed === 1 ? "picture" : "pictures"} not made`
-                  : episode.film.status === "done" && episode.recorded === episode.chapters
-                    ? "Recorded and rendered"
-                    : `${episode.recorded} of ${episode.chapters} chapters recorded`;
+  const line = episodeLine(episode);
   return (
     <div className="ep-face">
       <p className="node-line">

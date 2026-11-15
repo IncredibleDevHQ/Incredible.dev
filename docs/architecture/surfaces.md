@@ -59,6 +59,22 @@ Either way the run is a row in the store's `runs` table (prompt, steps, answer, 
 research run is. A local agent's session is resumed when it can be; when it cannot, or another
 agent takes the lane, the turn opens with what was said, from those rows.
 
+A plan that stands is changed by one of three turns, and the studio stays open through each.
+A pick that leaves the writer something to do is a `redo`; a change a person asks for in words
+is a `change` (a note on a picture is first read by the classifier: how it is drawn goes to
+its builder, what it shows to the writer); a person's own words for a line are an `edit`, which
+is code's alone unless a cue lost its word. The house's copy of the plan is the plan: it is
+written into the writer's folder before every turn, so a person's words reach the writer. The
+plan, its labels and its pictures as they stood are kept in `history`, a row per change: while
+a change stands its row holds the episode as it stood before, and once the change is taken
+back the row holds the episode as the change left it, so it can be put back. A turn that
+fails or is stopped falls back to its own row and drops it; a turn that leaves the plan and
+the picks as they were keeps none. Going either way keeps the picks a person made since
+(`plan.picks_kept`), re-settles the frames under them, and keeps a picture made since that
+still fits its lines. A row's summary names the lines whose words changed with what they
+said, the lines that were cut with the line each followed, and the pictures planned again;
+the studio lays that into the script.
+
 What no model does runs through `Computer`, the thread's sandbox for the desk's own use: staging
 the channel's brand pack as an engine run would, checking and posing a picture (`hyperframes
 check`, then a still at the end of each line), cutting a take to the film's format, rendering

@@ -437,6 +437,13 @@ class DemoWorker:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(sketch.built(brief), encoding="utf8")
             return Told(answer=f"Wrote {target.name}.")
+        if "Stage: change" in prompt or "Stage: redo" in prompt:
+            return await self._change(folder, prompt, heard)
+        if "Stage: fix" in prompt and not any(
+            f"(the {s} stage)" in prompt for s in ("brief", "script", "frames")
+        ):
+            # a plan that stands is never written over from the script
+            return Told(answer="Nothing to fix.")
         plan: dict[str, Any] = dict(self.script["plan"])
         stage = next((s for s in ("brief", "script", "frames") if f"Stage: {s}" in prompt), "fix")
         heard("step", "Reading the material")
@@ -460,6 +467,49 @@ class DemoWorker:
         (folder / "plan.json").write_text(json.dumps(plan, indent=1), encoding="utf8")
         await asyncio.sleep(self.pause)
         return Told(answer=f"Wrote the {stage} stage.")
+
+    async def _change(self, folder: Path, prompt: str, heard: Heard) -> Told:
+        """The two changes the demo's writer knows: it says the line it was asked about in
+        fewer words (the first line of a chapter, or of the film, when asked about those), and
+        it cuts a line when asked to cut it. Enough to show a change landing, what it did and
+        its being taken back, with no model."""
+        target = folder / "plan.json"
+        plan = json.loads(target.read_text("utf8"))
+        heard("step", "Reading the plan")
+        await asyncio.sleep(self.pause)
+        named = re.search(r"\b(c\d+)(\.b\d+)?(?:\.f\d+)?\b", prompt)
+        chapters = plan.get("chapters") or []
+        chapter_id = named.group(1) if named else ""
+        beat_id = chapter_id + named.group(2) if named and named.group(2) else ""
+        chapter = next((c for c in chapters if c.get("id") == chapter_id), None)
+        if chapter is None and chapters:
+            chapter = chapters[0]
+        beats = (chapter or {}).get("beats") or []
+        beat = next((b for b in beats if b.get("id") == beat_id), beats[0] if beats else None)
+        if beat is None:
+            return Told(failure="The plan has no line to change.")
+        words = str(beat.get("says") or "").split()
+        frames = beat.get("frames") or []
+        keep = {str(c.get("at", "")).lower() for f in frames for c in f.get("cues", [])}
+        asked = re.search(r"the person asks: “(.*)”", prompt)
+        plain = len(frames) <= 1 and not keep and not any(f.get("shows") for f in frames)
+        cut = bool(asked and re.search(r"\bcut\b", asked[1], re.I))
+        if chapter is not None and beat_id and plain and len(beats) > 2 and cut:
+            # a line said to camera, with no picture of its own, can go without a redesign
+            chapter["beats"] = [b for b in beats if b is not beat]
+            heard("step", "Writing plan.json")
+            target.write_text(json.dumps(plan, indent=1), encoding="utf8")
+            await asyncio.sleep(self.pause)
+            return Told(answer=f"Cut {beat['id']}.")
+        if len(frames) > 1 or len(words) < 9 or keep:
+            # a line cut into frames or one a picture's steps land on is left as it is said
+            beat["says"] = " ".join(words)
+        else:
+            beat["says"] = " ".join(words[: max(6, len(words) * 2 // 3)]).rstrip(",;:") + "."
+        heard("step", "Writing plan.json")
+        target.write_text(json.dumps(plan, indent=1), encoding="utf8")
+        await asyncio.sleep(self.pause)
+        return Told(answer=f"Said {beat['id']} in fewer words.")
 
     async def read(self, episode: Row, name: str) -> str | None:
         target = self.folder(episode) / name

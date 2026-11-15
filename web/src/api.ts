@@ -229,7 +229,8 @@ export type Box = [number, number, number, number];
 export type LayoutSpot = { person: Box | null; picture: Box | null; person_radius: number; picture_radius: number; glass: boolean; zoom: number };
 export type EpisodeOptions = {
   writers: { id: WriterId; title: string; ready: boolean; local: boolean }[];
-  themes: { id: string; name: string; presenter: "on" | "off"; stage: string }[];
+  // A look, with its layouts and who has the frame in each: one picker covers both.
+  themes: { id: string; name: string; presenter: "on" | "off"; stage: string; kit: { layout: string; presence: Presence }[] }[];
   seconds: { least: number; most: number; usual: number };
   // Who reads the plan's words: Jev, or the writer's own model.
   reader: "jev" | "writer" | "demo";
@@ -259,6 +260,8 @@ export type EpisodeFrame = {
   transition?: string;
   // What the person picked over the plan's reading, for the line that brings a picture in.
   picked?: { picture?: string; transition?: string };
+  // The person's own words are on this line: what the writer had, and when they changed it.
+  by_person?: { was: string; at: number };
   // A pick of who has the frame or its layout: the line's own, or one set for its chapter or the film.
   override?: { presence: Presence; layout: string; reason: string; scope?: "chapter" | "film" };
 };
@@ -329,6 +332,26 @@ export type EpisodeView = EpisodeCard & {
   checks: EpisodeCheck[];
   runs: EpisodeRun[];
   options: EpisodeOptions;
+  // The turn under way or last made: when it began, and a person's own words when they asked for it.
+  stage: EpisodeCard["stage"] & { at?: number; asked?: EpisodeAsk | null };
+  // The last change to the plan that stands (a person's words, or what the writer did when asked): what it did, what
+  // each changed line said before, the lines it cut, and how many changes before it can also be taken back.
+  last_change: (EpisodeChange & { at: number; earlier?: number }) | null;
+  // The change that was last taken back, while it can still be put back.
+  undone: EpisodeChange | null;
+  // Lines reworded after they were recorded: the take still says the old words.
+  rerecord: string[];
+};
+export type AskScope = "film" | "chapter" | "line" | "picture";
+export type EpisodeAsk = { scope: AskScope; target?: string; text: string };
+export type EpisodeChange = {
+  why: string;
+  lines: string[];
+  was?: Record<string, string>;
+  added: string[];
+  removed: number;
+  cut?: { says: string; chapter: string; after: string }[];
+  pictures?: string[];
 };
 // A pick for a line, a chapter or the film. null takes that pick back and leaves the others.
 export type EpisodePick = {
@@ -478,6 +501,11 @@ export const api = {
   episode: (id: string) => call<EpisodeView>("GET", `/api/episodes/${id}`),
   approveEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/approve`),
   chooseEpisode: (id: string, body: EpisodeChoices) => call<EpisodeView>("POST", `/api/episodes/${id}/choices`, body),
+  // A change asked for in words; the writer makes it (a note on how a picture is drawn goes to its builder).
+  askEpisode: (id: string, ask: EpisodeAsk) => call<EpisodeView>("POST", `/api/episodes/${id}/ask`, ask),
+  editLine: (id: string, frame: string, text: string) => call<EpisodeView>("POST", `/api/episodes/${id}/lines/${encodeURIComponent(frame)}`, { text }),
+  undoEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/undo`),
+  redoEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/redo`),
   planAgain: (id: string, writer: WriterId | "" = "") => call<EpisodeView>("POST", `/api/episodes/${id}/again`, { writer }),
   stopEpisode: (id: string) => call<{ ok: boolean }>("POST", `/api/episodes/${id}/stop`),
   makePictures: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures`),

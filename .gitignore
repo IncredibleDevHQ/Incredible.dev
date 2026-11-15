@@ -18,6 +18,9 @@ workspace/projects/*
 workspace/out/
 workspace/state/
 
+# Source read for reference while writing our own parts (a paid library's, say): never committed
+/.references/
+
 # Build and tool output
 .venv/
 __pycache__/

@@ -1,12 +1,25 @@
 // Recording a chapter in the browser: the camera and microphone (the microphone alone when
 // nobody is on screen), one take for the whole chapter, and a mark each time the person moves to
 // the next line. The marks are what let the film cut the take by line and land each picture's
-// cues on the words as they were actually said.
+// cues on the words as they were actually said. Which camera and microphone are used is the
+// person's pick, kept on this computer; without one the browser's own choice is used.
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type Mark = { frame: string; t: number };
 export type RecorderState = "off" | "asking" | "ready" | "count" | "recording" | "saving";
 export type Recording = { blob: Blob; name: string; marks: Mark[] };
+
+export type Devices = { cameras: MediaDeviceInfo[]; mics: MediaDeviceInfo[] };
+export type DevicePick = { camera?: string; mic?: string };
+
+const PICKED = "episode-devices";
+function pickedBefore(): DevicePick {
+  try {
+    return JSON.parse(localStorage.getItem(PICKED) ?? "{}") as DevicePick;
+  } catch {
+    return {};
+  }
+}
 
 const TYPES = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
 
@@ -17,6 +30,8 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
   const [count, setCount] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [problem, setProblem] = useState("");
+  const [devices, setDevices] = useState<Devices>({ cameras: [], mics: [] });
+  const [picked, setPicked] = useState<DevicePick>(pickedBefore);
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
   const marks = useRef<Mark[]>([]);
@@ -30,32 +45,86 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
     setStream(null);
   }, []);
 
+  // What can be picked from. The browser names its devices only once it may use them, so the
+  // list is read after the stream opens, and again when something is plugged in or pulled out.
+  const list = useCallback(async () => {
+    const all = await navigator.mediaDevices.enumerateDevices();
+    const named = (kind: MediaDeviceKind) => all.filter((d) => d.kind === kind && d.deviceId && d.label);
+    setDevices({ cameras: named("videoinput"), mics: named("audioinput") });
+  }, []);
+  useEffect(() => {
+    if (state === "off" || !navigator.mediaDevices?.addEventListener) return;
+    const changed = () => void list();
+    navigator.mediaDevices.addEventListener("devicechange", changed);
+    return () => navigator.mediaDevices.removeEventListener("devicechange", changed);
+  }, [state, list]);
+
+  const open = useCallback(
+    (want: DevicePick) =>
+      navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, ...(want.mic ? { deviceId: { exact: want.mic } } : {}) },
+        video: camera ? { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 }, ...(want.camera ? { deviceId: { exact: want.camera } } : {}) } : false,
+      }),
+    [camera],
+  );
+
   // The camera and microphone, asked for once the person chooses to record.
-  const arm = useCallback(async () => {
-    setProblem("");
-    setState("asking");
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error("This browser can't record. Bring a recording as a file instead.");
-      const got = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-        video: camera ? { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } } : false,
-      });
-      live.current = got;
-      setStream(got);
-      setIndex(0);
-      setState("ready");
-    } catch (error) {
-      const named = (error as Error).name;
-      setProblem(
-        named === "NotAllowedError"
-          ? "The browser didn't allow the camera and microphone. Allow them for this page, or bring a recording as a file."
-          : named === "NotFoundError"
-            ? "No camera or microphone was found. Bring a recording as a file instead."
-            : (error as Error).message,
-      );
-      setState("off");
-    }
-  }, [camera]);
+  const arm = useCallback(
+    async (want: DevicePick = picked) => {
+      setProblem("");
+      setState((was) => (was === "ready" ? was : "asking"));
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error("This browser can't record. Bring a recording as a file instead.");
+        let got: MediaStream;
+        try {
+          got = await open(want);
+        } catch (error) {
+          // the one picked before is not plugged in today: the browser's own choice, then
+          if (!["OverconstrainedError", "NotFoundError"].includes((error as Error).name) || !(want.camera || want.mic)) throw error;
+          got = await open({});
+          setPicked({});
+          try {
+            localStorage.removeItem(PICKED);
+          } catch {
+            // nothing was kept
+          }
+        }
+        live.current?.getTracks().forEach((t) => t.stop());
+        live.current = got;
+        setStream(got);
+        setIndex(0);
+        setState("ready");
+        void list();
+      } catch (error) {
+        const named = (error as Error).name;
+        setProblem(
+          named === "NotAllowedError"
+            ? "The browser didn't allow the camera and microphone. Allow them for this page (the camera icon in the address bar), or bring a recording as a file."
+            : named === "NotFoundError"
+              ? "No camera or microphone was found. Bring a recording as a file instead."
+              : (error as Error).message,
+        );
+        release();
+        setState("off");
+      }
+    },
+    [open, picked, list, release],
+  );
+
+  // Another camera or microphone: kept for next time, and opened at once while getting ready.
+  const choose = useCallback(
+    (change: DevicePick) => {
+      const want = { ...picked, ...change };
+      setPicked(want);
+      try {
+        localStorage.setItem(PICKED, JSON.stringify(want));
+      } catch {
+        // kept for this visit only
+      }
+      if (state === "ready") void arm(want);
+    },
+    [picked, state, arm],
+  );
 
   const begin = useCallback(() => {
     const source = live.current;
@@ -126,5 +195,11 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
 
   useEffect(() => () => live.current?.getTracks().forEach((t) => t.stop()), []);
 
-  return { state, stream, index, count, elapsed, problem, arm, start, next, stop, clearProblem: () => setProblem("") };
+  const armNow = useCallback(() => arm(), [arm]);
+  // The devices in use: the picked ones, or whichever the browser opened.
+  const using: DevicePick = {
+    camera: stream?.getVideoTracks()[0]?.getSettings().deviceId,
+    mic: stream?.getAudioTracks()[0]?.getSettings().deviceId,
+  };
+  return { state, stream, index, count, elapsed, problem, devices, using, choose, arm: armNow, start, next, stop, clearProblem: () => setProblem("") };
 }

@@ -19,7 +19,7 @@ from design_agent.episode import picture
 from design_agent.surfaces.web import catalog
 from design_agent.surfaces.web.agent import AgentHost
 from design_agent.surfaces.web.app import create_app
-from design_agent.surfaces.web.episode_desk import EPISODE, EpisodeDesk, _shape
+from design_agent.surfaces.web.episode_desk import EPISODE, EpisodeDesk, _changed, _shape
 from design_agent.surfaces.web.episode_workers import (
     BUILTIN,
     DEMO,
@@ -265,6 +265,20 @@ async def test_a_restart_stops_what_was_under_way_and_the_card_says_where_it_sta
     # stills still wait for a go, so the card is for review and the thread waits on a person
     assert house.store.asset(view["asset_id"])["status"] == "review"  # type: ignore[index]
     assert house.store.thread(view["thread_id"])["status"] == "needs_you"  # type: ignore[index]
+    # a change that was under way when the house stopped is not left half made
+    stood = house.store.episode(episode_id)
+    assert stood is not None
+    house.episodes._snapshot(episode_id, why="A change that never landed")
+    half = json.loads(json.dumps(stood["plan"]))
+    half["chapters"] = half["chapters"][:1]
+    house.store.update_episode(
+        episode_id, plan=half, stage={"name": "change", "state": "working", "said": "Writing"}
+    )
+    house.episodes.restore()
+    again = house.episodes.view(episode_id)
+    assert len(again["plan"]["chapters"]) == len(stood["plan"]["chapters"])
+    assert again["status"] == "studio" and again["stage"]["state"] == "stopped"
+    assert house.store.snapshot(episode_id) is None
 
 
 async def test_a_line_that_loses_its_picture_takes_the_pictures_record_with_it(
@@ -534,6 +548,384 @@ async def test_a_picture_type_redraws_one_picture_and_a_transition_only_the_film
         house.episodes.choose(
             episode_id, by="you", change={"frames": {unit["id"]: {"picture": "terminal"}}}
         )
+
+
+def lines_of(view: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {f["id"]: f for ch in view["plan"]["chapters"] for b in ch["beats"] for f in b["frames"]}
+
+
+async def test_a_persons_own_words_are_in_at_once_and_nothing_is_drawn_again(
+    house: AgentHost,
+) -> None:
+    episode_id = await planned(house)
+    house.episodes.approve(episode_id, by="you")
+    await settle(lambda: not house.episodes._busy(episode_id))
+    before = house.episodes.view(episode_id)
+    unit = next(u for u in before["units"] if lines_of(before)[u["id"]].get("cues"))
+    line = lines_of(before)[unit["id"]]
+    landed = [c["at"] for c in line["cues"]]
+    words = "Put plainly: " + " and then ".join(landed) + "."
+    view = house.episodes.edit(episode_id, by="you", frame=line["id"], text=f"  {words}  ")
+    assert not house.episodes._busy(episode_id), "no turn of the writer's, and no picture"
+    now = lines_of(view)[line["id"]]
+    assert now["vo"] == words and now["by_person"]["was"] == line["vo"]
+    assert (now["presence"], now["layout"]) == (line["presence"], line["layout"])
+    assert now["picture"] == line["picture"], "what the line does was not read again"
+    assert {u["id"]: u["picture"]["status"] for u in view["units"]} == {
+        u["id"]: "made" for u in before["units"]
+    }
+    assert view["last_change"]["lines"] == [line["id"]]
+    assert view["clock"]["total"] != before["clock"]["total"], "code timed the new words"
+    with pytest.raises(ValueError, match="needs words"):
+        house.episodes.edit(episode_id, by="you", frame=line["id"], text="   ")
+    with pytest.raises(ValueError, match="not in the plan"):
+        house.episodes.edit(episode_id, by="you", frame="c9.b9.f9", text="Hello there.")
+    # the same words again are not a change; the change is taken back whole
+    same = house.episodes.edit(episode_id, by="you", frame=line["id"], text=words)
+    assert same["last_change"]["lines"] == [line["id"]]
+    back = house.episodes.undo(episode_id, by="you")
+    assert lines_of(back)[line["id"]]["vo"] == line["vo"] and back["last_change"] is None
+    assert "by_person" not in lines_of(back)[line["id"]]
+    assert {u["picture"]["status"] for u in back["units"]} == {"made"}
+    with pytest.raises(ValueError, match="nothing to take back"):
+        house.episodes.undo(episode_id, by="you")
+
+
+class Heard(DemoWorker):
+    """The demo's writer, keeping every turn it was given."""
+
+    turns: list[tuple[str, str]]
+
+    async def turn(self, episode: Any, *, lane: str, prompt: str, heard: Any) -> Any:
+        self.turns.append((lane, prompt))
+        return await super().turn(episode, lane=lane, prompt=prompt, heard=heard)
+
+
+def heard_by(house: AgentHost, tmp_path: Path) -> Heard:
+    worker = Heard(data_dir=tmp_path, script=SCRIPT, pause=0)
+    worker.turns = []
+    house.episodes.workers[DEMO] = worker
+    return worker
+
+
+async def test_a_picture_made_before_words_stopped_counting_still_stands(
+    house: AgentHost,
+) -> None:
+    episode_id = await planned(house)
+    house.episodes.approve(episode_id, by="you")
+    await settle(lambda: not house.episodes._busy(episode_id))
+    episode = house.store.episode(episode_id)
+    assert episode is not None
+    full = house.episodes._full(episode)
+    assert full is not None
+    found = house.episodes._units(episode, full)
+    # as a house that drew its pictures under the older signature left them
+    for unit in found:
+        house.store.set_picture(episode_id, unit["id"], sig=unit["sig_was"])
+    house.episodes._queue_pictures(episode_id)
+    view = house.episodes.view(episode_id)
+    assert not house.episodes._busy(episode_id)
+    assert {(u["picture"]["status"], u["picture"]["stale"]) for u in view["units"]} == {
+        ("made", False)
+    }
+
+
+class Fitter(DemoWorker):
+    """The demo's writer, able to fit a cue to a person's words when asked to fix a line."""
+
+    fixed: list[str]
+
+    async def turn(self, episode: Any, *, lane: str, prompt: str, heard: Any) -> Any:
+        if lane == "plan" and "Stage: fix" in prompt:
+            self.fixed.append(prompt)
+            target = self.folder(episode) / "plan.json"
+            plan = json.loads(target.read_text())
+            for ch in plan["chapters"]:
+                for b in ch["beats"]:
+                    for f in b.get("frames") or []:
+                        said = b["says"].lower()
+                        for cue in f.get("cues", []):
+                            if cue["at"].lower() not in said:
+                                cue["at"] = b["says"].split()[0].strip(".,:;")
+            target.write_text(json.dumps(plan))
+            from design_agent.surfaces.web.episode_workers import Told
+
+            return Told(answer="Fitted the cue to the new words.")
+        return await super().turn(episode, lane=lane, prompt=prompt, heard=heard)
+
+
+async def test_a_step_that_lost_its_word_is_fitted_by_the_writer_and_the_picture_stands(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    episode_id = await planned(house)
+    house.episodes.approve(episode_id, by="you")
+    await settle(lambda: not house.episodes._busy(episode_id))
+    worker = Fitter(data_dir=tmp_path, script=SCRIPT, pause=0)
+    worker.fixed = []
+    house.episodes.workers[DEMO] = worker
+    house.episodes.demo = False
+    before = house.episodes.view(episode_id)
+    unit = next(u for u in before["units"] if lines_of(before)[u["id"]].get("cues"))
+    line = lines_of(before)[unit["id"]]
+    view = house.episodes.edit(
+        episode_id, by="you", frame=line["id"], text="Nothing here that a step landed on before."
+    )
+    assert house.episodes.planning(episode_id) and view["status"] == "studio"
+    assert view["stage"]["name"] == "edit", "the studio stays open while the step is fitted"
+    await settle(lambda: not house.episodes._busy(episode_id))
+    assert len(worker.fixed) == 1 and line["id"] in worker.fixed[0]
+    assert "stay exactly as they are" in worker.fixed[0]
+    after = house.episodes.view(episode_id)
+    now = lines_of(after)[line["id"]]
+    assert now["vo"] == "Nothing here that a step landed on before."
+    assert {c["at"] for c in now["cues"]} == {"Nothing"}
+    assert not [r for r in after["checks"] if r["where"] == line["id"] and r["level"] == "must"]
+    assert {u["picture"]["status"] for u in after["units"]} == {"made"}, "its picture stands"
+    assert after["stage"]["state"] == "done" and after["last_change"]["lines"] == [line["id"]]
+
+
+async def test_a_change_asked_in_words_is_made_by_the_writer_and_can_be_taken_back(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    episode_id = await planned(house)
+    worker = heard_by(house, tmp_path)
+    before = house.episodes.view(episode_id)
+    # before the plan is approved: it is read, and shaped, first
+    line = next(
+        f for f in lines_of(before).values() if len(f["vo"].split()) > 12 and not f.get("cues")
+    )
+    with pytest.raises(ValueError, match="Say what should change"):
+        house.episodes.ask(episode_id, by="you", scope="line", target=line["id"], text="  ")
+    with pytest.raises(ValueError, match="not in the plan"):
+        house.episodes.ask(episode_id, by="you", scope="line", target="c9.b9.f9", text="Shorter")
+    view = house.episodes.ask(
+        episode_id, by="you", scope="line", target=line["id"], text="Say it in fewer words."
+    )
+    assert view["status"] == "plan" and view["stage"]["name"] == "change"
+    with pytest.raises(ValueError, match="still working"):
+        house.episodes.ask(episode_id, by="you", scope="film", text="Shorter")
+    with pytest.raises(ValueError, match="being written"):
+        house.episodes.choose(episode_id, by="you", change={"settings": {"level": "rich"}})
+    await settle(lambda: not house.episodes.planning(episode_id))
+    after = house.episodes.view(episode_id)
+    now = lines_of(after)[line["id"]]
+    assert len(now["vo"].split()) < len(line["vo"].split())
+    assert after["last_change"]["lines"] == [line["id"]]
+    # what was asked is kept in the person's own words, and so is what the line said before
+    assert after["last_change"]["why"] == "Say it in fewer words."
+    assert after["last_change"]["was"] == {line["id"]: line["vo"]}
+    assert after["last_change"]["earlier"] == 0 and after["undone"] is None
+    assert after["stage"]["asked"] == {
+        "scope": "line",
+        "target": line["id"],
+        "text": "Say it in fewer words.",
+    }
+    assert now["presence"] == line["presence"] and after["status"] == "plan"
+    asked = next(p for lane, p in worker.turns if lane == "plan" and "Stage: change" in p)
+    assert f"About line {line['id']}" in asked and "Never undo a pick" in asked
+    # a pick made after the change stays when the change is taken back, and when it is put back
+    other = next(
+        f for f in lines_of(after).values() if f["id"] != line["id"] and f["presence"] == "both"
+    )
+    wide = "split" if other["layout"] != "split" else "corner-window"
+    house.episodes.choose(episode_id, by="you", change={"frames": {other["id"]: {"layout": wide}}})
+    back = house.episodes.undo(episode_id, by="you")
+    assert lines_of(back)[line["id"]]["vo"] == line["vo"]
+    assert lines_of(back)[other["id"]]["layout"] == wide, "the pick is not the change's"
+    assert back["last_change"] is None and back["undone"]["why"] == "Say it in fewer words."
+    again = house.episodes.redo(episode_id, by="you")
+    assert lines_of(again)[line["id"]]["vo"] == now["vo"] and again["undone"] is None
+    assert lines_of(again)[other["id"]]["layout"] == wide
+    assert again["last_change"]["was"] == {line["id"]: line["vo"]}
+    with pytest.raises(ValueError, match="nothing to put back"):
+        house.episodes.redo(episode_id, by="you")
+    # changes go back one at a time, newest first, and come back oldest first
+    mine = house.episodes.edit(episode_id, by="you", frame=other["id"], text="My own words.")
+    assert mine["last_change"]["earlier"] == 1 and mine["last_change"]["was"] == {
+        other["id"]: other["vo"]
+    }
+    one = house.episodes.undo(episode_id, by="you")
+    assert lines_of(one)[other["id"]]["vo"] == other["vo"]
+    assert one["last_change"]["why"] == "Say it in fewer words."
+    assert one["undone"]["why"] == "You changed a line"
+    two = house.episodes.undo(episode_id, by="you")
+    assert lines_of(two)[line["id"]]["vo"] == line["vo"] and two["last_change"] is None
+    assert two["undone"]["why"] == "Say it in fewer words."
+    with pytest.raises(ValueError, match="nothing to take back"):
+        house.episodes.undo(episode_id, by="you")
+    house.episodes.redo(episode_id, by="you")
+    both = house.episodes.redo(episode_id, by="you")
+    assert lines_of(both)[other["id"]]["vo"] == "My own words." and both["undone"] is None
+    assert lines_of(both)[line["id"]]["vo"] == now["vo"]
+    # a new change is the end of what could be put back
+    house.episodes.undo(episode_id, by="you")
+    fresh = house.episodes.edit(episode_id, by="you", frame=other["id"], text="Other words.")
+    assert fresh["undone"] is None and fresh["last_change"]["earlier"] == 1
+    house.episodes.undo(episode_id, by="you")
+    back = house.episodes.undo(episode_id, by="you")
+    assert lines_of(back)[line["id"]]["vo"] == line["vo"]
+    # a turn that leaves the plan as it was is no change: it says so, and nothing is kept for it
+    drawn = next(f for f in lines_of(back).values() if f.get("cues"))
+    house.episodes.ask(episode_id, by="you", scope="line", target=drawn["id"], text="Shorter")
+    await settle(lambda: not house.episodes.planning(episode_id))
+    nothing = house.episodes.view(episode_id)
+    assert nothing["stage"]["state"] == "done"
+    assert nothing["stage"]["said"] == "The writer changed nothing."
+    assert nothing["last_change"] is None and nothing["stage"]["asked"]["text"] == "Shorter"
+    # a line that is cut is named with its words and the line it followed, and comes back whole
+    ids = list(lines_of(nothing))
+    gone = next(
+        f
+        for f in lines_of(nothing).values()
+        if not f.get("cues") and not f.get("shows") and ids.index(f["id"]) > 0
+    )
+    house.episodes.ask(episode_id, by="you", scope="line", target=gone["id"], text="Cut this line")
+    await settle(lambda: not house.episodes.planning(episode_id))
+    cut = house.episodes.view(episode_id)
+    assert gone["id"] not in lines_of(cut) and cut["last_change"]["removed"] == 1
+    said = cut["last_change"]["cut"][0]
+    assert said["says"] == gone["vo"] and said["chapter"] == gone["id"].split(".")[0]
+    assert said["after"] in lines_of(cut) or said["after"] == ""
+    assert lines_of(house.episodes.undo(episode_id, by="you"))[gone["id"]]["vo"] == gone["vo"]
+    # a chapter, and the film, are asked the same way
+    chapter = before["plan"]["chapters"][2]
+    house.episodes.ask(episode_id, by="you", scope="chapter", target=chapter["id"], text="Shorter")
+    await settle(lambda: not house.episodes.planning(episode_id))
+    assert any(f"About chapter {chapter['id']}" in p for _, p in worker.turns)
+    house.episodes.ask(episode_id, by="you", scope="film", text="Open faster.")
+    await settle(lambda: not house.episodes.planning(episode_id))
+    assert any("About the whole film" in p for _, p in worker.turns)
+
+
+def test_what_a_change_did_names_the_old_words_and_the_lines_it_cut() -> None:
+    before = SCRIPT["plan"]
+    after = json.loads(json.dumps(before))
+    chapter = after["chapters"][1]
+    first, second, third = chapter["beats"][:3]
+    said = {b["id"]: " ".join(b["says"].split()) for b in (first, second, third)}
+    # the writer cuts the chapter's first line and its third, and says the second another way
+    chapter["beats"] = [b for b in chapter["beats"] if b["id"] not in (first["id"], third["id"])]
+    second["says"] = "Said another way."
+    for f in second.get("frames") or []:
+        f.pop("vo", None)
+    did = _changed(before, after)
+    line = f"{second['id']}.f1"
+    assert did["lines"] == [line] and did["was"] == {line: said[second["id"]]}
+    assert did["added"] == [] and did["removed"] == 2
+    assert did["cut"] == [
+        # the chapter's first line has no line before it there
+        {"says": said[first["id"]], "chapter": chapter["id"], "after": ""},
+        {"says": said[third["id"]], "chapter": chapter["id"], "after": line},
+    ]
+    assert _changed(before, before) == {
+        "lines": [],
+        "was": {},
+        "added": [],
+        "removed": 0,
+        "cut": [],
+        "pictures": [],
+    }
+
+
+class Silent(DemoWorker):
+    async def turn(self, episode: Any, *, lane: str, prompt: str, heard: Any) -> Any:
+        from design_agent.surfaces.web.episode_workers import Told
+
+        if lane == "plan" and "Stage: change" in prompt:
+            (self.folder(episode) / "plan.json").write_text("{}")  # half a change, left behind
+            return Told(failure="the agent ran out of turns")
+        return await super().turn(episode, lane=lane, prompt=prompt, heard=heard)
+
+
+async def test_a_change_that_stops_leaves_the_plan_as_it_was_and_the_studio_open(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    episode_id = await planned(house)
+    house.episodes.approve(episode_id, by="you")
+    await settle(lambda: not house.episodes._busy(episode_id))
+    first = next(iter(lines_of(house.episodes.view(episode_id)).values()))
+    before = house.episodes.edit(episode_id, by="you", frame=first["id"], text="In my words.")
+    house.episodes.workers[DEMO] = Silent(data_dir=tmp_path, script=SCRIPT, pause=0)
+    house.episodes.ask(episode_id, by="you", scope="film", text="Make it funnier.")
+    await settle(lambda: not house.episodes.planning(episode_id))
+    after = house.episodes.view(episode_id)
+    assert after["status"] == "studio", "a change that stops never fails the episode"
+    assert after["stage"]["state"] == "stopped" and "as it was" in after["stage"]["said"]
+    # what was asked is still known, to be sent again
+    assert after["stage"]["asked"] == {"scope": "film", "target": "", "text": "Make it funnier."}
+    assert lines_of(after).keys() == lines_of(before).keys()
+    assert {k: v["vo"] for k, v in lines_of(after).items()} == {
+        k: v["vo"] for k, v in lines_of(before).items()
+    }
+    # the change before it still stands, and is still the one to take back
+    assert after["last_change"]["why"] == "You changed a line"
+    assert after["last_change"]["earlier"] == 0
+    assert {u["picture"]["status"] for u in after["units"]} == {"made"}
+    # the next turn starts from the plan the house holds, not from what was left in the folder
+    house.episodes.workers[DEMO] = DemoWorker(data_dir=tmp_path, script=SCRIPT, pause=0)
+    house.episodes.ask(episode_id, by="you", scope="film", text="Open faster.")
+    await settle(lambda: not house.episodes.planning(episode_id))
+    assert house.episodes.view(episode_id)["stage"]["state"] == "done"
+
+
+async def test_a_note_on_a_picture_goes_to_its_builder_or_to_the_writer_by_what_it_asks(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    episode_id = await planned(house)
+    house.episodes.approve(episode_id, by="you")
+    await settle(lambda: not house.episodes._busy(episode_id))
+    worker = heard_by(house, tmp_path)
+    view = house.episodes.view(episode_id)
+    unit = next(u for u in view["units"] if len(u["frames"]) > 1)
+    asked: list[Any] = []
+
+    def reader(kind: str) -> Any:
+        def ask(state: Any, questions: Any) -> Any:
+            if "note" in questions:
+                asked.append(state)
+                return {"note": {"choice": kind, "confidence": 0.9}}
+            return {
+                k: {"choice": next(iter(q["criteria"])), "confidence": 1.0}
+                for k, q in questions.items()
+            }
+
+        return ask
+
+    # how it is drawn: its builder gets the note, the plan is not touched
+    house.episodes.reader = reader("drawn")
+    house.episodes.ask(
+        episode_id,
+        by="you",
+        scope="picture",
+        target=unit["frames"][1],
+        text="The title is cut off.",
+    )
+    await settle(lambda: not house.episodes._busy(episode_id))
+    assert asked[-1]["NOTE"] == "The title is cut off." and asked[-1]["picture_shows"]
+    brief = json.loads(
+        (
+            house.episodes.data_dir
+            / "episodes"
+            / episode_id
+            / "pictures"
+            / f"{picture.composition_id(unit['id'])}.brief.json"
+        ).read_text()
+    )
+    assert brief["note_from_the_person"] == "The title is cut off."
+    assert not [p for lane, p in worker.turns if lane == "plan"], "the writer was not asked"
+    # what it shows: the writer's, because the plan says what a picture shows
+    house.episodes.reader = reader("shows")
+    house.episodes.ask(
+        episode_id, by="you", scope="picture", target=unit["id"], text="Show a table instead."
+    )
+    await settle(lambda: not house.episodes._busy(episode_id))
+    turns = [p for lane, p in worker.turns if lane == "plan" and "Stage: change" in p]
+    assert len(turns) == 1
+    assert f"About the picture line {unit['id']} brings in" in turns[0]
+    assert "“Show a table instead.”" in turns[0]
+    with pytest.raises(ValueError, match="no picture yet"):
+        to_camera = next(f for f in lines_of(view).values() if f["presence"] == "person")
+        house.episodes.ask(episode_id, by="you", scope="picture", target=to_camera["id"], text="x")
 
 
 async def test_the_film_has_one_look_voice_and_level_chosen_once(house: AgentHost) -> None:
@@ -861,6 +1253,9 @@ def test_the_app_serves_an_episode_at_every_address(tmp_path: Path) -> None:
                 break
             time.sleep(0.05)
         assert view["status"] == "plan" and view["settings"]["seconds"] == 300
+        line_id = next(
+            f["id"] for ch in view["plan"]["chapters"] for b in ch["beats"] for f in b["frames"]
+        )
         assert client.get("/api/episodes/ep_missing").status_code == 404
         assert client.post("/api/episodes/ep_missing/approve").status_code == 404
         assert client.post(f"/api/episodes/{episode_id}/film").status_code == 422
@@ -876,10 +1271,35 @@ def test_the_app_serves_an_episode_at_every_address(tmp_path: Path) -> None:
             f"/api/episodes/{episode_id}/choices", json={"settings": {"level": "ornate"}}
         )
         assert bad.status_code == 422
-        # a null is a pick taken back: it reaches the desk as it was sent
-        line = next(
-            f["id"] for ch in view["plan"]["chapters"] for b in ch["beats"] for f in b["frames"]
+        # a change in words, a person's own words, and the way back
+        said = client.post(
+            f"/api/episodes/{episode_id}/lines/{line_id}", json={"text": "A line said my way."}
         )
+        assert said.status_code == 200 and said.json()["last_change"]["lines"] == [line_id]
+        assert client.post(f"/api/episodes/{episode_id}/undo").status_code == 200
+        assert client.post(f"/api/episodes/{episode_id}/undo").status_code == 422
+        put_back = client.post(f"/api/episodes/{episode_id}/redo")
+        assert put_back.status_code == 200 and put_back.json()["undone"] is None
+        assert client.post(f"/api/episodes/{episode_id}/redo").status_code == 422
+        assert (
+            client.post(
+                f"/api/episodes/{episode_id}/ask", json={"scope": "scene", "text": "Shorter"}
+            ).status_code
+            == 422
+        )
+        asked = client.post(
+            f"/api/episodes/{episode_id}/ask", json={"scope": "film", "text": "Open faster."}
+        )
+        assert asked.status_code == 200 and asked.json()["stage"]["name"] == "change"
+        until = time.time() + 30
+        while time.time() < until and client.get(f"/api/episodes/{episode_id}").json()["stage"][
+            "state"
+        ] in ("working", "reading"):
+            time.sleep(0.05)
+        kit = client.get("/api/episodes/options").json()["themes"][0]["kit"]
+        assert {"layout": "corner-window", "presence": "both"} in kit
+        # a null is a pick taken back: it reaches the desk as it was sent
+        line = line_id
         for change in ({"transition": "push"}, {"transition": None}):
             sent = client.post(
                 f"/api/episodes/{episode_id}/choices", json={"frames": {line: change}}

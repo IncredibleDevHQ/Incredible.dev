@@ -36,6 +36,24 @@
     the film renders by moving the picture's whole box. A new look redraws every picture, so
     the film's page says how many and waits for a yes; while pictures are being made it shows
     how far they are with a Stop, and the ones that stopped are made again on request.
+  - The plan is read, and changed, before anything is drawn. A line's words are changed where
+    they are read (nothing is read or drawn again; the writer only fits a step whose word is
+    gone). Anything else is asked for in words in a change bar under the script, of the line,
+    its picture, the chapter or the film; the writer makes it while the studio stays open, and
+    a note on how a picture is drawn goes to its builder. While the writer works the bar shows
+    what was asked and for how long, and takes the next change, which waits its turn. What a
+    change did is marked in the script word by word, with the lines it cut; changes are taken
+    back one at a time, newest first, a change taken back can be put back, and the picks made
+    since stay. A change that stops can be asked again in the same words. One pick of a frame
+    sets who has it and its layout, and the film's look is picked by a picture of the frame it
+    is named for. One line can be recorded again. Before a take the microphone's level shows
+    and the microphone and camera can be chosen (kept on that computer); during it the time
+    planned for the chapter stands beside the time run, and the words to say can be made
+    larger. Notes are dropped on the new-episode sheet as files, and a recording on a
+    chapter's frame. Keys: R opens the camera, Cmd/Ctrl+Z takes the last change back and
+    Shift+Cmd/Ctrl+Z puts it back. The studio's controls use more of affectUI's free parts
+    (Segmented Control, Tooltip, Popover, Kbd, Shimmer Loader); the word marks, the drop
+    place and the device choice are the studio's own.
   - Each picture is one HyperFrames sub-composition built by the same writer, in the channel's
     brand: its colours by role and its type, staged on the thread's computer. Every time in it
     comes from a clock block code rewrites, so a recording never sends a picture back to its

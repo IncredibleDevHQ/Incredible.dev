@@ -80,6 +80,12 @@ it left for you: a line that was said to camera and now needs a picture gets `sh
 and cues, or `hold` on the picture before; a greeting with no one to say it is rewritten. Never
 undo a person's pick. `references/plan.md`, "When a person changes who has the frame".
 
+**change.** A person asks, in their own words, for a change to the film, a chapter, a line or
+what a picture shows. The turn quotes them and says what it is about. Make that change and
+nothing else: keep the id of every line that stays, give a new line a new id, and leave a line
+marked `by_person` word for word unless the change is about that line. The plan is then read
+and checked as at the frames stage. `references/plan.md`, "When a person asks for a change".
+
 **picture.** Build one picture of the plan as a file. The turn names it; follow
 `briefs/picture.md`.
 

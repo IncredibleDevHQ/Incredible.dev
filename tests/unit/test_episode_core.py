@@ -398,6 +398,143 @@ def test_a_picture_comes_in_by_its_move_and_the_one_before_leaves_by_it(full: Ro
             assert "tl.set(" in line and f'tl.to("#wrap-{prior}"' not in again
 
 
+def test_a_persons_words_keep_what_the_line_does_and_what_was_drawn_for_it(
+    script: Row, full: Row
+) -> None:
+    unit = next(u for u in units.units(full) if len(u["frames"]) > 1)
+    lead, held = unit["frames"][0], unit["frames"][1]
+    before = script["plan"]
+    after = copy.deepcopy(before)
+    was = plans.reword(after, lead, "Other words for the same job.", at=1.0)
+    line = next(f for _, _, f in plans.frames_of(plans.merged(before, {})) if f["id"] == lead)
+    assert was == line["vo"] and before != after, "the plan handed in is never touched"
+    labels = plans.carried(script["labels"], before, after)
+    merged = plans.merged(after, labels)
+    now = {f["id"]: f for _, _, f in plans.frames_of(merged)}
+    old = {f["id"]: f for _, _, f in plans.frames_of(plans.merged(before, script["labels"]))}
+    assert now[lead]["vo"] == "Other words for the same job."
+    assert now[lead]["by_person"]["was"] == was
+    assert now[lead]["by_person"]["cues"] == [c["at"] for c in old[lead].get("cues", [])]
+    for key in ("presence", "layout", "picture", "arrangement", "transition"):
+        assert now[lead].get(key) == old[lead].get(key), key
+    assert [o.get("type") for o in now[lead].get("objects", [])] == [
+        o.get("type") for o in old[lead].get("objects", [])
+    ]
+    assert plans.labels_of(merged)["frames"][lead]["h"] != script["labels"]["frames"][lead]["h"]
+    # every other line is as it was, and code times the new words
+    assert {k: v.get("presence") for k, v in now.items()} == {
+        k: v.get("presence") for k, v in old.items()
+    }
+    again = next(u for u in units.units(derive.full(merged)) if u["id"] == unit["id"])
+    assert again["sig"] == unit["sig"], "words alone never send a picture back"
+    assert again["seconds"] != unit["seconds"]
+    # a second change keeps the writer's words, not the person's first ones
+    plans.reword(after, lead, "A third way to say it.", at=2.0)
+    found = plans.beat_of(after, lead)
+    assert found is not None
+    marked = found[2] if found[2] is not None and "by_person" in found[2] else found[1]
+    assert marked["by_person"]["was"] == was and marked["by_person"]["at"] == 2.0
+    # a line cut from a longer beat keeps the beat's words joined, and a missing line is named
+    assert plans.beat_of(after, held) is not None
+    with pytest.raises(KeyError):
+        plans.reword(after, "c9.b9.f9", "Nothing.", at=3.0)
+
+
+def test_a_change_keeps_the_frame_of_every_line_it_does_not_redesign(script: Row) -> None:
+    before = script["plan"]
+    was = {f["id"]: f for _, _, f in plans.frames_of(plans.merged(before, script["labels"]))}
+    plain = next(f for f in was.values() if f["presence"] == "person" and not f.get("hold"))
+    drawn = next(f for f in was.values() if f.get("cues"))
+    after = copy.deepcopy(before)
+    # the writer says one line another way, and gives another line a new step
+    said = plans.beat_of(after, plain["id"])
+    assert said is not None
+    said[1]["says"] = "So how long can a copy be trusted?"
+    redone = plans.beat_of(after, drawn["id"])
+    assert redone is not None and redone[2] is not None
+    redone[2]["cues"][0]["does"] = "wipes in from the left"
+    labels = plans.carried(script["labels"], before, after, frames_only=True)
+    now = {f["id"]: f for _, _, f in plans.frames_of(plans.merged(after, labels))}
+    assert now[plain["id"]]["presence"] == "person", "said another way, it is still the person's"
+    assert now[plain["id"]]["layout"] == plain["layout"]
+    assert "subtype" not in next(
+        b for _, b in plans.beats_of(plans.merged(after, labels)) if b["id"] == said[1]["id"]
+    ), "what the line does is read again"
+    redesigned = now[drawn["id"]]
+    assert not redesigned.get("_designed"), "what the writer redesigned is read as new"
+    assert "move" not in redesigned["cues"][0] and "picture" not in redesigned
+    untouched = [k for k in was if k not in (plain["id"], drawn["id"])]
+    assert all(now[k].get("presence") == was[k].get("presence") for k in untouched)
+
+
+def test_a_change_taken_back_leaves_the_picks_made_since(script: Row) -> None:
+    then = plans.merged(script["plan"], {})
+    gone, stays, later = [f["id"] for _, _, f in plans.frames_of(then)][:3]
+    chapter = then["chapters"][0]["id"]
+    # as the plan stands, the change has cut a line
+    now = copy.deepcopy(then)
+    for _, b in plans.beats_of(now):
+        b["frames"] = [f for f in b["frames"] if f["id"] != gone]
+    as_then = {
+        "frames": {gone: {"layout": "split"}, stays: {"layout": "split"}},
+        "chapters": {chapter: {"presence": "both"}},
+    }
+    as_now = {
+        "frames": {stays: {"layout": "full-frame"}, later: {"layout": "split"}},
+        "all": {"layouts": {"both": "split"}},
+        "presenter": "off",
+    }
+    kept = plans.picks_kept(as_then, as_now, then, now)
+    assert kept == {
+        # the line that comes back brings its pick; the others are picked as they stand now
+        "frames": {
+            gone: {"layout": "split"},
+            stays: {"layout": "full-frame"},
+            later: {"layout": "split"},
+        },
+        # the chapter's pick was taken back since, and stays taken back
+        "all": {"layouts": {"both": "split"}},
+        "presenter": "off",
+    }
+    # a pick that is itself what goes back is as it was then: here, not made
+    taken = {"frames": {later: {"layout": "split"}}, "all": {"layouts": {"both": "split"}}}
+    assert plans.picks_kept(as_then, as_now, then, now, taken) == {
+        "frames": {gone: {"layout": "split"}, stays: {"layout": "full-frame"}},
+        "presenter": "off",
+    }
+    # and the other way, when the change is put back: the cut line takes its pick with it
+    assert plans.picks_kept(as_now, kept, now, then)["frames"] == {
+        stays: {"layout": "full-frame"},
+        later: {"layout": "split"},
+    }
+
+
+def test_a_picture_is_drawn_from_what_it_shows_never_from_the_words_said_over_it(
+    full: Row,
+) -> None:
+    unit = next(
+        u
+        for u in units.units(full)
+        if any(f.get("cues") for _, _, f in plans.frames_of(full) if f["id"] == u["id"])
+    )
+    said = copy.deepcopy(full)
+    lead = next(f for _, _, f in plans.frames_of(said) if f["id"] == unit["id"])
+    lead["vo"] = "The same thing, said another way by the writer."
+    lead["cues"][0]["at"] = "same thing"
+    reworded = next(u for u in units.units(said) if u["id"] == unit["id"])
+    assert reworded["sig"] == unit["sig"], "the words only move the picture's clock"
+    assert reworded["sig_was"] != unit["sig_was"]
+    # a picture made before the words were left out still stands, until its words change
+    assert units.same(unit["sig_was"], unit) and units.same(unit["sig"], unit)
+    assert not units.same(unit["sig_was"], reworded) and not units.same("", unit)
+    # what it shows, or what a step does, is another picture
+    shown = copy.deepcopy(full)
+    next(f for _, _, f in plans.frames_of(shown) if f["id"] == unit["id"])["cues"][0]["does"] = (
+        "spins"
+    )
+    assert next(u for u in units.units(shown) if u["id"] == unit["id"])["sig"] != unit["sig"]
+
+
 def test_no_speaker_takes_everyone_off_screen(script: Row) -> None:
     merged = plans.merged(script["plan"], script["labels"])
     override.apply(merged, {"presenter": "off"})

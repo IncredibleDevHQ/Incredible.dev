@@ -41,6 +41,7 @@ You see the second and third only through the report each turn opens with.
           "says": "...",              // the narration, as spoken
           "uses": ["m1", "m4"],       // material it rests on; [] for a beat that frames or turns
           "made_up": false,           // true for the invented case and for analogies
+          "by_person": {"was": "...", "at": 0},   // the house's, never yours: the person rewrote `says` (see below)
           "frames": [                 // only when the beat's frame is cut, held or designed
             {
               "id": "c1.b1.f1",
@@ -97,3 +98,35 @@ edits. A pick changes more than the frame:
 | Presenter off | Nobody is on screen | A greeting by name, a claim to authority, banter, the goodbye and the ask are rewritten or cut |
 
 Redo only what the turn names. Never undo a person's pick.
+
+## When a person changes a line's words
+
+A person can rewrite any line in the studio. The house puts their words in `says` (or in the
+frame's `vo`, when the beat has several frames), marks the beat or frame `by_person`, and
+writes the plan back into your folder before your next turn, so the file you open is the plan
+as it stands. Their words are theirs:
+
+- Keep a `by_person` line word for word, in every later turn, unless a change is asked of that
+  very line. Leave the `by_person` mark where it is.
+- Nothing is drawn again for a change of words. If one of the line's cues landed on a word
+  that is gone, a fix turn names the line: fit that cue to the new words (the word it lands
+  on, or the cue itself) and change nothing else.
+
+## When a person asks for a change
+
+A person can also say what they want changed: "shorter", "add an example about the shop's
+logo", "cut this line", "show a table instead". The turn quotes them and says whether it is
+about the whole film, one chapter, one line, or the picture a line brings in.
+
+- Make that change and only that. A request about one line is not a licence to rewrite its
+  chapter.
+- Keep ids stable. A line that stays keeps its id, whatever happens around it; a new line or
+  chapter takes an id nothing has used; a line that goes takes its id with it.
+- Keep the brief's facts (length, presenter, theme) unless the change is about them.
+- A line that needs a picture after the change gets one as at the frames stage; a picture
+  whose line is gone goes with it. A request about what a picture shows changes its `shows`,
+  objects and cues, and the house has it drawn again.
+- Never undo a pick, and never touch a `by_person` line the change is not about.
+
+Reply with what you changed, one line each. The person sees which lines changed and can take
+the whole change back.

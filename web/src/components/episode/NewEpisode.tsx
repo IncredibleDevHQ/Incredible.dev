@@ -1,14 +1,20 @@
-// The sheet an episode starts from: the notes (or a research frame's), how long it runs, whether
-// someone is on camera, the look, and who writes it: a coding agent on this computer or the
-// built-in one. One button plans it.
+// The sheet an episode starts from: the notes (or a research frame's) and how long it runs. The
+// rest has an answer already (you on camera, the usual look, the first writer that is ready),
+// said in one line that opens to change it. The look is easier to pick in the studio, where its
+// effect on every line shows. One button plans it.
 import { Paperclip, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, type EpisodeOptions, type FileView, type WriterId } from "../../api";
 import { LOOKS, mmss } from "../../episode";
 import { useHouse, type EpisodeStart } from "../../store";
 import { AgentMark, FileList } from "../../ui";
+import { FileDrop } from "../FileDrop";
+import { SegmentedControl } from "../SegmentedControl";
 import { TextArea } from "../TextArea";
 import { TextField } from "../TextField";
+
+// What the notes can be read from, by name: a dragged Markdown file often says no type at all.
+const TEXT_FILE = /\.(md|markdown|mdx|txt|rst|json|csv|html?)$/i;
 
 export function NewEpisode({ start }: { start: EpisodeStart }) {
   const channelId = useHouse((s) => s.channelId);
@@ -23,6 +29,8 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
   const [theme, setTheme] = useState("corner-window");
   const [writer, setWriter] = useState<WriterId | null>(null);
   const [busy, setBusy] = useState(false);
+  // The look and the writer have an answer already; they open only to change it.
+  const [more, setMore] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const close = () => startEpisode(null);
 
@@ -43,10 +51,10 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [startEpisode]);
 
-  const attach = async (picked: FileList | null) => {
-    if (!picked?.length) return;
+  const attach = async (picked: File[]) => {
+    if (!picked.length) return;
     try {
-      const added = await api.upload([...picked]);
+      const added = await api.upload(picked);
       setFiles((f) => [...f, ...added]);
     } catch (error) {
       useHouse.getState().say((error as Error).message);
@@ -76,9 +84,18 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
   };
 
   const themes = options?.themes.filter((t) => t.presenter === "on") ?? [];
+  const by = options?.writers.find((w) => w.id === writer);
+  const nobody = Boolean(options) && !options?.writers.some((w) => w.ready);
   return (
     <div className="picker ep-new" role="dialog" aria-modal="true" aria-label="New episode">
-      <div className="picker-panel">
+      <FileDrop
+        className="picker-panel"
+        label="Drop your notes here"
+        refusal="Notes are text: a Markdown, text, HTML, JSON or CSV file."
+        disabled={Boolean(start.frame)}
+        accepts={(file) => file.type.startsWith("text/") || TEXT_FILE.test(file.name)}
+        onFiles={(dropped) => void attach(dropped)}
+      >
         <header className="picker-head">
           <h2>New episode</h2>
           <button type="button" className="icon-btn" aria-label="Close" onClick={close}>
@@ -97,7 +114,7 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
                   label="Notes"
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  placeholder="Paste a post, docs or rough notes. Links are read."
+                  placeholder="Paste a post, docs or rough notes, or drop a file here. Links are read."
                   minRows={8}
                   maxRows={16}
                 />
@@ -106,7 +123,7 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
                     <Paperclip />
                     Add text files
                   </button>
-                  <input ref={input} type="file" multiple accept=".md,.markdown,.txt,.rst,.json,.csv,.html,text/*" hidden onChange={(e) => void attach(e.target.files)} />
+                  <input ref={input} type="file" multiple accept=".md,.markdown,.txt,.rst,.json,.csv,.html,text/*" hidden onChange={(e) => void attach([...(e.target.files ?? [])])} />
                   {files.length > 0 && <FileList files={files} />}
                 </div>
               </>
@@ -128,47 +145,61 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
             </label>
             <div className="ep-new-row">
               <span>On camera</span>
-              <span className="ep-seg" role="radiogroup" aria-label="On camera">
-                <button type="button" role="radio" aria-checked={presenter === "on"} onClick={() => setPresenter("on")}>
-                  You present
-                </button>
-                <button type="button" role="radio" aria-checked={presenter === "off"} onClick={() => setPresenter("off")}>
-                  Voice only
-                </button>
-              </span>
+              <SegmentedControl
+                size="sm"
+                value={presenter}
+                onChange={setPresenter}
+                options={[
+                  { value: "on", label: "You present" },
+                  { value: "off", label: "Voice only" },
+                ]}
+              />
             </div>
-            {presenter === "on" && (
-              <div className="ep-new-row">
-                <span>Look</span>
-                <span className="ep-looks">
-                  {themes.map((t) => (
-                    <button type="button" key={t.id} aria-pressed={theme === t.id} title={t.stage} onClick={() => setTheme(t.id)}>
-                      {LOOKS[t.id] ?? t.name}
-                    </button>
-                  ))}
+            {more || nobody ? (
+              <>
+                {presenter === "on" && (
+                  <div className="ep-new-row">
+                    <span>Look</span>
+                    <span className="ep-looks">
+                      {themes.map((t) => (
+                        <button type="button" key={t.id} aria-pressed={theme === t.id} title={t.stage} onClick={() => setTheme(t.id)}>
+                          {LOOKS[t.id] ?? t.name}
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                )}
+                <div className="ep-new-row">
+                  <span>Written by</span>
+                  <div className="agents named" role="radiogroup" aria-label="Who writes it">
+                    {options?.writers.map((w) => (
+                      <button
+                        type="button"
+                        role="radio"
+                        key={w.id}
+                        aria-checked={writer === w.id}
+                        disabled={!w.ready}
+                        title={w.ready ? (w.local ? `${w.title}, on this computer, signed in as you are` : "The model this house is set up with") : `${w.title} isn't ready on this computer`}
+                        onClick={() => setWriter(w.id)}
+                      >
+                        <AgentMark mark={w.local ? w.id : undefined} size="sm" />
+                        <span>{w.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {nobody && <p className="ep-new-from">No writer is ready: install Claude Code, Codex or Kimi Code, or set a model for the built-in agent.</p>}
+              </>
+            ) : (
+              <p className="ep-new-rest">
+                <span>
+                  {presenter === "on" ? `${LOOKS[theme] ?? "The usual"} look, written` : "Written"} by {by?.title ?? "the first agent that is ready"}
                 </span>
-              </div>
+                <button type="button" className="linkish" onClick={() => setMore(true)}>
+                  Change
+                </button>
+              </p>
             )}
-            <div className="ep-new-row">
-              <span>Written by</span>
-              <div className="agents named" role="radiogroup" aria-label="Who writes it">
-                {options?.writers.map((w) => (
-                  <button
-                    type="button"
-                    role="radio"
-                    key={w.id}
-                    aria-checked={writer === w.id}
-                    disabled={!w.ready}
-                    title={w.ready ? (w.local ? `${w.title}, on this computer, signed in as you are` : "The model this house is set up with") : `${w.title} isn't ready on this computer`}
-                    onClick={() => setWriter(w.id)}
-                  >
-                    <AgentMark mark={w.local ? w.id : undefined} size="sm" />
-                    <span>{w.title}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            {options && !options.writers.some((w) => w.ready) && <p className="ep-new-from">No writer is ready: install Claude Code, Codex or Kimi Code, or set a model for the built-in agent.</p>}
           </section>
         </div>
         <footer className="ep-new-foot">
@@ -179,7 +210,7 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
             Plan the episode
           </button>
         </footer>
-      </div>
+      </FileDrop>
     </div>
   );
 }
