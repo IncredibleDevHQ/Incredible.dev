@@ -696,7 +696,10 @@ app's canvas, from a channel's material or a research frame's notes.
   built-in agent), in stages: the brief, the script, a frame for every line. A typed classifier
   reads the words and gives every label; code derives every number and holds each stage to the
   checks before the next. The plan can be read and changed as soon as it is written; the
-  person's one go is for its pictures to be made.
+  person's one go is for its pictures to be made. Its length is asked for as a least and a
+  most, at least 30 seconds apart, and the script must land between the two (a plan that ends
+  outside them says what was asked for beside its length); on Auto no length is asked for and
+  none is checked, so the material decides how long it runs.
 - **Changing it** takes two forms and no others. A line's words are changed where they are
   read: they are in at once, nothing is read or drawn again, and the writer is asked only to
   fit a step of the line's picture whose word is gone. Anything else is asked for in words, of

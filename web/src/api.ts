@@ -231,7 +231,8 @@ export type EpisodeOptions = {
   writers: { id: WriterId; title: string; ready: boolean; local: boolean }[];
   // A look, with its layouts and who has the frame in each: one picker covers both.
   themes: { id: string; name: string; presenter: "on" | "off"; stage: string; kit: { layout: string; presence: Presence }[] }[];
-  seconds: { least: number; most: number; usual: number };
+  // The lengths a person can ask for: the limits, the range the sheet opens on, and how far apart its ends stay.
+  seconds: { least: number; most: number; usual: [number, number]; gap: number };
   // Who reads the plan's words: Jev, or the writer's own model.
   reader: "jev" | "writer" | "demo";
   narrator: boolean;
@@ -240,7 +241,9 @@ export type EpisodeOptions = {
   pictures: string[];
   transitions: string[];
 };
-export type EpisodeSettings = { seconds: number; presenter: "on" | "off"; theme: string; voice: "live" | "narrator"; level: Level; writer: WriterId };
+// How long it may run: the least and the most, in seconds, or "auto" when the material decides.
+export type EpisodeLength = [number, number] | "auto";
+export type EpisodeSettings = { seconds: EpisodeLength; presenter: "on" | "off"; theme: string; voice: "live" | "narrator"; level: Level; writer: WriterId };
 export type EpisodeCue = { at: string; object: string; does: string; move?: string; t?: number };
 export type EpisodeObject = { id: string; what: string; words?: string; state?: string; type?: string };
 export type EpisodeFrame = {
@@ -269,7 +272,7 @@ export type EpisodeBeat = { id: string; says: string; subtype?: string; type?: s
 export type EpisodeChapter = { id: string; question: string; type?: string; part?: string; beats: EpisodeBeat[]; start: number; seconds: number; words: number };
 export type EpisodePlan = {
   title: string;
-  brief: { idea?: string; gap?: string; for?: string; seconds?: number; presenter?: string; theme?: string };
+  brief: { idea?: string; gap?: string; for?: string; seconds?: [number, number]; presenter?: string; theme?: string };
   chapters: EpisodeChapter[];
   totals: { seconds: number; words: number; chapters: number; beats: number; frames: number; cues: number };
 };

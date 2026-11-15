@@ -359,7 +359,6 @@
     "turn_words_most": 45,
     "frame_share_distance": 0.3,
     "end_card_seconds": 5,
-    "length_tolerance": 0.15,
     "line_only_person": 0.35,
     "intent_presence": 0.25,
     "title_sting_seconds": 3

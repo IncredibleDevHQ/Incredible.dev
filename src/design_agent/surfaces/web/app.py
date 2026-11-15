@@ -25,8 +25,8 @@ runtime), the store of channels, messages and boards, and this API:
   `POST /api/research/{id}/conversations` (another, or a branch from a passage),
   `POST /api/research/{id}/notes`, `PATCH /api/notes/{id}`, `DELETE /api/notes/{id}`; a
   conversation's follow-ups and stops go through its thread's routes
-- episodes (`episode_desk.py`): `GET /api/episodes/options` (who can write one, the looks),
-  `POST /api/channels/{id}/episodes` (one from material or a research frame's notes),
+- episodes (`episode_desk.py`): `GET /api/episodes/options` (who can write one, the looks, the
+  lengths), `POST /api/channels/{id}/episodes` (one from material or a research frame's notes),
   `GET /api/episodes/{id}` (everything its studio draws), `POST /api/episodes/{id}/approve`,
   `POST /api/episodes/{id}/choices` (the look, who has the frame, a picture's level),
   `POST /api/episodes/{id}/ask` (a change in words, of the film, a chapter, a line or a
@@ -59,7 +59,7 @@ import mimetypes
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
@@ -178,7 +178,9 @@ class NoteEditIn(BaseModel):
 
 
 class EpisodeSettingsIn(BaseModel):
-    seconds: int | None = Field(default=None, ge=60, le=1_200)
+    #: How long it may run: the least and the most, in seconds, or "auto" when the material
+    #: decides. The desk keeps the two inside its limits and apart.
+    seconds: tuple[int, int] | Literal["auto"] | None = None
     presenter: str | None = Field(default=None, pattern=r"^(on|off)$")
     theme: str | None = Field(default=None, max_length=60)
     voice: str | None = Field(default=None, pattern=r"^(live|narrator)$")

@@ -25,8 +25,9 @@ is not yours to add: if the route needs one, say what is missing in your report.
 - `gap`: what the viewer does not know or cannot do before watching. The video exists to close
   it, and the first chapter's question comes from it.
 - `for`: who it is for, in a few words.
-- `seconds`: the length. `presenter`: `on` or `off`. `theme`: one id from the themes list.
-  `series`: `none`, or the series' name and this video's place in it.
+- `seconds`: the length, as the least and the most it may run: `[300, 420]`. Leave it out
+  when the person set no length. `presenter`: `on` or `off`. `theme`: one id from the themes
+  list. `series`: `none`, or the series' name and this video's place in it.
 - `case`: the one concrete case the video sets up and returns to: `{"text": ..., "from":
   "notes" | "made up"}`. Every tutorial explainer measured carries one, and four of the six
   concept explainers. Pick a case from the viewer's own world on which every chapter's answer
@@ -38,10 +39,13 @@ is not yours to add: if the route needs one, say what is missing in your report.
   hold it for the whole script. A presenter who made the thing says "I": note who they are in
   `presenter_is`.
 
-The word budget follows from the length: the brief's seconds, less a five-second end card,
-times 2.6 words a second. 360 seconds is about 920 words; 545 is about 1,400. The script must
-land within 15% of it; the reading of your material states it. Settle the length in the script: a line
-cut after its frame is designed takes its cues with it.
+The word budget follows from the length: each end of the brief's `seconds`, less a
+five-second end card, times 2.6 words a second. 300 to 420 seconds is 767 to 1,079 words. The
+script must land between the two; the reading of your material states them. Settle the length
+in the script: a line cut after its frame is designed takes its cues with it.
+
+With no `seconds` there is no budget: the material decides the length. Say what the idea
+needs once, and stop. Do not stretch thin notes, and do not squeeze rich ones.
 
 ## From a route to chapters
 

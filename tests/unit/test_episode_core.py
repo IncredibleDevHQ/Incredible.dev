@@ -18,6 +18,7 @@ from design_agent.episode import (
     derive,
     film,
     geometry,
+    layouts,
     override,
     picture,
     sketch,
@@ -86,6 +87,33 @@ def test_labels_survive_a_round_trip_and_drop_when_words_change(script: Row) -> 
 def test_the_demo_plan_passes_its_own_checks(merged: Row) -> None:
     rows = check.check(merged, "all")
     assert not check.musts(rows), check.lines(rows, "all")
+
+
+def test_a_script_lands_inside_the_length_asked_for_or_no_length_is_checked(merged: Row) -> None:
+    words = sum(len(plans.toks(b.get("says", ""))) for _, b in plans.beats_of(merged))
+
+    def with_length(seconds: list[int] | None) -> Row:
+        plan = copy.deepcopy(merged)
+        plan["brief"].pop("seconds")
+        if seconds:
+            plan["brief"]["seconds"] = seconds
+        return plan
+
+    def length(seconds: list[int] | None) -> list[Row]:
+        return [r for r in check.check(with_length(seconds), "script") if r["rule"] == "length"]
+
+    # the least and the most, less the five-second end card, at 2.6 words a second
+    assert merged["brief"]["seconds"] == [300, 420]
+    assert layouts.word_budget(merged) == (767, 1079) and 767 <= words <= 1079
+    assert not length([300, 420])
+    assert "is 767 to 1079 words; the script has" in classify.budget(merged)
+    (short,) = length([420, 540])
+    assert short["level"] == "must" and f"add at least {1079 - words}" in short["text"]
+    (long,) = length([240, 270])
+    assert long["level"] == "must" and f"cut at least {words - 689}" in long["text"]
+    # left to the material: no budget, and nothing about length is checked
+    assert layouts.word_budget(with_length(None)) is None and not length(None)
+    assert classify.budget(with_length(None)).startswith("no length was asked for")
 
 
 def test_the_page_a_writer_reads_is_the_lists_the_classifier_is_asked() -> None:

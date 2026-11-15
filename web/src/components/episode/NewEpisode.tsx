@@ -1,7 +1,8 @@
-// The sheet an episode starts from: the notes (or a research frame's) and how long it runs. The
-// rest has an answer already (you on camera, the usual look, the first writer that is ready),
-// said in one line that opens to change it. The look is easier to pick in the studio, where its
-// effect on every line shows. One button plans it.
+// The sheet an episode starts from: the notes (or a research frame's) and how long it may run,
+// as a least and a most, or Auto when the notes decide. The rest has an answer already (you on
+// camera, the usual look, the first writer that is ready), said in one line that opens to
+// change it. The look is easier to pick in the studio, where its effect on every line shows.
+// One button plans it.
 import { Paperclip, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, type EpisodeOptions, type FileView, type WriterId } from "../../api";
@@ -9,6 +10,7 @@ import { LOOKS, mmss } from "../../episode";
 import { useHouse, type EpisodeStart } from "../../store";
 import { AgentMark, FileList } from "../../ui";
 import { FileDrop } from "../FileDrop";
+import { RangeSlider } from "../RangeSlider";
 import { SegmentedControl } from "../SegmentedControl";
 import { TextArea } from "../TextArea";
 import { TextField } from "../TextField";
@@ -24,7 +26,8 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [files, setFiles] = useState<FileView[]>([]);
-  const [seconds, setSeconds] = useState(360);
+  const [range, setRange] = useState<[number, number]>([300, 420]);
+  const [auto, setAuto] = useState(false);
   const [presenter, setPresenter] = useState<"on" | "off">("on");
   const [theme, setTheme] = useState("corner-window");
   const [writer, setWriter] = useState<WriterId | null>(null);
@@ -39,7 +42,7 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
       .episodeOptions()
       .then((o) => {
         setOptions(o);
-        setSeconds(o.seconds.usual);
+        setRange(o.seconds.usual);
         setWriter(o.writers.find((w) => w.ready)?.id ?? null);
       })
       .catch((error: Error) => useHouse.getState().say(error.message));
@@ -71,7 +74,7 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
         text,
         files: files.map((f) => f.id),
         from_frame: start.frame,
-        settings: { seconds, presenter, theme: presenter === "off" ? "voice-only" : theme, writer },
+        settings: { seconds: auto ? "auto" : range, presenter, theme: presenter === "off" ? "voice-only" : theme, writer },
       });
       startEpisode(null);
       useHouse.getState().setMode("canvas");
@@ -130,19 +133,42 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
             )}
           </section>
           <section className="ep-new-facts">
-            <label className="ep-new-row">
-              <span>
-                Length <b>{mmss(seconds)}</b>
-              </span>
-              <input
-                type="range"
-                min={options?.seconds.least ?? 240}
-                max={options?.seconds.most ?? 600}
-                step={30}
-                value={seconds}
-                onChange={(e) => setSeconds(Number(e.target.value))}
-              />
-            </label>
+            <div className="ep-new-row ep-new-length">
+              <div className="ep-new-length-head">
+                <span>
+                  Length
+                  {!auto && (
+                    <b>
+                      {mmss(range[0])} to {mmss(range[1])}
+                    </b>
+                  )}
+                </span>
+                <SegmentedControl
+                  size="sm"
+                  aria-label="Length"
+                  value={auto ? "auto" : "range"}
+                  onChange={(v) => setAuto(v === "auto")}
+                  options={[
+                    { value: "range", label: "Range" },
+                    { value: "auto", label: "Auto" },
+                  ]}
+                />
+              </div>
+              {auto ? (
+                <p className="ep-new-from">As long as your notes need.</p>
+              ) : (
+                <RangeSlider
+                  min={options?.seconds.least ?? 240}
+                  max={options?.seconds.most ?? 600}
+                  step={30}
+                  gap={options?.seconds.gap ?? 30}
+                  value={range}
+                  onChange={setRange}
+                  labels={["Shortest length", "Longest length"]}
+                  format={mmss}
+                />
+              )}
+            </div>
             <div className="ep-new-row">
               <span>On camera</span>
               <SegmentedControl

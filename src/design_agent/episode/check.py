@@ -115,7 +115,7 @@ def check_script(plan: Row, r: Report) -> bool:
     brief = plan.get("brief", {})
     chapters = plan.get("chapters", [])
     beats = [b for _, b in beats_of(plan)]
-    for key in ("idea", "gap", "for", "seconds"):
+    for key in ("idea", "gap", "for"):
         if not brief.get(key):
             r.add("structure", "brief", "must", "brief", f"the brief has no `{key}`")
     if not chapters or not beats:
@@ -136,35 +136,18 @@ def check_script(plan: Row, r: Report) -> bool:
 
     words = {b["id"]: len(toks(b.get("says", ""))) for b in beats}
     total_words = sum(words.values())
-    want = float(brief.get("seconds") or 0)
-    if want:
-        target = (want - layouts.marks_seconds(plan)) * WPS
-        tol = N["length_tolerance"]
-        if not ((1 - tol) * target <= total_words <= (1 + tol) * target):
-            r.add(
-                "words",
-                "length",
-                "must",
-                "plan",
-                f"{total_words} words; {want:.0f} s less the cards, at {WPS} words a second, is {target:.0f} words ({(1 - tol) * target:.0f} to {(1 + tol) * target:.0f} passes)",
-            )
-        elif abs(total_words - target) > 0.05 * target:
-            r.add(
-                "words",
-                "length-near",
-                "look",
-                "plan",
-                f"{total_words} words against a budget of {target:.0f}: {abs(total_words - target) / WPS:.0f} s {'over' if total_words > target else 'under'} the brief. Settle the length now; a line cut after its frame is designed takes its cues with it",
-            )
-    seconds = total_words / WPS
-    if not (N["seconds"][0] <= seconds <= N["seconds"][1]):
+    budget = layouts.word_budget(plan)
+    if budget and not (budget[0] <= total_words <= budget[1]):
+        least, most = brief["seconds"]
+        short = total_words < budget[0]
         r.add(
             "words",
-            "range",
-            "look",
+            "length",
+            "must",
             "plan",
-            f"{seconds:.0f} s is outside the usual {N['seconds'][0]} to {N['seconds'][1]} s",
+            f"{total_words} words; {least:.0f} to {most:.0f} s less the cards, at {WPS} words a second, is {budget[0]} to {budget[1]} words: {'add' if short else 'cut'} at least {budget[0] - total_words if short else total_words - budget[1]}",
         )
+    seconds = total_words / WPS
     if not (N["chapters"][0] <= len(chapters) <= N["chapters"][1]):
         r.add(
             "structure",

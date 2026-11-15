@@ -95,7 +95,14 @@ PICTURE_TRIES = 3
 PICTURES_AT_ONCE = 2
 MATERIAL_CHARS = 200_000
 TEXT_FILES = (".md", ".markdown", ".txt", ".rst", ".json", ".csv", ".html", ".htm")
-SECONDS = (240, 600, 360)
+#: The lengths a person can ask for, in seconds: the limits (the lengths this kind of film
+#: runs), the range the sheet opens on, and how far apart the least and the most stay, so a
+#: script has room to land between them.
+SECONDS = (int(Q.TYPES["numbers"]["seconds"][0]), int(Q.TYPES["numbers"]["seconds"][1]))
+USUAL = (300, 420)
+GAP = 30
+#: Said for the length when a person leaves it to the material.
+AUTO = "auto"
 THEMES = Q.table("themes")
 LEVELS = units.LEVELS
 VOICES = ("live", "narrator")
@@ -113,6 +120,16 @@ CHECK_SECTIONS = ("Lint", "Runtime", "Layout", "Motion", "Contrast", "Snapshots"
 BREAKING = ("Lint", "Runtime")
 GENERIC = ("system-ui", "sans-serif", "serif", "monospace", "ui-monospace", "ui-sans-serif")
 LINT_ERROR = re.compile(r"✗\s*(?:\[[^\]]*\]\s*)?(.+)")
+
+
+def _length(asked: Any) -> list[int] | str:
+    """The length a person asked for: the least and the most seconds, inside the limits and at
+    least `GAP` apart, or `AUTO` when they leave it to the material."""
+    if asked == AUTO:
+        return AUTO
+    least, most = sorted(int(s) for s in asked)
+    least = min(max(least, SECONDS[0]), SECONDS[1] - GAP)
+    return [least, min(max(most, least + GAP), SECONDS[1])]
 
 
 def _clean(text: str, limit: int = 300) -> str:
@@ -191,7 +208,7 @@ class EpisodeDesk:
                 }
                 for t in Q.TYPES["themes"]
             ],
-            "seconds": {"least": SECONDS[0], "most": SECONDS[1], "usual": SECONDS[2]},
+            "seconds": {"least": SECONDS[0], "most": SECONDS[1], "usual": list(USUAL), "gap": GAP},
             "reader": "demo" if self.demo else "jev" if self._jev_key() else "writer",
             "narrator": self._narrator_ready(),
             "geometry": geometry.view(),
@@ -387,10 +404,10 @@ class EpisodeDesk:
 
     def _settings(self, given: Mapping[str, Any], base: Mapping[str, Any] | None = None) -> Row:
         out: Row = dict(
-            base or {"seconds": SECONDS[2], "presenter": "on", "voice": "live", "level": "simple"}
+            base or {"seconds": list(USUAL), "presenter": "on", "voice": "live", "level": "simple"}
         )
         if "seconds" in given:
-            out["seconds"] = int(min(max(int(given["seconds"]), SECONDS[0]), SECONDS[1]))
+            out["seconds"] = _length(given["seconds"])
         if given.get("presenter") in ("on", "off"):
             out["presenter"] = given["presenter"]
         if "theme" in given:
@@ -434,7 +451,11 @@ class EpisodeDesk:
         merged = plans.merged(episode["plan"] or {}, episode["labels"] or {})
         brief = merged.setdefault("brief", {})
         chosen = episode["settings"]
-        brief["seconds"] = chosen.get("seconds", SECONDS[2])
+        if isinstance(chosen.get("seconds"), list):
+            brief["seconds"] = chosen["seconds"]
+        else:
+            # left to the material: the brief states no length, so none is checked
+            brief.pop("seconds", None)
         if chosen.get("presenter") == "off":
             brief["presenter"], brief["theme"] = "off", "voice-only"
         else:
@@ -848,10 +869,16 @@ class EpisodeDesk:
         said = "\n".join(report)
         if stage == "brief":
             presenter = "off (a voice only)" if chosen.get("presenter") == "off" else "on"
+            asked = chosen.get("seconds")
+            length = (
+                f"a length between {asked[0]} and {asked[1]} seconds (`seconds`: {asked})"
+                if isinstance(asked, list)
+                else "no length (leave `seconds` out of the brief: the material decides it)"
+            )
             return (
                 f"Stage: brief.\n\nYour folder is {root}. The skill is {skill}/SKILL.md: read it "
                 f'first, then {skill}/references/script.md ("The brief"). The material is '
-                f"{root}/material/notes.md.\n\nThe person chose: {chosen.get('seconds')} seconds, "
+                f"{root}/material/notes.md.\n\nThe person chose: {length}, "
                 f"presenter {presenter}, theme `{chosen.get('theme')}`, working title "
                 f"“{episode['title']}”. Put these in the brief as given.\n\nWrite "
                 f"{root}/plan.json with `material` and `brief` only. Deliver nothing: the house "

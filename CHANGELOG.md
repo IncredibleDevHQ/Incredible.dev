@@ -26,6 +26,10 @@
     `TYPESAFE_API_KEY`; otherwise the writer's own model answers the same questions) and held
     to the checks by code, and the report opens the writer's next turn. The writer never types
     a label or a number.
+  - An episode's length is asked for as a least and a most (4 to 10 minutes, at least 30
+    seconds apart; the sheet opens on 5 to 7), and the script must land between the two. A
+    plan that ends outside them says what was asked for beside its length. On Auto no length
+    is asked for and none is checked: the material decides how long it runs.
   - The studio is the plan and the recording in one place: the film's page (its chapters, the
     look, the voice, the pictures' level) and, per chapter, the script, the frame for the
     picked line and that line's choices (who has the frame, the layout, a simple picture or a

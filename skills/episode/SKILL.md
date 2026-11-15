@@ -1,6 +1,6 @@
 ---
 name: episode
-description: Plan an episode, a presenter-led concept explainer of 4 to 10 minutes, from notes, a post or docs, as one plan.json; and build the pictures it calls for. Use when a turn names an episode's stage.
+description: Plan an episode, a presenter-led concept explainer, usually 4 to 10 minutes, from notes, a post or docs, as one plan.json; and build the pictures it calls for. Use when a turn names an episode's stage.
 ---
 
 # Episode
@@ -42,9 +42,10 @@ write the reason in the plan: `"waived": {"turns": "..."}`; the key is the rule'
 after the slash. Fix what a report names by rewriting words, moving beats, or cutting. Two or
 three rounds on a stage is normal.
 
-The clock is 2.6 words a second. The voice has the brief's seconds less the cards (a
-five-second end card, and three seconds when the theme opens on a title sting). The script
-must land within 15% of that.
+The clock is 2.6 words a second. The brief's `seconds` is the least and the most the film
+may run. The voice has those less the cards (a five-second end card, and three seconds when
+the theme opens on a title sting), and the script must land between the two. A brief with no
+`seconds` leaves the length to the material: no length is checked.
 
 ## The stages
 
@@ -53,7 +54,8 @@ into `material`: one fact, definition, mechanism, step, list, difference, number
 advice per item, in your own short words, each with an id (`m1`, `m2`). Keep names and figures
 exact. What the notes lack (no figures, no demo) is not an item: keep it for your reply. Then
 fill `brief` (`references/script.md`, "The brief"). The turn gives you the production facts a
-person chose: the length, presenter on or off, the theme. Use them as given.
+person chose: the length (a least and a most, or none), presenter on or off, the theme. Use
+them as given.
 
 **script.** The report gives the kind of every item, the route the material suggests and the
 word budget. Write the spine: one question per chapter, each raised by the answer before it,

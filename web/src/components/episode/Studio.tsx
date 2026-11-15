@@ -287,6 +287,8 @@ function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView; run: 
   const set = (settings: EpisodeChoices["settings"]) => run(() => api.chooseEpisode(view.id, { settings }));
   const presenterOff = view.settings.presenter === "off";
   const pictures = pictureCount(view);
+  // The length asked for is said only while the script is outside it: the checks decide that.
+  const outside = Array.isArray(view.settings.seconds) && view.checks.some((c) => c.rule === "length") ? view.settings.seconds : null;
   // A look the person asked for that would redraw pictures already made: it waits for a yes.
   const [asked, setAsked] = useState<string | null>(null);
   const look = (id: string) => {
@@ -374,6 +376,12 @@ function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView; run: 
         <div className="ep-film-row">
           <span className="ep-film-len">
             {plan.chapters.length} chapters · {mmss(view.clock?.total ?? plan.totals.seconds)}
+            {outside && (
+              <span className="ep-film-asked">
+                {" "}
+                · asked for {mmss(outside[0])} to {mmss(outside[1])}
+              </span>
+            )}
           </span>
           <span className="ep-film-note" data-tone={film.status === "failed" ? "red" : film.stale ? "amber" : undefined}>
             {film.status === "rendering"

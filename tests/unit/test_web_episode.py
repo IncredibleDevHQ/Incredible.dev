@@ -116,16 +116,57 @@ async def test_an_episode_is_a_task_with_an_asset_and_a_plan_written_in_stages(
     )
     assert task["episodes"][0]["id"] == episode_id and task["material"]["text"] == NOTES
     # the writer's file is the writer's: the person's facts are laid over it, not written into it
-    assert view["plan"]["brief"]["seconds"] == 360
+    assert view["plan"]["brief"]["seconds"] == [300, 420]
     assert house.store.episode(episode_id)["plan"]["brief"] == SCRIPT["plan"]["brief"]  # type: ignore[index]
 
 
 async def test_the_persons_facts_win_over_the_writers(house: AgentHost) -> None:
-    episode_id = await planned(house, seconds=480, theme="panel-and-portrait")
-    plan = house.episodes.view(episode_id)["plan"]
-    assert plan["brief"]["seconds"] == 480 and plan["brief"]["theme"] == "panel-and-portrait"
+    episode_id = await planned(house, seconds=[420, 540], theme="panel-and-portrait")
+    view = house.episodes.view(episode_id)
+    plan = view["plan"]
+    assert plan["brief"]["seconds"] == [420, 540] and plan["brief"]["theme"] == "panel-and-portrait"
     layouts = {f["layout"] for ch in plan["chapters"] for b in ch["beats"] for f in b["frames"]}
     assert "panel-and-portrait" in layouts and "corner-window" not in layouts
+    # the demo's script is five minutes long: under the least asked for, and said so
+    (length,) = [c for c in view["checks"] if c["rule"] == "length"]
+    assert length["level"] == "must" and "add at least" in length["text"]
+
+
+def test_a_length_is_a_least_and_a_most_with_room_between(house: AgentHost) -> None:
+    desk = house.episodes
+    assert desk.options()["seconds"] == {"least": 240, "most": 600, "usual": [300, 420], "gap": 30}
+    assert desk._settings({})["seconds"] == [300, 420]
+    for asked, kept in (
+        ((300, 310), [300, 330]),  # never closer than the gap
+        ((590, 600), [570, 600]),  # the gap is made downwards at the top
+        ((60, 1200), [240, 600]),  # inside the limits
+        ((420, 300), [300, 420]),  # the least first
+        ("auto", "auto"),
+    ):
+        assert desk._settings({"seconds": asked})["seconds"] == kept
+
+
+async def test_a_length_left_open_is_not_in_the_brief_and_is_never_checked(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    prompts: list[str] = []
+
+    class Listening(DemoWorker):
+        async def turn(self, episode: Any, *, lane: str, prompt: str, heard: Any) -> Told:
+            prompts.append(prompt)
+            return await super().turn(episode, lane=lane, prompt=prompt, heard=heard)
+
+    house.episodes.workers[DEMO] = Listening(data_dir=tmp_path, script=SCRIPT, pause=0)
+    asked = await planned(house, seconds=[300, 360])
+    assert "between 300 and 360 seconds (`seconds`: [300, 360])" in prompts[0]
+    assert not [c for c in house.episodes.view(asked)["checks"] if c["rule"] == "length"]
+
+    prompts.clear()
+    episode_id = await planned(house, seconds="auto")
+    view = house.episodes.view(episode_id)
+    assert "no length (leave `seconds` out of the brief" in prompts[0]
+    assert view["settings"]["seconds"] == "auto" and "seconds" not in view["plan"]["brief"]
+    assert not [c for c in view["checks"] if c["rule"] == "length"]
 
 
 def test_an_episode_needs_material_and_a_writer_that_is_ready(house: AgentHost) -> None:
@@ -1240,9 +1281,17 @@ def test_the_app_serves_an_episode_at_every_address(tmp_path: Path) -> None:
         assert (
             client.post(f"/api/channels/{channel}/episodes", json={"text": ""}).status_code == 422
         )
+        # a length is a least and a most, or "auto": one number is neither
+        for seconds in (300, [300], "long"):
+            body = {"text": NOTES, "settings": {"seconds": seconds}}
+            assert client.post(f"/api/channels/{channel}/episodes", json=body).status_code == 422
         made = client.post(
             f"/api/channels/{channel}/episodes",
-            json={"title": "One idea", "text": NOTES, "settings": {"seconds": 300, "writer": DEMO}},
+            json={
+                "title": "One idea",
+                "text": NOTES,
+                "settings": {"seconds": [300, 360], "writer": DEMO},
+            },
         )
         assert made.status_code == 200, made.text
         episode_id = made.json()["id"]
@@ -1252,7 +1301,7 @@ def test_the_app_serves_an_episode_at_every_address(tmp_path: Path) -> None:
             if view["status"] != "planning":
                 break
             time.sleep(0.05)
-        assert view["status"] == "plan" and view["settings"]["seconds"] == 300
+        assert view["status"] == "plan" and view["settings"]["seconds"] == [300, 360]
         line_id = next(
             f["id"] for ch in view["plan"]["chapters"] for b in ch["beats"] for f in b["frames"]
         )

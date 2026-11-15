@@ -18,7 +18,7 @@ You see the second and third only through the report each turn opens with.
     "idea": "...",                    // the one sentence a viewer leaves with
     "gap": "...",                     // what they lack before watching
     "for": "...",
-    "seconds": 360,                   // from the person
+    "seconds": [300, 420],            // the least and the most, from the person; left out when they set no length
     "presenter": "on",                // "on" | "off", from the person
     "theme": "corner-window",         // a theme id from types.md, from the person
     "series": "none",                 // "none", or the series and this video's place in it

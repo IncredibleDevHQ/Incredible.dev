@@ -8,6 +8,7 @@ overrides on top. The first option is the pick; the rest are what a layout picke
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 
 from design_agent.episode import questions as Q
@@ -31,6 +32,19 @@ def marks_seconds(plan: Row) -> float:
     numbers = Q.TYPES["numbers"]
     sting = numbers["title_sting_seconds"] if "title-sting" in theme_of(plan)["marks"] else 0
     return float(numbers["end_card_seconds"] + sting)
+
+
+def word_budget(plan: Row) -> tuple[int, int] | None:
+    """The fewest and the most words the script may hold, for the length a person asked for:
+    the brief's `seconds` is the least and the most the film may run. None when the brief has
+    none: they left the length to the material, and no length is checked."""
+    asked = plan.get("brief", {}).get("seconds")
+    if not isinstance(asked, (list, tuple)) or len(asked) != 2:
+        return None
+    rate, cards = Q.TYPES["numbers"]["words_per_second"], marks_seconds(plan)
+    # rounded first: 295 s at 2.6 words is 767 words, not the 767.0000000000001 a float makes
+    least, most = (round((float(s) - cards) * rate, 6) for s in asked)
+    return math.ceil(least), math.floor(most)
 
 
 def wanted(plan: Row, ch: Row, f: Row) -> Row:

@@ -5,7 +5,7 @@
    "idea": "The server, not the browser, decides when a stored copy may be reused: fresh means no request at all, stale means a tiny fingerprint check, and changing the file's name is how you ship a fix.",
    "gap": "The viewer sees cache headers like max-age, no-cache and ETag but cannot say what the browser actually does with them, or why a fix they shipped does not reach users.",
    "for": "web developers who ship sites but have never reasoned through HTTP caching",
-   "seconds": 300,
+   "seconds": [300, 420],
    "presenter": "on",
    "theme": "corner-window",
    "series": "none",

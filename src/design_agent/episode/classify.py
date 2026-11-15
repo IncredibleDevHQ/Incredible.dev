@@ -93,21 +93,18 @@ def last_sentence(text: str) -> str:
 
 
 def budget(plan: Row) -> str:
-    brief = plan.get("brief", {})
-    seconds = float(brief.get("seconds") or 0)
-    if not seconds:
-        return "the brief has no `seconds` yet"
-    marks = layouts.marks_seconds(plan)
-    voice = seconds - marks
-    target = round(voice * N["words_per_second"])
     have = sum(len(toks(b.get("says", ""))) for _, b in beats_of(plan))
-    lo, hi = (
-        round(target * (1 - N["length_tolerance"])),
-        round(target * (1 + N["length_tolerance"])),
-    )
+    words = layouts.word_budget(plan)
+    if words is None:
+        return (
+            "no length was asked for: the material decides it. Say what the idea needs once, "
+            f"and stop; the script has {have} words"
+        )
+    least, most = plan["brief"]["seconds"]
     return (
-        f"word budget: {seconds:.0f} s less {marks:.0f} s of cards, at {N['words_per_second']} words a second, "
-        f"is {target} words ({lo} to {hi} passes); the script has {have}"
+        f"word budget: {least:.0f} to {most:.0f} s less {layouts.marks_seconds(plan):.0f} s of cards, "
+        f"at {N['words_per_second']} words a second, is {words[0]} to {words[1]} words; "
+        f"the script has {have}"
     )
 
 
