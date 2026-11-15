@@ -12,7 +12,13 @@ overrides.json, any of:
   {"frames":   {"c2.b3.f1": {"presence": "content"}}}   or {"layout": "split"}; optional "reason"
   {"chapters": {"c4": {"presence": "content"}}}         every frame of a chapter
   {"all":      {"layout": "panel-and-portrait"}}        the old studio's "apply to all"
-  {"clear":    ["c2.b3.f1"]}                            take a pick back
+  {"chapters": {"c4": {"layouts": {"both": "split"}}}}  a layout for one presence, in a chapter
+  {"all":      {"layouts": {"both": "split"}}}          or in the whole film
+  {"frames":   {"c2.b3.f1": {"picture": "list"}}}       the type of the picture a line brings in
+  {"frames":   {"c2.b3.f1": {"transition": "push"}}}    and how it comes in
+  {"clear":    ["c2.b3.f1"]}                            take a line's or a chapter's picks back
+
+A value of null takes one pick back and leaves the others of that line.
 
 The picks are kept in labels.json and applied every time the plan is read, so they survive
 re-planning. plan.json is never rewritten. feedback.json says what changed, why it matters,
@@ -36,20 +42,74 @@ NEEDS_A_FACE = {
 }
 
 
+#: The picture types a person may pick: the ones a builder draws from a line's own words.
+PICTURES = ("diagram", "list", "typeset-code", "chips", "illustration", "slide")
+#: How a picture may come in. A line that holds the picture before has nothing to pick.
+TRANSITIONS = ("cut", "push", "crossfade", "zoom-through")
+
+
+def _laid(old: Row, new: Row) -> Row:
+    """One line's, chapter's or the film's picks with `new` laid over them. A value of None
+    takes that pick back; `layouts` (a layout for each presence) is merged the same way."""
+    out = dict(old)
+    for key, value in new.items():
+        if key == "layouts" and isinstance(value, dict):
+            layouts_now = _laid(dict(out.get("layouts") or {}), value)
+            if layouts_now:
+                out["layouts"] = layouts_now
+            else:
+                out.pop("layouts", None)
+        elif value is None:
+            out.pop(key, None)
+        else:
+            out[key] = value
+    return out
+
+
 def merge(old: Row, new: Row) -> Row:
     out = dict(old)
     for key in ("frames", "chapters"):
         if key in new:
             out[key] = dict(out.get(key, {}))
-            out[key].update(new[key])
+            for item, picks in new[key].items():
+                laid = _laid(out[key].get(item, {}), picks)
+                if laid:
+                    out[key][item] = laid
+                else:
+                    out[key].pop(item, None)
     if "all" in new:
-        out["all"] = new["all"]
+        laid = _laid(out.get("all", {}), new["all"])
+        if laid:
+            out["all"] = laid
+        else:
+            out.pop("all", None)
     if "presenter" in new:
         out["presenter"] = new["presenter"]
     for fid in new.get("clear", []):
         out.get("frames", {}).pop(fid, None)
         out.get("chapters", {}).pop(fid, None)
     return out
+
+
+def refuse(new: Row) -> None:
+    """Raises ValueError for a pick that names something outside the closed lists."""
+    every = [*new.get("frames", {}).values(), *new.get("chapters", {}).values()]
+    if new.get("all"):
+        every.append(new["all"])
+    for picks in every:
+        if picks.get("picture") is not None and picks["picture"] not in PICTURES:
+            raise ValueError(f"There is no picture type called {picks['picture']}.")
+        if picks.get("transition") is not None and picks["transition"] not in TRANSITIONS:
+            raise ValueError(f"There is no transition called {picks['transition']}.")
+        if picks.get("layout") is not None and picks["layout"] not in layouts.LAY:
+            raise ValueError(f"There is no layout called {picks['layout']}.")
+        for presence, lay in (picks.get("layouts") or {}).items():
+            if presence not in layouts.PRESENCES:
+                raise ValueError(f"Nobody has the frame as {presence}.")
+            if lay is not None and (
+                lay not in layouts.LAY or layouts.LAY[lay]["presence"] != presence
+            ):
+                raise ValueError(f"{lay} is not a layout for {presence}.")
 
 
 def has_picture(f: Row) -> bool:

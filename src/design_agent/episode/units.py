@@ -12,7 +12,7 @@ import json
 from typing import Any
 
 from design_agent.episode import geometry
-from design_agent.episode.plan import digest
+from design_agent.episode.plan import digest, picture_of
 
 Row = dict[str, Any]
 
@@ -20,6 +20,14 @@ SIMPLE, RICH = "simple", "rich"
 LEVELS = (SIMPLE, RICH)
 #: A picture this long, changing this often, is worth posing as stills before it is animated.
 RICH_LINES, RICH_CUES = 3, 6
+#: How a type a person picked is laid out, when the plan's arrangement was read for another.
+ARRANGED = {
+    "list": "stack",
+    "chips": "row",
+    "typeset-code": "code-panel",
+    "slide": "stack",
+    "illustration": "single",
+}
 
 
 def units(full: Row, picks: Row | None = None, *, level: str = SIMPLE) -> list[Row]:
@@ -50,26 +58,28 @@ def units(full: Row, picks: Row | None = None, *, level: str = SIMPLE) -> list[R
         unit["frames"] = [f["id"] for f in frames]
         unit["canvas"] = list(geometry.canvas(first.get("layout")))
         unit["layout"] = first.get("layout")
-        unit["picture"] = first.get("picture") or ""
+        unit["picture"] = picture_of(first)
         unit["arrangement"] = first.get("arrangement") or ""
+        # a type the person picked over the plan's: the builder draws the same content as it
+        retyped = bool(unit["picture"]) and unit["picture"] != (first.get("picture") or "")
+        if retyped:
+            unit["picture_by"] = "person"
+            unit["arrangement"] = ARRANGED.get(unit["picture"], unit["arrangement"])
         unit["shows"] = first.get("shows") or ""
         unit["start"] = first.get("start", 0.0)
         unit["seconds"] = round(sum(float(f.get("seconds", 0.0)) for f in frames), 1)
         unit["suggest"] = RICH if len(frames) >= RICH_LINES and cues >= RICH_CUES else SIMPLE
         picked = (chosen.get(unit["id"]) or {}).get("level")
         unit["level"] = picked if picked in LEVELS else level
-        unit["sig"] = digest(
-            json.dumps(
-                {
-                    "theme": theme,
-                    "canvas": unit["canvas"],
-                    "layout": unit["layout"],
-                    "frames": [_built_from(f) for f in frames],
-                },
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-        )
+        built_from: Row = {
+            "theme": theme,
+            "canvas": unit["canvas"],
+            "layout": unit["layout"],
+            "frames": [_built_from(f) for f in frames],
+        }
+        if retyped:  # only a pick is part of it, so a picture made before picks existed stands
+            built_from["picture"] = unit["picture"]
+        unit["sig"] = digest(json.dumps(built_from, sort_keys=True, ensure_ascii=False))
     return out
 
 

@@ -280,6 +280,124 @@ def test_a_pick_is_kept_beside_the_plan_and_says_what_it_leaves_the_writer(scrip
     assert frame["presence"] == "person" and "override" not in frame
 
 
+def test_a_layout_for_the_chapter_or_the_film_reaches_the_lines_of_one_presence(
+    script: Row,
+) -> None:
+    merged = plans.merged(script["plan"], script["labels"])
+    before = {f["id"]: (f["presence"], f["layout"]) for _, _, f in plans.frames_of(merged)}
+    chapter = next(
+        ch
+        for ch in merged["chapters"]
+        if sum(1 for b in ch["beats"] for f in b["frames"] if f["presence"] == "both") > 1
+    )
+    feedback = override.apply(merged, {"chapters": {chapter["id"]: {"layouts": {"both": "split"}}}})
+    assert override.redo(feedback) == [], "nobody's place changes, so the writer has nothing to do"
+    inside = {f["id"] for b in chapter["beats"] for f in b["frames"]}
+    for _, _, f in plans.frames_of(merged):
+        was_presence, was_layout = before[f["id"]]
+        assert f["presence"] == was_presence
+        if f["id"] in inside and was_presence == "both":
+            assert f["layout"] == "split"
+            if not f.get("hold"):
+                assert f["override"]["scope"] == "chapter"
+                assert f["override"]["was"]["layout"] == was_layout
+        else:
+            assert f["layout"] == was_layout
+    # the film's reaches every chapter; a line's own pick still wins; null takes one back
+    own = next(
+        f["id"]
+        for _, _, f in plans.frames_of(merged)
+        if f["id"] not in inside and f["presence"] == "both" and not f.get("hold")
+    )
+    kept = plans.merged(script["plan"], plans.labels_of(merged))
+    override.apply(
+        kept,
+        {
+            "all": {"layouts": {"both": "split"}},
+            "chapters": {chapter["id"]: {"layouts": {"both": None}}},
+            "frames": {own: {"layout": "corner-window"}},
+        },
+    )
+    for _, _, f in plans.frames_of(kept):
+        if f["presence"] == "both" and not f.get("hold"):
+            assert f["layout"] == ("corner-window" if f["id"] == own else "split")
+            if f["id"] != own:
+                assert f["override"]["scope"] == "film"
+    assert chapter["id"] not in kept["_overrides"].get("chapters", {})
+    override.apply(kept, {"all": {"layouts": {"both": None}}, "clear": [own]})
+    assert "all" not in kept["_overrides"]
+    after = {f["id"]: (f["presence"], f["layout"]) for _, _, f in plans.frames_of(kept)}
+    assert after == before
+    # a layout the film's look does not have is left alone, and one for another presence refused
+    override.apply(kept, {"all": {"layouts": {"both": "glass-card"}}})
+    assert all(f["layout"] != "glass-card" for _, _, f in plans.frames_of(kept))
+    with pytest.raises(ValueError, match="not a layout for both"):
+        override.refuse({"all": {"layouts": {"both": "full-frame"}}})
+
+
+def test_a_picked_type_and_transition_sit_beside_the_plans_reading(script: Row, full: Row) -> None:
+    unit = next(u for u in units.units(full) if u["picture"] == "diagram")
+    lead = unit["id"]
+    labels = copy.deepcopy(script["labels"])
+    labels["overrides"] = override.merge(
+        labels.get("overrides", {}),
+        {"frames": {lead: {"picture": "list", "transition": "crossfade"}}},
+    )
+    merged = plans.merged(script["plan"], labels)
+    frame = next(f for _, _, f in plans.frames_of(merged) if f["id"] == lead)
+    assert frame["picture"] == "diagram", "the reading is the plan's and stays"
+    assert plans.picture_of(frame) == "list" and plans.transition_of(frame) == "crossfade"
+    assert plans.labels_of(merged)["frames"][lead]["picture"] == "diagram"
+    picked = next(u for u in units.units(derive.full(merged)) if u["id"] == lead)
+    assert picked["picture"] == "list" and picked["arrangement"] == "stack"
+    assert picked["sig"] != unit["sig"], "a new type is a new picture to draw"
+    brief = picture.brief(picked, derive.full(merged))
+    assert brief["picture"]["kind"] == "list" and "the person" in brief["picture"]["kind_chosen_by"]
+    assert "kind_chosen_by" not in picture.brief(unit, full)["picture"]
+    # a transition alone never sends a picture back to its builder
+    labels["overrides"] = override.merge(labels["overrides"], {"frames": {lead: {"picture": None}}})
+    assert labels["overrides"]["frames"][lead] == {"transition": "crossfade"}
+    again = next(
+        u for u in units.units(derive.full(plans.merged(script["plan"], labels))) if u["id"] == lead
+    )
+    assert again["sig"] == unit["sig"]
+    for bad in ({"picture": "terminal"}, {"transition": "none"}, {"layout": "sideways"}):
+        with pytest.raises(ValueError, match="There is no"):
+            override.refuse({"frames": {lead: bad}})
+
+
+def test_a_picture_comes_in_by_its_move_and_the_one_before_leaves_by_it(full: Row) -> None:
+    found = units.units(full)
+    pictures = {u["id"]: sketch.built(picture.brief(u, full)) for u in found}
+    clock = timeline.schedule(full, [])
+    frames = {f["id"]: f for _, _, f in plans.frames_of(full)}
+    pushed = next(u for u in found if frames[u["id"]].get("transition") == "push")
+    before = found[found.index(pushed) - 1]
+    page = film.project(full, clock, found, pictures)["index.html"]
+    comp, prior = picture.composition_id(pushed["id"]), picture.composition_id(before["id"])
+    start = timeline.line_of(clock, pushed["id"])["start"]  # type: ignore[index]
+    enters = next(m for m in page.splitlines() if f'tl.fromTo("#wrap-{comp}"' in m)
+    leaves = next(m for m in page.splitlines() if f'tl.to("#wrap-{prior}"' in m)
+    assert enters.rstrip().endswith(f"{start:.3f});") and leaves.rstrip().endswith(f"{start:.3f});")
+    assert "opacity: 0" in enters and "opacity: 1, duration: 0.4" in enters
+    # the one before stays mounted for as long as the move takes
+    own = picture.clock(before, clock)
+    assert f'data-duration="{own["seconds"] + 0.4:.3f}" data-track-index' in page
+    # a cut is set at an instant, and the person's pick wins over the plan's
+    cut = next(u for u in found if frames[u["id"]].get("transition") == "cut")
+    assert f'tl.set("#wrap-{picture.composition_id(cut["id"])}"' in page
+    for move, seconds in (("zoom-through", 0.5), ("crossfade", 0.4), ("cut", 0)):
+        other = copy.deepcopy(full)
+        lead = next(f for _, _, f in plans.frames_of(other) if f["id"] == pushed["id"])
+        lead["picked"] = {"transition": move}
+        again = film.project(other, clock, found, pictures)["index.html"]
+        line = next(m for m in again.splitlines() if f'"#wrap-{comp}"' in m)
+        if seconds:
+            assert "tl.fromTo(" in line and f"duration: {seconds}" in line
+        else:
+            assert "tl.set(" in line and f'tl.to("#wrap-{prior}"' not in again
+
+
 def test_no_speaker_takes_everyone_off_screen(script: Row) -> None:
     merged = plans.merged(script["plan"], script["labels"])
     override.apply(merged, {"presenter": "off"})
@@ -412,12 +530,18 @@ def test_the_film_is_one_page_written_by_code(full: Row) -> None:
     assert len([p for p in files if p.startswith("compositions/")]) == len(found)
     assert 'src="takes/tk_1.mp4" muted' in page and 'src="takes/tk_1.m4a"' in page
     assert film.STAND_IN in page, "a chapter nobody recorded shows a stand-in"
-    assert "tl.to(" not in page, "layouts change at a cut, never by tweening a box"
+    for move in page.splitlines():
+        if "tl.to(" in move or "tl.fromTo(" in move:
+            assert not any(k in move for k in ("left:", "top:", "width:", "height:")), (
+                "a box is moved by transform and opacity, never by its geometry"
+            )
     for unit in found:
         comp = picture.composition_id(unit["id"])
         own = picture.clock(unit, clock)
         built = files[f"compositions/{comp}.html"]
-        assert json.dumps(own, separators=(",", ":")) in built
+        held = json.loads(picture.CLOCK.search(built).group("body"))  # type: ignore[union-attr]
+        assert held["lines"] == own["lines"] and held["cues"] == own["cues"]
+        assert held["seconds"] >= own["seconds"], "it may stay a moment longer, to leave by a move"
         assert "@font-face { font-family: 'Fraunces'; src: local('Fraunces'); }" in built
         assert f'data-composition-src="compositions/{comp}.html"' in page
     assert '<script src="gsap.min.js">' in page and "http" not in page.replace("http-equiv", "")

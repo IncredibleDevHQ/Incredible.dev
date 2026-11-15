@@ -201,6 +201,11 @@ def brief(unit: Row, full: Row, *, look: Look | None = None, note: str = "") -> 
             "kind": unit.get("picture", ""),
             "arrangement": unit.get("arrangement", ""),
             "shows": unit.get("shows", ""),
+            **(
+                {"kind_chosen_by": "the person, over the plan's own reading"}
+                if unit.get("picture_by") == "person"
+                else {}
+            ),
         },
         "look": {
             "palette": look.palette,

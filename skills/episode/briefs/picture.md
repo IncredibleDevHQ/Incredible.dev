@@ -81,6 +81,13 @@ One HyperFrames sub-composition, complete in itself:
   already there, do that rather than fading in a copy.
 - **The look is the brief's.** Colours come from its palette and nothing else. The motion
   follows its motion note.
+- **Its kind is the brief's.** `picture.kind` says what to draw (a diagram, a list, chips, code,
+  an illustration, a slide) and `picture.arrangement` how it is laid out. When the brief has
+  `picture.kind_chosen_by`, a person picked that kind over the plan's: draw the same objects
+  and cues as that kind, even where a line's `shows_when_finished` describes another.
+- **It does not come or go by itself.** The film brings the whole picture in and takes it out
+  (a cut, a push, a crossfade or a zoom) and may hold its last moment for half a second after
+  its last line. Never fade, slide or scale the whole picture in at its start or out at its end.
 
 Write the file and stop: do not render it, upload it or deliver it. Code reads it from your
 folder, checks it and poses its stills.

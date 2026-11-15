@@ -42,6 +42,21 @@ def wanted(plan: Row, ch: Row, f: Row) -> Row:
     return want
 
 
+def scoped(plan: Row, ch: Row, theme: Row, presence: str) -> tuple[str, str] | None:
+    """A layout a person set for every line of one presence, in the chapter or in the whole
+    film, and which of the two it came from. It never changes who has the frame, and it holds
+    only while the film's look has that layout."""
+    over = plan.get("_overrides", {})
+    for scope, picks in (
+        ("chapter", over.get("chapters", {}).get(ch["id"], {})),
+        ("film", over.get("all", {})),
+    ):
+        lay = (picks.get("layouts") or {}).get(presence)
+        if lay in LAY and LAY[lay]["presence"] == presence and lay in theme["kit"]:
+            return str(lay), scope
+    return None
+
+
 def layout_for(theme: Row, presence: str, asked: str | None = None) -> str:
     if asked is not None and asked in LAY and LAY[asked]["presence"] == presence:
         return asked
@@ -146,6 +161,23 @@ def settle_frames(plan: Row) -> None:
             f["line_only"] = True
             f["hold"] = True
             f["_auto_hold"] = True
+        own = plan.get("_overrides", {}).get("frames", {}).get(f["id"], {})
+        if not off and not f.get("hold") and own.get("layout") not in LAY:
+            # the line has no layout of its own picked: its chapter's, then the film's
+            found = scoped(plan, ch, theme, presence)
+            if found is not None and found[0] != layout:
+                was = (f.get("override") or {}).get("was") or {
+                    "presence": presence,
+                    "layout": layout,
+                }
+                f["override"] = {
+                    "presence": presence,
+                    "layout": found[0],
+                    "reason": "picked by a person",
+                    "was": was,
+                    "scope": found[1],
+                }
+                layout = found[0]
         if f.get("hold") and prev is not None and not f.get("override") and prev.get("presence"):
             presence, layout = prev["presence"], prev.get("layout")
         f["presence"], f["layout"] = presence, layout

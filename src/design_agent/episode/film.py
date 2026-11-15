@@ -4,7 +4,9 @@ Nothing here is a model's: the page places each line's person and picture where 
 says (`geometry`), cuts between layouts where the plan cuts, plays each take from where its
 line was said, and mounts every built picture as a sub-composition whose clock was set from
 the takes (`timeline`, `picture`). Layout changes are cuts, set at an instant, so the render
-never tweens a box.
+never tweens a box. A picture may come in by a move instead (a crossfade, a push, a zoom):
+its whole box is moved by transform and opacity, and the picture before it stays mounted for
+that long to leave by the same move.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from typing import Any
 
 from design_agent.episode import geometry, picture
 from design_agent.episode import questions as Q
+from design_agent.episode.plan import transition_of
 from design_agent.episode.timeline import line_of
 
 Row = dict[str, Any]
@@ -23,6 +26,14 @@ CHAPTERS = Q.table("chapter_types")
 #: A person's box when no take has been recorded for the line yet: the draft shows a stand-in.
 STAND_IN = "stand-in"
 FADE = 0.4
+TRANSITIONS = Q.table("transitions")
+#: The transitions that move a picture in; the others set it in place at an instant.
+MOVES = ("crossfade", "push", "zoom-through")
+#: How far a pushed picture travels, as a share of its box's width.
+PUSH = 0.22
+#: How much smaller a picture starts when the film zooms into it, and how much larger the one
+#: before it ends.
+ZOOM_IN, ZOOM_OUT = 0.86, 1.18
 
 
 def project(
@@ -55,30 +66,18 @@ def project(
     script: list[str] = []
     track = 1
 
-    built = [u for u in units if u["id"] in pictures]
-    for unit in built:
-        comp = picture.composition_id(unit["id"])
+    # each built picture: where its box sits on every line, and how it comes in
+    shown: list[Row] = []
+    for unit in units:
+        if unit["id"] not in pictures:
+            continue
         own = picture.clock(unit, clock)
         if not own["lines"]:
             continue
-        files[f"{picture.FOLDER}/{comp}.html"] = picture.dressed(pictures[unit["id"]], own, look)
         first = line_of(clock, unit["frames"][0])
         assert first is not None  # noqa: S101 - the unit's lines are in the clock (checked above)
         width, height = unit["canvas"]
-        home = geometry.region(unit.get("layout"))
-        radius = home.picture_radius
-        style = f"width: {width}px; height: {height}px; border-radius: {radius}px"
-        if home.glass:
-            style += "; z-index: 3; opacity: 0.94"
-        body.append(
-            f'<div class="pic" id="wrap-{comp}" style="{style}">'
-            f'<div id="{comp}" data-composition-id="{comp}" '
-            f'data-composition-src="{picture.FOLDER}/{comp}.html" '
-            f'data-start="{first["start"]:.3f}" '
-            f'data-duration="{own["seconds"]:.3f}" data-track-index="{track}" '
-            f'data-width="{width}" data-height="{height}"></div></div>'
-        )
-        track += 1
+        spots: list[tuple[float, tuple[float, float, float, int]]] = []
         last: tuple[float, float, float, int] | None = None
         for frame_id in unit["frames"]:
             line = line_of(clock, frame_id)
@@ -86,15 +85,67 @@ def project(
             if line is None:
                 continue
             spot = geometry.region(f.get("layout"))
-            shown = f.get("presence") in ("both", "content") and spot.picture is not None
+            on = f.get("presence") in ("both", "content") and spot.picture is not None
             x, y, scale = geometry.fit((width, height), spot.picture or geometry.FULL)
-            now = (x, y, scale, 1 if shown else 0)
+            now = (x, y, scale, 1 if on else 0)
             if now != last:
+                spots.append((float(line["start"]), now))
+                last = now
+        move = transition_of(frames[unit["frames"][0]])
+        shown.append(
+            {
+                "unit": unit,
+                "comp": picture.composition_id(unit["id"]),
+                "own": own,
+                "start": float(first["start"]),
+                "end": float(first["start"]) + float(own["seconds"]),
+                "spots": spots,
+                "move": move if move in MOVES and spots and spots[0][1][3] else "",
+                "tail": 0.0,
+            }
+        )
+    # a picture that comes in by a move takes the one before it out by the same move, when
+    # that one was on screen until this very moment: it stays mounted that much longer
+    for i, entry in enumerate(shown):
+        before = shown[i - 1] if i else None
+        if not entry["move"] or before is None:
+            continue
+        if abs(before["end"] - entry["start"]) < 0.02 and before["spots"][-1][1][3]:
+            before["tail"] = float(TRANSITIONS[entry["move"]]["seconds"])
+            before["leaves_by"] = entry["move"]
+    for entry in shown:
+        unit, comp, own = entry["unit"], entry["comp"], dict(entry["own"])
+        own["seconds"] = round(float(own["seconds"]) + entry["tail"], 3)
+        files[f"{picture.FOLDER}/{comp}.html"] = picture.dressed(pictures[unit["id"]], own, look)
+        width, height = unit["canvas"]
+        home = geometry.region(unit.get("layout"))
+        style = f"width: {width}px; height: {height}px; border-radius: {home.picture_radius}px"
+        if home.glass:
+            style += "; z-index: 3; opacity: 0.94"
+        body.append(
+            f'<div class="pic" id="wrap-{comp}" style="{style}">'
+            f'<div id="{comp}" data-composition-id="{comp}" '
+            f'data-composition-src="{picture.FOLDER}/{comp}.html" '
+            f'data-start="{entry["start"]:.3f}" '
+            f'data-duration="{own["seconds"]:.3f}" data-track-index="{track}" '
+            f'data-width="{width}" data-height="{height}"></div></div>'
+        )
+        track += 1
+        for n, (at, spot_now) in enumerate(entry["spots"]):
+            if n == 0 and entry["move"]:
+                script.append(_enters(comp, entry["move"], spot_now, (width, height), at))
+            else:
+                x, y, scale, opacity = spot_now
                 script.append(
                     f'tl.set("#wrap-{comp}", {{ x: {x}, y: {y}, scale: {scale}, '
-                    f"opacity: {now[3]} }}, {line['start']:.3f});"
+                    f"opacity: {opacity} }}, {at:.3f});"
                 )
-                last = now
+        if entry["tail"]:
+            script.append(
+                _leaves(
+                    comp, entry["leaves_by"], entry["spots"][-1][1], (width, height), entry["end"]
+                )
+            )
 
     # the person: one clip for each run of lines said in one take inside one window
     runs: list[Row] = []
@@ -212,6 +263,53 @@ def project(
 
     files["index.html"] = _page(colours, look, clock["total"], body, script)
     return files
+
+
+def _box(spot: tuple[float, float, float, int], size: tuple[int, int], grow: float) -> str:
+    """A picture's box scaled by `grow` about its own middle, as the transform that puts it
+    there (its origin is its top left corner)."""
+    x, y, scale, _ = spot
+    wide, high = size[0] * scale, size[1] * scale
+    return (
+        f"x: {round(x - wide * (grow - 1) / 2, 2)}, y: {round(y - high * (grow - 1) / 2, 2)}, "
+        f"scale: {round(scale * grow, 4)}"
+    )
+
+
+def _enters(
+    comp: str, move: str, spot: tuple[float, float, float, int], size: tuple[int, int], at: float
+) -> str:
+    """The picture comes in by `move` from the moment its first line starts."""
+    x, y, scale, _ = spot
+    seconds = float(TRANSITIONS[move]["seconds"])
+    home = f"x: {x}, y: {y}, scale: {scale}, opacity: 1"
+    if move == "push":
+        start = f"x: {round(x + size[0] * scale * PUSH, 2)}, y: {y}, scale: {scale}, opacity: 0"
+        ease = "power2.inOut"
+    elif move == "zoom-through":
+        start, ease = _box(spot, size, ZOOM_IN) + ", opacity: 0", "power2.inOut"
+    else:
+        start, ease = f"x: {x}, y: {y}, scale: {scale}, opacity: 0", "power1.out"
+    return (
+        f'tl.fromTo("#wrap-{comp}", {{ {start} }}, '
+        f'{{ {home}, duration: {seconds}, ease: "{ease}" }}, {at:.3f});'
+    )
+
+
+def _leaves(
+    comp: str, move: str, spot: tuple[float, float, float, int], size: tuple[int, int], at: float
+) -> str:
+    """The picture before leaves by the move the next one comes in by, over the same time."""
+    x, y, scale, _ = spot
+    seconds = float(TRANSITIONS[move]["seconds"])
+    if move == "push":
+        end = f"x: {round(x - size[0] * scale * PUSH, 2)}, y: {y}, scale: {scale}, opacity: 0"
+        ease = "power2.inOut"
+    elif move == "zoom-through":
+        end, ease = _box(spot, size, ZOOM_OUT) + ", opacity: 0", "power2.inOut"
+    else:
+        end, ease = "opacity: 0", "power1.in"
+    return f'tl.to("#wrap-{comp}", {{ {end}, duration: {seconds}, ease: "{ease}" }}, {at:.3f});'
 
 
 def _page(

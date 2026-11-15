@@ -35,6 +35,9 @@ FRAME_KEYS = (
     "relation",
     "transition",
 )
+#: What a person may pick for the line that brings a picture in, kept beside the labels and
+#: never written over them: the plan's own reading stays, so taking a pick back restores it.
+PICKED_KEYS = ("picture", "transition")
 MATERIAL_KEYS = ("kind", "p")
 OBJECT_KEYS = ("type", "p")
 CUE_KEYS = ("move", "p")
@@ -105,8 +108,22 @@ def merged(plan: Row, labels: Row | None = None) -> Row:
                 if "vo" not in f and len(b["frames"]) == 1:
                     f["vo"] = b.get("says", "")
                 _label_frame(f, b, labels)
+                pick = plan["_overrides"].get("frames", {}).get(f["id"], {})
+                picked = {k: pick[k] for k in PICKED_KEYS if pick.get(k)}
+                if picked:
+                    f["picked"] = picked
     inherit_holds(plan)
     return plan
+
+
+def picture_of(f: Row) -> str:
+    """The type of picture a line shows: the person's pick, else the plan's reading."""
+    return str((f.get("picked") or {}).get("picture") or f.get("picture") or "")
+
+
+def transition_of(f: Row) -> str:
+    """How a line's picture comes in: the person's pick, else the plan's reading."""
+    return str((f.get("picked") or {}).get("transition") or f.get("transition") or "")
 
 
 def _label_frame(f: Row, b: Row, labels: Row) -> None:
