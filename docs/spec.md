@@ -750,10 +750,15 @@ app's canvas, from a channel's material or a research frame's notes.
   picture a card that holds the picture itself (a placeholder until it is made), its kind,
   where it stands, how it is made and what it shows, over the lines it is shown on. The frame
   for the line the caret is on floats beside it, level with it while it is in sight, and Record
-  sits at the editor's top right with the take. The frame opens in a pop-up over the studio, as
+  sits at the editor's top right with the take. Along the bottom of the page runs the chapter's
+  timeline on its own clock (the take's once there is one, the plan's before): each line a span
+  as long as it lasts, a picture's lines tinted together, under a ruler of times. Placing the
+  caret on a line lands the playhead on its span, and a click on a span puts the caret on its
+  line. The frame opens in a pop-up over the studio, as
   the Figma editor's preview does: the frame large, with the chapters either side as a
   carousel that keeps the pop-up open; its controls and the recorder under it; under those the
-  chapter's lines as a timeline of small frames in the blocks of the script; and a dark rail at
+  same timeline, taller, with each line's frame in its span and the playhead following what
+  plays; and a dark rail at
   the right edge whose buttons (Layout, Picture, Transition, Steps) each open one panel of
   the line's choices beside the frame. A take opens it, and while one is recorded the panel
   holds the words to say. Play plays the line: its take once there is one, else its picture's

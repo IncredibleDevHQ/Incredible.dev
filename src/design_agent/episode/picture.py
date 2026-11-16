@@ -20,15 +20,16 @@ Row = dict[str, Any]
 
 #: The palette a picture and the film's own cards share when the channel wears no brand.
 PALETTE: dict[str, str] = {
-    "ground": "#F3EFE6",
+    # Incredible's own: zinc greys on white and its green, as the old product had them
+    "ground": "#F4F4F5",
     "panel": "#FFFFFF",
-    "ink": "#16201B",
-    "muted": "#5B665F",
-    "line": "#D9D3C5",
-    "accent": "#1F7A4D",
+    "ink": "#18181B",
+    "muted": "#52525B",
+    "line": "#D4D4D8",
+    "accent": "#15803D",
     "accent_ink": "#FFFFFF",
-    "good": "#1F7A4D",
-    "bad": "#B23722",
+    "good": "#15803D",
+    "bad": "#B91C1C",
 }
 #: Fonts the computer that renders has, whatever the builder's own machine has.
 FONTS = ("Inter", "Fraunces", "IBM Plex Mono", "Fira Code")

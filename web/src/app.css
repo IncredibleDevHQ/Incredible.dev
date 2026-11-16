@@ -1,6 +1,6 @@
 /* Creative House: channels, threads and the canvas over the design agent's engine.
-   One stylesheet, tokens first. Ink, slate and greens, dark on near-black or light on paper (the
-   person picks; index.html sets it before paint); amber marks what needs a person, red what
+   One stylesheet, tokens first. Zinc greys and greens, as the old product and its Figma had them: dark on
+   near-black or light on white (the person picks; index.html sets it before paint); amber marks what needs a person, red what
    failed. Inter for words, JetBrains Mono for labels. Each level sits a clear step above the one
    under it: canvas, then a task's frame, then its cards with an edge and a shadow. */
 
@@ -16,90 +16,90 @@
 
 /* Dark, and always dark where a frame or a film is looked at full size. */
 :root, .review, .studio, .viewer {
-  --bg: #0c100e;
-  --surface: #131915;
-  --raised: #222b26;
-  --sunk: #090c0a;
-  --line: #36433c;
-  --line-soft: #242d28;
-  --line-strong: #4d5c54;
-  --focus-line: #4a6b58;
-  --flow: #4f5e56;
-  --ink: #e8ede9;
-  --ink-2: #bac5be;
-  --muted: #8e9b93;
-  --faint: #6b786f;
-  --green: #4abb7b;
-  --green-ink: #0d1f15;
-  --green-hover: #5bcb8b;
-  --green-soft: #1d3527;
-  --amber: #e0a94c;
-  --amber-soft: #3a2f1a;
-  --red: #e5705a;
-  --red-soft: #3b211c;
-  --shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-  --frame-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 18px 48px rgba(0, 0, 0, 0.35);
-  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 22px rgba(0, 0, 0, 0.38);
-  --scrim: rgba(6, 9, 7, 0.6);
-  --wash: rgba(255, 255, 255, 0.025);
+  --bg: #121212;
+  --surface: #1f2024;
+  --raised: #28292d;
+  --sunk: #0c0c0d;
+  --line: #383b40;
+  --line-soft: #2e2f34;
+  --line-strong: #4b4e55;
+  --focus-line: #2f7a4b;
+  --flow: #4b4e55;
+  --ink: #e8e8ea;
+  --ink-2: #c5c5c8;
+  --muted: #929397;
+  --faint: #6c6d72;
+  --green: #22c55e;
+  --green-ink: #052e16;
+  --green-hover: #4ade80;
+  --green-soft: #133122;
+  --amber: #f0b23e;
+  --amber-soft: #3a2d12;
+  --red: #f07a68;
+  --red-soft: #3c1f1b;
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  --frame-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 18px 48px rgba(0, 0, 0, 0.4);
+  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 22px rgba(0, 0, 0, 0.42);
+  --scrim: rgba(8, 8, 9, 0.6);
+  --wash: rgba(255, 255, 255, 0.03);
   color-scheme: dark;
 }
 
 .review, .studio, .viewer { color: var(--ink); }
 
-/* Light: paper under white cards, the same greens a shade deeper so words on them still read.
-   A card keeps that paper and ink on the dark canvas too, the way Figma's frames and Miro's cards
-   keep their own fills on a dark board: the canvas and the chrome go dark, the work does not.
-   A card that is only planned or skipped stays an outline on its frame. A template's cards, which
-   show what will land on the canvas, look as they will there. */
+/* Light: white cards on zinc greys, the greens a shade deeper so words on them still read. A
+   card keeps its light fill on the dark canvas too, the way Figma's frames and Miro's cards keep
+   their own fills on a dark board: the canvas and the chrome go dark, the work does not. A card
+   that is only planned or skipped stays an outline on its frame. A template's cards, which show
+   what will land on the canvas, look as they will there. */
 :root[data-theme="light"],
 :root:not([data-theme="light"]) :is(.node:not([data-status="planned"], [data-status="skipped"]), .tpl-node:not(.source), .tpl-node[data-brought]) {
-  --bg: #efece5;
-  --surface: #f9f8f4;
+  --bg: #f4f4f5;
+  --surface: #f7f7f8;
   --raised: #ffffff;
-  --sunk: #f2f0ea;
-  --line: #d6d1c5;
-  --line-soft: #e6e2d8;
-  --line-strong: #b3ad9e;
-  --focus-line: #8fbca2;
-  --flow: #c5bfb1;
-  --ink: #141b17;
-  --ink-2: #36413b;
-  --muted: #59655e;
-  --faint: #737d77;
-  --green: #157546;
+  --sunk: #efeff1;
+  --line: #e4e4e7;
+  --line-soft: #ececef;
+  --line-strong: #d4d4d8;
+  --focus-line: #86c99e;
+  --flow: #d4d4d8;
+  --ink: #18181b;
+  --ink-2: #3f3f46;
+  --muted: #71717a;
+  --faint: #8b8b94;
+  --green: #15803d;
   --green-ink: #ffffff;
-  --green-hover: #106039;
-  --green-soft: #dcefe3;
-  --amber: #8f5608;
-  --amber-soft: #f6e7cb;
-  --red: #b23722;
-  --red-soft: #f8dfd8;
-  --shadow: 0 16px 40px rgba(28, 36, 31, 0.16), 0 2px 6px rgba(28, 36, 31, 0.06);
-  --frame-shadow: 0 1px 3px rgba(28, 36, 31, 0.05), 0 12px 32px rgba(28, 36, 31, 0.06);
-  --card-shadow: 0 1px 2px rgba(28, 36, 31, 0.07), 0 6px 18px rgba(28, 36, 31, 0.08);
-  --scrim: rgba(24, 31, 27, 0.32);
-  --wash: rgba(20, 27, 23, 0.035);
+  --green-hover: #166534;
+  --green-soft: #dcfce7;
+  --amber: #b45309;
+  --amber-soft: #fef3c7;
+  --red: #b91c1c;
+  --red-soft: #fee2e2;
+  --shadow: 0 16px 40px rgba(24, 24, 27, 0.14), 0 2px 6px rgba(24, 24, 27, 0.06);
+  --frame-shadow: 0 1px 3px rgba(24, 24, 27, 0.05), 0 12px 32px rgba(24, 24, 27, 0.06);
+  --card-shadow: 0 1px 2px rgba(24, 24, 27, 0.06), 0 6px 18px rgba(24, 24, 27, 0.07);
+  --scrim: rgba(24, 24, 27, 0.32);
+  --wash: rgba(24, 24, 27, 0.035);
   color-scheme: light;
 }
 /* The studio's ground and the two sheets laid on it (the script, and the frame), each with a
    hairline edge and a soft lift, the way Open Slide lays its stage and inspector on its canvas.
    The bar and the slides sit on the ground. */
 :root {
-  --ep-ground: #090c0a;
-  --ep-sheet: #141a16;
+  --ep-ground: #0d0d0e;
+  --ep-sheet: #18191c;
   --ep-edge: rgba(255, 255, 255, 0.07);
   --ep-lift: 0 1px 2px rgba(0, 0, 0, 0.45), 0 18px 44px rgba(0, 0, 0, 0.34);
   --ep-pick: rgba(255, 255, 255, 0.06);
 }
 :root[data-theme="light"] {
-  --ep-ground: #e9e5dc;
-  --ep-sheet: #fffdf9;
-  --ep-edge: rgba(20, 27, 23, 0.08);
-  --ep-lift: 0 1px 2px rgba(28, 36, 31, 0.06), 0 10px 30px rgba(28, 36, 31, 0.07);
-  --ep-pick: rgba(20, 27, 23, 0.055);
+  --ep-ground: #f4f4f5;
+  --ep-sheet: #ffffff;
+  --ep-edge: rgba(24, 24, 27, 0.08);
+  --ep-lift: 0 1px 2px rgba(24, 24, 27, 0.05), 0 10px 30px rgba(24, 24, 27, 0.06);
+  --ep-pick: rgba(24, 24, 27, 0.05);
 }
-/* Paper on the dark canvas casts a deeper shadow. */
+/* A light card on the dark canvas casts a deeper shadow. */
 :root:not([data-theme="light"]) :is(.node:not([data-status="planned"], [data-status="skipped"]), .tpl-node:not(.source), .tpl-node[data-brought]) {
   --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 14px 32px rgba(0, 0, 0, 0.42);
 }
@@ -242,7 +242,7 @@ button { cursor: pointer; }
   --ui-sel-glow: var(--green-soft);
   --ui-sel-shadow-menu: var(--shadow);
 }
-:root .brand-select .ui-sel__icon > img { border-radius: 4px; background: #f6f1e7; object-fit: contain; }
+:root .brand-select .ui-sel__icon > img { border-radius: 4px; background: #f4f4f5; object-fit: contain; }
 :root :is(.ui-seg, .ui-pop, .ui-kbd) {
   --aui-ink: var(--ink);
   --aui-muted: var(--muted);
@@ -864,7 +864,7 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .section h2 { margin: 0 0 10px; font-size: 14px; color: var(--muted); font-weight: 600; letter-spacing: 0.02em; }
 .prose { white-space: pre-wrap; max-width: 80ch; color: var(--ink-2); font-size: 13px; line-height: 1.6; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
 .logos { display: flex; flex-wrap: wrap; gap: 12px; }
-.logos figure { margin: 0; padding: 14px; border-radius: 12px; background: #f6f1e7; border: 1px solid var(--line); }
+.logos figure { margin: 0; padding: 14px; border-radius: 12px; background: #f4f4f5; border: 1px solid var(--line); }
 .logos img { display: block; height: 48px; }
 .logos figure.on-ink { background: #14161a; }
 /* Brands: a read from a website, the shelf of packs, the one a channel wears. */
@@ -877,7 +877,7 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .brand-card { display: grid; grid-template-columns: 40px minmax(0, 1fr); grid-template-rows: auto auto; gap: 4px 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); text-align: left; color: var(--ink); }
 .brand-card:hover { border-color: var(--line-strong); }
 .brand-card[aria-checked="true"] { border-color: var(--green); background: var(--green-soft); }
-.brand-card-mark { grid-row: span 2; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: #f6f1e7; overflow: hidden; color: #14161a; }
+.brand-card-mark { grid-row: span 2; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: #f4f4f5; overflow: hidden; color: #14161a; }
 .brand-card-mark img { max-width: 34px; max-height: 34px; object-fit: contain; }
 .brand-card-text { display: grid; min-width: 0; }
 .brand-card-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -889,7 +889,7 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .brand-head .btn { margin-left: auto; }
 .brand-reference { display: block; width: min(100%, 860px); border-radius: 12px; border: 1px solid var(--line); }
 .brand-chip { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
-.brand-chip img { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; background: #f6f1e7; }
+.brand-chip img { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; background: #f4f4f5; }
 .brand-menu { width: 290px; }
 .review-side .board-actions { flex-direction: column; align-items: stretch; }
 .review-side .board-actions .btn { justify-content: center; }
@@ -1112,7 +1112,7 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-block.ep-figure { gap: 4px; margin-block: 12px 8px; padding: 12px 6px 6px; border: 1px solid var(--line-soft); border-radius: 16px; background: var(--surface); }
 .ep-figure + .ep-block:not(.ep-figure) { border-top: 0; padding-top: 8px; }
 .ep-figure-top { display: grid; grid-template-columns: clamp(208px, 34cqw, 360px) minmax(0, 1fr); gap: 14px; align-items: start; padding: 0 6px 8px; }
-.ep-figure-pic { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #f3efe6; cursor: zoom-in; transition: border-color 140ms ease, box-shadow 140ms ease; }
+.ep-figure-pic { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #f4f4f5; cursor: zoom-in; transition: border-color 140ms ease, box-shadow 140ms ease; }
 .ep-figure-pic:hover { border-color: var(--line-strong); box-shadow: var(--card-shadow); }
 .ep-figure-pic:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .ep-figure-pic img, .ep-figure-pic svg { display: block; width: 100%; height: 100%; object-fit: contain; }
@@ -1168,7 +1168,7 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 /* the film's own slide: its title card */
 .ep-thumb.ep-cover { display: flex; flex-direction: column; justify-content: flex-end; gap: 5cqw; padding: 8% 9% 9%; }
 .ep-cover::before { content: ""; width: 13cqw; height: 2.4cqw; border-radius: 99px; background: #3f9a66; }
-.ep-cover b { color: #2f3833; font-size: 9.5cqw; font-weight: 700; line-height: 1.15; letter-spacing: -0.01em; }
+.ep-cover b { color: #27272a; font-size: 9.5cqw; font-weight: 700; line-height: 1.15; letter-spacing: -0.01em; }
 .ep-cover b span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ep-slide-words b svg { width: 13px; height: 13px; vertical-align: -2px; }
 /* the film's script as one document: the plan's idea and who wrote it, then each chapter's
@@ -1242,17 +1242,28 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-pop-rail button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.09); color: #ffffff; }
 .ep-pop-rail button:disabled { opacity: 0.4; cursor: default; }
 .ep-pop-rail button:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
-/* the chapter's lines under the frame, in the blocks of the script */
-.ep-timeline { display: flex; flex: none; gap: 8px; overflow-x: auto; padding: 8px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--surface); scrollbar-width: thin; }
-.ep-timeline-block { display: flex; flex: none; gap: 4px; padding: 4px; border-radius: 9px; background: var(--sunk); }
-.ep-timeline-block[data-picture] { background: color-mix(in srgb, var(--green) 10%, var(--sunk)); }
-.ep-timeline-block:is([data-state="changed"], [data-state="reworded"]) { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 55%, transparent); }
-.ep-timeline-line { position: relative; flex: none; width: 104px; padding: 0; border: 2px solid transparent; border-radius: 8px; background: none; }
-.ep-timeline-line .ep-frame-canvas { border-radius: 6px; }
-.ep-timeline-line[aria-selected="true"] { border-color: var(--green); }
-.ep-timeline-line:hover:not([aria-selected="true"]):not(:disabled) { border-color: var(--line-strong); }
-.ep-timeline-line:disabled { cursor: default; }
-.ep-timeline-line small { position: absolute; top: 4px; left: 5px; padding: 0 5px; border-radius: 999px; background: rgba(12, 16, 14, 0.62); color: #ffffff; font-size: 10.5px; font-weight: 600; line-height: 16px; }
+/* The chapter's lines on its clock: a ruler of times over a bar of spans, each as long as its
+   line, a picture's lines tinted together, the playhead on the open line or the moment playing. */
+.ep-timeline { display: grid; gap: 3px; flex: none; padding: 6px 10px 8px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--surface); }
+.ep-doc-foot .ep-timeline { margin-bottom: 10px; }
+.ep-timeline-ruler { position: relative; height: 14px; color: var(--faint); font: 600 10.5px/14px var(--mono); }
+.ep-timeline-ruler span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.ep-timeline-ruler span:first-child { transform: none; }
+.ep-timeline-bar { position: relative; height: 26px; }
+.ep-timeline[data-tall] .ep-timeline-bar { height: 64px; }
+.ep-timeline-span { position: absolute; top: 0; bottom: 0; overflow: hidden; padding: 0; border: 0; border-radius: 6px; background: var(--sunk); box-shadow: inset 2px 0 0 var(--ep-sheet); color: var(--muted); }
+.ep-timeline-span[data-joins] { border-top-left-radius: 0; border-bottom-left-radius: 0; box-shadow: inset 1px 0 0 color-mix(in srgb, var(--ep-sheet) 70%, transparent); }
+.ep-timeline-span[data-picture] { background: color-mix(in srgb, var(--green) 16%, var(--sunk)); }
+.ep-timeline-span:is([data-state="changed"], [data-state="reworded"]) { background: color-mix(in srgb, var(--amber) 18%, var(--sunk)); }
+.ep-timeline-span:hover:not(:disabled):not([aria-selected="true"]) { background: color-mix(in srgb, var(--ink) 8%, var(--sunk)); }
+.ep-timeline-span[aria-selected="true"] { z-index: 1; border-radius: 6px; background: color-mix(in srgb, var(--green) 26%, var(--sunk)); box-shadow: inset 0 0 0 2px var(--green); color: var(--ink); }
+.ep-timeline-span:disabled { cursor: default; }
+.ep-timeline-span small { position: absolute; top: 5px; left: 6px; font-size: 10.5px; font-weight: 700; line-height: 1; }
+.ep-timeline[data-tall] .ep-timeline-span small { top: 6px; padding: 0 5px; border-radius: 999px; background: rgba(12, 16, 14, 0.62); color: #ffffff; line-height: 16px; }
+.ep-timeline-span .ep-frame-canvas { position: absolute; top: 3px; left: 3px; width: auto; height: calc(100% - 6px); aspect-ratio: 16 / 9; border-radius: 4px; outline: 0; }
+.ep-timeline-head { position: absolute; top: -17px; bottom: -3px; z-index: 2; width: 2px; margin-left: -1px; border-radius: 2px; background: var(--green); pointer-events: none; transition: left 120ms linear; }
+.ep-timeline-head::before { content: ""; position: absolute; top: 0; left: -3px; width: 8px; height: 8px; border-radius: 999px; background: var(--green); }
+@media (prefers-reduced-motion: reduce) { .ep-timeline-head { transition: none; } }
 @keyframes ep-pop-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ep-full-in { from { opacity: 0; transform: scale(0.985); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .ep-full { animation: none; } }
@@ -1315,7 +1326,7 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-pic:hover, .ep-pic:focus-visible { transform: translateY(-1px); border-color: var(--line-strong); }
 .ep-pic:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .ep-pic[data-dim] { opacity: 0.22; }
-.ep-pic-art { position: relative; display: block; aspect-ratio: 16 / 9; background: #f3efe6; }
+.ep-pic-art { position: relative; display: block; aspect-ratio: 16 / 9; background: #f4f4f5; }
 .ep-pic-art img, .ep-pic-art svg { display: block; width: 100%; height: 100%; object-fit: cover; }
 .ep-pic[data-state="making"] .ep-pic-art > * { opacity: 0.55; }
 .ep-pic[data-state="making"] .ep-pic-art::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.6) 50%, transparent 70%); background-size: 220% 100%; animation: ep-pic-shine 1.3s linear infinite; animation-delay: calc(var(--i, 0) * -90ms); }
@@ -1463,21 +1474,21 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .drop-veil { position: absolute; inset: 0; z-index: 6; display: grid; place-content: center; justify-items: center; gap: 8px; padding: 16px; border: 1.5px dashed var(--line-strong); border-radius: inherit; background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--ink-2); font-size: 13.5px; font-weight: 600; text-align: center; pointer-events: none; }
 .drop-veil svg { width: 20px; height: 20px; }
 .drop[data-over] .drop-veil { border-style: solid; border-color: var(--green); background: color-mix(in srgb, var(--green-soft) 90%, transparent); color: var(--green); }
-.ep-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 14px; border: 1px solid var(--line); background: #f3efe6; container-type: inline-size; }
+.ep-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 14px; border: 1px solid var(--line); background: #f4f4f5; container-type: inline-size; }
 .ep-stage-pic, .ep-stage-person { position: absolute; overflow: hidden; }
 .ep-stage-pic { z-index: 1; background: #ffffff; }
 .ep-stage-pic[data-glass] { z-index: 3; opacity: 0.94; }
 .ep-stage-pic img, .ep-stage-pic video { display: block; width: 100%; height: 100%; object-fit: contain; }
-.ep-stage-person { z-index: 2; background: #d9d3c5; }
+.ep-stage-person { z-index: 2; background: #d4d4d8; }
 .ep-stage-person video { display: block; width: 100%; height: 100%; object-fit: cover; }
 .ep-stage-person .ep-live { transform: scaleX(-1); }
 .ep-stand-in { position: absolute; inset: 0; }
-.ep-stand-in i { position: absolute; left: 50%; top: 24%; width: 26%; aspect-ratio: 1; margin-left: -13%; border-radius: 999px; background: #5b665f; opacity: 0.55; }
-.ep-stand-in b { position: absolute; left: 50%; bottom: -8%; width: 62%; height: 46%; margin-left: -31%; border-radius: 999px 999px 0 0; background: #5b665f; opacity: 0.55; }
-.ep-sketch { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 2.2cqw; padding: 5cqw 6cqw; color: #5b665f; background: repeating-linear-gradient(135deg, #ffffff 0 14px, #f8f6f0 14px 28px); }
+.ep-stand-in i { position: absolute; left: 50%; top: 24%; width: 26%; aspect-ratio: 1; margin-left: -13%; border-radius: 999px; background: #52525b; opacity: 0.55; }
+.ep-stand-in b { position: absolute; left: 50%; bottom: -8%; width: 62%; height: 46%; margin-left: -31%; border-radius: 999px 999px 0 0; background: #52525b; opacity: 0.55; }
+.ep-sketch { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 2.2cqw; padding: 5cqw 6cqw; color: #52525b; background: repeating-linear-gradient(135deg, #ffffff 0 14px, #f4f4f5 14px 28px); }
 .ep-sketch-text { max-width: 60cqw; font-size: max(12px, 1.7cqw); line-height: 1.45; text-wrap: balance; }
 .ep-sketch-chips { display: flex; flex-wrap: wrap; gap: 0.8cqw; }
-.ep-sketch-chips i { padding: 0.5cqw 1.1cqw; border: 1px dashed #b9b2a3; border-radius: 999px; font-size: max(11px, 1.25cqw); font-style: normal; color: #16201b; background: #ffffff; }
+.ep-sketch-chips i { padding: 0.5cqw 1.1cqw; border: 1px dashed #d4d4d8; border-radius: 999px; font-size: max(11px, 1.25cqw); font-style: normal; color: #18181b; background: #ffffff; }
 .ep-count { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; background: rgba(6, 9, 7, 0.45); color: #fff; font-size: 96px; font-weight: 700; border-radius: 14px; }
 .ep-controls, .ep-recbar { display: flex; align-items: center; gap: 8px; min-height: 36px; flex-wrap: wrap; }
 .ep-pos { min-width: 86px; text-align: center; color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
@@ -1548,16 +1559,16 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
    itself while the tile is pointed at or focused, at the film's own distance, easing and time */
 .ep-move { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; background: #e9e4d8; }
 .ep-move-a, .ep-move-b { position: absolute; inset: 14% 13%; border-radius: 5px; }
-.ep-move-a { background: #fbf9f4; box-shadow: inset 0 0 0 1px #d6cfbf; }
+.ep-move-a { background: #fafafa; box-shadow: inset 0 0 0 1px #e4e4e7; }
 .ep-move-a i { position: absolute; left: 12%; height: 10%; border-radius: 99px; background: #8f9893; }
-.ep-move-a i:nth-child(1) { top: 20%; width: 52%; background: #2f3833; }
+.ep-move-a i:nth-child(1) { top: 20%; width: 52%; background: #27272a; }
 .ep-move-a i:nth-child(2) { top: 44%; width: 70%; }
 .ep-move-a i:nth-child(3) { top: 66%; width: 58%; }
-.ep-move-b { background: #cfe3d6; }
+.ep-move-b { background: #dcfce7; }
 .ep-move-b i { position: absolute; border-radius: 4px; }
 .ep-move-b i:nth-child(1) { left: 12%; top: 20%; width: 34%; height: 60%; background: #3f9a66; }
 .ep-move-b i:nth-child(2) { left: 54%; top: 34%; width: 34%; height: 12%; border-radius: 99px; background: #2b6b48; }
-.ep-move-seam { position: absolute; left: 50%; top: 8%; bottom: 8%; width: 1.5px; margin-left: -0.75px; background: #2f3833; }
+.ep-move-seam { position: absolute; left: 50%; top: 8%; bottom: 8%; width: 1.5px; margin-left: -0.75px; background: #27272a; }
 .ep-move[data-move="cut"] .ep-move-a { clip-path: inset(0 50% 0 0); }
 .ep-move[data-move="cut"] .ep-move-b { clip-path: inset(0 0 0 50%); }
 .ep-move[data-move="push"] .ep-move-a { transform: translateX(-11%); opacity: 0.55; }
@@ -1596,11 +1607,11 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-layouts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .ep-layouts button { padding: 0; border: 2px solid transparent; border-radius: 9px; background: none; }
 .ep-layouts button[aria-checked="true"] { border-color: var(--green); }
-.ep-thumb { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 6px; background: #f3efe6; border: 1px solid var(--line); container-type: inline-size; }
+.ep-thumb { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 6px; background: #f4f4f5; border: 1px solid var(--line); container-type: inline-size; }
 .ep-thumb i { position: absolute; }
-.ep-thumb .pic { background: #cfe3d6; }
+.ep-thumb .pic { background: #dcfce7; }
 .ep-thumb .pic[data-glass] { z-index: 2; background: rgba(255, 255, 255, 0.85); }
-.ep-thumb .who { background: #5b665f; z-index: 1; }
+.ep-thumb .who { background: #52525b; z-index: 1; }
 .ep-shows { margin: 0 0 8px 22px; color: var(--ink-2); line-height: 1.5; }
 .ep-choices .ep-more { border-top: 1px solid var(--line-soft); }
 .ep-choices footer { display: flex; align-items: center; gap: 10px; margin-top: auto; padding: 12px 0 0; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 12.5px; }
@@ -1672,7 +1683,11 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
    and in them the lines. The caret's line is the picked one. A line the person added and has
    not kept yet has a dashed mark; the words typed after a slash are lit while the menu is open. */
 .ep-script-wrap { display: block; }
-.ep-script { display: grid; outline: none; }
+.ep-script { display: grid; gap: 12px; outline: none; }
+/* every block of the script is a section of its own, a card: a run said to camera as much as a
+   picture with its lines */
+.ep-script .ep-block, .ep-script .ep-block.ep-figure { gap: 4px; margin: 0; padding: 10px 8px 8px; border: 1px solid var(--line-soft); border-radius: 14px; background: var(--surface); }
+.ep-script .ep-block > .ep-block-head, .ep-script .ep-block-top { padding: 0 6px 4px; }
 .ep-script .ep-block-lines > [data-node-view-content-react] { display: grid; gap: 2px; }
 .ep-script .ep-line-card { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; padding: 9px 10px; cursor: text; transition: background 120ms ease, border-color 120ms ease; }
 .ep-script .ep-line-card:hover:not([data-current]) { background: var(--wash); }

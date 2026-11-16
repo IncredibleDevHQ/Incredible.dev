@@ -8,11 +8,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { EpisodeFrame, EpisodeTake, EpisodeUnit, EpisodeView } from "../../api";
 import { clockLine, spotOf } from "../../episode";
 
-const GROUND = "#f3efe6";
+const GROUND = "#f4f4f5";
 const PAPER = "#ffffff";
-const WINDOW = "#d9d3c5";
-const FIGURE = "rgba(91, 102, 95, 0.55)";
-const INK = "#5b665f";
+const WINDOW = "#d4d4d8";
+const FIGURE = "rgba(82, 82, 91, 0.5)";
+const INK = "#52525b";
 
 // Stills, loaded once each.
 const stills = new Map<string, HTMLImageElement>();
@@ -88,7 +88,7 @@ function standIn(ctx: CanvasRenderingContext2D, x: number, y: number, w: number,
 // read however small the canvas is.
 function sketch(ctx: CanvasRenderingContext2D, words: string, x: number, y: number, w: number, h: number, least: number) {
   ctx.save();
-  ctx.strokeStyle = "#f1eee6";
+  ctx.strokeStyle = "#ededf0";
   ctx.lineWidth = least * 0.9;
   for (let d = -h; d < w; d += least * 2.2) {
     ctx.beginPath();

@@ -42,7 +42,7 @@ import { agentOptions, Stills } from "./Picture";
 import { FILM, Slides } from "./Slides";
 import { Captions } from "./Captions";
 import { FrameCanvas } from "./FrameCanvas";
-import { Timeline } from "./Timeline";
+import { spansOf, Timeline } from "./Timeline";
 import { Stage, type Playing } from "./Stage";
 import { ApplyChanges, FilmDownload, FilmTools } from "./Tools";
 import { WorkPill, WorkTrail } from "./Work";
@@ -427,6 +427,8 @@ function Chapter({
     if (!playing) setHeard(null);
   }, [playing]);
   const progress = playing && heard !== null ? Math.min(1, Math.max(0, (heard - playing.from) / Math.max(0.1, playing.to - playing.from))) : null;
+  const span = spansOf(view, chapter, lines).spans.find((x) => x.line.id === line.id);
+  const playhead = span && progress !== null ? span.start + progress * span.seconds : null;
   const pick = (frame: string) => {
     if (frame === picked) return;
     setPlaying(null);
@@ -679,7 +681,8 @@ function Chapter({
                   </Tooltip>
                 </FileDrop>
                 <p className="ep-float-line">
-                  Line {at + 1} of {lines.length} · {LAYOUTS[line.layout] ?? line.layout}
+                  Line {at + 1} of {lines.length}
+                  {span ? ` · ${mmss(span.start)}–${mmss(span.start + span.seconds)}` : ""} · {LAYOUTS[line.layout] ?? line.layout}
                 </p>
                 {take && sayAgain > 0 && (
                   <p className="ep-notice" data-tone="amber">
@@ -723,6 +726,17 @@ function Chapter({
         {!recording && (
           <div className="ep-doc-grid ep-doc-foot">
             <div className="ep-doc-main">
+              <Timeline
+                view={view}
+                chapter={chapter}
+                lines={lines}
+                current={line.id}
+                recording={recording}
+                onPick={(frame) => {
+                  pick(frame);
+                  script.current?.focusLine(frame);
+                }}
+              />
               <Ask ref={ask} view={view} targets={targets} run={run} busy={busy} waiting={waiting} marks={marks} />
             </div>
             <span />
@@ -927,7 +941,7 @@ function Chapter({
                 </p>
               )}
               {!recording && unit && <Stills view={view} unit={unit} lines={lines} picked={line.id} onPick={pick} run={run} busy={busy} />}
-              <Timeline view={view} lines={lines} current={line.id} recording={recording} onPick={pick} />
+              <Timeline view={view} chapter={chapter} lines={lines} current={line.id} playhead={playhead} recording={recording} tall onPick={pick} />
             </section>
             {recording ? (
               <section className="ep-say" aria-label="Say it" aria-live="polite" style={{ "--say": `${SAY_SIZES[sayStep]}px` } as React.CSSProperties}>

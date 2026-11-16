@@ -4,12 +4,12 @@
 // A way in shows the move half done; pointed at or focused, it plays the move as the film does it
 // (`episode.film`): the same distance, the same easing, the same seconds.
 
-const PAPER = "#f3efe6";
-const INK = "#2f3833";
-const SOFT = "#cfe3d6";
+const PAPER = "#f4f4f5";
+const INK = "#27272a";
+const SOFT = "#dcfce7";
 const GREEN = "#3f9a66";
 const DEEP = "#2b6b48";
-const LINE = "#c4bdae";
+const LINE = "#d4d4d8";
 const AMBER = "#e2b052";
 const DARK = "#1f2622";
 
@@ -62,10 +62,10 @@ const ART: Record<string, React.ReactNode> = {
       <circle cx="33" cy="20" r="2.5" fill={AMBER} />
       <circle cx="41" cy="20" r="2.5" fill="#6cc48d" />
       <rect x="24" y="31" width="22" height="5" rx="2.5" fill="#7fd1a0" />
-      <rect x="50" y="31" width="48" height="5" rx="2.5" fill="#d9d4c7" />
+      <rect x="50" y="31" width="48" height="5" rx="2.5" fill="#d4d4d8" />
       <rect x="14" y="40" width="132" height="12" fill="#7fd1a0" opacity="0.18" />
       <rect x="32" y="43.5" width="30" height="5" rx="2.5" fill={AMBER} />
-      <rect x="66" y="43.5" width="44" height="5" rx="2.5" fill="#d9d4c7" />
+      <rect x="66" y="43.5" width="44" height="5" rx="2.5" fill="#d4d4d8" />
       <rect x="32" y="57" width="58" height="5" rx="2.5" fill="#8fb3d9" />
       <rect x="24" y="68" width="18" height="5" rx="2.5" fill="#7fd1a0" />
     </>

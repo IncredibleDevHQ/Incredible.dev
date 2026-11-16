@@ -116,7 +116,17 @@
     chapters either side as a carousel, the chapter's lines under it as a timeline, and a dark
     rail at the right edge opening one panel at a time (Layout, Picture, Transition, Steps).
     Play plays a line's take, else its picture's draft, else its words at the plan's pace, and
-    a Script switch (C) shows the line's words over the frame in time with what plays. The film's page has the whole script as one document, chapter by chapter, with the
+    a Script switch (C) shows the line's words over the frame in time with what plays. Under
+    the script runs the chapter's timeline on its own clock, each line a span as long as it
+    lasts: the caret's line lands the playhead on its span and a span's click puts the caret on
+    its line; the pop-up shows it taller, with each line's frame and the playhead following
+    what plays. Every
+    block of a chapter's script is a section of its own, a run said to camera as much as a
+    picture.
+  - The web app wears Incredible's own palette, as the old product and its Figma had it: zinc
+    greys on white, the old product's near-black scale in dark, and its green. The warm paper
+    tones are gone from the app and from the default look of pictures and films (a channel's
+    brand still sets its own). The film's page has the whole script as one document, chapter by chapter, with the
     film beside it: pointing at a line shows its frame, and a chapter opens at the line picked.
     A chapter's page has its script as a block per picture and per run said to camera, and the
     frame for the picked line, which opens full screen with its choices and the recorder. The
