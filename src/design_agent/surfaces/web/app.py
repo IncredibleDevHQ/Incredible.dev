@@ -28,13 +28,16 @@ runtime), the store of channels, messages and boards, and this API:
 - episodes (`episode_desk.py`): `GET /api/episodes/options` (who can write one, the looks, the
   lengths), `POST /api/channels/{id}/episodes` (one from material or a research frame's notes),
   `GET /api/episodes/{id}` (everything its studio draws), `POST /api/episodes/{id}/approve`,
-  `POST /api/episodes/{id}/choices` (the look, who has the frame, a picture's level),
+  `POST /api/episodes/{id}/choices` (the look, who has the frame, a picture's level and who
+  builds it),
   `POST /api/episodes/{id}/ask` (a change in words, of the film, a chapter, a line or a
   picture), `POST /api/episodes/{id}/lines/{frame}` (a person's own words for a line),
   `POST /api/episodes/{id}/undo` (the last change, taken back; the one before it is next) and
   `/redo` (put back),
   `POST /api/episodes/{id}/again` (its planning), `/stop` (the plan and the pictures under
-  way), `POST /api/episodes/{id}/pictures` (make the ones that stopped),
+  way, or one picture), `POST /api/episodes/{id}/pictures` (make the ones named, a chapter's,
+  or the ones that stopped), `POST /api/episodes/{id}/apply` (run what the picks and changes
+  wait on: the writer's part, then the pictures out of date),
   `POST /api/episodes/{id}/pictures/{unit}/go` and `/note` (a picture's stills),
   `POST /api/episodes/{id}/takes` (a recording, of any size up to 8 GiB: it goes to disk,
   and as it arrived to the footage bucket when one is set),
@@ -230,7 +233,24 @@ class FramePickIn(BaseModel):
 
 
 class UnitPickIn(BaseModel):
-    level: str = Field(pattern=r"^(simple|rich)$")
+    """A person's picks for one picture: how it is made, and which agent builds it (an empty
+    builder gives it back to the film's writer)."""
+
+    level: str | None = Field(default=None, pattern=r"^(simple|rich)$")
+    builder: str | None = Field(default=None, pattern=r"^(claude|codex|kimi|builtin|demo|)$")
+
+
+class PicturesIn(BaseModel):
+    """Which pictures to make: the ones named, a chapter's, or with neither the ones that
+    stopped or failed."""
+
+    units: list[str] | None = Field(default=None, max_length=200)
+    chapter: str = Field(default="", max_length=80)
+
+
+class StopIn(BaseModel):
+    #: One picture to stop; with none, everything under way for the episode.
+    unit: str = Field(default="", max_length=80)
 
 
 class ChoicesIn(BaseModel):
@@ -242,6 +262,9 @@ class ChoicesIn(BaseModel):
     #: Lines (or chapters) whose pick is taken back.
     clear: list[str] = Field(default_factory=list, max_length=400)
     units: dict[str, UnitPickIn] = Field(default_factory=dict)
+    #: The agent that builds a chapter's pictures, by chapter; null gives them back to the
+    #: film's writer.
+    builders: dict[str, str | None] = Field(default_factory=dict, max_length=200)
 
 
 class AskIn(BaseModel):
@@ -709,15 +732,28 @@ def create_app(
         return episode_call(lambda: host.episodes.again(episode_id, writer=body.writer))
 
     @app.post("/api/episodes/{episode_id}/stop")
-    async def stop_episode(episode_id: str, me: str = Depends(person)) -> dict[str, bool]:  # noqa: ARG001
+    async def stop_episode(
+        episode_id: str,
+        body: StopIn | None = None,
+        me: str = Depends(person),  # noqa: ARG001
+    ) -> dict[str, bool]:
         if store.episode(episode_id) is None:
             raise HTTPException(status_code=404, detail="no such episode")
-        host.episodes.stop(episode_id)
+        host.episodes.stop(episode_id, body.unit if body else "")
         return {"ok": True}
 
+    @app.post("/api/episodes/{episode_id}/apply")
+    async def apply_episode(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.apply(episode_id, by=me))
+
     @app.post("/api/episodes/{episode_id}/pictures")
-    async def make_pictures(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
-        return episode_call(lambda: host.episodes.make(episode_id, by=me))
+    async def make_pictures(
+        episode_id: str, body: PicturesIn | None = None, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        asked = body or PicturesIn()
+        return episode_call(
+            lambda: host.episodes.make(episode_id, by=me, only=asked.units, chapter=asked.chapter)
+        )
 
     @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/go")
     async def picture_go(

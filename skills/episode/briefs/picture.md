@@ -95,6 +95,19 @@ folder, checks it and poses its stills.
 Reply in two lines: the file you wrote, and anything in the brief you could not draw as asked.
 When a turn opens with faults or a person's note on a still, change only what it names.
 
+## Building to a motion plan
+
+A rich picture's brief carries `motion_plan`: the plan written for it before this turn
+(`briefs/motion.md`). Build that plan and nothing looser:
+
+- The picture is the plan's `device`, set in its `world`.
+- Each line is one shot. Its `hero` is the largest and slowest move of the line (0.5 to 1.2
+  seconds); what `others` names lands smaller and faster.
+- The line's still shows what its `still` says: that is what a person approves.
+- A shot opens on what the shot before left. Nothing is cleared or redrawn between lines.
+
+The cue keys and the clock are as above: the plan says how things move, never when.
+
 ## Looking at your stills
 
 For a rich picture, a later turn gives you the stills code took of your file: one image per

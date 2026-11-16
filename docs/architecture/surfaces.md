@@ -59,6 +59,19 @@ Either way the run is a row in the store's `runs` table (prompt, steps, answer, 
 research run is. A local agent's session is resumed when it can be; when it cannot, or another
 agent takes the lane, the turn opens with what was said, from those rows.
 
+A picture is built in a lane of its own (`picture:<unit>`), by the agent a person picked for
+that picture (`picks.units[<unit>].builder`), else its chapter's
+(`picks.chapters[<chapter>].builder`), else the film's writer (`settings.writer`, which a person
+can change for a plan that stands); each agent has its own gate on how many it builds at once. A picture has a row once it is asked for (`make`, or all of them on
+`approve`), and only a row that says `queued` is built: nothing is drawn by itself. A pick (or a
+change) that alters what a made picture is drawn from, or its level, leaves the row as it is
+and the view calls it out of date; `apply` asks again for every such row (and, once the plan is
+approved, for pictures with no row). What a pick leaves the writer is kept in `picks.writer`
+until `apply` turns it into a `redo` turn, after which the pictures follow. A rich picture
+takes two turns before it is posed: a `motion plan` turn that writes
+`pictures/<id>.motion.json`, which `picture.motion_plan` holds to its shape and the row keeps,
+then the `picture` turn, whose brief carries that plan.
+
 A plan that stands is changed by one of three turns, and the studio stays open through each.
 A pick that leaves the writer something to do is a `redo`; a change a person asks for in words
 is a `change` (a note on a picture is first read by the classifier: how it is drawn goes to

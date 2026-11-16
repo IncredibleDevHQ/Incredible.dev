@@ -1,10 +1,8 @@
 // What a person can choose for the picked line, in the order they would think of it: the frame
 // (one pick sets who has it and the layout), then the picture it shows. A pick is the line's
 // own until it is widened, in one click, to the picture's other lines, the chapter or the film.
-import { useEffect, useState } from "react";
-import { api, type EpisodeChapter, type EpisodeChoices, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Level, type Presence } from "../../api";
-import { allLines, LAYOUTS, linesIn, LOOKS, MOVES, PICTURES, redrawnBy, TRANSITIONS } from "../../episode";
-import { SegmentedControl } from "../SegmentedControl";
+import { api, type EpisodeChapter, type EpisodeChoices, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Presence } from "../../api";
+import { allLines, LAYOUTS, linesIn, LOOKS, MOVES, PICTURES, pictureWords, TRANSITIONS } from "../../episode";
 import { Tooltip } from "../Tooltip";
 import type { Run } from "./Ask";
 import { KindArt, MoveArt } from "./PictureArt";
@@ -44,10 +42,8 @@ export function Choices({
   const setFrame = (presence: Presence, layout: string) => choose({ frames: { [line.id]: { presence, layout } } });
 
   // Widening a pick. A layout for the chapter or the film reaches the lines of this presence
-  // there, and is asked first when it would redraw more than one picture.
+  // there. Like any pick it draws nothing: the pictures it puts out of date wait to be applied.
   const scope = line.override?.scope;
-  const [wide, setWide] = useState<{ film: boolean; redraws: number } | null>(null);
-  useEffect(() => setWide(null), [line.id, line.layout]);
   const applyFor = (film: boolean) => {
     const set = { layouts: { [line.presence]: line.layout } };
     const unset = { layouts: { [line.presence]: null } };
@@ -58,11 +54,7 @@ export function Choices({
       ...(film ? { all: set } : {}),
     });
   };
-  const askFor = (film: boolean) => {
-    const redraws = redrawnBy(view, line.presence, line.layout, film ? undefined : chapter.id);
-    if (redraws > 1) setWide({ film, redraws });
-    else void applyFor(film);
-  };
+  const askFor = (film: boolean) => void applyFor(film);
   const undo = () =>
     scope === "film"
       ? choose({ all: { layouts: { [line.presence]: null } } })
@@ -105,7 +97,7 @@ export function Choices({
           ))}
         </div>
         {presenterOff && <small>Nobody is on screen in this film.</small>}
-        {line.override && !wide && (
+        {line.override && (
           <p className="ep-picked" data-rows>
             <span>{scope ? `Set for the ${scope} · ${reach} ${reach === 1 ? "line" : "lines"}` : "Your pick"}</span>
             <button type="button" className="linkish" disabled={busy} onClick={() => void undo()}>
@@ -137,38 +129,6 @@ export function Choices({
             )}
           </p>
         )}
-        {wide && (
-          <p
-            className="ep-confirm"
-            role="alertdialog"
-            aria-label={`Use ${LAYOUTS[line.layout] ?? line.layout} for the ${wide.film ? "film" : "chapter"}`}
-            onKeyDown={(e) => {
-              if (e.key !== "Escape") return;
-              e.stopPropagation();
-              setWide(null);
-            }}
-          >
-            <span>
-              {LAYOUTS[line.layout] ?? line.layout} for the {wide.film ? "film" : "chapter"} redraws {wide.redraws} pictures.
-            </span>
-            <button
-              type="button"
-              className="btn primary"
-              autoFocus
-              disabled={busy}
-              onClick={() => {
-                const film = wide.film;
-                setWide(null);
-                void applyFor(film);
-              }}
-            >
-              Use it
-            </button>
-            <button type="button" className="btn" onClick={() => setWide(null)}>
-              Cancel
-            </button>
-          </p>
-        )}
       </section>
 
       <section>
@@ -178,30 +138,19 @@ export function Choices({
         {unit ? (
           <>
             {shows && <p className="ep-shows">{shows}</p>}
-            <div className="ep-picture-row">
-              <SegmentedControl<Level>
-                size="sm"
-                value={unit.level}
-                disabled={busy || unit.kind === "undesigned"}
-                onChange={(level) => level !== unit.level && void choose({ units: { [unit.id]: { level } } })}
-                options={[
-                  { value: "simple", label: "Simple" },
-                  { value: "rich", label: "Rich" },
-                ]}
-              />
-              {unit.kind === "picture" && (
+            {/* how it is made (simple or rich, and by whom) is set on its block in the script */}
+            {unit.kind === "undesigned" ? (
+              <small>The writer is planning a picture for this line.</small>
+            ) : (
+              <div className="ep-picture-row">
+                <small>
+                  {unit.level === "rich" ? "Rich" : "Simple"} · {pictureWords(unit, view)}
+                </small>
                 <button type="button" className="linkish" onClick={onAskPicture}>
                   Ask for a change
                 </button>
-              )}
-            </div>
-            <small>
-              {unit.kind === "undesigned"
-                ? "The writer is planning a picture for this line."
-                : unit.level === "rich"
-                  ? "Posed as stills for your go before it counts as made."
-                  : `Made at once from the plan.${unit.suggest === "rich" ? " Rich is suggested for this one." : ""}`}
-            </small>
+              </div>
+            )}
           </>
         ) : (
           <small>{line.presence === "person" ? "None: this line is said to camera. Pick a frame with a picture to give it one." : "None for this line."}</small>

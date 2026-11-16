@@ -895,29 +895,53 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 /* -- an episode's studio: the plan and the studio in one place --------------------------------- */
 .ep { position: fixed; inset: 0; z-index: 40; display: grid; grid-template-rows: 56px minmax(0, 1fr); background: var(--bg); color: var(--ink); }
 .ep-wait { grid-row: 1 / -1; display: grid; place-items: center; }
-.ep-bar { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto minmax(0, 1fr) 32px; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--line-soft); background: var(--surface); }
-.ep-bar h2 { grid-column: 2; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 650; }
-.ep-dots { grid-column: 3; display: flex; align-items: center; gap: 6px; }
-.ep-bar > .icon-btn:last-child { grid-column: 5; }
-.ep-now { grid-column: 4; justify-self: end; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ep-bar { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 14px 0 12px; border-bottom: 1px solid var(--line-soft); background: var(--surface); }
+.ep-bar h2 { flex: 0 1 auto; min-width: 0; max-width: 34ch; margin: 0 4px 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 650; }
+.ep-now { display: flex; align-items: center; gap: 10px; flex: none; }
 .ep-now .ep-said { flex: none; font-size: 13px; }
-.ep-now .btn { height: 32px; }
-.ep-film-pill { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; margin-right: 6px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--ink-2); font-size: 13px; font-weight: 600; }
-.ep-film-pill svg { width: 14px; height: 14px; }
-.ep-film-pill[aria-current] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
-.ep-dot { display: inline-flex; align-items: center; gap: 7px; height: 30px; min-width: 30px; padding: 0; border: 1.5px solid var(--line-strong); border-radius: 999px; background: none; color: var(--ink-2); font-size: 13px; }
-.ep-dot b { display: grid; place-items: center; width: 27px; font-weight: 650; font-variant-numeric: tabular-nums; }
-.ep-dot span { padding-right: 12px; font-weight: 600; white-space: nowrap; }
-.ep-dot[data-state="recorded"] { border-color: var(--green); background: var(--green); color: var(--green-ink); }
-.ep-dot[data-state="go"], .ep-dot[data-state="failed"] { border-color: var(--amber); color: var(--amber); }
-.ep-dot[data-state="making"] { border-style: dashed; }
-.ep-dot[aria-current] { box-shadow: 0 0 0 3px var(--green-soft); border-color: var(--green); }
-.ep-dot:disabled { opacity: 0.5; cursor: default; }
+.ep-now .btn { height: 32px; white-space: nowrap; }
+/* the film's own choices, as an editor's tool row: quiet buttons that say what is chosen, set off
+   from the title by a short rule */
+.ep-tools { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.ep-tools::before { content: ""; flex: none; width: 1px; height: 20px; margin-right: 8px; background: var(--line); }
+.ep-tool { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 8px 0 10px; border: 0; border-radius: 8px; background: none; color: var(--ink-2); font-size: 13px; font-weight: 600; white-space: nowrap; transition: background 120ms ease, color 120ms ease; }
+.ep-tool > svg { flex: none; width: 15px; height: 15px; color: var(--muted); }
+.ep-tool > svg:last-child { width: 13px; height: 13px; margin-left: -3px; transition: transform 160ms ease; }
+.ep-tool em { color: var(--muted); font-style: normal; font-weight: 500; }
+.ep-tool:hover, .ep-tool[aria-expanded="true"] { background: var(--raised); color: var(--ink); }
+.ep-tool:hover em, .ep-tool[aria-expanded="true"] em { color: var(--ink-2); }
+.ep-tool[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
+.ep-tool:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.ep-tool-pop .ep-confirm { margin-top: 12px; }
+/* light or dark, at the end of the studio's bar */
+.ep-appearance { display: inline-flex; flex: none; gap: 2px; margin-left: 4px; padding: 2px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--sunk); }
+.ep-appearance button { display: grid; place-items: center; width: 28px; height: 26px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--muted); transition: background 120ms ease, color 120ms ease; }
+.ep-appearance button svg { width: 15px; height: 15px; }
+.ep-appearance button:hover:not([aria-pressed="true"]) { color: var(--ink); }
+.ep-appearance button[aria-pressed="true"] { background: var(--raised); color: var(--ink); }
+:root[data-theme="light"] .ep-appearance button[aria-pressed="true"] { box-shadow: 0 1px 2px rgba(28, 36, 31, 0.14); }
+.ep-appearance button:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.ep-tool-note { margin: 12px 2px 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+/* the changes that wait to be applied: a count on the button, and what will run, said first */
+.ep-apply { display: inline-flex; align-items: center; gap: 8px; height: 32px; white-space: nowrap; }
+.ep-apply b { display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--green-ink) 22%, transparent); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ep-apply-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; font-size: 13px; line-height: 1.45; color: var(--ink-2); }
+.ep-apply-list li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 10px; align-items: start; }
+.ep-apply-list svg { width: 15px; height: 15px; margin-top: 2px; color: var(--muted); }
+.ep-apply-list li[data-tone="amber"] svg { color: var(--amber); }
+.ep-apply-list b { color: var(--ink); font-weight: 650; }
+.ep-apply-warn { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 10px; align-items: start; margin: 14px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--amber-soft); color: var(--amber); font-size: 12.5px; line-height: 1.45; }
+.ep-apply-warn svg { width: 15px; height: 15px; margin-top: 1px; }
+.ep-apply-act { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.ep-apply-act .btn { height: 32px; }
+@media (max-width: 1360px) { .ep-tool em { display: none; } }
+@media (max-width: 860px) { .ep-tool > span { display: none; } }
 .ep-kicker { margin: 0; color: var(--muted); font-size: 12.5px; font-weight: 600; letter-spacing: 0.02em; }
 .ep-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .ep-said { display: inline-flex; align-items: center; gap: 9px; flex: 1; min-width: 0; margin: 0; color: var(--ink-2); font-size: 14px; }
 .ep-notice { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .ep-notice[data-tone="red"] { color: var(--red); }
+.ep-notice[data-tone="amber"] { color: var(--amber); }
 
 /* while the plan is being written */
 .ep-plan { display: grid; grid-template-columns: minmax(0, 620px) minmax(0, 420px); justify-content: center; align-content: start; gap: 56px; padding: 56px 32px; overflow: auto; }
@@ -932,35 +956,12 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-plan-so-far small { color: var(--muted); }
 
 /* the film: its chapters, and the film so far */
-.ep-film { display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 700px); justify-content: center; align-content: start; gap: 48px; padding: 40px 32px; overflow: auto; }
-.ep-film-left { display: grid; gap: 18px; align-content: start; }
-.ep-film-left h1 { margin: 0; font-size: 22px; line-height: 1.3; letter-spacing: -0.012em; text-wrap: balance; }
-.ep-chapters { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
-.ep-chapters button { display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; width: 100%; padding: 10px; border: 0; border-radius: 12px; background: none; color: var(--ink); text-align: left; }
-.ep-chapters button:hover:not(:disabled) { background: var(--raised); }
-.ep-chapters button:disabled { cursor: default; }
-.ep-chapters span { display: grid; gap: 2px; min-width: 0; }
-.ep-chapters strong { font-size: 14px; font-weight: 600; line-height: 1.4; }
-.ep-chapters small { color: var(--muted); font-size: 12.5px; }
-.ep-chapters button:has(.ep-touched) { grid-template-columns: 28px 1fr auto; }
 .ep-touched { align-self: center; padding: 2px 8px; border-radius: 999px; background: var(--green-soft); color: var(--green); font-size: 11.5px; font-style: normal; font-weight: 600; }
 .ep-num { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; border: 1.5px solid var(--line-strong); color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
 .ep-num[data-state="recorded"] { border-color: var(--green); background: var(--green); color: var(--green-ink); }
-.ep-num[data-state="go"], .ep-num[data-state="failed"] { border-color: var(--amber); color: var(--amber); }
-.ep-next { justify-self: start; height: 38px; padding: 0 16px; }
-.ep-film-right { display: grid; gap: 14px; align-content: start; }
+.ep-num:is([data-state="go"], [data-state="failed"], [data-state="changed"]) { border-color: var(--amber); color: var(--amber); }
 .ep-film-video { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 14px; background: #000; }
-.ep-film-row { display: flex; align-items: center; gap: 12px; min-height: 34px; }
-.ep-film-len { font-size: 13.5px; font-weight: 600; white-space: nowrap; }
 .ep-film-asked { color: var(--amber); }
-.ep-film-note { flex: 1; min-width: 0; color: var(--muted); font-size: 13px; }
-.ep-film-note[data-tone="amber"] { color: var(--amber); }
-.ep-film-note[data-tone="red"] { color: var(--red); }
-.ep-settings { display: grid; gap: 0; margin: 0; border-top: 1px solid var(--line-soft); }
-.ep-settings > div { display: grid; grid-template-columns: 84px 1fr; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
-.ep-settings dt { color: var(--muted); font-size: 13px; }
-.ep-settings dd { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0; min-width: 0; }
-.ep-settings small { color: var(--muted); font-size: 12.5px; }
 /* the narrator's voice, under the Voice choice: which voice says it, and a clone of the person's own */
 .ep-voice { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-basis: 100%; min-width: 0; }
 .ep-voice > .ui-sel { flex: none; width: 220px; }
@@ -979,11 +980,29 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-looks button { height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--ink-2); font-size: 13px; }
 .ep-looks button:hover:not(:disabled) { border-color: var(--line-strong); }
 .ep-looks button[aria-pressed="true"] { background: var(--green-soft); border-color: var(--green); color: var(--green); font-weight: 600; }
-/* the film's look, picked by what it does to a frame: a small picture of its usual one, named */
-.ep-look-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; width: 100%; }
-.ep-look-tiles button { display: grid; gap: 6px; padding: 5px 5px 7px; border: 1px solid var(--line-soft); border-radius: 10px; background: none; color: var(--ink-2); font-size: 12.5px; line-height: 1.3; text-align: left; }
-.ep-look-tiles button:hover:not(:disabled) { border-color: var(--line-strong); }
-.ep-look-tiles button[aria-pressed="true"] { border-color: var(--green); background: var(--green-soft); color: var(--green); font-weight: 600; }
+/* the film's look, shown by the frames it is made of: the one it is named for, then the next ones */
+.ep-look-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ep-look-card { display: grid; gap: 6px; align-content: start; padding: 7px 7px 10px; border: 1px solid var(--line-soft); border-radius: 12px; background: none; color: var(--ink-2); text-align: left; transition: border-color 140ms ease, box-shadow 140ms ease; }
+.ep-look-card:hover:not(:disabled) { border-color: var(--line-strong); }
+.ep-look-card[aria-pressed="true"] { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); color: var(--ink); }
+.ep-look-card:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.ep-look-kit { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.ep-look-kit .ep-thumb { border-radius: 4px; }
+.ep-look-card b { padding: 2px 3px 0; font-size: 13px; font-weight: 650; }
+.ep-look-card[aria-pressed="true"] b { color: var(--green); }
+.ep-look-card small { padding: 0 3px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.ep-look-card small::first-letter { text-transform: uppercase; }
+/* one of a few, each said in a line */
+.ep-options { display: grid; gap: 6px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.ep-options label { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 10px; cursor: pointer; transition: border-color 140ms ease, background 140ms ease; }
+.ep-options label:hover:not([data-disabled]) { border-color: var(--line-strong); }
+.ep-options label:has(input:checked) { border-color: var(--green); background: var(--green-soft); }
+.ep-options label[data-disabled] { cursor: default; opacity: 0.55; }
+.ep-options input { width: 15px; height: 15px; margin: 2px 0 0; accent-color: var(--green); }
+.ep-options span { display: grid; gap: 2px; min-width: 0; }
+.ep-options b { color: var(--ink); font-size: 13.5px; font-weight: 650; }
+.ep-options small { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+.ep-options + .ep-voice { margin-top: 12px; }
 .ep-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-basis: 100%; margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line); font-size: 13px; }
 .ep-confirm span { flex: 1; min-width: 160px; color: var(--ink); }
 .ep-confirm .btn { height: 30px; }
@@ -1010,7 +1029,10 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 /* a chapter's page: the chapters as slides down the left, the chapter as a document in the middle,
    and the frame for the picked line on the right, which opens full screen with its choices and
    the recorder */
-.ep-chapter { display: grid; grid-template-columns: 208px minmax(0, 1fr) minmax(240px, 300px); min-height: 0; overflow: hidden; }
+/* The page uses the window's width: the slides and the frame grow with it, and the script's
+   column widens to 920px with its type growing with it, so a line holds about as many words
+   at any width. The script's scroller is the measure: `cqw` below is a hundredth of its width. */
+.ep-chapter { display: grid; grid-template-columns: clamp(208px, 14vw, 248px) minmax(0, 1fr) clamp(240px, 22vw, 420px); min-height: 0; overflow: hidden; }
 .ep-slides { min-height: 0; overflow: auto; padding: 18px 14px 24px; border-right: 1px solid var(--line-soft); background: var(--surface); }
 .ep-slides ol { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .ep-slide { display: grid; gap: 8px; width: 100%; padding: 6px 6px 9px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--raised); color: var(--ink-2); text-align: left; transition: border-color 140ms ease, box-shadow 140ms ease; }
@@ -1026,26 +1048,123 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-slide-words span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .ep-slide small { padding: 0 3px; color: var(--muted); font-size: 11.5px; }
 .ep-slide[data-state="recorded"] small { color: var(--green); }
-.ep-slide[data-state="go"] small, .ep-slide[data-state="failed"] small { color: var(--amber); }
+.ep-slide:is([data-state="go"], [data-state="failed"], [data-state="changed"]) small { color: var(--amber); }
 /* the chapter as a document: its question, then a block for each picture and each run said to camera */
 .ep-doc { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 0 28px 16px; }
-.ep-doc-body { flex: 1; min-height: 0; overflow: auto; padding: 36px 0 28px; }
-.ep-doc-body > *, .ep-doc > .ep-ask { width: min(100%, 700px); margin-inline: auto; }
+.ep-doc-body { flex: 1; min-height: 0; overflow: auto; padding: 36px 0 28px; container-type: inline-size; }
+.ep-doc-body > *, .ep-doc > .ep-ask { width: min(100%, 920px); margin-inline: auto; }
+.ep-doc-body :is(.ep-kicker, .ep-block-head, .ep-figure-act, .ep-shot, .ep-nb-head small) { font-size: clamp(12.5px, 1.4cqw, 14px); }
 .ep-doc-head { display: grid; gap: 10px; padding: 0 10px 22px; }
-.ep-doc-head h1 { margin: 0; font-size: 27px; line-height: 1.25; letter-spacing: -0.015em; text-wrap: balance; }
+.ep-doc-head h1 { margin: 0; font-size: clamp(27px, 3.3cqw, 36px); line-height: 1.25; letter-spacing: -0.015em; text-wrap: balance; }
 .ep-block { display: grid; gap: 2px; padding: 16px 0 10px; border-top: 1px solid var(--line-soft); }
 .ep-block-head { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 10px 4px; color: var(--green); font-size: 12.5px; }
 .ep-block-head svg { flex: none; width: 15px; height: 15px; }
 .ep-block-head b { font-weight: 650; }
 .ep-block-head span { color: var(--muted); }
-.ep-block-head[data-status="go"], .ep-block-head[data-status="failed"] { color: var(--amber); }
-.ep-block-head:is([data-status="queued"], [data-status="making"], [data-status="posing"], [data-status="none"], [data-status="planned"]) { color: var(--muted); }
+.ep-block-head:is([data-status="go"], [data-status="failed"], [data-status="changed"]) { color: var(--amber); }
+.ep-block-head:is([data-status="making"], [data-status="planned"]) { color: var(--muted); }
 .ep-block-head[data-status="camera"] { color: var(--ink-2); }
-.ep-block-shows { margin: 0 10px 8px; padding-left: 23px; color: var(--muted); font-size: 13px; line-height: 1.5; font-style: italic; }
+.ep-block-shows { margin: 0 10px 8px; padding-left: 23px; color: var(--muted); font-size: clamp(13px, 1.5cqw, 15px); line-height: 1.5; font-style: italic; }
 .ep-block-lines { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
-.ep-doc .ep-line { font-size: 15.5px; line-height: 1.62; }
+.ep-doc .ep-line { font-size: clamp(15.5px, 2cqw, 19px); line-height: 1.62; }
 .ep-doc .ep-line span { display: block; overflow: visible; -webkit-line-clamp: unset; }
 .ep-doc .ep-who { margin-top: 6px; }
+/* a picture's block: the picture (a placeholder until it is made) beside what it is, how it is
+   made and where it stands, over the lines it is shown on, on one card so the lines read as
+   the picture's own */
+.ep-block.ep-figure { gap: 4px; margin-block: 12px 8px; padding: 12px 6px 6px; border: 1px solid var(--line-soft); border-radius: 16px; background: var(--surface); }
+.ep-figure + .ep-block:not(.ep-figure) { border-top: 0; padding-top: 8px; }
+.ep-figure-top { display: grid; grid-template-columns: clamp(208px, 34cqw, 360px) minmax(0, 1fr); gap: 14px; align-items: start; padding: 0 6px 8px; }
+.ep-figure-pic { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #f3efe6; cursor: zoom-in; transition: border-color 140ms ease, box-shadow 140ms ease; }
+.ep-figure-pic:hover { border-color: var(--line-strong); box-shadow: var(--card-shadow); }
+.ep-figure-pic:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.ep-figure-pic img, .ep-figure-pic svg { display: block; width: 100%; height: 100%; object-fit: contain; }
+.ep-figure-pic[data-empty] { border-style: dashed; }
+.ep-figure-pic[data-empty] svg { opacity: 0.55; }
+.ep-figure-pic[data-working] > * { opacity: 0.5; }
+.ep-figure-pic[data-working]::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.6) 50%, transparent 70%); background-size: 220% 100%; animation: ep-pic-shine 1.3s linear infinite; }
+.ep-figure-meta { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.ep-figure .ep-block-head { flex-wrap: wrap; min-height: 28px; padding: 0; }
+.ep-figure .ep-block-head > span { flex: 1; min-width: 0; }
+.ep-figure .ep-block-shows { margin: 0; padding: 0; }
+.ep-figure-act { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; min-height: 30px; color: var(--muted); font-size: 12.5px; }
+.ep-figure-act .btn { height: 30px; }
+.ep-figure-act .btn svg, .ep-figure-act .linkish svg { width: 13px; height: 13px; }
+.ep-figure-act .linkish { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-2); }
+.ep-figure-act small { flex: 1; min-width: 180px; font-size: inherit; line-height: 1.4; }
+.ep-figure-doing { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.ep-figure-act[data-tone="red"] .ep-figure-doing { color: var(--red); white-space: normal; }
+.ep-figure-act[data-tone="amber"] .ep-figure-doing { color: var(--amber); white-space: normal; }
+.ep-figure[data-state="changed"] .ep-figure-pic { border-color: color-mix(in srgb, var(--amber) 70%, var(--line)); border-style: dashed; }
+.ep-figure-note { margin: 0; color: var(--amber); font-size: inherit; }
+.ep-figure-by { display: inline-flex; align-items: center; gap: 7px; }
+.ep-figure-by .ui-sel .mark { width: 16px; height: 16px; border-radius: 5px; }
+.ep-doc-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 30px; }
+.ep-doc-top .ep-figure-by { color: var(--muted); font-size: 12.5px; }
+.ep-figure-by .ui-sel { width: 156px; }
+.ep-figure .ep-confirm { flex-basis: auto; }
+.ep-figure .ep-stills { margin: 0 6px 6px; }
+.ep-figure .ep-stills-row button { width: clamp(148px, 20cqw, 212px); }
+/* a rich picture's motion plan, a click away from its block */
+.ep-figure-plan { display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px 2px 7px; border: 1px solid var(--line-soft); border-radius: 999px; background: none; color: var(--ink-2); font-size: 12px; white-space: nowrap; }
+.ep-figure-plan:hover, .ep-figure-plan[aria-expanded="true"] { border-color: var(--line-strong); color: var(--ink); }
+.ep-figure-plan svg { width: 12px; height: 12px; color: var(--muted); transition: transform 160ms ease; }
+.ep-figure-plan[aria-expanded="true"] svg { transform: rotate(180deg); }
+.ep-figure .ep-block-head > span { flex: 0 1 auto; }
+.ep-figure .ep-block-head > .ui-seg, .ep-figure-level { margin-left: auto; }
+.ep-plan-pop { max-height: min(72vh, 640px); overflow: auto; }
+.ep-plan-shots { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.ep-plan-shots li { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.ep-plan-shots b { color: var(--ink); font-size: 13px; font-weight: 650; line-height: 1.4; }
+.ep-plan-shots dl { display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 5px 10px; margin: 0; font-size: 12.5px; line-height: 1.5; }
+.ep-plan-shots dt { color: var(--muted); }
+.ep-plan-shots dd { margin: 0; color: var(--ink-2); }
+/* what a rich picture does on a line, from its motion plan */
+.ep-shot { margin: -3px 12px 7px 40px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.ep-shot::before { content: "↳  "; color: var(--faint); }
+.ep-peek-making { display: flex; align-items: center; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .ep-figure-pic[data-working]::after { animation: none; } }
+@media (max-width: 640px) {
+  .ep-figure-top { grid-template-columns: minmax(0, 1fr); }
+  .ep-figure-pic { max-width: 320px; }
+}
+/* the film's own slide: its title card */
+.ep-thumb.ep-cover { display: flex; flex-direction: column; justify-content: flex-end; gap: 5cqw; padding: 8% 9% 9%; }
+.ep-cover::before { content: ""; width: 13cqw; height: 2.4cqw; border-radius: 99px; background: #3f9a66; }
+.ep-cover b { color: #2f3833; font-size: 9.5cqw; font-weight: 700; line-height: 1.15; letter-spacing: -0.01em; }
+.ep-cover b span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ep-slide-words b svg { width: 13px; height: 13px; vertical-align: -2px; }
+/* the film's script as one document: the plan's idea and who wrote it, then each chapter's
+   question as a heading over its lines, as running text in its blocks */
+.ep-byline { font-size: 13px; }
+.ep-byline summary { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); cursor: pointer; list-style: none; }
+.ep-byline summary::-webkit-details-marker { display: none; }
+.ep-byline summary:hover span:first-of-type { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.ep-byline .ep-runs { margin-top: 12px; padding-left: 28px; }
+.ep-flags { margin-top: -2px; }
+.ep-nb-chapter { display: grid; gap: 12px; padding: 24px 10px 14px; border-top: 1px solid var(--line-soft); }
+.ep-nb-head { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; align-items: start; }
+.ep-nb-head .ep-num { grid-row: 1 / span 2; }
+.ep-nb-head h2 { margin: 0; font-size: clamp(19px, 2.3cqw, 24px); line-height: 1.32; letter-spacing: -0.01em; text-wrap: balance; }
+.ep-nb-head h2 button { padding: 0; border: 0; background: none; color: var(--ink); font: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; }
+.ep-nb-head h2 button:hover { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 4px; }
+.ep-nb-head h2 button:focus-visible { border-radius: 4px; outline: 2px solid var(--green); outline-offset: 3px; }
+.ep-nb-head small { grid-column: 2; color: var(--muted); font-size: 12.5px; }
+.ep-nb-head .ep-touched { grid-column: 3; grid-row: 1; margin-top: 2px; }
+.ep-nb-block { display: grid; gap: 4px; padding-left: 40px; }
+.ep-nb-block .ep-block-head { padding: 0; }
+.ep-nb-block p { margin: 0 0 4px; color: var(--ink-2); font-size: clamp(15.5px, 2cqw, 19px); line-height: 1.68; }
+.ep-nb-line { margin: 0 -3px; padding: 1px 3px; border-radius: 5px; cursor: pointer; -webkit-box-decoration-break: clone; box-decoration-break: clone; transition: background 120ms ease, color 120ms ease; }
+.ep-nb-line:hover { background: var(--raised); color: var(--ink); }
+.ep-nb-line[aria-current] { background: var(--green-soft); color: var(--ink); }
+.ep-nb-line:focus-visible { outline: 2px solid var(--green); outline-offset: 0; }
+.ep-film-page .ep-peek-stage { cursor: pointer; }
+.ep-film-page .ep-doc-head h1 { font-size: clamp(23px, 2.8cqw, 30px); line-height: 1.32; }
+.ep-film-sum { display: grid; gap: 3px; padding-top: 12px; border-top: 1px solid var(--line-soft); font-size: 13px; line-height: 1.45; }
+.ep-film-sum b { font-weight: 650; }
+.ep-film-sum > span { color: var(--muted); }
+.ep-film-sum > span[data-tone="amber"] { color: var(--amber); }
+.ep-film-sum > span[data-tone="red"] { color: var(--red); }
 /* the frame for the picked line, small: one click opens it full screen */
 .ep-peek { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; overflow: auto; padding: 36px 24px 24px 0; }
 .ep-peek-drop { border-radius: 14px; }
@@ -1067,6 +1186,109 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-full-body { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; padding: 24px 28px; min-height: 0; overflow: hidden; }
 @keyframes ep-full-in { from { opacity: 0; transform: scale(0.985); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .ep-full { animation: none; } }
+/* the plan's stages as a trail: the done ones checked, the one under way open onto what the
+   writer is doing in it, the rest to come */
+.ep-trail { min-width: 0; }
+.ep-trail > ol { display: grid; margin: 0; padding: 0; list-style: none; }
+.ep-trail-step { position: relative; display: grid; }
+.ep-trail-step:not(:last-child)::before { content: ""; position: absolute; left: 9.25px; top: 28px; bottom: -8px; width: 1.5px; background: var(--line); transition: background 300ms ease; }
+.ep-trail-step[data-state="done"]:not(:last-child)::before { background: var(--green); }
+.ep-trail-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 38px; }
+.ep-trail-mark { position: relative; z-index: 1; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 999px; border: 1.5px solid var(--line-strong); background: var(--bg); color: var(--green-ink); }
+.ep-trail-mark svg { width: 12px; height: 12px; stroke-width: 3; }
+.ep-trail-step[data-state="done"] .ep-trail-mark { border-color: var(--green); background: var(--green); animation: ep-trail-pop 380ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.ep-trail-step[data-state="running"] .ep-trail-mark { border-color: var(--green-soft); }
+.ep-trail-step[data-state="running"] .ep-trail-mark::after { content: ""; position: absolute; inset: -1.5px; border-radius: inherit; border: 1.5px solid transparent; border-top-color: var(--green); animation: ep-trail-spin 900ms linear infinite; }
+.ep-trail-step[data-state="failed"] .ep-trail-mark { border-color: var(--red); background: var(--red); color: #ffffff; }
+.ep-trail-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); font-size: 15px; transition: color 300ms ease; }
+.ep-trail-step[data-state="done"] .ep-trail-title { color: var(--ink-2); }
+.ep-trail-step:is([data-state="running"], [data-state="failed"]) .ep-trail-title { color: var(--ink); font-weight: 600; }
+.ep-trail-meta { display: inline-flex; align-items: baseline; gap: 10px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.ep-trail-step[data-state="failed"] .ep-trail-meta { color: var(--red); font-weight: 600; }
+.ep-trail-doing { color: var(--green); font-weight: 600; }
+/* what the writer is doing in the stage under way: its steps, and its notes in its own words */
+.ep-trail-branch { display: grid; gap: 6px; margin: 0 0 12px 32px; padding: 6px 0 4px 16px; border-left: 1.5px solid var(--green-soft); animation: ep-trail-open 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.ep-trail-branch ol { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.ep-trail-sub, .ep-trail-note { position: relative; min-width: 0; animation: ep-trail-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.ep-trail-sub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); font-size: 13px; line-height: 1.5; font-family: var(--mono, ui-monospace, monospace); letter-spacing: -0.01em; }
+.ep-trail-note { margin: 2px 0; color: var(--ink-2); font-size: 14px; line-height: 1.55; }
+.ep-trail-note q { font-style: italic; }
+.ep-trail-sub::before, .ep-trail-note::before { content: ""; position: absolute; left: -20px; top: 7px; width: 6px; height: 6px; border-radius: 999px; background: var(--line-strong); }
+.ep-trail-sub[data-latest] { color: var(--ink-2); }
+.ep-trail-sub[data-latest]::before, .ep-trail-note[data-latest]::before { background: var(--green); animation: ep-trail-pulse 1.6s ease-out infinite; }
+.ep-trail-fold { justify-self: start; height: 24px; padding: 0 10px; border: 0; border-radius: 999px; background: var(--wash); color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ep-trail-fold:hover { background: var(--raised); color: var(--ink); }
+@keyframes ep-trail-spin { to { transform: rotate(360deg); } }
+@keyframes ep-trail-pop { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: none; } }
+@keyframes ep-trail-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes ep-trail-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes ep-trail-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 60%, transparent); } 100% { box-shadow: 0 0 0 7px transparent; } }
+/* the pictures in the bar: a pill whose ring fills as they are made, opening onto every one */
+.ep-work { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.ep-work-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px 0 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--raised); color: var(--ink-2); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ep-work-pill:hover { border-color: var(--line-strong); color: var(--ink); }
+.ep-work-pill:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.ep-work-pill > svg:last-child { width: 13px; height: 13px; color: var(--muted); transition: transform 200ms ease; }
+.ep-work-pill[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
+.ep-work-pill[data-tone="failed"] { color: var(--red); }
+.ep-work-pill[data-tone="go"] { color: var(--amber); }
+.ep-work-words { display: inline-block; }
+.ep-ring { flex: none; width: 16px; height: 16px; transform: rotate(-90deg); }
+.ep-ring circle { fill: none; stroke-width: 2.5; }
+.ep-ring-track { stroke: var(--line); }
+.ep-ring-fill { stroke: var(--green); stroke-linecap: round; transition: stroke-dashoffset 700ms cubic-bezier(0.16, 1, 0.3, 1), stroke 400ms ease; }
+.ep-work-pill[data-tone="failed"] .ep-ring-fill { stroke: var(--red); }
+.ep-work-pill[data-tone="go"] .ep-ring-fill { stroke: var(--amber); }
+.ep-pics-wrap { display: grid; gap: 12px; }
+.ep-pics { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; max-height: min(52vh, 420px); overflow: auto; padding: 3px; }
+.ep-pic { position: relative; display: block; padding: 0; border: 1.5px solid var(--line-soft); border-radius: 9px; background: none; overflow: hidden; transition: opacity 220ms ease, border-color 160ms ease, transform 160ms ease; animation: ep-pic-in 420ms cubic-bezier(0.16, 1, 0.3, 1) backwards; animation-delay: calc(min(var(--i, 0), 40) * 12ms); }
+.ep-pic:hover, .ep-pic:focus-visible { transform: translateY(-1px); border-color: var(--line-strong); }
+.ep-pic:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.ep-pic[data-dim] { opacity: 0.22; }
+.ep-pic-art { position: relative; display: block; aspect-ratio: 16 / 9; background: #f3efe6; }
+.ep-pic-art img, .ep-pic-art svg { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ep-pic[data-state="making"] .ep-pic-art > * { opacity: 0.55; }
+.ep-pic[data-state="making"] .ep-pic-art::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.6) 50%, transparent 70%); background-size: 220% 100%; animation: ep-pic-shine 1.3s linear infinite; animation-delay: calc(var(--i, 0) * -90ms); }
+.ep-pic[data-state="made"] { border-color: color-mix(in srgb, var(--green) 50%, var(--line-soft)); }
+.ep-pic[data-state="planned"] { border-style: dashed; }
+.ep-pic[data-state="changed"] { border-color: var(--amber); border-style: dashed; }
+.ep-pic[data-state="changed"] .ep-pic-art > * { opacity: 0.7; }
+.ep-pic[data-state="planned"] .ep-pic-art > * { opacity: 0.45; }
+.ep-pic[data-state="go"] { border-color: var(--amber); }
+.ep-pic[data-state="failed"] { border-color: var(--red); }
+.ep-pic-badge { position: absolute; top: 5px; right: 5px; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; color: #ffffff; font-size: 10.5px; font-weight: 700; }
+.ep-pic-badge:empty { display: none; }
+.ep-pic-badge svg { width: 11px; height: 11px; stroke-width: 3; }
+.ep-pic[data-state="made"] .ep-pic-badge { background: var(--green); color: var(--green-ink); }
+.ep-pic[data-state="go"] .ep-pic-badge { background: var(--amber); color: #2a1d05; }
+.ep-pic[data-state="failed"] .ep-pic-badge { background: var(--red); }
+.ep-pic-num { position: absolute; left: 5px; bottom: 5px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 6px; background: rgba(12, 16, 14, 0.74); color: #ffffff; font-size: 11px; font-weight: 650; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+.ep-pic-detail { min-height: 64px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line-soft); background: var(--wash); font-size: 12.5px; line-height: 1.45; }
+.ep-pic-detail .ep-swap-in { display: grid; gap: 3px; }
+.ep-pic-detail b { color: var(--ink); font-weight: 650; }
+.ep-pic-detail span { color: var(--ink-2); }
+.ep-pic-detail span[data-state="making"] { color: var(--green); }
+.ep-pic-detail span[data-state="go"] { color: var(--amber); }
+.ep-pic-detail span[data-state="failed"] { color: var(--red); }
+.ep-pic-detail em { color: var(--red); font-style: normal; }
+.ep-pic-detail small { color: var(--muted); font-size: 12.5px; }
+.ep-pics-counts { display: flex; flex-wrap: wrap; gap: 6px; }
+.ep-pics-counts button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--line-soft); border-radius: 999px; background: none; color: var(--muted); font-size: 12.5px; transition: opacity 200ms ease, background 140ms ease, border-color 140ms ease; }
+.ep-pics-counts button:hover { border-color: var(--line-strong); }
+.ep-pics-counts button b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.ep-pics-counts button i { width: 8px; height: 8px; border-radius: 3px; background: var(--muted); }
+.ep-pics-counts button[data-state="made"] i { background: var(--green); }
+.ep-pics-counts button[data-state="go"] i { background: var(--amber); }
+.ep-pics-counts button[data-state="failed"] i { background: var(--red); }
+.ep-pics-counts button[data-state="changed"] i { background: transparent; border: 1.5px dashed var(--amber); }
+.ep-pics-counts button[aria-pressed="true"] { border-color: var(--line-strong); background: var(--raised); color: var(--ink); }
+.ep-pics-counts button[data-quiet] { opacity: 0.5; }
+@keyframes ep-pic-in { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: none; } }
+@keyframes ep-pic-shine { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .ep-trail-mark, .ep-trail-mark::after, .ep-trail-branch, .ep-trail-sub, .ep-trail-note, .ep-trail-sub::before, .ep-trail-note::before, .ep-pic, .ep-pic-art::after { animation: none !important; }
+  .ep-ring-fill, .ep-pic, .ep-work-pill > svg:last-child { transition: none; }
+}
 .ep-line-card { position: relative; border: 1px solid transparent; border-radius: 12px; }
 .ep-line-card[data-current] { background: var(--raised); border-color: var(--line); box-shadow: var(--card-shadow); }
 /* under the picked line's words: where it stands (recorded, to be said again), and its tools */
@@ -1108,7 +1330,6 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-who[data-presence="both"]::after { left: 12px; top: 4px; width: 10px; height: 10px; border-radius: 999px; background: var(--ink-2); box-shadow: 0 0 0 1.5px var(--bg); }
 /* the change bar: say what should change, of the line, its picture, the chapter or the film */
 .ep-ask { display: grid; gap: 8px; padding: 12px 2px 0; border-top: 1px solid var(--line-soft); }
-.ep-film-left .ep-ask { padding: 0; border-top: 0; }
 .ep-ask-working { display: flex; align-items: center; gap: 10px; }
 .ep-ask-working p { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; margin: 0; font-size: 13.5px; }
 .ep-ask-working :is(q, .faint) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1163,6 +1384,7 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-ask-presets button { height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--ink-2); font-size: 12.5px; }
 .ep-ask-presets button:hover { border-color: var(--line-strong); color: var(--ink); }
 .ep-picture-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ep-picture-row small { color: var(--muted); font-size: 12.5px; }
 .ep-choices .ep-shows { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .ep-middle { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; overflow: auto; }
 .ep-stage-wrap { position: relative; border-radius: 14px; }
@@ -1359,7 +1581,7 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-new-rest span { flex: 1; min-width: 0; }
 .ep-new-foot { display: flex; justify-content: flex-end; gap: 8px; padding-top: 20px; }
 @media (max-width: 1100px) {
-  .ep-film, .ep-plan { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .ep-plan { grid-template-columns: minmax(0, 1fr); gap: 28px; }
   .ep-chapter { grid-template-columns: minmax(0, 1fr); overflow: auto; }
   .ep-slides { border-right: 0; border-bottom: 1px solid var(--line-soft); padding: 12px 16px; }
   .ep-slides ol { grid-auto-flow: column; grid-auto-columns: 168px; overflow-x: auto; }
@@ -1368,6 +1590,10 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
   .ep-slides, .ep-peek { overflow: visible; }
   .ep-doc-body { flex: none; padding-top: 24px; }
   .ep-peek { padding: 0 28px 24px; }
+  /* the film's frame and what to do next come before its whole script, not after it */
+  .ep-film-page .ep-peek { order: 1; padding: 20px 28px 0; }
+  .ep-film-page .ep-doc { order: 2; }
+  .ep-film-page .ep-peek > * { max-width: 520px; }
   .ep-full-body { grid-template-columns: minmax(0, 1fr); overflow: auto; }
   .ep-new-grid { grid-template-columns: minmax(0, 1fr); }
 }

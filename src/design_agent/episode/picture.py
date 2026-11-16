@@ -34,6 +34,24 @@ PALETTE: dict[str, str] = {
 FONTS = ("Inter", "Fraunces", "IBM Plex Mono", "Fira Code")
 #: Where a picture sits in a HyperFrames project: its checks read sub-compositions from here.
 FOLDER = "compositions"
+#: The ways a picture carries an idea. A rich picture's motion plan names one, so the picture
+#: is one thing that develops and not a set of boxes that arrive.
+DEVICES = (
+    "the object is the explanation",
+    "one diagram that grows",
+    "continuous transformation",
+    "the worked example",
+    "steps in order",
+    "two sides",
+    "one chosen out of many",
+    "a number that lands",
+    "a real screen, the detail circled",
+)
+#: What a shot of a motion plan says. `shot` is the line a person reads beside the script, so
+#: it is short; the rest is the builder's and is kept nearly whole.
+SHOT_FIELDS = ("shot", "opens_on", "hero", "others", "still")
+SHOT_CHARS = 1500
+SHOT_WORDS = 24
 
 
 @dataclass(frozen=True)
@@ -152,9 +170,17 @@ def dressed(html: str, own: Row, look: Look | None = None) -> str:
     return re.sub(r"(<template\b[^>]*>)", lambda m: m.group(1) + faces, timed, count=1)
 
 
-def brief(unit: Row, full: Row, *, look: Look | None = None, note: str = "") -> Row:
+def brief(
+    unit: Row,
+    full: Row,
+    *,
+    look: Look | None = None,
+    note: str = "",
+    planned: Row | None = None,
+) -> Row:
     """Everything one picture is built from, as data its builder reads beside the skill's
-    rules: the canvas, the look, each line with what it adds, and the cue keys."""
+    rules: the canvas, the look, each line with what it adds, and the cue keys. A rich
+    picture's brief also carries its motion plan once that is written (`planned`)."""
     look = look or Look()
     theme = THEMES.get(str(full.get("brief", {}).get("theme") or ""), THEMES["corner-window"])
     motion = MOTION.get(str(theme.get("motion") or ""), {})
@@ -219,7 +245,56 @@ def brief(unit: Row, full: Row, *, look: Look | None = None, note: str = "") -> 
         },
         "lines": lines,
         "note_from_the_person": note,
+        **({"motion_plan": planned} if planned else {}),
     }
+
+
+def motion_file(unit_id: str) -> str:
+    """Where a rich picture's builder writes its motion plan, in the episode's folder."""
+    return f"pictures/{composition_id(unit_id)}.motion.json"
+
+
+def motion_plan(text: str, unit: Row) -> tuple[Row, list[str]]:
+    """A motion plan as its builder wrote it, read and held to its shape: one shot per line of
+    the picture, in order, each with the move the line is about and what its still shows.
+    Returns the plan as it is kept (only what the shape names) and what stops it."""
+    try:
+        given = json.loads(text)
+    except ValueError as error:
+        return {}, [f"the file is not JSON: {error}"]
+    if not isinstance(given, dict) or not isinstance(given.get("shots"), list):
+        return {}, ['the file is one object with "device", "world" and a "shots" list']
+    faults: list[str] = []
+    shots: list[Row] = []
+    by_frame = {str(shot.get("frame")): shot for shot in given["shots"] if isinstance(shot, dict)}
+    for frame in unit["frames"]:
+        shot = by_frame.get(frame)
+        if shot is None:
+            faults.append(f"line {frame} has no shot: write one shot for every line, in order")
+            continue
+        kept: Row = {"frame": frame}
+        for name in SHOT_FIELDS:
+            kept[name] = " ".join(str(shot.get(name) or "").split())[:SHOT_CHARS]
+        for name in ("shot", "hero", "still"):
+            if not kept[name]:
+                faults.append(f'the shot for line {frame} needs "{name}"')
+        said = len(kept["shot"].split())
+        if said > SHOT_WORDS:
+            faults.append(
+                f'"shot" for line {frame} is one plain sentence of at most 20 words '
+                f'(it has {said}): the detail goes in "hero" and "others"'
+            )
+        shots.append(kept)
+    extra = [frame for frame in by_frame if frame not in unit["frames"]]
+    if extra:
+        faults.append(f"shots for lines the picture does not have: {', '.join(sorted(extra))}")
+    device = " ".join(str(given.get("device") or "").split())
+    if device not in DEVICES:
+        faults.append('"device" is one of: ' + "; ".join(DEVICES))
+    world = " ".join(str(given.get("world") or "").split())[:SHOT_CHARS]
+    if not world:
+        faults.append('"world" says where the picture happens, in one line')
+    return {"device": device, "world": world, "shots": shots}, faults
 
 
 def faults(html: str, unit: Row, full: Row, look: Look | None = None) -> list[str]:

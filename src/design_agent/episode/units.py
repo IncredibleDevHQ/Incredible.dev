@@ -71,6 +71,8 @@ def units(full: Row, picks: Row | None = None, *, level: str = SIMPLE) -> list[R
         unit["suggest"] = RICH if len(frames) >= RICH_LINES and cues >= RICH_CUES else SIMPLE
         picked = (chosen.get(unit["id"]) or {}).get("level")
         unit["level"] = picked if picked in LEVELS else level
+        # whose the level is: the person's pick for this picture, or the film's
+        unit["level_by"] = "person" if picked in LEVELS else "film"
         built_from: Row = {"theme": theme, "canvas": unit["canvas"], "layout": unit["layout"]}
         if retyped:  # only a pick is part of it, so a picture made before picks existed stands
             built_from["picture"] = unit["picture"]

@@ -96,6 +96,8 @@ NOTE_KINDS = {
 }
 #: Tries a picture gets before it is left for the person to send back.
 PICTURE_TRIES = 3
+#: Tries a rich picture's motion plan gets at its shape before the picture says it failed.
+MOTION_TRIES = 2
 #: Pictures built at once by a local agent. The built-in agent builds one at a time: its
 #: thread holds one turn.
 PICTURES_AT_ONCE = 2
@@ -212,6 +214,8 @@ class EpisodeDesk:
         self.reader: classifier.Ask | None = None
         self._jobs: dict[str, asyncio.Task[None]] = {}
         self._builds: dict[tuple[str, str], asyncio.Task[None]] = {}
+        #: Episodes whose applied picks are with the writer: their pictures follow its turn.
+        self._then_draw: set[str] = set()
         self._gates: dict[str, asyncio.Semaphore] = {}
         self._said_at: dict[str, float] = {}
         self._closing = False
@@ -295,7 +299,20 @@ class EpisodeDesk:
         return str(picked.get("id") or self.host.settings.narrator_voice_id or "")
 
     def _worker(self, episode: Row) -> Worker:
-        writer = str(episode["settings"].get("writer") or "")
+        return self._worker_called(str(episode["settings"].get("writer") or ""))
+
+    def _builder(self, episode: Row, unit: Row) -> Worker:
+        """Who builds one picture: the agent a person picked for it, else its chapter's, else
+        the film's writer (`_units` settles which)."""
+        return self._worker_called(
+            str(unit.get("builder") or episode["settings"].get("writer") or "")
+        )
+
+    def _can_write(self, writer: str) -> bool:
+        ready = {w["id"] for w in self.options()["writers"] if w["ready"]}
+        return writer in ready or writer in self.workers
+
+    def _worker_called(self, writer: str) -> Worker:
         if writer in self.workers:
             return self.workers[writer]
         made: Worker
@@ -304,7 +321,7 @@ class EpisodeDesk:
         elif writer == DEMO:
             from design_agent.surfaces.web.demo_episode import SCRIPT
 
-            made = DemoWorker(data_dir=self.data_dir, script=SCRIPT)
+            made = DemoWorker(data_dir=self.data_dir, script=SCRIPT, store=self.store)
         elif writer in research.HARNESSES:
             made = LocalWorker(
                 writer, store=self.store, data_dir=self.data_dir, project_root=self.project_root
@@ -505,8 +522,7 @@ class EpisodeDesk:
             out["level"] = given["level"]
         if "writer" in given:
             writer = str(given["writer"])
-            ready = {w["id"] for w in self.options()["writers"] if w["ready"]}
-            if writer not in ready and writer not in self.workers:
+            if not self._can_write(writer):
                 raise ValueError("That writer isn't ready on this computer.")
             out["writer"] = writer
         if "writer" not in out:
@@ -551,9 +567,41 @@ class EpisodeDesk:
         return full
 
     def _units(self, episode: Row, full: Row) -> list[Row]:
-        return units.units(
+        found = units.units(
             full, episode["picks"] or {}, level=str(episode["settings"].get("level", "simple"))
         )
+        chosen = (episode["picks"] or {}).get("units", {})
+        by_chapter = self._chapter_builders(episode)
+        writer = str(episode["settings"].get("writer") or "")
+        for unit in found:
+            # who builds it: the agent picked for this picture, else its chapter's, else the
+            # film's writer
+            unit["builder"] = str(
+                (chosen.get(unit["id"]) or {}).get("builder")
+                or by_chapter.get(str(unit["chapter"]))
+                or writer
+            )
+        return found
+
+    def _chapter_builders(self, episode: Row) -> dict[str, str]:
+        """The agent a person picked to build each chapter's pictures, by chapter."""
+        picked = (episode["picks"] or {}).get("chapters", {})
+        return {
+            str(chapter): str(pick["builder"])
+            for chapter, pick in picked.items()
+            if (pick or {}).get("builder")
+        }
+
+    def _status(self, episode_id: str) -> str:
+        """Where an episode with a plan stands: in the studio once its pictures were asked for
+        (all of them, or the first one by name) or a chapter was recorded; a plan before."""
+        episode = self._episode(episode_id)
+        started = (
+            episode["approved"]
+            or bool(self.store.pictures(episode_id))
+            or bool(self.store.takes(episode_id))
+        )
+        return "studio" if started else "plan"
 
     # -- planning: the writer's turns, each read and checked ---------------------------------
 
@@ -615,7 +663,7 @@ class EpisodeDesk:
     def _as_it_was(self, episode_id: str, stage: str, said: str) -> None:
         """A turn on a standing plan did not finish: the plan goes back to how it stood, and
         the studio stays open. A person's own words stay; only their picture's steps wait."""
-        episode = self._episode(episode_id)
+        self._then_draw.discard(episode_id)
         if stage == "edit":
             said += " Your words are in; the steps of their picture were not fitted to them."
         else:
@@ -627,11 +675,24 @@ class EpisodeDesk:
                 self.store.drop_snapshot(kept["n"])
             said += " The plan is as it was."
         self._stage(episode_id, name=stage, state="stopped", said=said)
-        self._set(episode_id, status="studio" if episode["approved"] else "plan")
+        self._set(episode_id, status=self._status(episode_id))
 
     def _as_it_stands(self, episode: Row) -> Row:
         """The plan, its labels and its pictures as they stand: what a change can go back to."""
-        keep = ("unit", "sig", "status", "html", "stills", "clip", "go_sig", "note", "failure")
+        keep = (
+            "unit",
+            "sig",
+            "status",
+            "html",
+            "stills",
+            "clip",
+            "go_sig",
+            "note",
+            "failure",
+            "level",
+            "builder",
+            "motion",
+        )
         return {
             "plan": episode["plan"],
             "labels": episode["labels"],
@@ -732,14 +793,26 @@ class EpisodeDesk:
 
     def _heard(self, episode_id: str) -> Any:
         def heard(kind: str, text: str) -> None:
-            if kind != "step":
+            if kind not in ("step", "note"):
                 return
             now = time.time()
-            episode = self._episode(episode_id)
-            self.store.update_episode(
-                episode_id, stage={**(episode["stage"] or {}), "said": _clean(text, 120)}
-            )
+            if kind == "step":
+                episode = self._episode(episode_id)
+                self.store.update_episode(
+                    episode_id, stage={**(episode["stage"] or {}), "said": _clean(text, 120)}
+                )
             if now - self._said_at.get(episode_id, 0.0) >= 1.0:
+                self._said_at[episode_id] = now
+                self._changed(episode_id)
+
+        return heard
+
+    def _seen(self, episode_id: str) -> Any:
+        """A picture's builder is at a new step: the studio hears of it, once a second at most."""
+
+        def heard(kind: str, _text: str) -> None:
+            now = time.time()
+            if kind in ("step", "note") and now - self._said_at.get(episode_id, 0.0) >= 1.0:
                 self._said_at[episode_id] = now
                 self._changed(episode_id)
 
@@ -751,7 +824,7 @@ class EpisodeDesk:
         standing = start in STANDING
         if not standing:
             # a plan being written takes the studio's place; a change to one that stands does not
-            status = "planning" if not episode["approved"] else episode["status"]
+            status = "planning" if self._status(episode_id) == "plan" else episode["status"]
             self._set(episode_id, status=status)
         self._stage(
             episode_id, name=start, round=0, state="working", said="Getting ready", at=time.time()
@@ -837,10 +910,15 @@ class EpisodeDesk:
         if standing and not self._note_change(episode_id) and start == "change":
             # said plainly, or a person who asked is left looking for what is different
             self._stage(episode_id, said="The writer changed nothing.")
-        status = "studio" if episode["approved"] else "plan"
-        self._set(episode_id, status=status)
-        if episode["approved"]:
-            self._queue_pictures(episode_id)
+        self._set(episode_id, status=self._status(episode_id))
+        self._queue_pictures(episode_id)
+        if start == "redo" and episode_id in self._then_draw:
+            # the picks were applied: what they left the writer is done, and the pictures follow
+            self._then_draw.discard(episode_id)
+            picks = dict(self._episode(episode_id)["picks"] or {})
+            picks.pop("writer", None)
+            self.store.update_episode(episode_id, picks=picks)
+            self._refresh(episode_id)
 
     def _note_kind(self, worker: Worker, unit: Row, note: str) -> str:
         """Whether a note on a picture is about how it is drawn or about what it shows. A
@@ -1015,14 +1093,17 @@ class EpisodeDesk:
             "nothing else. Reply with what you changed."
         )
 
-    def stop(self, episode_id: str) -> None:
+    def stop(self, episode_id: str, unit_id: str = "") -> None:
         """Stop what is under way for an episode: its plan, and every picture being made or
-        waiting its turn. A stopped picture stays stopped until a person asks for it again."""
+        waiting its turn; or, when one picture is named, that picture alone. A stopped picture
+        stays stopped until a person asks for it again."""
         job = self._jobs.get(episode_id)
-        if job is not None and not job.done():
+        if not unit_id:
+            self._then_draw.discard(episode_id)
+        if not unit_id and job is not None and not job.done():
             job.cancel()
-        for (owner, _), build in list(self._builds.items()):
-            if owner == episode_id and not build.done():
+        for (owner, unit), build in list(self._builds.items()):
+            if owner == episode_id and unit_id in ("", unit) and not build.done():
                 build.cancel()
 
     def again(self, episode_id: str, *, writer: str = "") -> Row:
@@ -1046,22 +1127,51 @@ class EpisodeDesk:
             raise ValueError("The plan isn't written yet.")
         self.store.update_episode(episode_id, approved=True, status="studio")
         self._say(episode, f"Approved the plan of “{episode['title']}”.", by=by)
+        full = self._full(episode)
+        for unit in self._units(episode, full or {}):
+            if unit["kind"] == "picture" and self.store.picture(episode_id, unit["id"]) is None:
+                self.store.set_picture(
+                    episode_id, unit["id"], status="queued", sig="", level=unit["level"]
+                )
         self._queue_pictures(episode_id)
         self._settle(episode_id)
         return self.view(episode_id)
 
     def choose(self, episode_id: str, *, by: str, change: Mapping[str, Any]) -> Row:
-        """A person's picks: the film's look, voice and default level, who has the frame (for a
-        line, a chapter or the whole film), and a picture's level."""
+        """A person's picks: the film's look, voice, default level and writer, who has the frame
+        (for a line, a chapter or the whole film), a picture's level, and the agent that builds
+        a chapter's pictures or one picture."""
         episode = self._episode(episode_id)
         if self.planning(episode_id):
             raise ValueError("The plan is being written. Pick again when it has landed.")
         before = dict(episode["settings"])
         chosen = self._settings(change.get("settings") or {}, before)
-        picks: Row = {"units": dict((episode["picks"] or {}).get("units", {}))}
+        picks: Row = {
+            "units": dict((episode["picks"] or {}).get("units", {})),
+            "chapters": dict((episode["picks"] or {}).get("chapters", {})),
+            "writer": dict((episode["picks"] or {}).get("writer", {})),
+        }
+        for chapter_id, picked in (change.get("builders") or {}).items():
+            # who builds a chapter's pictures; nothing picked gives them back to the film's writer
+            builder = str(picked or "")
+            if builder and not self._can_write(builder):
+                raise ValueError("That agent isn't ready on this computer.")
+            picks["chapters"].pop(str(chapter_id), None)
+            if builder:
+                picks["chapters"][str(chapter_id)] = {"builder": builder}
         for unit_id, pick in (change.get("units") or {}).items():
+            kept = dict(picks["units"].get(str(unit_id)) or {})
             if pick.get("level") in LEVELS:
-                picks["units"][str(unit_id)] = {"level": pick["level"]}
+                kept["level"] = pick["level"]
+            if "builder" in pick:
+                # who builds this picture; nothing picked gives it back to the film's writer
+                builder = str(pick["builder"] or "")
+                if builder and not self._can_write(builder):
+                    raise ValueError("That agent isn't ready on this computer.")
+                kept.pop("builder", None)
+                if builder:
+                    kept["builder"] = builder
+            picks["units"][str(unit_id)] = kept
         self.store.update_episode(episode_id, settings=chosen, picks=picks)
         episode = self._episode(episode_id)
         merged = self._merged(episode)
@@ -1075,14 +1185,12 @@ class EpisodeDesk:
             self.store.update_episode(episode_id, labels=plans.labels_of(merged))
         left = override.redo(feedback)
         if left and not self.demo:
-            told = "\n".join(
-                f"- {x['where']}: {x['was']} is now {x['now']}. {x['do']}" for x in left
-            )
-            # as it stood before the pick, so a turn that stops takes the pick back with it
-            self._snapshot(episode_id, why="Changed who has the frame", episode=episode, picked=new)
-            self._start_plan(episode_id, stage="redo", redo=told)
-        elif self._episode(episode_id)["approved"]:
-            self._queue_pictures(episode_id)
+            # What the pick leaves the writer waits for the person to apply their picks: trying
+            # frames out costs nothing, and nothing is planned or drawn until they say so.
+            for item in left:
+                picks["writer"][str(item["where"])] = item
+            self.store.update_episode(episode_id, picks=picks)
+        self._queue_pictures(episode_id)
         self._say(episode, "Changed the episode's choices.", by=by, quiet=True)
         self._settle(episode_id)
         return self.view(episode_id)
@@ -1175,7 +1283,7 @@ class EpisodeDesk:
         self._say(episode, "Changed a line's words.", by=by, quiet=True)
         if any(r["where"] == frame for r in check.musts(rows)) and not self.demo:
             self._start_plan(episode_id, stage="edit", redo=frame)
-        elif episode["approved"]:
+        else:
             self._queue_pictures(episode_id)
         self._settle(episode_id)
         return self.view(episode_id)
@@ -1212,19 +1320,19 @@ class EpisodeDesk:
         self._stage(episode_id, name="done", state="done", said="", asked=None)
         said = "Took the last change back." if back else "Put the change back."
         self._say(episode, said, by=by, quiet=True)
-        if episode["approved"]:
-            self._queue_pictures(episode_id)
+        self._queue_pictures(episode_id)
         self._settle(episode_id)
         return self.view(episode_id)
 
     # -- pictures: built by the writer, posed on the thread's computer -------------------------
 
     def _queue_pictures(self, episode_id: str) -> None:
-        """Start every picture that is not built from the plan as it stands. One that failed is
-        not tried again by itself: the person sends it back, or changes what it is built from."""
+        """Start the pictures that were asked for and wait their turn (a row that says
+        "queued"). Nothing starts a picture by itself: one whose plan changed after it was made
+        stays as it is, out of date, until a person applies their changes or asks for it again."""
         episode = self._episode(episode_id)
         full = self._full(episode)
-        if full is None or not episode["approved"] or self._closing:
+        if full is None or self._closing:
             return
         found = self._units(episode, full)
         planned = {unit["id"] for unit in found}
@@ -1236,30 +1344,109 @@ class EpisodeDesk:
             if unit["kind"] != "picture":
                 continue
             have = self.store.picture(episode_id, unit["id"])
-            fresh = have is not None and units.same(str(have["sig"]), unit)
             running = self._builds.get((episode_id, unit["id"]))
-            if have is not None and fresh:
-                # Its level is the person's: a picture made rich waits for their go on its
-                # stills, and one made simple again no longer does.
-                rich = unit["level"] == units.RICH
-                if rich and have["status"] == "made" and not units.same(str(have["go_sig"]), unit):
-                    self.store.set_picture(episode_id, unit["id"], status="go")
-                elif not rich and have["status"] == "go":
-                    self.store.set_picture(episode_id, unit["id"], status="made")
-            if fresh or (running is not None and not running.done()):
+            if have is None or have["status"] != "queued":
+                continue
+            if running is not None and not running.done():
                 continue
             self.store.set_picture(
-                episode_id, unit["id"], status="queued", failure="", sig=unit["sig"]
+                episode_id,
+                unit["id"],
+                status="queued",
+                failure="",
+                sig=unit["sig"],
+                level=unit["level"],
             )
             self._builds[(episode_id, unit["id"])] = asyncio.get_running_loop().create_task(
                 self._built(episode_id, unit["id"]), name=f"picture {episode_id} {unit['id']}"
             )
         self._changed(episode_id)
 
+    def _waiting(self, episode: Row, full: Row | None) -> list[Row]:
+        """What a person's picks leave the writer that it has not done yet: a line that now
+        needs a picture, a picture that has to go, a line nobody is left to say. Each waits for
+        the person to apply their picks; one whose pick was taken back or done is dropped."""
+        items = (episode["picks"] or {}).get("writer") or {}
+        if not items or full is None:
+            return []
+        frames = {f["id"]: f for _, _, f in plans.frames_of(full)}
+        off = full.get("brief", {}).get("presenter") == "off"
+        out: list[Row] = []
+        for where, item in items.items():
+            frame = frames.get(str(where))
+            if frame is None:
+                if off:  # a line written for a face, with no one left on screen
+                    out.append(item)
+                continue
+            presence = frame.get("presence")
+            if presence != str(item.get("now", "")).split(" / ")[0]:
+                continue  # the pick was taken back, or another replaced it
+            if presence != "person" and (frame.get("shows") or frame.get("hold")):
+                continue  # the line has its picture
+            if presence == "person" and not override.has_picture(frame):
+                continue  # its picture has gone
+            out.append(item)
+        return out
+
+    def apply(self, episode_id: str, *, by: str) -> Row:
+        """Run what a person's picks and changes wait on, which nothing starts by itself: the
+        writer plans what the picks leave it (a line that now needs a picture), then the
+        pictures that are out of date are drawn again, and once the plan is approved the ones
+        the changes added are made. A picture that failed waits for its own Try again."""
+        episode = self._episode(episode_id)
+        full = self._full(episode)
+        if full is None or self.planning(episode_id):
+            raise ValueError("The writer is still working. Apply when that has landed.")
+        left = self._waiting(episode, full)
+        if left:
+            told = "\n".join(
+                f"- {x['where']}: {x['was']} is now {x['now']}. {x['do']}" for x in left
+            )
+            self._snapshot(episode_id, why="Planned what your picks need")
+            self._then_draw.add(episode_id)
+            self._start_plan(episode_id, stage="redo", redo=told)
+        elif not self._refresh(episode_id):
+            raise ValueError("Nothing is waiting: every picture asked for is up to date.")
+        self._say(episode, "Applied the changes.", by=by, quiet=True)
+        self._settle(episode_id)
+        return self.view(episode_id)
+
+    def _refresh(self, episode_id: str) -> int:
+        """Ask again for every picture that is out of date, and once the plan is approved for
+        every one its changes added. Returns how many were asked for."""
+        episode = self._episode(episode_id)
+        full = self._full(episode)
+        if full is None:
+            return 0
+        asked = 0
+        for unit in self._units(episode, full):
+            if unit["kind"] != "picture":
+                continue
+            running = self._builds.get((episode_id, unit["id"]))
+            if running is not None and not running.done():
+                continue
+            have = self.store.picture(episode_id, unit["id"])
+            if (have is None and episode["approved"]) or (
+                have is not None and _outdated(have, unit)
+            ):
+                self.store.set_picture(
+                    episode_id, unit["id"], status="queued", sig="", failure="", level=unit["level"]
+                )
+                asked += 1
+        if asked:
+            self._set(episode_id, status=self._status(episode_id))
+            self._queue_pictures(episode_id)
+        return asked
+
     async def _built(self, episode_id: str, unit_id: str) -> None:
         episode = self._episode(episode_id)
-        at_once = 1 if episode["settings"].get("writer") == BUILTIN else PICTURES_AT_ONCE
-        gate = self._gates.setdefault(episode_id, asyncio.Semaphore(at_once))
+        unit = next(
+            (u for u in self._units(episode, self._full(episode) or {}) if u["id"] == unit_id),
+            None,
+        )
+        builder = str((unit or {}).get("builder") or episode["settings"].get("writer") or "")
+        at_once = 1 if builder == BUILTIN else PICTURES_AT_ONCE
+        gate = self._gates.setdefault(f"{episode_id}:{builder}", asyncio.Semaphore(at_once))
         try:
             async with gate:
                 await self._build(episode_id, unit_id)
@@ -1283,22 +1470,41 @@ class EpisodeDesk:
         unit = next((u for u in self._units(episode, full or {}) if u["id"] == unit_id), None)
         if full is None or unit is None:
             return
-        worker = self._worker(episode)
+        worker = self._builder(episode, unit)
         comp = picture.composition_id(unit_id)
         look = self._look(episode)
+        level = unit["level"]
         brief = picture.brief(unit, full, look=look, note=note)
         root, skill = worker.place(episode)
-        self.store.set_picture(episode_id, unit_id, status="making", sig=unit["sig"], failure="")
-        self._changed(episode_id)
-        await worker.prepare(
-            episode,
-            {f"pictures/{comp}.brief.json": json.dumps(brief, indent=1, ensure_ascii=False)},
+        self.store.set_picture(
+            episode_id,
+            unit_id,
+            status="making",
+            sig=unit["sig"],
+            failure="",
+            level=level,
+            builder=worker.id,
+            motion={},
         )
+        self._changed(episode_id)
+        brief_file = f"pictures/{comp}.brief.json"
+        await worker.prepare(episode, {brief_file: json.dumps(brief, indent=1, ensure_ascii=False)})
+        planned = ""
+        if level == units.RICH:
+            motion = await self._motion(episode_id, unit, worker, note)
+            if not motion:
+                return
+            # the plan rides in the brief, so a builder with no memory of writing it has it too
+            brief = picture.brief(unit, full, look=look, note=note, planned=motion)
+            await worker.prepare(
+                episode, {brief_file: json.dumps(brief, indent=1, ensure_ascii=False)}
+            )
+            planned = " Its `motion_plan` is the plan this picture is built to, shot by shot."
         prompt = (
             f"Stage: picture.\n\nBuild one picture of the episode. Your folder is {root}. Read "
-            f"{skill}/briefs/picture.md, then the brief at {root}/pictures/{comp}.brief.json, "
-            f"and write {root}/{brief['file']}. Deliver nothing: the house reads the file from "
-            "your folder." + (f"\n\nThe person's note on it: {note}" if note else "")
+            f"{skill}/briefs/picture.md, then the brief at {root}/{brief_file}, "
+            f"and write {root}/{brief['file']}.{planned} Deliver nothing: the house reads the "
+            "file from your folder." + (f"\n\nThe person's note on it: {note}" if note else "")
         )
         html = ""
         faults: list[str] = []
@@ -1308,7 +1514,7 @@ class EpisodeDesk:
                 self._episode(episode_id),
                 lane=f"picture:{unit_id}",
                 prompt=prompt,
-                heard=lambda _kind, _text: None,
+                heard=self._seen(episode_id),
             )
             if told.stopped:
                 raise asyncio.CancelledError
@@ -1338,7 +1544,6 @@ class EpisodeDesk:
                 episode_id, unit_id, status="failed", html=html, failure="; ".join(faults[:3])
             )
             return
-        level = unit["level"]
         if level == units.RICH:
             html, stills = await self._looked(episode_id, unit, full, brief, html, stills)
         self.store.set_picture(
@@ -1355,6 +1560,57 @@ class EpisodeDesk:
         if clip:
             self.store.set_picture(episode_id, unit_id, clip=clip)
 
+    async def _motion(self, episode_id: str, unit: Row, worker: Worker, note: str) -> Row:
+        """A rich picture's motion plan, written by its builder before anything is drawn: for
+        each line, what the picture opens on, the one move the line is about, how the rest
+        lands, and what the line's still shows. Code holds it to its shape and keeps it, and
+        the studio shows it while the picture is drawn. Returns nothing when no plan that
+        stands was written; the picture then says why."""
+        unit_id = str(unit["id"])
+        episode = self._episode(episode_id)
+        root, skill = worker.place(episode)
+        comp = picture.composition_id(unit_id)
+        file = picture.motion_file(unit_id)
+        # a plan left from an earlier build is not this one's
+        await worker.prepare(episode, {file: ""})
+        prompt = (
+            f"Stage: motion plan.\n\nPlan how one picture of the episode moves, before anything "
+            f"is drawn. Your folder is {root}. Read {skill}/briefs/motion.md, then the brief at "
+            f"{root}/pictures/{comp}.brief.json, and write {root}/{file}. Write no HTML in this "
+            "turn. Deliver nothing: the house reads the file from your folder."
+            + (f"\n\nThe person's note on the picture: {note}" if note else "")
+        )
+        faults: list[str] = []
+        for _ in range(MOTION_TRIES):
+            told = await worker.turn(
+                self._episode(episode_id),
+                lane=f"picture:{unit_id}",
+                prompt=prompt,
+                heard=self._seen(episode_id),
+            )
+            if told.stopped:
+                raise asyncio.CancelledError
+            text = (await worker.read(self._episode(episode_id), file) or "").strip()
+            plan, faults = (
+                picture.motion_plan(text, unit) if text else ({}, [f"{file} was not written"])
+            )
+            if not faults:
+                self.store.set_picture(episode_id, unit_id, motion=plan)
+                self._changed(episode_id)
+                return plan
+            listed = "\n".join(f"- {f}" for f in faults[:12])
+            prompt = (
+                f"Stage: motion plan.\n\n{root}/{file} can't be used yet:\n\n{listed}\n\n"
+                "Change only what these name, and reply with what you changed."
+            )
+        self.store.set_picture(
+            episode_id,
+            unit_id,
+            status="failed",
+            failure="Its motion plan could not be used: " + "; ".join(faults[:3]),
+        )
+        return {}
+
     async def _looked(
         self, episode_id: str, unit: Row, full: Row, brief: Row, html: str, stills: dict[str, str]
     ) -> tuple[str, dict[str, str]]:
@@ -1362,7 +1618,7 @@ class EpisodeDesk:
         only a render shows (an overlap, a label cut off, something under the person's window).
         A fix that breaks the file is dropped; the picture it had stands."""
         episode = self._episode(episode_id)
-        worker = self._worker(episode)
+        worker = self._builder(episode, unit)
         root, _ = worker.place(episode)
         comp = brief["composition_id"]
         images: dict[str, bytes] = {}
@@ -1386,7 +1642,7 @@ class EpisodeDesk:
                 "still does not show what its line added, fix the file. If they are right, "
                 "change nothing and reply “Nothing to change.”"
             ),
-            heard=lambda _kind, _text: None,
+            heard=self._seen(episode_id),
         )
         if told.stopped:
             raise asyncio.CancelledError
@@ -1480,16 +1736,50 @@ class EpisodeDesk:
         self._settle(episode_id)
         return self.view(episode_id)
 
-    def make(self, episode_id: str, *, by: str) -> Row:
-        """Every picture that stopped or failed is asked for again, as the plan stands."""
+    def make(
+        self, episode_id: str, *, by: str, only: list[str] | None = None, chapter: str = ""
+    ) -> Row:
+        """Ask for pictures: the ones named (drawn again when they failed or are out of date), a
+        chapter's that were never asked for (recording it asks for them), or with neither every
+        one that stopped or failed. One that is current, or on its way, is left as it is."""
         episode = self._episode(episode_id)
-        left = [p for p in self.store.pictures(episode_id) if p["status"] == "failed"]
-        if not episode["approved"] or not left:
-            raise ValueError("Every picture is made or on its way.")
-        for have in left:
-            self.store.set_picture(episode_id, str(have["unit"]), sig="")
+        full = self._full(episode)
+        if full is None or self.planning(episode_id):
+            raise ValueError("The writer is still working. Ask when that has landed.")
+        found = [u for u in self._units(episode, full) if u["kind"] == "picture"]
+        failed = {
+            str(p["unit"]) for p in self.store.pictures(episode_id) if p["status"] == "failed"
+        }
+        if only is None and not chapter:
+            wanted = failed
+            if not wanted:
+                raise ValueError("Every picture is made or on its way.")
+        else:
+            wanted = {
+                str(u["id"])
+                for u in found
+                if u["id"] in (only or ()) or (chapter and u["chapter"] == chapter)
+            }
+            if not wanted:
+                raise ValueError("There is no picture to make there.")
+        for unit in found:
+            unit_id = str(unit["id"])
+            running = self._builds.get((episode_id, unit_id))
+            if unit_id not in wanted or (running is not None and not running.done()):
+                continue
+            have = self.store.picture(episode_id, unit_id)
+            named = only is not None and unit_id in only
+            if (
+                have is None
+                or (have["status"] == "failed" and (named or not chapter))
+                or (named and _outdated(have, unit))
+            ):
+                self.store.set_picture(
+                    episode_id, unit_id, status="queued", sig="", failure="", level=unit["level"]
+                )
+        self._set(episode_id, status=self._status(episode_id))
         self._queue_pictures(episode_id)
-        self._say(episode, "Asked for the pictures that were not made.", by=by, quiet=True)
+        self._say(episode, "Asked for pictures to be made.", by=by, quiet=True)
         self._settle(episode_id)
         return self.view(episode_id)
 
@@ -1735,8 +2025,9 @@ class EpisodeDesk:
 
     def render(self, episode_id: str, *, by: str) -> Row:
         episode = self._episode(episode_id)
-        if self._full(episode) is None or not episode["approved"]:
-            raise ValueError("Approve the plan first.")
+        if self._full(episode) is None or self._status(episode_id) != "studio":
+            # a film of nothing but stand-ins is no draft: something of it is made first
+            raise ValueError("Make a picture or record a chapter first.")
         if (episode["film"] or {}).get("status") == "rendering":
             raise ValueError("The film is already rendering.")
         self.store.update_episode(
@@ -2243,6 +2534,7 @@ class EpisodeDesk:
             if t["kept"]:
                 key = str(t["frame"] or t["chapter"])
                 said[key] = max(said.get(key, 0.0), float(t["created_at"]))
+        every = self.store.runs(str(episode["thread_id"]))
         runs = [
             {
                 "id": r["id"],
@@ -2255,9 +2547,22 @@ class EpisodeDesk:
                 "started_at": r["started_at"],
                 "ended_at": r["ended_at"],
             }
-            for r in self.store.runs(str(episode["thread_id"]))
+            for r in every
             if r["lane"]
         ]
+        # The work under way, as it happens: the writer's steps and notes on the plan, newest
+        # last, and the step each picture's builder is on.
+        live = next(
+            (r for r in reversed(every) if r["lane"] == "plan" and r["state"] == "working"), None
+        )
+        doing: dict[str, str] = {}
+        for r in every:
+            lane = str(r["lane"])
+            if lane.startswith("picture:") and r["state"] == "working":
+                last = next((e for e in reversed(r["steps"] or []) if e.get("text")), None)
+                doing[lane.removeprefix("picture:")] = (
+                    _clean(str(last["text"]), 120) if last else ""
+                )
         return {
             **self.card(episode),
             "channel_id": thread["channel_id"] if thread else "",
@@ -2280,7 +2585,10 @@ class EpisodeDesk:
             "units": [
                 {
                     **unit,
-                    "picture": self._picture_view(pictures.get(unit["id"]), unit),
+                    "picture": {
+                        **self._picture_view(pictures.get(unit["id"]), unit),
+                        "doing": doing.get(unit["id"], ""),
+                    },
                     "kind_of_picture": unit["picture"],
                 }
                 for unit in found
@@ -2309,7 +2617,35 @@ class EpisodeDesk:
                 and float((f.get("by_person") or {}).get("at") or 0.0)
                 > max(said[ch["id"]], said.get(f["id"], 0.0))
             ],
+            # what the person's picks leave the writer, waiting for them to apply them
+            "waiting": [
+                {"line": str(x["where"]), "do": str(x["do"])} for x in self._waiting(episode, full)
+            ],
+            # who builds each chapter's pictures: the agent picked for it, else the film's writer
+            "builders": {
+                str(c["id"]): self._chapter_builders(episode).get(
+                    str(c["id"]), str(episode["settings"].get("writer") or "")
+                )
+                for c in (full or {}).get("chapters", [])
+            },
             "runs": runs[-40:],
+            "working": (
+                {
+                    "harness": live["harness"],
+                    "since": live["started_at"],
+                    "events": [
+                        {
+                            "kind": e.get("kind"),
+                            "text": _clean(str(e.get("text") or ""), 400),
+                            "at": e.get("at"),
+                        }
+                        for e in (live["steps"] or [])[-14:]
+                        if e.get("text")
+                    ],
+                }
+                if live
+                else None
+            ),
             "options": self.options(),
         }
 
@@ -2321,6 +2657,9 @@ class EpisodeDesk:
         if have is None:
             return {
                 "status": "none",
+                "level": "",
+                "builder": "",
+                "motion": None,
                 "stills": {},
                 "clip": None,
                 "stale": False,
@@ -2329,13 +2668,18 @@ class EpisodeDesk:
             }
         return {
             "status": have["status"],
+            # what it was built as (empty for one made before levels were kept), by whom, and
+            # a rich one's motion plan
+            "level": have["level"],
+            "builder": have["builder"],
+            "motion": have["motion"] or None,
             "stills": {
                 frame: view
                 for frame, file_id in (have["stills"] or {}).items()
                 if (view := self._file(file_id)) is not None
             },
             "clip": self._file(have["clip"]),
-            "stale": not units.same(str(have["sig"]), unit),
+            "stale": _outdated(have, unit),
             "failure": have["failure"],
             "note": have["note"],
         }
@@ -2353,6 +2697,15 @@ class EpisodeDesk:
             "audio": self._file(take["audio"]),
             "created_at": take["created_at"],
         }
+
+
+def _outdated(have: Row, unit: Row) -> bool:
+    """Whether a made picture no longer fits its unit: drawn from the plan as it was, or at
+    another level. One made before levels were kept is judged by what it was drawn from."""
+    if have["status"] not in ("made", "go"):
+        return False
+    built_as = str(have["level"] or "")
+    return not units.same(str(have["sig"]), unit) or (bool(built_as) and built_as != unit["level"])
 
 
 def _findings(report: str) -> tuple[list[str], list[str]]:

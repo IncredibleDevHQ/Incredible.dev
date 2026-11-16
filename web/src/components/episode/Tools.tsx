@@ -1,0 +1,300 @@
+// The film's own choices, in the bar so they are at hand on every page: how it looks, whose voice
+// says it, how its pictures are made, and which agent works on it. Each is free to try: a choice
+// that changes how pictures are drawn puts the made ones out of date and runs nothing; the person
+// applies their changes when they have settled them. Each button says what is chosen and opens the choice
+// under it. A look is shown by the frames it is made of; one that would redraw pictures already
+// made asks first. The film, once rendered, is downloaded from the bar too.
+import { AudioLines, Bot, ChevronDown, Download, LayoutTemplate, RotateCcw, Shapes, Sparkles, TriangleAlert, type LucideIcon } from "lucide-react";
+import { useId, useRef, useState, type ReactNode } from "react";
+import { api, type EpisodeChoices, type EpisodeView } from "../../api";
+import { keepWriter, LOOKS, pictureCount, PICTURES, pictureState } from "../../episode";
+import { Popover } from "../Popover";
+import { Tooltip } from "../Tooltip";
+import { turning, type Run } from "./Ask";
+import { WRITERS } from "./Film";
+import { againCost } from "./Picture";
+import { LayoutThumb } from "./Stage";
+import { NarratorVoice } from "./Voice";
+
+type Props = { view: EpisodeView; run: Run; busy: boolean };
+
+export function FilmTools({ view, run, busy }: Props) {
+  return (
+    <div className="ep-tools" role="group" aria-label="The film's choices">
+      <LookTool view={view} run={run} busy={busy} />
+      <VoiceTool view={view} run={run} busy={busy} />
+      <PicturesTool view={view} run={run} busy={busy} />
+      <AgentTool view={view} run={run} busy={busy} />
+    </div>
+  );
+}
+
+// A button that names a choice and what is chosen, and opens the choice under it.
+function Tool({ icon: Icon, label, value, width, children }: { icon: LucideIcon; label: string; value: string; width: number; children: (close: () => void) => ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <button ref={button} type="button" className="ep-tool" aria-haspopup="dialog" aria-expanded={open} aria-label={`${label}: ${value}`} onClick={() => setOpen((o) => !o)}>
+        <Icon aria-hidden="true" />
+        <span>{label}</span>
+        <em>{value}</em>
+        <ChevronDown aria-hidden="true" />
+      </button>
+      <Popover open={open} onClose={() => setOpen(false)} anchor={button} side="bottom" align="start" offset={8} width={width} className="ep-tool-pop" title={label}>
+        {children(() => setOpen(false))}
+      </Popover>
+    </>
+  );
+}
+
+const choose = (view: EpisodeView, run: Run, settings: EpisodeChoices["settings"]) => run(() => api.chooseEpisode(view.id, { settings }));
+
+// The looks the film can wear, each drawn as the frames it is made of: the one it is named for,
+// large, and the next ones it uses beside it.
+function LookTool({ view, run, busy }: Props) {
+  const presenterOff = view.settings.presenter === "off";
+  const looks = view.options.themes.filter((t) => (t.presenter === "off") === presenterOff);
+  const now = view.options.themes.find((t) => t.id === view.settings.theme);
+  const made = asked(view);
+  return (
+    <Tool icon={LayoutTemplate} label="Look" value={LOOKS[view.settings.theme] ?? now?.name ?? "None"} width={520}>
+      {() => (
+        <>
+          <div className="ep-look-cards">
+            {looks.map((t) => {
+              const [usual, ...more] = t.kit;
+              return (
+                <button key={t.id} type="button" className="ep-look-card" aria-pressed={view.settings.theme === t.id} disabled={busy} onClick={() => t.id !== view.settings.theme && void choose(view, run, { theme: t.id })}>
+                  {usual && <LayoutThumb view={view} layout={usual.layout} />}
+                  {more.length > 0 && (
+                    <span className="ep-look-kit">
+                      {more.slice(0, 3).map((k) => (
+                        <LayoutThumb key={k.layout} view={view} layout={k.layout} />
+                      ))}
+                    </span>
+                  )}
+                  <b>{LOOKS[t.id] ?? t.name}</b>
+                  <small>{t.stage}</small>
+                </button>
+              );
+            })}
+          </div>
+          {made > 0 && <Untouched />}
+        </>
+      )}
+    </Tool>
+  );
+}
+
+// Pictures asked for already: a pick puts them out of date, and nothing more until it is applied.
+const asked = (view: EpisodeView) => {
+  const pictures = pictureCount(view);
+  return pictures.all - pictures.planned;
+};
+
+// Said under a choice that changes how pictures are drawn, once some are made.
+function Untouched() {
+  return <p className="ep-tool-note">Try any of them: pictures already made are drawn again only when you apply your changes.</p>;
+}
+
+// Whose voice says the film: the person's own takes, or a narrator for the lines nobody recorded.
+function VoiceTool({ view, run, busy }: Props) {
+  const presenterOff = view.settings.presenter === "off";
+  const narrator = view.options.narrator.ready;
+  const voice = view.settings.voice;
+  const value = voice === "narrator" ? (view.settings.narrator?.name ?? "Narrator") : presenterOff ? "Recorded" : "Your voice";
+  return (
+    <Tool icon={AudioLines} label="Voice" value={value} width={380}>
+      {() => (
+        <>
+          <Options
+            label="Voice"
+            value={voice}
+            disabled={busy}
+            onChange={(v) => void choose(view, run, { voice: v })}
+            options={[
+              { value: "live", label: presenterOff ? "Recorded" : "Your voice", note: "You record each chapter; your takes are the film's sound." },
+              { value: "narrator", label: "Narrator", note: narrator ? "A voice says the lines you have not recorded." : "Needs ELEVENLABS_API_KEY on the desk.", disabled: !narrator },
+            ]}
+          />
+          {voice === "narrator" && narrator && <NarratorVoice view={view} run={run} busy={busy} />}
+        </>
+      )}
+    </Tool>
+  );
+}
+
+// How the film's pictures are made, where a picture has no level of its own: at once from the
+// plan, or planned shot by shot and posed as stills for a go. Free to try: a picture already made
+// at the other level is out of date until the person applies their changes.
+function PicturesTool({ view, run, busy }: Props) {
+  const level = view.settings.level;
+  return (
+    <Tool icon={Shapes} label="Pictures" value={level === "rich" ? "Rich" : "Simple"} width={380}>
+      {() => (
+        <>
+          <Options
+            label="Pictures"
+            value={level}
+            disabled={busy}
+            onChange={(next) => void choose(view, run, { level: next })}
+            options={[
+              { value: "simple", label: "Simple", note: "Drawn at once from the plan." },
+              { value: "rich", label: "Rich", note: "Motion planned shot by shot, then drawn and posed as stills for your go." },
+            ]}
+          />
+          {asked(view) > 0 && <Untouched />}
+        </>
+      )}
+    </Tool>
+  );
+}
+
+// What a person's picks and changes wait on, run when they say so: nothing is planned or drawn
+// while they try frames, looks and levels out. It says what will run (the writer's part, the
+// pictures drawn again, the new ones) and, since drawing a made picture again redoes paid work,
+// what that costs, before anything starts.
+export function ApplyChanges({ view, run, busy }: Props) {
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const pictures = view.units.filter((u) => u.kind === "picture");
+  const again = pictures.filter((u) => pictureState(u, view) === "changed");
+  const fresh = view.approved ? pictures.filter((u) => u.picture.status === "none") : [];
+  const lines = view.waiting.length;
+  const writer = WRITERS[view.settings.writer] ?? "The writer";
+  const chapters = view.plan?.chapters ?? [];
+  const where = (u: (typeof pictures)[number]) => `Chapter ${chapters.findIndex((c) => c.id === u.chapter) + 1} · ${PICTURES[u.kind_of_picture] ?? "Picture"}`;
+  const count = lines + again.length + fresh.length;
+  if (count === 0) return null;
+  return (
+    <>
+      <button ref={button} type="button" className="btn primary ep-apply" aria-haspopup="dialog" aria-expanded={open} disabled={turning(view)} onClick={() => setOpen((o) => !o)}>
+        Apply changes
+        <b>{count}</b>
+      </button>
+      <Popover open={open} onClose={() => setOpen(false)} anchor={button} side="bottom" align="end" offset={8} width={420} className="ep-apply-pop" title="Apply your changes" description="Nothing has been planned or drawn for them yet.">
+        <ul className="ep-apply-list">
+          {lines > 0 && (
+            <li>
+              <Bot aria-hidden="true" />
+              <span>
+                <b>
+                  {writer.slice(0, 1).toUpperCase() + writer.slice(1)} plans {lines === 1 ? "a picture for the line" : `pictures for the ${lines} lines`} you gave one
+                </b>
+                , first.
+              </span>
+            </li>
+          )}
+          {again.length > 0 && (
+            <li data-tone="amber">
+              <RotateCcw aria-hidden="true" />
+              <span>
+                <b>
+                  {again.length} {again.length === 1 ? "picture is" : "pictures are"} drawn again
+                </b>
+                , made for the plan as it was: {again.slice(0, 4).map(where).join(", ")}
+                {again.length > 4 ? ` and ${again.length - 4} more` : ""}.
+              </span>
+            </li>
+          )}
+          {fresh.length > 0 && (
+            <li>
+              <Sparkles aria-hidden="true" />
+              <span>
+                <b>
+                  {fresh.length} new {fresh.length === 1 ? "picture is" : "pictures are"} made
+                </b>
+                .
+              </span>
+            </li>
+          )}
+        </ul>
+        {again.length > 0 && (
+          <p className="ep-apply-warn" role="note">
+            <TriangleAlert aria-hidden="true" />
+            <span>{againCost(again)}</span>
+          </p>
+        )}
+        <div className="ep-apply-act">
+          <button type="button" className="btn" onClick={() => setOpen(false)}>
+            Not now
+          </button>
+          <button
+            type="button"
+            className="btn primary"
+            autoFocus
+            disabled={busy || turning(view)}
+            onClick={() => {
+              setOpen(false);
+              void run(() => api.applyEpisode(view.id));
+            }}
+          >
+            {again.length > 0 ? `Apply and draw ${again.length} again` : "Apply"}
+          </button>
+        </div>
+      </Popover>
+    </>
+  );
+}
+
+// The film's agent: it writes the changes asked for and draws the pictures, from here on. Shown
+// where more than one is ready on this computer. A chapter can have another draw its pictures.
+function AgentTool({ view, run, busy }: Props) {
+  const ready = view.options.writers.filter((w) => w.ready);
+  const now = view.options.writers.find((w) => w.id === view.settings.writer);
+  if (ready.length < 2) return null;
+  return (
+    <Tool icon={Bot} label="Agent" value={now?.title ?? "None"} width={380}>
+      {(close) => (
+        <Options
+          label="Agent"
+          value={view.settings.writer}
+          disabled={busy || turning(view)}
+          onChange={(writer) => {
+            close();
+            keepWriter(writer);
+            void choose(view, run, { writer });
+          }}
+          options={ready.map((w) => ({
+            value: w.id,
+            label: w.title,
+            note: w.local ? "A coding agent on this computer, signed in as you are." : "The engine's own agent, on the model it is set up with.",
+          }))}
+        />
+      )}
+    </Tool>
+  );
+}
+
+// One of a few, each said in a line: the arrow keys move between them, as radio buttons do.
+function Options<T extends string>({ label, value, options, disabled, onChange }: { label: string; value: T; options: { value: T; label: string; note: string; disabled?: boolean }[]; disabled: boolean; onChange: (value: T) => void }) {
+  const name = useId();
+  return (
+    <fieldset className="ep-options">
+      <legend className="sr-only">{label}</legend>
+      {options.map((o) => (
+        <label key={o.value} data-disabled={o.disabled || undefined}>
+          <input type="radio" name={name} value={o.value} checked={o.value === value} disabled={disabled || o.disabled} onChange={() => o.value !== value && onChange(o.value)} />
+          <span>
+            <b>{o.label}</b>
+            <small>{o.note}</small>
+          </span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
+// The rendered film, as a file: the last render, said so when the film has changed since.
+export function FilmDownload({ view }: { view: EpisodeView }) {
+  const film = view.film_state;
+  if (film.status !== "done" || !film.file) return null;
+  return (
+    <Tooltip content={film.stale ? "Download the film as last rendered; it has changed since" : "Download the film"} side="bottom" align="end">
+      <a className="icon-btn" href={film.file.url} download={`${view.title}.mp4`} aria-label="Download the film">
+        <Download />
+      </a>
+    </Tooltip>
+  );
+}

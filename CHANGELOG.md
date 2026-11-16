@@ -30,16 +30,17 @@
     seconds apart; the sheet opens on 5 to 7), and the script must land between the two. A
     plan that ends outside them says what was asked for beside its length. On Auto no length
     is asked for and none is checked: the material decides how long it runs.
-  - The studio is the plan and the recording in one place: the film's page (its chapters, the
-    look, the voice, the pictures' level) and, per chapter, the script, the frame for the
-    picked line and that line's choices (who has the frame, the layout, a simple picture or a
-    rich one posed as stills for the person's go). A pick is kept beside the plan and never
+  - The studio is the plan and the recording in one place: the film's page (the whole script
+    beside the film) and, per chapter, the script, the frame for the picked line and that
+    line's choices (who has the frame and the layout). A pick is kept beside the plan and never
     undone by a later stage. A layout can be used for the chapter or the film, a picture can
     sit beside the person or fill the screen, and the line that brings a picture in can be
     given another type of picture and another transition (cut, push, crossfade, zoom), which
-    the film renders by moving the picture's whole box. A new look redraws every picture, so
-    the film's page says how many and waits for a yes; while pictures are being made it shows
-    how far they are with a Stop, and the ones that stopped are made again on request.
+    the film renders by moving the picture's whole box. While pictures are being made a pill
+    in the bar fills as they land, with a Stop, and opens onto every picture with its state and
+    what its builder is doing. The ones that stopped are made again on request. While the plan
+    is written its stages stand as a trail, the one under way opening onto the writer's latest
+    steps and notes (the demo's writer keeps its turns in the record as an agent does).
   - The plan is read, and changed, before anything is drawn. A line's words are changed where
     they are read (nothing is read or drawn again; the writer only fits a step whose word is
     gone). Anything else is asked for in words in a change bar under the script, of the line,
@@ -58,7 +59,26 @@
     Shift+Cmd/Ctrl+Z puts it back. The studio's controls use more of affectUI's free parts
     (Segmented Control, Tooltip, Popover, Kbd, Shimmer Loader); the word marks, the drop
     place and the device choice are the studio's own.
-  - Each picture is one HyperFrames sub-composition built by the same writer, in the channel's
+  - Pictures are made when they are asked for: one from its block in the chapter's script (a
+    card with the picture, a placeholder until it is made, over the lines it is shown on), a
+    chapter's together by asking to record the chapter (the camera opens once they are made),
+    or the whole film's from the bar. A picture is simple or rich, on its block or for the
+    film. A rich one is planned before it is drawn: its builder writes a motion plan (a
+    device, a world, and a shot for each line: what it opens on, the one move the line is
+    about, what its still shows), code holds it to its shape, the studio shows it on the
+    picture's lines, and the picture is built to it and posed for the person's go. One picture
+    can be stopped by itself.
+  - Picks are free to try: a frame, a layout for the chapter or the film, a kind of picture, the
+    look, a level or an agent changes the plan and the preview and starts no agent. A picture
+    made before is out of date until the person presses Apply changes in the bar (or Draw it
+    again on its block); a pick that needs the writer waits too, and Apply runs the writer's
+    part first. Apply says what will run, and that drawing a made picture again is another full
+    run of its agent, before anything starts. A pick taken back makes its picture current again.
+  - Where more than one agent is ready, which one works is chosen at three levels: the film's
+    agent in the bar (it writes the changes asked for and draws the pictures from then on), a
+    chapter's in its head (for its pictures), and a picture's own when it was not made and is
+    tried again. A new episode starts with the agent picked last on that computer.
+  - Each picture is one HyperFrames sub-composition built by an agent, in the channel's
     brand: its colours by role and its type, staged on the thread's computer. Every time in it
     comes from a clock block code rewrites, so a recording never sends a picture back to its
     builder. Each is held to the renderer's own check (lint, runtime, layout, contrast) and
@@ -68,9 +88,16 @@
     a file; where each line starts in the take sets how long it runs in the film and when its
     picture's cues land. The film is one HyperFrames page written by code and rendered on the
     thread's computer; before anything is recorded it renders as a draft with a stand-in.
-  - A chapter's page reads like a document: the chapters as slides down the left, the script in
-    the middle as a block per picture and per run said to camera, and the frame for the picked
-    line on the right, which opens full screen with its choices and the recorder. A picture's
+  - Every page of the studio is three columns: the film and its chapters as slides down the
+    left (the film first, as its title card), a document in the middle and the frame on the
+    right. The film's page has the whole script as one document, chapter by chapter, with the
+    film beside it: pointing at a line shows its frame, and a chapter opens at the line picked.
+    A chapter's page has its script as a block per picture and per run said to camera, and the
+    frame for the picked line, which opens full screen with its choices and the recorder. The
+    film's look, voice and pictures' level are buttons in the bar over every page, each saying
+    what is chosen, beside the film's agent; the look is picked from cards of the frames each
+    look is made of, the rendered film is downloaded from the bar, and light or dark is
+    switched there as in the sidebar (each switch hears the other). A picture's
     kind and its way in are picked from tiles that draw each kind and play each move as the film
     makes it, with one line saying what the one pointed at is.
   - A take is recorded as the camera and the microphone give it: no echo cancelling, one

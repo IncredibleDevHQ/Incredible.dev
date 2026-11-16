@@ -6,7 +6,7 @@
 import { Paperclip, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, type EpisodeOptions, type FileView, type WriterId } from "../../api";
-import { LOOKS, mmss } from "../../episode";
+import { keepWriter, lastWriter, LOOKS, mmss } from "../../episode";
 import { useHouse, type EpisodeStart } from "../../store";
 import { AgentMark, FileList } from "../../ui";
 import { FileDrop } from "../FileDrop";
@@ -43,7 +43,9 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
       .then((o) => {
         setOptions(o);
         setRange(o.seconds.usual);
-        setWriter(o.writers.find((w) => w.ready)?.id ?? null);
+        // the agent picked last on this computer, while it is ready; else the first that is
+        const last = lastWriter();
+        setWriter(o.writers.find((w) => w.ready && w.id === last)?.id ?? o.writers.find((w) => w.ready)?.id ?? null);
       })
       .catch((error: Error) => useHouse.getState().say(error.message));
   }, []);
@@ -68,6 +70,7 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
   const plan = async () => {
     if (!channelId || !writer || !hasMaterial) return;
     setBusy(true);
+    keepWriter(writer);
     try {
       const view = await api.newEpisode(channelId, {
         title: title.trim(),

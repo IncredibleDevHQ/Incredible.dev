@@ -290,6 +290,12 @@ export type EpisodePlan = {
   totals: { seconds: number; words: number; chapters: number; beats: number; frames: number; cues: number };
 };
 export type PictureStatus = "none" | "queued" | "making" | "posing" | "go" | "made" | "failed";
+// A rich picture's motion plan, written by its builder before it is drawn: how the picture
+// carries its idea, where it happens, and for each of its lines what it opens on, the one move
+// the line is about, how the rest lands and what the line's still shows.
+// `shot` is the shot in one short sentence, for a person; the rest is the builder's detail.
+export type MotionShot = { frame: string; shot: string; opens_on: string; hero: string; others: string; still: string };
+export type Motion = { device: string; world: string; shots: MotionShot[] };
 export type EpisodeUnit = {
   id: string;
   chapter: string;
@@ -301,8 +307,26 @@ export type EpisodeUnit = {
   kind_of_picture: string;
   seconds: number;
   level: Level;
+  // Whose the level is: the person's pick for this picture, or the film's.
+  level_by: "person" | "film";
   suggest: Level;
-  picture: { status: PictureStatus; stills: Record<string, FileView>; clip: FileView | null; stale: boolean; failure: string; note: string };
+  // Who builds it: the agent picked for this picture, else the film's writer.
+  builder: WriterId;
+  // `status` is "none" until the picture is asked for. `level` and `builder` are what it was
+  // built as and by whom (empty for one made before they were kept), `motion` a rich one's
+  // plan, `doing` the step its builder is on while it is being made.
+  picture: {
+    status: PictureStatus;
+    level: Level | "";
+    builder: string;
+    motion: Motion | null;
+    stills: Record<string, FileView>;
+    clip: FileView | null;
+    stale: boolean;
+    failure: string;
+    note: string;
+    doing: string;
+  };
 };
 export type EpisodeTake = {
   id: string;
@@ -346,6 +370,11 @@ export type EpisodeView = EpisodeCard & {
   takes: EpisodeTake[];
   film_state: { status?: "rendering" | "done" | "failed"; fraction?: number; failure?: string; file?: FileView | null; stale?: boolean; seconds?: number };
   checks: EpisodeCheck[];
+  // Who builds each chapter's pictures: the agent picked for the chapter, else the film's writer.
+  builders: Record<string, WriterId>;
+  // What the person's picks leave the writer (a line that now needs a picture), waiting for
+  // them to apply their changes: nothing is planned or drawn until they do.
+  waiting: { line: string; do: string }[];
   runs: EpisodeRun[];
   options: EpisodeOptions;
   // The turn under way or last made: when it began, and a person's own words when they asked for it.
@@ -357,7 +386,10 @@ export type EpisodeView = EpisodeCard & {
   undone: EpisodeChange | null;
   // Lines reworded after they were recorded: the take still says the old words.
   rerecord: string[];
+  // The writer's turn on the plan while it works: its steps and its own notes, newest last.
+  working: { harness: string; since: number; events: WorkEvent[] } | null;
 };
+export type WorkEvent = { kind: "step" | "note"; text: string; at: number };
 export type AskScope = "film" | "chapter" | "line" | "picture";
 export type EpisodeAsk = { scope: AskScope; target?: string; text: string };
 export type EpisodeChange = {
@@ -383,7 +415,10 @@ export type EpisodeChoices = {
   chapters?: Record<string, EpisodePick>;
   all?: EpisodePick;
   clear?: string[];
-  units?: Record<string, { level: Level }>;
+  // A picture's level, and who builds it (null gives it back to its chapter's agent).
+  units?: Record<string, { level?: Level; builder?: WriterId | null }>;
+  // Who builds a chapter's pictures, by chapter (null gives them back to the film's writer).
+  builders?: Record<string, WriterId | null>;
 };
 export type Session = {
   me: string;
@@ -523,8 +558,12 @@ export const api = {
   undoEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/undo`),
   redoEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/redo`),
   planAgain: (id: string, writer: WriterId | "" = "") => call<EpisodeView>("POST", `/api/episodes/${id}/again`, { writer }),
-  stopEpisode: (id: string) => call<{ ok: boolean }>("POST", `/api/episodes/${id}/stop`),
-  makePictures: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures`),
+  // Stops everything under way for the episode, or the one picture named.
+  stopEpisode: (id: string, unit = "") => call<{ ok: boolean }>("POST", `/api/episodes/${id}/stop`, { unit }),
+  // Runs what the picks and changes wait on: the writer's part, then the pictures out of date.
+  applyEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/apply`),
+  // Asks for pictures: the ones named, a chapter's, or with neither the ones that stopped.
+  makePictures: (id: string, which: { units?: string[]; chapter?: string } = {}) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures`, which),
   pictureGo: (id: string, unit: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/go`),
   pictureNote: (id: string, unit: string, text: string) =>
     call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/note`, { text }),

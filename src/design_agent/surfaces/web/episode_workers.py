@@ -74,8 +74,10 @@ TURN_SECONDS = 30 * 60
 READ_SECONDS = 5 * 60
 RUN_EVENTS = 400
 
-#: The brief a picture turn names, as a path in the episode's folder.
+#: The brief a picture turn names, as a path in the episode's folder, and the motion plan a
+#: rich picture's first turn is to write.
 BRIEF_FILE = re.compile(r"pictures/[A-Za-z0-9_-]+\.brief\.json")
+MOTION_FILE = re.compile(r"pictures/[A-Za-z0-9_-]+\.motion\.json")
 
 #: A turn's step or note, as it happens: its kind and its words.
 Heard = Callable[[str, str], None]
@@ -393,15 +395,25 @@ class BuiltinWorker:
 
 class DemoWorker:
     """The demo's writer: a plan written ahead of time, handed over a stage at a turn, and
-    pictures drawn by code. Nothing is asked of any model."""
+    pictures drawn by code. Nothing is asked of any model. Given the house's store, it keeps
+    each turn in the record as a writer does, its steps and a note on what it is doing, so the
+    studio shows the work as it happens."""
 
     id = DEMO
     title = "The demo's writer"
 
-    def __init__(self, *, data_dir: Path, script: Mapping[str, Any], pause: float = 0.6) -> None:
+    def __init__(
+        self,
+        *,
+        data_dir: Path,
+        script: Mapping[str, Any],
+        pause: float = 0.6,
+        store: Store | None = None,
+    ) -> None:
         self.root = data_dir / "episodes"
         self.script = script
         self.pause = pause
+        self.store = store
 
     def folder(self, episode: Row) -> Path:
         return self.root / str(episode["id"])
@@ -423,9 +435,42 @@ class DemoWorker:
             target.write_bytes(content)
 
     async def turn(self, episode: Row, *, lane: str, prompt: str, heard: Heard) -> Told:
+        if self.store is None:
+            return await self._turn(episode, lane=lane, prompt=prompt, heard=heard)
+        record = self.store.add_run(
+            thread_id=str(episode["thread_id"]),
+            lane=lane,
+            harness=self.id,
+            prompt=prompt,
+            session="",
+        )
+        events: list[dict[str, Any]] = []
+
+        def kept(kind: str, text: str) -> None:
+            events.append({"kind": kind, "text": text, "at": time.time()})
+            assert self.store is not None  # noqa: S101 - set above
+            self.store.update_run(str(record["id"]), steps=events)
+            heard(kind, text)
+
+        told = Told(stopped=True)
+        try:
+            told = await self._turn(episode, lane=lane, prompt=prompt, heard=kept)
+        finally:
+            self.store.update_run(
+                str(record["id"]),
+                answer=told.answer,
+                failure=told.failure,
+                state="stopped" if told.stopped else "failed" if told.failure else "done",
+                ended_at=time.time(),
+            )
+        return told
+
+    async def _turn(self, episode: Row, *, lane: str, prompt: str, heard: Heard) -> Told:
         folder = self.folder(episode)
         if lane.startswith("picture:") and "Look at how" in prompt:
             return Told(answer="Nothing to change.")
+        if lane.startswith("picture:") and "Stage: motion plan" in prompt:
+            return await self._motion(folder, prompt, heard)
         if lane.startswith("picture:"):
             heard("step", "Drawing the picture")
             await asyncio.sleep(self.pause)
@@ -448,6 +493,17 @@ class DemoWorker:
         stage = next((s for s in ("brief", "script", "frames") if f"Stage: {s}" in prompt), "fix")
         heard("step", "Reading the material")
         await asyncio.sleep(self.pause)
+        chapters = self.script["plan"].get("chapters") or []
+        heard(
+            "note",
+            {
+                "brief": "One idea carries the film: "
+                + str(self.script["plan"].get("brief", {}).get("idea") or "the material's own."),
+                "script": f"{len(chapters)} chapters, each answering one question, the same example running through.",
+                "frames": "A picture for each idea that needs one; each question is said to camera.",
+            }.get(stage, "Fixing what the checks found."),
+        )
+        await asyncio.sleep(self.pause)
         if stage == "brief":
             plan = {"brief": plan["brief"], "material": plan["material"]}
         elif stage == "script":
@@ -467,6 +523,48 @@ class DemoWorker:
         (folder / "plan.json").write_text(json.dumps(plan, indent=1), encoding="utf8")
         await asyncio.sleep(self.pause)
         return Told(answer=f"Wrote the {stage} stage.")
+
+    async def _motion(self, folder: Path, prompt: str, heard: Heard) -> Told:
+        """A rich picture's motion plan, read off its brief: each line's first step is the move
+        the line is about, its other steps land around it, and its still is what the line
+        shows when it is finished. Enough to show a plan landing before its picture, with no
+        model."""
+        named, target = BRIEF_FILE.search(prompt), MOTION_FILE.search(prompt)
+        if named is None or target is None or not (folder / named.group(0)).is_file():
+            return Told(failure="The turn named no brief to plan from.")
+        brief = json.loads((folder / named.group(0)).read_text("utf8"))
+        heard("step", "Reading the picture's lines")
+        await asyncio.sleep(self.pause)
+        shots: list[dict[str, str]] = []
+        for n, line in enumerate(brief["lines"]):
+            steps = [str(c.get("does") or "").strip() for c in line.get("cues", [])]
+            steps = [step for step in steps if step]
+            shows = str(line.get("shows_when_finished") or "").strip()
+            focal = str(line.get("focal") or "").strip()
+            hero = steps[0] if steps else f"{focal or 'The picture'} holds still to be read"
+            shots.append(
+                {
+                    "frame": str(line["frame"]),
+                    "shot": " ".join((hero[:1].upper() + hero[1:]).split()[:20]),
+                    "opens_on": "What the lines before left in place."
+                    if n
+                    else "The frame the picture grows in, with nothing in it yet.",
+                    "hero": hero[:1].upper() + hero[1:],
+                    "others": "; ".join(steps[1:]),
+                    "still": shows if not shows.startswith("(") else "The picture as it stood.",
+                }
+            )
+        heard("note", f"{len(shots)} shots, one a line: each line gets the one move it is about.")
+        await asyncio.sleep(self.pause)
+        plan = {
+            "device": "one diagram that grows",
+            "world": "The film's own ground, flat and evenly lit; every part is a card of paper.",
+            "shots": shots,
+        }
+        heard("step", f"Writing {Path(target.group(0)).name}")
+        (folder / target.group(0)).write_text(json.dumps(plan, indent=1), encoding="utf8")
+        await asyncio.sleep(self.pause)
+        return Told(answer=f"Wrote the motion plan: {len(shots)} shots.")
 
     async def _change(self, folder: Path, prompt: str, heard: Heard) -> Told:
         """The two changes the demo's writer knows: it says the line it was asked about in

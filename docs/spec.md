@@ -695,11 +695,12 @@ app's canvas, from a channel's material or a research frame's notes.
 - **The plan** is written by a writer the person picks (a coding agent on their computer, or the
   built-in agent), in stages: the brief, the script, a frame for every line. A typed classifier
   reads the words and gives every label; code derives every number and holds each stage to the
-  checks before the next. The plan can be read and changed as soon as it is written; the
-  person's one go is for its pictures to be made. Its length is asked for as a least and a
+  checks before the next. The plan can be read and changed as soon as it is written; nothing is
+  drawn until a person asks for its pictures. Its length is asked for as a least and a
   most, at least 30 seconds apart, and the script must land between the two (a plan that ends
   outside them says what was asked for beside its length); on Auto no length is asked for and
-  none is checked, so the material decides how long it runs.
+  none is checked, so the material decides how long it runs. While it is written, the stages
+  stand as a trail, the one under way opening onto the writer's latest steps and notes.
 - **Changing it** takes two forms and no others. A line's words are changed where they are
   read: they are in at once, nothing is read or drawn again, and the writer is asked only to
   fit a step of the line's picture whose word is gone. Anything else is asked for in words, of
@@ -719,28 +720,74 @@ app's canvas, from a channel's material or a research frame's notes.
 - **Asking ahead.** While the writer is on one change, the next can be typed: it waits, in
   order, and is asked when that one lands. If the turn stops, what waits is held until the
   person sends it or lets it go. What waits lives in the open studio, not in the house.
-- **The studio** is the plan and the recording in one place. A chapter's page has the chapters
-  down its left as slides (each one's first picture as it stands, its question and where it
-  stands), the chapter's script in the middle as a document (a block for each picture, with its
-  kind, level, state and what it shows over the lines it is shown on, and a block for each run
-  of lines said to camera), and the frame for the picked line on the right. The frame opens full
-  screen with that line's choices and the recorder; a take opens it. One pick of a frame from the look's layouts
+- **The studio** is the plan and the recording in one place, and every page of it has the same
+  three columns. Down the left are the film and its chapters as slides: the film first, as its
+  title card, then each chapter's first picture as it stands, its question and where it
+  stands. The film's page has the whole script in the middle as one document (the plan's idea
+  and who wrote it, then each chapter's question over its lines, run on as text in its blocks)
+  and the film on the right: pointing at a line shows its frame there, a click keeps it, and
+  the frame, a double click or Enter opens the chapter at that line; under it stand the film's
+  length, its render and the next chapter to record. A chapter's page has the chapter's script
+  in the middle as a document: a block for each run of lines said to camera, and for each
+  picture a card that holds the picture itself (a placeholder until it is made), its kind,
+  where it stands, how it is made and what it shows, over the lines it is shown on. The frame
+  for the picked line is on the right. The frame opens full screen with that line's
+  choices and the recorder; a take opens it. The bar over every page holds the film's own
+  choices, each a button that says what is chosen: its look (each drawn as the frames it is
+  made of), its voice, its pictures' level and its agent; beside them stand where the pictures
+  are, once the film is rendered its file, and light or dark (the same switch as the
+  sidebar's, which the studio covers). One pick of a frame from the look's layouts
   sets who has the frame and how; it is the line's own until it is widened, in one click, to
-  the picture's other lines, the chapter or the film. A picture is simple, or rich and posed
-  as stills for the person's go, and the line that brings it in may be given another kind of
-  picture and another way in (a cut, a push, a crossfade, a zoom), picked from tiles that draw
+  the picture's other lines, the chapter or the film. The line that brings a picture in may be
+  given another kind of picture and another way in (a cut, a push, a crossfade, a zoom),
+  picked from tiles that draw
   each kind and play each move as the film makes it, with a line saying what each one is. A
   person's pick is kept beside the plan and applied every time it is read, and taking it back
   restores the plan's.
-- **Pictures** are HyperFrames sub-compositions built by the writer. Code sets every time in
+- **Pictures** are HyperFrames sub-compositions built by an agent. Code sets every time in
   them, from the plan's clock while they are posed and from the take's once a chapter is
-  recorded. A picture is drawn for its layout's box, so a new look for the film redraws every
-  picture: once pictures exist the studio says how many and waits for a yes. Stop ends the
-  pictures under way as well as the plan; the ones that stopped are made again only on request.
+  recorded. A picture is made when a person asks for it: one from its block, a chapter's
+  together by asking to record the chapter, or the whole film's from the bar.
+- **Picks are free to try; nothing runs until it is applied.** A pick (a frame, a layout for the
+  chapter or the film, a kind of picture, the look, a level, an agent) changes the plan and the
+  preview at once and starts no agent. A picture made before it is out of date: it keeps its
+  still and says so on its block, its slide and the pictures pill, and a pick taken back makes it
+  current again. A pick that leaves the writer something to do (a line said to camera given a
+  picture, a picture whose first line goes to camera) waits as well. Apply changes, in the bar,
+  says what will run before anything does: the writer's part first, then the pictures drawn
+  again, then (once the plan is approved) the new ones. Drawing a made picture again is another
+  full run of its agent, so Apply and a block's Draw it again both say so first. A change asked
+  for in words is the writer's turn the person asked for; the pictures it puts out of date wait
+  in the same way. While pictures
+  are made, their blocks say the step each builder is on, and a pill in the bar fills as they
+  land and opens onto every picture; one opens its chapter. Stop ends the pictures under way
+  as well as the plan, or one picture from its block; the ones that stopped are made again
+  only on request.
+- **Simple and rich.** A picture is simple (drawn at once from the plan) or rich, by the
+  film's choice or its own. A rich picture is planned before it is drawn, the way a
+  HyperFrames explainer plans a frame as a shot sequence before any HTML: its builder writes
+  a motion plan (how the picture carries its idea, from a closed list of nine devices; where
+  it happens; and for each of its lines what it opens on, the one move the line is about, how
+  the rest lands and what its still shows). The plan never moves a word or a cue: code still
+  sets every time. Code holds it to its shape (one shot per line), the studio shows it on the
+  picture's lines while the picture is drawn, the picture is built to it, its builder looks at
+  the stills once, and the stills wait for the person's go. A made picture switched to the
+  other level is out of date until it is applied or drawn again.
+- **Which agent works** is a person's choice at three levels, each among the agents that are
+  ready (a coding agent on their computer, or the built-in one). The film's agent, in the bar,
+  writes the changes asked for and draws the pictures from then on. A chapter can have another
+  draw its pictures, picked in the chapter's head. A picture that was not made can be tried
+  with another. A picture is drawn by its own agent, else its chapter's, else the film's; each
+  agent draws its own pictures a few at a time. A new episode starts with the agent picked
+  last on that computer.
 - **A take** per chapter is recorded in the browser or brought as a file (picked, or dropped
-  on the chapter's frame). Where each line starts in it sets the film's clock for that
+  on the chapter's frame). A chapter is said over its pictures, so it is recorded once they
+  are made: asking to record one whose pictures nobody asked for yet makes them first, and
+  the camera opens when none is still on its way (a picture that failed does not hold a take
+  back). Where each line starts in the take sets the film's clock for that
   chapter. One line can be recorded again on its own, and a line reworded after it was
-  recorded says so. Before the take the microphone's level shows, and the microphone and
+  recorded says so. A picture out of date does not hold a take back. Before the take the
+  microphone's level shows, and the microphone and
   camera can be chosen; the choice is kept on that computer and falls back to the browser's
   own when the device is not there. During the take the time planned for the chapter stands
   beside the time run, and the words to say can be drawn larger.

@@ -249,7 +249,7 @@ async def test_a_writer_that_gives_no_reply_stops_the_plan_and_it_can_be_picked_
 
 async def test_approving_the_plan_starts_its_pictures(house: AgentHost) -> None:
     episode_id = await planned(house)
-    with pytest.raises(ValueError, match="Approve the plan first"):
+    with pytest.raises(ValueError, match="Make a picture or record a chapter first"):
         house.episodes.render(episode_id, by="you")
     house.episodes.approve(episode_id, by="you")
     await settle(lambda: not house.episodes._busy(episode_id))
@@ -285,6 +285,235 @@ async def test_stop_reaches_the_pictures_and_the_ones_that_stopped_are_made_on_r
     assert {u["picture"]["status"] for u in view["units"]} == {"made"}
     with pytest.raises(ValueError, match="made or on its way"):
         house.episodes.make(episode_id, by="you")
+
+
+async def test_a_picture_is_made_by_name_before_the_rest_and_a_chapters_together(
+    house: AgentHost,
+) -> None:
+    episode_id = await planned(house)
+    desk = house.episodes
+    units_at_first = desk.view(episode_id)["units"]
+    first = units_at_first[0]
+    with pytest.raises(ValueError, match="no picture to make there"):
+        desk.make(episode_id, by="you", only=["nope"])
+    desk.make(episode_id, by="you", only=[first["id"]])
+    await settle(lambda: not desk._busy(episode_id))
+    view = desk.view(episode_id)
+    states = {u["id"]: u["picture"]["status"] for u in view["units"]}
+    assert states[first["id"]] == "made" and set(states.values()) == {"made", "none"}
+    # the studio is open and a draft can be rendered, though the plan's other pictures wait
+    assert view["status"] == "studio" and not view["approved"]
+    assert view["pictures"] == {"made": 1, "go": 0, "making": 0, "failed": 0}
+    # a pick that touches nothing of an unasked picture starts none
+    desk.choose(episode_id, by="you", change={"settings": {"voice": "live"}})
+    assert not desk._busy(episode_id)
+    # a chapter's pictures are asked for together; the one already made is left as it is
+    chapter = next(u["chapter"] for u in units_at_first if u["chapter"] != first["chapter"])
+    wanted = [u["id"] for u in units_at_first if u["chapter"] == chapter]
+    kept = desk.store.picture(episode_id, first["id"])
+    desk.make(episode_id, by="you", chapter=chapter)
+    await settle(lambda: not desk._busy(episode_id))
+    states = {u["id"]: u["picture"]["status"] for u in desk.view(episode_id)["units"]}
+    assert all(states[u] == "made" for u in wanted)
+    assert sum(1 for state in states.values() if state == "made") == 1 + len(wanted)
+    assert desk.store.picture(episode_id, first["id"])["updated_at"] == kept["updated_at"]  # type: ignore[index]
+    # approving the plan asks for every picture that is left
+    desk.approve(episode_id, by="you")
+    await settle(lambda: not desk._busy(episode_id))
+    assert {u["picture"]["status"] for u in desk.view(episode_id)["units"]} == {"made"}
+
+
+async def test_one_picture_is_stopped_and_the_others_go_on(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    episode_id = await planned(house)
+    desk = house.episodes
+    slow, quick = (u["id"] for u in desk.view(episode_id)["units"][:2])
+
+    class Uneven(DemoWorker):
+        async def turn(self, episode: Any, *, lane: str, prompt: str, heard: Any) -> Told:
+            if lane == f"picture:{slow}":
+                await asyncio.sleep(30)
+            return await super().turn(episode, lane=lane, prompt=prompt, heard=heard)
+
+    desk.workers[DEMO] = Uneven(data_dir=tmp_path, script=SCRIPT, pause=0)
+    desk.make(episode_id, by="you", only=[slow, quick])
+    await settle(lambda: desk.store.picture(episode_id, quick)["status"] == "made")  # type: ignore[index]
+    desk.stop(episode_id, slow)
+    await settle(lambda: not desk._busy(episode_id))
+    assert desk.store.picture(episode_id, slow)["failure"] == "Stopped."  # type: ignore[index]
+    assert desk.store.picture(episode_id, quick)["status"] == "made"  # type: ignore[index]
+
+
+async def test_a_rich_picture_is_planned_shot_by_shot_before_it_is_drawn(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    desk = house.episodes
+    desk.workers[DEMO] = DemoWorker(data_dir=tmp_path, script=SCRIPT, pause=0, store=house.store)
+    episode_id = await planned(house)
+    unit = next(u for u in desk.view(episode_id)["units"] if len(u["frames"]) > 1)
+    # its level is picked before it is asked for: nothing is drawn by the pick
+    view = desk.choose(episode_id, by="you", change={"units": {unit["id"]: {"level": "rich"}}})
+    picked = next(u for u in view["units"] if u["id"] == unit["id"])
+    assert picked["level"] == "rich" and picked["level_by"] == "person"
+    assert picked["picture"]["status"] == "none" and not desk._busy(episode_id)
+    desk.make(episode_id, by="you", only=[unit["id"]])
+    await settle(lambda: not desk._busy(episode_id))
+    made = next(u for u in desk.view(episode_id)["units"] if u["id"] == unit["id"])["picture"]
+    assert made["status"] == "go" and made["level"] == "rich" and made["builder"] == DEMO
+    motion = made["motion"]
+    assert motion["device"] in picture.DEVICES and motion["world"]
+    assert [shot["frame"] for shot in motion["shots"]] == unit["frames"]
+    assert all(shot["shot"] and shot["hero"] and shot["still"] for shot in motion["shots"])
+    # the plan came first, the picture was built to it, and its builder then looked at it
+    thread_id = desk.view(episode_id)["thread_id"]
+    turns = [str(r["prompt"]) for r in house.store.runs(thread_id, f"picture:{unit['id']}")]
+    assert [turn.split("\n")[0] for turn in turns[:2]] == ["Stage: motion plan.", "Stage: picture."]
+    assert "Look at how" in turns[2] and "motion_plan" in turns[1]
+    folder = desk.data_dir / "episodes" / episode_id / "pictures"
+    brief = json.loads((folder / f"{picture.composition_id(unit['id'])}.brief.json").read_text())
+    assert brief["motion_plan"] == motion and brief["level"] == "rich"
+
+
+async def test_a_motion_plan_that_breaks_its_shape_goes_back_once_then_the_picture_says_so(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    asked: list[str] = []
+
+    class Vague(DemoWorker):
+        async def turn(self, episode: Any, *, lane: str, prompt: str, heard: Any) -> Told:
+            if "Stage: motion plan" in prompt:
+                asked.append(prompt)
+                target = self.folder(episode) / picture.motion_file(lane.removeprefix("picture:"))
+                target.write_text(json.dumps({"device": "a slide", "shots": []}))
+                return Told(answer="Planned it.")
+            return await super().turn(episode, lane=lane, prompt=prompt, heard=heard)
+
+    desk = house.episodes
+    desk.workers[DEMO] = Vague(data_dir=tmp_path, script=SCRIPT, pause=0)
+    episode_id = await planned(house, level="rich")
+    unit = desk.view(episode_id)["units"][0]
+    desk.make(episode_id, by="you", only=[unit["id"]])
+    await settle(lambda: not desk._busy(episode_id))
+    made = desk.view(episode_id)["units"][0]["picture"]
+    assert made["status"] == "failed" and made["motion"] is None
+    assert made["failure"].startswith("Its motion plan could not be used: ")
+    assert len(asked) == 2 and "has no shot" in asked[1] and '"device" is one of' in asked[1]
+    # nothing was drawn from a plan that does not stand
+    assert not (
+        desk.data_dir
+        / "episodes"
+        / episode_id
+        / "pictures"
+        / f"{picture.composition_id(unit['id'])}.html"
+    ).exists()
+
+
+def test_a_motion_plan_keeps_one_shot_a_line_and_only_what_its_shape_names() -> None:
+    unit = {"id": "c1.b1.f1", "frames": ["c1.b1.f1", "c1.b2.f1"]}
+    shot = {
+        "shot": "A drawer opens.",
+        "hero": "The drawer  slides out.",
+        "still": "The drawer, open.",
+        "camera": "push",
+    }
+    text = json.dumps(
+        {
+            "device": "one diagram that grows",
+            "world": "A bench.",
+            "palette": "ink on paper",
+            "shots": [{"frame": "c1.b2.f1", **shot}, {"frame": "c1.b1.f1", **shot}],
+        }
+    )
+    plan, faults = picture.motion_plan(text, unit)
+    assert not faults and set(plan) == {"device", "world", "shots"}
+    # in the picture's own order, whatever order they were written in, and nothing extra
+    assert [s["frame"] for s in plan["shots"]] == unit["frames"]
+    assert plan["shots"][0] == {
+        "frame": "c1.b1.f1",
+        "shot": "A drawer opens.",
+        "opens_on": "",
+        "hero": "The drawer slides out.",
+        "others": "",
+        "still": "The drawer, open.",
+    }
+    assert picture.motion_plan("not json", unit)[1][0].startswith("the file is not JSON")
+    assert picture.motion_plan("[]", unit)[1] == [
+        'the file is one object with "device", "world" and a "shots" list'
+    ]
+    _, faults = picture.motion_plan(
+        json.dumps({"device": "boxes", "shots": [{"frame": "c1.b1.f1"}, {"frame": "c9.b1.f1"}]}),
+        unit,
+    )
+    assert 'the shot for line c1.b1.f1 needs "hero"' in faults
+    assert "line c1.b2.f1 has no shot: write one shot for every line, in order" in faults
+    assert "shots for lines the picture does not have: c9.b1.f1" in faults
+    assert any(f.startswith('"device" is one of') for f in faults) and any(
+        f.startswith('"world"') for f in faults
+    )
+    # the line a person reads beside the script is short; the builder's own detail is not cut
+    wordy = {**shot, "shot": " ".join(["word"] * 30), "hero": "x" * 900}
+    plan, faults = picture.motion_plan(
+        json.dumps(
+            {
+                "device": "two sides",
+                "world": "A bench.",
+                "shots": [{"frame": f, **wordy} for f in unit["frames"]],
+            }
+        ),
+        unit,
+    )
+    assert len(faults) == 2 and all("at most 20 words (it has 30)" in f for f in faults)
+    assert len(plan["shots"][0]["hero"]) == 900
+
+
+async def test_each_picture_can_be_built_by_another_agent(tmp_path: Path, house: AgentHost) -> None:
+    class Other(DemoWorker):
+        id = "codex"
+        title = "Codex"
+
+    desk = house.episodes
+    desk.workers[DEMO] = DemoWorker(data_dir=tmp_path, script=SCRIPT, pause=0, store=house.store)
+    desk.workers["codex"] = Other(data_dir=tmp_path, script=SCRIPT, pause=0, store=house.store)
+    episode_id = await planned(house)
+    mine, theirs = (u["id"] for u in desk.view(episode_id)["units"][:2])
+    with pytest.raises(ValueError, match="isn't ready on this computer"):
+        desk.choose(episode_id, by="you", change={"units": {theirs: {"builder": "kimi"}}})
+    view = desk.choose(episode_id, by="you", change={"units": {theirs: {"builder": "codex"}}})
+    builders = {u["id"]: u["builder"] for u in view["units"]}
+    assert builders[theirs] == "codex" and builders[mine] == DEMO
+    desk.make(episode_id, by="you", only=[mine, theirs])
+    await settle(lambda: not desk._busy(episode_id))
+    view = desk.view(episode_id)
+    built = {u["id"]: u["picture"] for u in view["units"]}
+    assert built[theirs]["status"] == "made" and built[theirs]["builder"] == "codex"
+    assert built[mine]["builder"] == DEMO
+    by_lane = {r["lane"]: r["harness"] for r in house.store.runs(view["thread_id"])}
+    assert by_lane[f"picture:{theirs}"] == "codex" and by_lane[f"picture:{mine}"] == DEMO
+    # a pick of its level keeps who builds it, and no builder gives it back to the film's writer
+    view = desk.choose(episode_id, by="you", change={"units": {theirs: {"level": "simple"}}})
+    assert next(u for u in view["units"] if u["id"] == theirs)["builder"] == "codex"
+    view = desk.choose(episode_id, by="you", change={"units": {theirs: {"builder": None}}})
+    assert next(u for u in view["units"] if u["id"] == theirs)["builder"] == DEMO
+    # a chapter's pictures are built by the agent picked for the chapter, unless one of them
+    # has its own; the film's writer builds the rest
+    chapter = next(u["chapter"] for u in view["units"] if u["id"] == theirs)
+    inside = [u["id"] for u in view["units"] if u["chapter"] == chapter]
+    with pytest.raises(ValueError, match="isn't ready on this computer"):
+        desk.choose(episode_id, by="you", change={"builders": {chapter: "kimi"}})
+    view = desk.choose(episode_id, by="you", change={"builders": {chapter: "codex"}})
+    assert view["builders"][chapter] == "codex"
+    assert {u["builder"] for u in view["units"] if u["id"] in inside} == {"codex"}
+    assert {b for c, b in view["builders"].items() if c != chapter} == {DEMO}
+    assert {u["builder"] for u in view["units"] if u["id"] not in inside} == {DEMO}
+    view = desk.choose(episode_id, by="you", change={"units": {inside[0]: {"builder": DEMO}}})
+    assert next(u for u in view["units"] if u["id"] == inside[0])["builder"] == DEMO
+    view = desk.choose(episode_id, by="you", change={"builders": {chapter: None}})
+    assert view["builders"][chapter] == DEMO
+    # the film's writer is changed the same way: it builds what no pick names from then on
+    view = desk.choose(episode_id, by="you", change={"settings": {"writer": "codex"}})
+    assert view["settings"]["writer"] == "codex" and view["builders"][chapter] == "codex"
+    assert next(u for u in view["units"] if u["id"] == inside[0])["builder"] == DEMO
 
 
 async def test_a_restart_stops_what_was_under_way_and_the_card_says_where_it_stands(
@@ -542,7 +771,7 @@ async def _async(value: Any) -> Any:
     return value
 
 
-async def test_a_pick_is_kept_and_a_new_layout_builds_the_picture_for_its_new_canvas(
+async def test_a_pick_is_kept_and_its_picture_is_out_of_date_until_the_picks_are_applied(
     house: AgentHost,
 ) -> None:
     episode_id = await planned(house)
@@ -558,18 +787,36 @@ async def test_a_pick_is_kept_and_a_new_layout_builds_the_picture_for_its_new_ca
     )
     changed = next(u for u in view["units"] if u["id"] == unit["id"])
     assert changed["layout"] == "split" and changed["canvas"] == [864, 960]
-    assert changed["level"] == "rich" and changed["picture"]["status"] == "queued"
-    # a picture already made, made rich: its stills wait for the go; simple again, they don't
+    # trying a frame out draws nothing: the picture is out of date until the picks are applied
+    assert changed["level"] == "rich" and changed["picture"]["status"] == "made"
+    assert changed["picture"]["stale"] and not house.episodes._busy(episode_id)
+    # a picture already made is drawn again at its new level once applied: rich is planned shot
+    # by shot and its stills wait for the go; simple again, it is drawn from the plan alone
     other = next(u for u in before["units"] if u["id"] != unit["id"])
+
+    def of_other(view: dict[str, Any]) -> dict[str, Any]:
+        found: dict[str, Any] = next(u for u in view["units"] if u["id"] == other["id"])["picture"]
+        return found
+
     waits = house.episodes.choose(
         episode_id, by="you", change={"units": {other["id"]: {"level": "rich"}}}
     )
-    assert next(u for u in waits["units"] if u["id"] == other["id"])["picture"]["status"] == "go"
+    assert of_other(waits)["status"] == "made" and of_other(waits)["stale"]
+    assert not house.episodes._busy(episode_id)
+    applied = house.episodes.apply(episode_id, by="you")
+    assert of_other(applied)["status"] == "queued"
+    await settle(lambda: not house.episodes._busy(episode_id))
+    rich = of_other(house.episodes.view(episode_id))
+    assert rich["status"] == "go" and rich["level"] == "rich"
+    assert [shot["frame"] for shot in rich["motion"]["shots"]] == other["frames"]
     plain = house.episodes.choose(
         episode_id, by="you", change={"units": {other["id"]: {"level": "simple"}}}
     )
-    assert next(u for u in plain["units"] if u["id"] == other["id"])["picture"]["status"] == "made"
+    assert of_other(plain)["status"] == "go" and of_other(plain)["stale"]
+    house.episodes.apply(episode_id, by="you")
     await settle(lambda: not house.episodes._busy(episode_id))
+    simple = of_other(house.episodes.view(episode_id))
+    assert simple["status"] == "made" and simple["level"] == "simple" and simple["motion"] is None
     rebuilt = next(u for u in house.episodes.view(episode_id)["units"] if u["id"] == unit["id"])
     assert rebuilt["picture"]["status"] == "go" and not rebuilt["picture"]["stale"]
     built = json.loads(
@@ -591,7 +838,13 @@ async def test_a_pick_is_kept_and_a_new_layout_builds_the_picture_for_its_new_ca
     )
     assert frame["override"]["layout"] == "split"
     undone = house.episodes.choose(episode_id, by="you", change={"clear": [first]})
-    assert next(u for u in undone["units"] if u["id"] == unit["id"])["layout"] == "corner-window"
+    back = next(u for u in undone["units"] if u["id"] == unit["id"])
+    assert back["layout"] == "corner-window" and back["picture"]["stale"]
+    # nothing waits once every picture asked for is current
+    house.episodes.apply(episode_id, by="you")
+    await settle(lambda: not house.episodes._busy(episode_id))
+    with pytest.raises(ValueError, match="every picture asked for is up to date"):
+        house.episodes.apply(episode_id, by="you")
 
 
 async def test_a_layout_is_used_for_the_film_and_a_picture_sits_beside_or_fills(
@@ -609,7 +862,12 @@ async def test_a_layout_is_used_for_the_film_and_a_picture_sits_beside_or_fills(
     assert not house.episodes.planning(episode_id), "nobody's place changed: no turn for the writer"
     moved = [u for u in view["units"] if u["id"] in {b["id"] for b in both}]
     assert {u["layout"] for u in moved} == {"split"}
-    assert {u["picture"]["status"] for u in moved} == {"queued"}, "each is drawn for its new box"
+    assert {u["picture"]["stale"] for u in moved} == {True}, "each is out of date for its new box"
+    assert not house.episodes._busy(episode_id), "and none is drawn until the picks are applied"
+    applied = house.episodes.apply(episode_id, by="you")
+    assert {
+        u["picture"]["status"] for u in applied["units"] if u["id"] in {b["id"] for b in both}
+    } == {"queued"}
     lines = [f for ch in view["plan"]["chapters"] for b in ch["beats"] for f in b["frames"]]
     assert {
         f["override"]["scope"] for f in lines if f["layout"] == "split" and not f.get("hold")
@@ -655,9 +913,13 @@ async def test_a_picture_type_redraws_one_picture_and_a_transition_only_the_film
     view = house.episodes.choose(
         episode_id, by="you", change={"frames": {unit["id"]: {"picture": "list"}}}
     )
-    statuses = {u["id"]: u["picture"]["status"] for u in view["units"]}
-    assert statuses.pop(unit["id"]) == "queued" and set(statuses.values()) == {"made"}
+    stale = {u["id"]: u["picture"]["stale"] for u in view["units"]}
+    assert stale.pop(unit["id"]) and set(stale.values()) == {False}
     assert next(u for u in view["units"] if u["id"] == unit["id"])["kind_of_picture"] == "list"
+    assert not house.episodes._busy(episode_id)
+    applied = house.episodes.apply(episode_id, by="you")
+    statuses = {u["id"]: u["picture"]["status"] for u in applied["units"]}
+    assert statuses.pop(unit["id"]) == "queued" and set(statuses.values()) == {"made"}
     await settle(lambda: not house.episodes._busy(episode_id))
     brief = json.loads(
         (
@@ -674,6 +936,7 @@ async def test_a_picture_type_redraws_one_picture_and_a_transition_only_the_film
         episode_id, by="you", change={"frames": {unit["id"]: {"transition": "zoom-through"}}}
     )
     assert {u["picture"]["status"] for u in moved["units"]} == {"made"}
+    assert {u["picture"]["stale"] for u in moved["units"]} == {False}
     line = next(
         f
         for ch in moved["plan"]["chapters"]
@@ -698,6 +961,68 @@ async def test_a_picture_type_redraws_one_picture_and_a_transition_only_the_film
         house.episodes.choose(
             episode_id, by="you", change={"frames": {unit["id"]: {"picture": "terminal"}}}
         )
+
+
+class Designer(DemoWorker):
+    """The demo's writer, able to plan a picture for a line a person gave one."""
+
+    asked: list[str]
+
+    async def turn(self, episode: Any, *, lane: str, prompt: str, heard: Any) -> Told:
+        if lane == "plan" and "Stage: redo" in prompt:
+            self.asked.append(prompt)
+            target = self.folder(episode) / "plan.json"
+            plan = json.loads(target.read_text())
+            for ch in plan["chapters"]:
+                for b in ch["beats"]:
+                    line = f"{b['id']}.f1"
+                    if line in prompt and not b.get("frames"):
+                        word = b["says"].split()[0].strip(".,:;")
+                        b["frames"] = [
+                            {
+                                "id": line,
+                                "shows": "One card that names the headers.",
+                                "focal": "o1",
+                                "objects": [{"id": "o1", "what": "a card", "words": "Headers"}],
+                                "cues": [{"at": word, "object": "o1", "does": "pops in"}],
+                            }
+                        ]
+            target.write_text(json.dumps(plan))
+            return Told(answer="Planned a picture for the line.")
+        return await super().turn(episode, lane=lane, prompt=prompt, heard=heard)
+
+
+async def test_a_pick_that_needs_the_writer_waits_until_the_picks_are_applied(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    desk = house.episodes
+    episode_id = await planned(house)
+    desk.approve(episode_id, by="you")
+    await settle(lambda: not desk._busy(episode_id))
+    writer = Designer(data_dir=tmp_path, script=SCRIPT, pause=0)
+    writer.asked = []
+    desk.workers[DEMO] = writer
+    desk.demo = False  # the demo's desk never asks its writer to redo a pick
+    line = "c2.b6.f1"
+    pick = {"frames": {line: {"presence": "both", "layout": "corner-window"}}}
+    view = desk.choose(episode_id, by="you", change=pick)
+    # the line now needs a picture: that waits, and nothing is planned or drawn yet
+    assert [w["line"] for w in view["waiting"]] == [line]
+    assert "needs a picture" in view["waiting"][0]["do"]
+    assert not desk._busy(episode_id) and not writer.asked
+    assert next(u for u in view["units"] if line in u["frames"])["kind"] == "undesigned"
+    # a pick taken back takes what it left the writer with it
+    assert desk.choose(episode_id, by="you", change={"clear": [line]})["waiting"] == []
+    desk.choose(episode_id, by="you", change=pick)
+    # applied: the writer plans the line's picture, then the pictures follow, the new one too
+    desk.apply(episode_id, by="you")
+    assert desk.planning(episode_id)
+    await settle(lambda: not desk._busy(episode_id), seconds=10)
+    view = desk.view(episode_id)
+    assert len(writer.asked) == 1 and line in writer.asked[0] and view["waiting"] == []
+    unit = next(u for u in view["units"] if line in u["frames"])
+    assert unit["kind"] == "picture" and unit["picture"]["status"] == "made"
+    assert "writer" not in desk.store.episode(episode_id)["picks"]  # type: ignore[index]
 
 
 def lines_of(view: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -1092,6 +1417,68 @@ async def test_the_film_has_one_look_voice_and_level_chosen_once(house: AgentHos
         f["presence"] for ch in off["plan"]["chapters"] for b in ch["beats"] for f in b["frames"]
     }
     assert off["settings"]["theme"] == "voice-only" and presences == {"content"}
+
+
+async def test_the_studio_sees_the_writers_steps_and_each_builders_step_as_they_happen(
+    house: AgentHost,
+) -> None:
+    episode_id = await planned(house)
+    view = house.episodes.view(episode_id)
+    assert view["working"] is None, "nothing is under way once the plan is written"
+    thread = view["thread_id"]
+    unit = next(u for u in view["units"] if u["kind"] == "picture")
+    store = house.store
+    plan = store.add_run(
+        thread_id=thread, lane="plan", harness="kimi", prompt="Stage: script.", session=""
+    )
+    events = [{"kind": "step", "text": f"Reading part {n}.md", "at": 100.0 + n} for n in range(20)]
+    events.append({"kind": "note", "text": "I'm building one   continuing diagram.", "at": 130.0})
+    store.update_run(str(plan["id"]), steps=events)
+    built = store.add_run(
+        thread_id=thread,
+        lane=f"picture:{unit['id']}",
+        harness="kimi",
+        prompt="Stage: picture.",
+        session="",
+    )
+    store.update_run(
+        str(built["id"]), steps=[{"kind": "step", "text": "Editing compositions/p.html", "at": 1.0}]
+    )
+    view = house.episodes.view(episode_id)
+    working = view["working"]
+    assert working["harness"] == "kimi" and working["since"] == plan["started_at"]
+    # the newest steps, the writer's own note last, with its words tidied
+    assert len(working["events"]) == 14 and working["events"][-1] == {
+        "kind": "note",
+        "text": "I'm building one continuing diagram.",
+        "at": 130.0,
+    }
+    pictures = {u["id"]: u["picture"] for u in view["units"]}
+    assert pictures[unit["id"]]["doing"] == "Editing compositions/p.html"
+    assert all(p["doing"] == "" for i, p in pictures.items() if i != unit["id"])
+    # a turn that ends is no longer under way
+    store.update_run(str(plan["id"]), state="done")
+    store.update_run(str(built["id"]), state="done")
+    view = house.episodes.view(episode_id)
+    assert view["working"] is None
+    assert all(u["picture"]["doing"] == "" for u in view["units"])
+
+
+async def test_the_demos_writer_keeps_each_turn_in_the_record_as_a_writer_does(
+    house: AgentHost, tmp_path: Path
+) -> None:
+    house.episodes.workers[DEMO] = DemoWorker(
+        data_dir=tmp_path, script=SCRIPT, pause=0, store=house.store
+    )
+    episode_id = await planned(house)
+    thread = house.episodes.view(episode_id)["thread_id"]
+    turns = house.store.runs(thread, lane="plan")
+    assert turns and all(t["state"] == "done" and t["harness"] == DEMO for t in turns)
+    kinds = [e["kind"] for t in turns for e in t["steps"]]
+    assert "step" in kinds and "note" in kinds
+    first = turns[0]["steps"]
+    assert first[0]["text"] == "Reading the material" and first[1]["kind"] == "note"
+    assert house.episodes.view(episode_id)["working"] is None
 
 
 # -- takes and the film ---------------------------------------------------------------------------
@@ -1626,6 +2013,22 @@ def test_the_app_serves_an_episode_at_every_address(tmp_path: Path) -> None:
         assert client.post(f"/api/episodes/{episode_id}/pictures").status_code == 422
         assert client.post("/api/episodes/ep_missing/pictures").status_code == 404
         assert client.post(f"/api/episodes/{episode_id}/stop").json() == {"ok": True}
+        # nothing waits to be applied while no picture was asked for
+        nothing = client.post(f"/api/episodes/{episode_id}/apply")
+        assert nothing.status_code == 422 and "up to date" in nothing.text
+        assert client.post("/api/episodes/ep_missing/apply").status_code == 404
+        # a picture is asked for by name and stopped by name; who builds it must be ready here
+        unit = view["units"][0]["id"]
+        named = client.post(f"/api/episodes/{episode_id}/pictures", json={"units": ["nope"]})
+        assert named.status_code == 422 and "no picture to make there" in named.text
+        assert client.post(f"/api/episodes/{episode_id}/stop", json={"unit": unit}).json() == {
+            "ok": True
+        }
+        for builder, status in (("kimi", 422), ("gpt", 422), (DEMO, 200), (None, 200)):
+            picked = client.post(
+                f"/api/episodes/{episode_id}/choices", json={"units": {unit: {"builder": builder}}}
+            )
+            assert picked.status_code == status, picked.text
         chosen = client.post(
             f"/api/episodes/{episode_id}/choices", json={"settings": {"level": "rich"}}
         )

@@ -80,58 +80,81 @@ export const allLines = (view: EpisodeView): { chapter: string; line: EpisodeFra
 // The lines a layout set for a chapter (or the whole film) reaches: the ones of that presence.
 export const linesIn = (view: EpisodeView, presence: Presence, chapter?: string) =>
   allLines(view).filter((x) => x.line.presence === presence && (!chapter || x.chapter === chapter));
-// The pictures a layout set that widely would redraw: each is drawn for its first line's box.
-export function redrawnBy(view: EpisodeView, presence: Presence, layout: string, chapter?: string): number {
-  const reached = new Map(linesIn(view, presence, chapter).map((x) => [x.line.id, x.line]));
-  return view.units.filter((u) => {
-    const first = reached.get(u.frames[0]);
-    return first && first.layout !== layout && !(first.override && !first.override.scope);
-  }).length;
-}
 export const takeOf = (view: EpisodeView, chapter: string): EpisodeTake | undefined => view.takes.find((t) => t.kept && t.chapter === chapter && !t.frame);
 export const clockLine = (view: EpisodeView, frame: string): EpisodeLine | undefined => view.clock?.lines.find((l) => l.frame === frame);
 export const spotOf = (view: EpisodeView, layout: string): LayoutSpot =>
   view.options.geometry.layouts[layout] ?? view.options.geometry.layouts["graphic-on-ground"];
 
-// Where a chapter stands, as its dot in the bar is coloured and its row reads.
-export type ChapterState = "making" | "go" | "failed" | "ready" | "recorded";
+// Where one picture stands: not asked for yet, on its way, its stills waiting for a go, made,
+// out of date, or stopped until someone asks again. Out of date is a picture made for the plan as
+// it was (another frame, kind or level), or a line given a picture that waits for the writer:
+// both wait for the person to apply their changes, since nothing is drawn while they try picks.
+export type PictureState = "planned" | "making" | "go" | "made" | "changed" | "failed";
+export function pictureState(unit: EpisodeUnit, view?: EpisodeView): PictureState {
+  const p = unit.picture;
+  if (unit.kind === "undesigned") return view?.waiting.some((w) => unit.frames.includes(w.line)) ? "changed" : "making";
+  if (p.status === "none") return "planned";
+  if (p.status === "failed") return "failed";
+  if (p.status === "made" || p.status === "go") return p.stale ? "changed" : p.status;
+  return "making";
+}
+
+// Where a chapter stands, as its slide and its row read.
+export type ChapterState = "planned" | "making" | "go" | "changed" | "failed" | "ready" | "recorded";
 export function chapterState(view: EpisodeView, chapter: EpisodeChapter): ChapterState {
-  const units = view.units.filter((u) => u.chapter === chapter.id);
   if (takeOf(view, chapter.id)) return "recorded";
-  if (units.some((u) => u.picture.status === "go")) return "go";
-  if (units.some((u) => u.kind === "undesigned" || ["queued", "making", "posing", "none"].includes(u.picture.status))) return "making";
-  if (units.some((u) => u.picture.status === "failed")) return "failed";
+  const states = new Set(view.units.filter((u) => u.chapter === chapter.id).map((u) => pictureState(u, view)));
+  for (const state of ["go", "making", "changed", "failed", "planned"] as const) if (states.has(state)) return state;
   return "ready";
 }
 export const STATE_WORDS: Record<ChapterState, string> = {
+  planned: "Pictures not made yet",
   making: "Pictures being made",
   go: "Stills need your go",
-  failed: "A picture failed",
+  changed: "Pictures out of date",
+  failed: "A picture was not made",
   ready: "Ready to record",
   recorded: "Recorded",
 };
 
-// Where the film's pictures stand: made, on their way, or stopped until someone asks again.
-export function pictureCount(view: EpisodeView) {
-  const all = view.units.filter((u) => u.kind === "picture");
-  return {
-    all: all.length,
-    made: all.filter((u) => u.picture.status === "go" || (u.picture.status === "made" && !u.picture.stale)).length,
-    making: all.filter((u) => ["queued", "making", "posing"].includes(u.picture.status)).length,
-    stopped: all.filter((u) => u.picture.status === "failed").length,
-  };
+// How many pictures stand where: of the film, or of one chapter.
+export function pictureCount(view: EpisodeView, chapter?: string) {
+  const all = view.units.filter((u) => u.kind === "picture" && (!chapter || u.chapter === chapter));
+  const count: Record<PictureState, number> = { planned: 0, making: 0, go: 0, made: 0, changed: 0, failed: 0 };
+  for (const u of all) count[pictureState(u, view)] += 1;
+  return { all: all.length, ...count };
 }
 
-// What a picture's state reads as beside its line.
-export function pictureWords(unit: EpisodeUnit, approved = true): string {
-  if (unit.kind === "undesigned") return "Being planned";
-  if (!approved) return "Planned";
+// What a picture's state reads as on its block.
+export function pictureWords(unit: EpisodeUnit, view?: EpisodeView): string {
+  if (unit.kind === "undesigned") return pictureState(unit, view) === "changed" ? "Waits for the writer" : "Being planned";
   const p = unit.picture;
-  if (p.status === "failed") return "Failed";
+  if (p.status === "none") return "Not made yet";
+  if (p.status === "failed") return "Not made";
+  if ((p.status === "made" || p.status === "go") && p.stale) return "Out of date";
   if (p.status === "go") return "Needs your go";
-  if (p.status === "made") return p.stale ? "Being remade" : "Made";
-  if (p.status === "posing") return "Posing stills";
-  return "Being made";
+  if (p.status === "made") return "Made";
+  if (p.status === "queued") return "Waiting its turn";
+  if (p.status === "posing") return "Posing its stills";
+  return p.level === "rich" && !p.motion ? "Planning its motion" : "Being drawn";
+}
+
+// The agent picked last on this computer (for a new episode, or as a film's agent), so the next
+// episode starts with it and not with whichever is listed first.
+const WRITER_KEY = "episode-writer";
+export function lastWriter(): string {
+  try {
+    return localStorage.getItem(WRITER_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+export function keepWriter(id: string): void {
+  try {
+    localStorage.setItem(WRITER_KEY, id);
+  } catch {
+    // a browser that keeps nothing: the next episode starts with the first agent that is ready
+  }
 }
 
 // A box of the 1920 by 1080 frame as CSS on a stage of any size.

@@ -88,8 +88,12 @@ nothing else: keep the id of every line that stays, give a new line a new id, an
 marked `by_person` word for word unless the change is about that line. The plan is then read
 and checked as at the frames stage. `references/plan.md`, "When a person asks for a change".
 
+**motion plan.** A picture a person asked to be made rich is planned before it is drawn: what
+it opens on, the one move each line is about, what each line's still shows. The turn names it;
+follow `briefs/motion.md`. No HTML in that turn.
+
 **picture.** Build one picture of the plan as a file. The turn names it; follow
-`briefs/picture.md`.
+`briefs/picture.md`. A rich picture's brief carries the motion plan it is built to.
 
 ## Reference
 
@@ -99,4 +103,5 @@ and checked as at the frames stage. `references/plan.md`, "When a person asks fo
 - `references/frames.md`: from a beat to a frame. Read before the frames stage.
 - `references/motion.md`: cues and moves. Read before the frames stage.
 - `references/plan.md`: every field of `plan.json`, who writes it, and a person's picks.
+- `briefs/motion.md`: how a rich picture's motion is planned, shot by shot.
 - `briefs/picture.md`: how one picture is built.

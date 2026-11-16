@@ -1,20 +1,49 @@
-// The chapters as slides down the left of a chapter's page, the way a deck lists its slides:
-// each chapter's first picture as it stands now (its still once it is posed, the layout's boxes
-// before that), its question, and where it stands. One click opens a chapter.
+// The film and its chapters as slides down the left of the studio, the way a deck lists its
+// slides: the film first, as its title card, then each chapter's first picture as it stands now
+// (its still once it is posed, the layout's boxes before that), its question, and where it
+// stands. One click opens the film or a chapter.
+import { Clapperboard } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { EpisodeChapter, EpisodeView } from "../../api";
-import { boxStyle, chapterName, chapterState, linesOf, spotOf, STATE_WORDS, unitOf } from "../../episode";
+import { boxStyle, chapterName, chapterState, linesOf, mmss, spotOf, STATE_WORDS, takeOf, unitOf } from "../../episode";
 
-export function Slides({ view, at, onAt }: { view: EpisodeView; at: string; onAt: (chapter: string) => void }) {
+// Where the studio is when it shows the film rather than one chapter.
+export const FILM = "film";
+
+export function Slides({ view, at, onAt }: { view: EpisodeView; at: string; onAt: (to: string) => void }) {
   const chapters = view.plan?.chapters ?? [];
   const current = useRef<HTMLButtonElement>(null);
-  // the open chapter is in sight when the page opens, however far down the film it is
-  useEffect(() => current.current?.scrollIntoView({ block: "nearest" }), [at]);
+  // the open slide is in sight when the page opens, however far down the film it is
+  // (a block, so the effect returns nothing: scrolling may return a promise, which is no cleanup)
+  useEffect(() => {
+    current.current?.scrollIntoView({ block: "nearest" });
+  }, [at]);
+  const film = at === FILM;
+  const recorded = chapters.filter((c) => takeOf(view, c.id)).length;
   return (
-    <nav className="ep-slides" aria-label="Chapters">
+    <nav className="ep-slides" aria-label="The film and its chapters">
       <ol>
+        <li>
+          <button ref={film ? current : undefined} type="button" className="ep-slide" aria-current={film || undefined} onClick={() => !film && onAt(FILM)}>
+            <span className="ep-thumb ep-slide-pic ep-cover" aria-hidden="true">
+              <b>
+                <span>{view.title}</span>
+              </b>
+            </span>
+            <span className="ep-slide-words">
+              <b>
+                <Clapperboard aria-hidden="true" />
+              </b>
+              <span>The film</span>
+            </span>
+            <small>
+              {chapters.length} chapters · {mmss(view.clock?.total ?? view.plan?.totals.seconds ?? 0)}
+              {view.status === "studio" && ` · ${recorded} recorded`}
+            </small>
+          </button>
+        </li>
         {chapters.map((c, i) => {
-          const state = view.approved ? chapterState(view, c) : "ready";
+          const state = chapterState(view, c);
           const open = c.id === at;
           return (
             <li key={c.id}>
@@ -25,7 +54,7 @@ export function Slides({ view, at, onAt }: { view: EpisodeView; at: string; onAt
                   <span>{c.question}</span>
                 </span>
                 <small>
-                  {chapterName(c)} · {view.approved ? STATE_WORDS[state] : "Planned"}
+                  {chapterName(c)} · {STATE_WORDS[state]}
                 </small>
               </button>
             </li>
