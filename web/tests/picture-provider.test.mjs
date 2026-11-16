@@ -18,3 +18,24 @@ test('a recorded builder survives a change of available providers', () => {
 test('an older completed picture without provenance does not claim the current builder', () => {
   assert.equal(pictureProvider({ builder: 'codex', picture: { status: 'made' } }, writers), 'Unknown provider');
 });
+
+const available = [
+  { id: 'demo', ready: true }, { id: 'claude', ready: false }, { id: 'codex', ready: true },
+];
+const catalog = {
+  codex: [{id: '', name: 'CLI default'}, {id: 'gpt-example', name: 'gpt-example'}],
+  claude: [{id: '', name: 'CLI default'}],
+};
+test('a scripted beat suggests a ready AI model and preserves its original attribution', async () => {
+  const { editModel } = await import('../src/components/episode/pictureProvider.ts');
+  const unit = {builder: 'demo', builder_pick: null, picture: {builder: 'demo'}, model_pick: {}};
+  assert.deepEqual(editModel(unit, available, catalog), {writer: 'codex', model: 'gpt-example', suggested: true});
+  assert.equal(pictureProvider(unit, available), 'demo');
+  assert.equal(editModel(unit, available.filter(w => w.id !== 'codex'), catalog).writer, null);
+});
+test('saved models and explicit local preview take priority over a suggestion', async () => {
+  const { editModel } = await import('../src/components/episode/pictureProvider.ts');
+  const unit = {builder: 'claude', builder_pick: 'claude', model_pick: {model:'my-choice'}};
+  assert.deepEqual(editModel(unit, available, catalog), {writer:'claude',model:'my-choice',suggested:false});
+  assert.equal(editModel({...unit, builder:'demo',builder_pick:'demo'},available,catalog).writer,'demo');
+});

@@ -949,12 +949,21 @@ class EpisodeDesk:
         self._stage(
             episode_id, name=start, round=0, state="working", said="Getting ready", at=time.time()
         )
-        if picture:
-            # a note on a picture: how it is drawn is its builder's, what it shows the writer's
+        asked = (episode["stage"] or {}).get("asked") or {}
+        unit = None
+        if start == "change" and asked.get("scope") in ("line", "picture"):
+            target = asked.get("target")
             unit = next(
-                (u for u in self._units(episode, self._full(episode) or {}) if u["id"] == picture),
+                (
+                    u
+                    for u in self._units(episode, self._full(episode) or {})
+                    if target in u["frames"]
+                ),
                 None,
             )
+            if unit is not None:
+                worker = self._builder(episode, unit)
+        if picture:
             if unit is None:
                 raise RuntimeError("that picture is no longer in the plan")
             self._stage(episode_id, said="Reading your note")

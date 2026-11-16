@@ -2965,3 +2965,29 @@ async def test_episode_background_reaches_the_picture_and_film_and_can_be_reset(
     )
     assert desk._look(desk._episode(eid)) == original
     assert not _outdated(legacy, desk.view(eid)["units"][0])
+
+
+async def test_line_edit_uses_its_picture_model_but_a_chapter_edit_uses_the_writer(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    eid = await planned(house)
+    desk = house.episodes
+    writer = heard_by(house, tmp_path)
+    selected = Heard(data_dir=tmp_path, script=SCRIPT, pause=0)
+    selected.turns = []
+    desk.workers["codex"] = selected
+    unit = next(u for u in desk.view(eid)["units"] if len(u["frames"]) > 1)
+    desk.choose(
+        eid,
+        by="you",
+        change={
+            "units": {unit["id"]: {"builder": "codex", "model": "gpt-6.1-sol", "effort": "medium"}}
+        },
+    )
+    desk.ask(eid, by="you", scope="line", target=unit["frames"][1], text="Shorten this line.")
+    await settle(lambda: not desk.planning(eid))
+    assert any(lane == "plan" and "Shorten this line." in prompt for lane, prompt in selected.turns)
+    assert not writer.turns
+    desk.ask(eid, by="you", scope="chapter", target=unit["chapter"], text="Shorten this section.")
+    await settle(lambda: not desk.planning(eid))
+    assert any("Shorten this section." in prompt for _, prompt in writer.turns)

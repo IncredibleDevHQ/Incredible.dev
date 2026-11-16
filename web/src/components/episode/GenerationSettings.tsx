@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Popover } from "../Popover";
-import { pictureProvider, writerName } from "./pictureProvider";
+import { editModel, pictureProvider, writerName } from "./pictureProvider";
 import { useRef, useState } from "react";
 import { api, type EpisodeUnit, type EpisodeView, type WriterId } from "../../api";
 import { Select } from "../Select";
@@ -26,19 +26,23 @@ function providers(view: EpisodeView, unit: EpisodeUnit) {
 export function GenerationSettings({ view, unit, busy, run }: Props) {
   const writers = view.options.picture_writers;
   const used = pictureProvider(unit, writers);
+  const edit = editModel(unit, writers, view.options.generation_models);
+  const modelName = edit.writer && view.options.generation_models[edit.writer]?.find(m => m.id === edit.model)?.name;
+  const label = !edit.writer ? "Choose edit model" : edit.writer === "demo" ? "Local preview"
+    : [writerName(edit.writer), modelName].filter(Boolean).join(" · ");
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<WriterId | null>(null);
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState("");
-  const inspect = (writer: WriterId) => {
-    setExpanded(expanded === writer ? null : writer);
+  const inspect = (writer: WriterId, toggle = true) => {
+    setExpanded(toggle && expanded === writer ? null : writer);
     const saved = writer === unit.builder ? unit.model_pick : undefined;
     const made = writer === used ? unit.picture.generation : undefined;
     const models = view.options.generation_models[writer] ?? [];
-    const initial = models.find((m) => m.id === (saved?.model || made?.model));
+    const initial = models.find((m) => m.id === (writer === edit.writer ? edit.model : saved?.model || made?.model));
     setModel(initial?.id ?? "");
-    const level = saved?.effort || made?.effort || "";
+    const level = saved ? saved.effort : made?.effort || "";
     setEffort(initial?.efforts.includes(level) ? level : "");
   };
   const save = async (builder: WriterId | null) => {
@@ -55,15 +59,16 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
         ref={trigger}
         type="button"
         className="btn ep-provider-trigger"
-        aria-label={`Picture provider: ${writerName(used)}`}
+        aria-label={`${edit.suggested && edit.writer ? "Suggested edit model" : "Edit model"}: ${label}`}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => {
-          setExpanded(null);
+          if (!open && edit.writer) inspect(edit.writer, false);
+          else setExpanded(null);
           setOpen(!open);
         }}
       >
-        {writerName(used)} <ChevronDown />
+        {edit.suggested && edit.writer && <small>Suggested</small>} {label} <ChevronDown />
       </button>
       <Popover
         open={open}
@@ -72,20 +77,21 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
         side="bottom"
         align="start"
         width={300}
-        title="Picture provider"
+        title="Model for edits"
       >
+        <p className="ep-provider-used">Choose a model for this beat’s script edits and motion graphics.</p>
         {unit.picture.generation && (
           <p className="ep-provider-used">
             Last generated with {writerName(used)} · {unit.picture.generation.model} · {unit.picture.generation.effort}
           </p>
         )}
-        {writers.map((w) => {
+        {[...writers.filter(w => w.id !== "demo"), ...writers.filter(w => w.id === "demo")].map((w) => {
           const models = view.options.generation_models[w.id] ?? [];
           const efforts = models.find((m) => m.id === model)?.efforts ?? [];
           return (
             <div key={w.id} className="ep-provider-option">
               <button type="button" className="ep-provider-row" aria-expanded={expanded === w.id} onClick={() => inspect(w.id)}>
-                {writerName(w.id)} <small>{!w.ready ? "Unavailable" : w.id === unit.builder ? "Next generation" : ""}</small>
+                {w.id === "demo" ? "Local preview" : writerName(w.id)} <small>{!w.ready ? "Unavailable" : w.id === edit.writer ? (edit.suggested ? "Suggested" : "Selected") : ""}</small>
                 {expanded === w.id ? <ChevronDown /> : <ChevronRight />}
               </button>
               {expanded === w.id && (
@@ -111,7 +117,7 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
                     onChange={setEffort}
                   />
                   <button type="button" className="btn primary" disabled={busy || !w.ready} onClick={() => void save(w.id)}>
-                    Use {writerName(w.id)}
+                    Use for this beat
                   </button>
                 </div>
               )}
@@ -130,10 +136,11 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
 
 export function SettingsForm({ view, unit, run, busy }: Props) {
   const [direction, setDirection] = useState(unit.visual.direction);
-  const [providerPick, setProviderPick] = useState<WriterId | "">(unit.builder_pick || "");
+  const edit = editModel(unit, view.options.picture_writers, view.options.generation_models);
+  const [providerPick, setProviderPick] = useState<WriterId | "">(unit.builder_pick || (edit.suggested && edit.writer) || "");
   const inherited = view.builders[unit.chapter] || view.writer;
   const writer = providerPick || inherited;
-  const [model, setModel] = useState(unit.model_pick.model);
+  const [model, setModel] = useState(edit.model);
   const [effort, setEffort] = useState(unit.model_pick.effort);
   const options = view.options;
   const models = options.generation_models[writer] ?? [];

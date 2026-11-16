@@ -21,3 +21,17 @@ export function pictureProvider(unit: EpisodeUnit, writers: EpisodeOptions["pict
   }
   return picture.status === "made" || picture.status === "go" ? "Unknown provider" : unit.builder;
 }
+
+// A suggestion is applied only when the editor chooses it. Provenance stays on the saved picture.
+export function editModel(
+  unit: EpisodeUnit,
+  writers: EpisodeOptions["picture_writers"],
+  models: EpisodeOptions["generation_models"],
+): {writer: WriterId | null; model: string; suggested: boolean} {
+  if (unit.builder_pick || unit.builder !== "demo") {
+    return { writer: unit.builder, model: unit.model_pick.model || "", suggested: false };
+  }
+  const ready = writers.filter(w => w.ready && w.id !== "demo");
+  const writer = (ready.find(w => w.id === "codex") || ready[0])?.id ?? null;
+  return { writer, model: writer ? models[writer]?.find(m => m.id)?.id || "" : "", suggested: true };
+}

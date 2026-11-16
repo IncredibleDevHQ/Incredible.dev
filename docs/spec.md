@@ -894,8 +894,10 @@ app's canvas, from a channel's material or a research frame's notes.
   in the preview and the export. The size slider spans 25% to 125% of the layout's window.
   A presenter moving between visible layouts eases to the next position, size and corner
   radius over the first 450 ms of the new line, shortened to fit short lines. Continuous
-  takes retain their media clock. Each picture card names the provider that made its current
-  picture. Expanding a provider shows its models and effort levels for the next generation.
+  takes retain their media clock. Each picture card shows its edit model. On scripted beats
+  Studio suggests a model from a ready AI provider. Confirming a provider, model and effort
+  applies to future script edits on that beat’s lines and to picture and motion graphics builds.
+  The picker also shows which provider made the existing picture.
   The expanded editor’s Others tab also accepts custom direction.
 - **Video backgrounds.** Look offers a brand or custom color and solid, dot, grid, or
   diagonal textures. The choice belongs to the episode and travels with its picture briefs,

@@ -13,6 +13,8 @@ how each stretch of it is shot. Later you may be asked to build one of its pictu
 If the material is a how-to with steps to follow, a product launch or a news digest, say so in
 your reply and stop: an episode is the wrong thing to make from it.
 
+Studio can assign a model to a beat. Its line-edit requests and picture builds go to that model. Chapter and film edits use the episode writer.
+
 ## The one rule
 
 **You write words. A classifier reads them. Code counts.**
