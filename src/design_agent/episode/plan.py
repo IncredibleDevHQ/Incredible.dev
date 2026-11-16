@@ -159,6 +159,87 @@ def reword(plan: Row, frame_id: str, text: str, *, at: float) -> str:
     return old
 
 
+def _spell_out(b: Row) -> list[Row]:
+    """A beat of several lines, its ids written out before a line joins it or leaves it, so
+    the lines after that one keep theirs. (Each of its lines already has its own words.)"""
+    frames: list[Row] = b["frames"]
+    for i, f in enumerate(frames):
+        f.setdefault("id", f"{b['id']}.f{i + 1}")
+    return frames
+
+
+def _ids(plan: Row) -> set[str]:
+    """Every chapter, beat and line id the plan uses."""
+    out: set[str] = set()
+    for ch in plan.get("chapters", []):
+        out.add(str(ch.get("id")))
+        for b in ch.get("beats", []):
+            out.add(str(b.get("id")))
+            frames = b.get("frames") or [{}]
+            out.update(str(f.get("id") or f"{b.get('id')}.f{i + 1}") for i, f in enumerate(frames))
+    return out
+
+
+def _next_id(prefix: str, taken: set[str]) -> str:
+    """An id nothing has used, numbered on from the highest after `prefix`."""
+    pattern = re.compile(re.escape(prefix) + r"(\d+)")
+    numbers = [int(m.group(1)) for t in taken if (m := pattern.fullmatch(t))]
+    n = max(numbers, default=0) + 1
+    while f"{prefix}{n}" in taken or f"{prefix}{n}.f1" in taken:
+        n += 1
+    return f"{prefix}{n}"
+
+
+def add_line(plan: Row, after: str, words: str, *, at: float, hold: bool = False) -> str:
+    """Put a person's new line into the plan and return its id. It goes after the line
+    `after`, or first in the chapter when `after` names one. After a beat's last line it is a
+    beat of its own; inside a beat it joins that beat, so the beat's words stay in the order
+    they are said. With `hold` it is said over the picture before it. It is marked
+    `by_person`, with no words of the writer's to go back to."""
+    mark = {"was": "", "cues": [], "at": at}
+    line: Row = {"objects": [], "cues": [], **({"hold": True} if hold else {})}
+    taken = _ids(plan)
+    chapter = next((ch for ch in plan.get("chapters", []) if ch.get("id") == after), None)
+    place = 0
+    if chapter is None:
+        found = beat_of(plan, after)
+        if found is None:
+            raise KeyError(after)
+        chapter, b, _f = found
+        frames = b.get("frames") or []
+        if len(frames) > 1 and str(frames[-1].get("id") or f"{b['id']}.f{len(frames)}") != after:
+            frames = _spell_out(b)
+            fid = _next_id(f"{b['id']}.f", taken)
+            i = next(k for k, x in enumerate(frames) if x["id"] == after)
+            frames.insert(i + 1, {"id": fid, "vo": words, **line, "by_person": mark})
+            b["says"] = " ".join(str(x.get("vo", "")).strip() for x in frames).strip()
+            return fid
+        place = next(k for k, x in enumerate(chapter["beats"]) if x is b) + 1
+    beats = chapter.setdefault("beats", [])
+    bid = _next_id(f"{chapter['id']}.b", taken)
+    beats.insert(
+        place,
+        {"id": bid, "says": words, "frames": [{"id": f"{bid}.f1", **line}], "by_person": mark},
+    )
+    return f"{bid}.f1"
+
+
+def cut_line(plan: Row, frame_id: str) -> str:
+    """Take one line out of the plan and return its words. A beat left with no line goes too."""
+    found = beat_of(plan, frame_id)
+    if found is None:
+        raise KeyError(frame_id)
+    chapter, b, _f = found
+    if len(b.get("frames") or []) <= 1:
+        chapter["beats"] = [x for x in chapter["beats"] if x is not b]
+        return str(b.get("says", ""))
+    frames = _spell_out(b)
+    gone = next(x for x in frames if x["id"] == frame_id)
+    b["frames"] = [x for x in frames if x is not gone]
+    b["says"] = " ".join(str(x.get("vo", "")).strip() for x in b["frames"]).strip()
+    return str(gone.get("vo", ""))
+
+
 def _designed_as(f: Row) -> Row:
     """What of a frame is designed: whether it holds, what it shows, its objects and what its
     steps do. Not its words."""

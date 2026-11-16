@@ -1,5 +1,5 @@
-// A picture's block in a chapter's script: the picture itself, a placeholder until it is made,
-// beside what it is, how it is made and where it stands, over the lines it is shown on. A
+// A picture's card at the head of its block in a chapter's script: the picture itself, a
+// placeholder until it is made, beside what it is, how it is made and where it stands. A
 // picture is asked for here, on its own (or with its chapter's, by recording the chapter, or
 // with the whole film's, from the bar). It is simple (drawn at once from the plan) or rich
 // (its motion planned shot by shot, then drawn and posed as stills for a go). A pick never draws
@@ -37,7 +37,7 @@ export function againCost(units: EpisodeUnit[]): string {
   return `${units.length === 1 ? "It is" : "Each is"} another full run of ${who}${rich ? ", and a rich picture plans its motion first" : ""}, so the tokens are spent again.`;
 }
 
-export function PictureBlock({
+export function PictureCard({
   view,
   block,
   lines,
@@ -46,7 +46,7 @@ export function PictureBlock({
   onOpen,
   run,
   busy,
-  children,
+  tools,
 }: {
   view: EpisodeView;
   block: Block & { unit: EpisodeUnit };
@@ -58,7 +58,8 @@ export function PictureBlock({
   onOpen: () => void;
   run: Run;
   busy: boolean;
-  children: ReactNode;
+  // what else the block's head holds: taking the block out
+  tools?: ReactNode;
 }) {
   const unit = block.unit;
   const p = unit.picture;
@@ -89,7 +90,7 @@ export function PictureBlock({
   );
 
   return (
-    <section className="ep-block ep-figure" aria-label={name} data-state={state}>
+    <>
       <div className="ep-figure-top">
         <button type="button" className="ep-figure-pic" data-empty={!still || undefined} data-working={(designed && state === "making") || undefined} aria-label={`Open the ${name.toLowerCase()} with its choices`} onClick={onOpen}>
           {still ? <img src={still.url} alt="" loading="lazy" /> : <KindArt kind={unit.kind_of_picture} />}
@@ -114,6 +115,7 @@ export function PictureBlock({
                 ]}
               />
             )}
+            {tools}
           </header>
           {unit.shows && <p className="ep-block-shows">{unit.shows}</p>}
           {!designed ? (
@@ -191,8 +193,7 @@ export function PictureBlock({
         </div>
       </div>
       {state === "go" && <Stills view={view} unit={unit} lines={lines} picked={picked} onPick={onPick} run={run} busy={busy} />}
-      <ol className="ep-block-lines">{children}</ol>
-    </section>
+    </>
   );
 }
 

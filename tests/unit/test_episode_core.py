@@ -468,6 +468,59 @@ def test_a_persons_words_keep_what_the_line_does_and_what_was_drawn_for_it(
         plans.reword(after, "c9.b9.f9", "Nothing.", at=3.0)
 
 
+def test_a_person_adds_and_cuts_lines_and_every_other_line_keeps_its_id_and_words() -> None:
+    plan: Row = {
+        "chapters": [
+            {
+                "id": "c1",
+                "question": "Why?",
+                "beats": [
+                    {"id": "c1.b1", "says": "One line alone."},
+                    {
+                        "id": "c1.b2",
+                        "says": "First part. Second part. Third part.",
+                        # a writer may leave a beat's line ids to their places
+                        "frames": [
+                            {"vo": "First part."},
+                            {"vo": "Second part."},
+                            {"vo": "Third part."},
+                        ],
+                    },
+                ],
+            },
+            {"id": "c2", "question": "How?", "beats": [{"id": "c2.b1", "says": "Only line."}]},
+        ]
+    }
+    after = copy.deepcopy(plan)
+    # inside a beat it joins the beat, and the lines after it keep the ids they had
+    middle = plans.add_line(after, "c1.b2.f1", "A new middle.", at=5.0)
+    beat = after["chapters"][0]["beats"][1]
+    assert middle == "c1.b2.f4"
+    assert [f["id"] for f in beat["frames"]] == ["c1.b2.f1", middle, "c1.b2.f2", "c1.b2.f3"]
+    assert beat["says"] == "First part. A new middle. Second part. Third part."
+    assert beat["frames"][1]["by_person"] == {"was": "", "cues": [], "at": 5.0}
+    # after a beat's last line it is a beat of its own, with an id nothing has used
+    held = plans.add_line(after, "c1.b2.f3", "Over the same picture.", at=6.0, hold=True)
+    own = after["chapters"][0]["beats"][2]
+    assert held == "c1.b3.f1" and own["says"] == "Over the same picture."
+    assert own["frames"][0]["hold"] and own["by_person"]["was"] == ""
+    # first in a chapter, by the chapter's id
+    assert plans.add_line(after, "c2", "Opening.", at=7.0) == "c2.b2.f1"
+    assert [b["id"] for b in after["chapters"][1]["beats"]] == ["c2.b2", "c2.b1"]
+    # a line cut from a longer beat leaves the others as they were, its words joined again
+    assert plans.cut_line(after, "c1.b2.f2") == "Second part."
+    assert [f["id"] for f in beat["frames"]] == ["c1.b2.f1", middle, "c1.b2.f3"]
+    assert beat["says"] == "First part. A new middle. Third part."
+    # a beat's only line takes the beat with it
+    assert plans.cut_line(after, "c1.b1.f1") == "One line alone."
+    assert [b["id"] for b in after["chapters"][0]["beats"]] == ["c1.b2", "c1.b3"]
+    with pytest.raises(KeyError):
+        plans.add_line(after, "c9.b9.f9", "Nowhere.", at=8.0)
+    with pytest.raises(KeyError):
+        plans.cut_line(after, "c9.b9.f9")
+    assert plan["chapters"][0]["beats"][1]["frames"][0] == {"vo": "First part."}, "untouched"
+
+
 def test_a_change_keeps_the_frame_of_every_line_it_does_not_redesign(script: Row) -> None:
     before = script["plan"]
     was = {f["id"]: f for _, _, f in plans.frames_of(plans.merged(before, script["labels"]))}

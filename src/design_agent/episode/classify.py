@@ -411,6 +411,23 @@ def stage_frames(plan: Row, out: list[str], fresh: bool, ask: Ask) -> None:
 # ---------------------------------------------------------------- design
 
 
+def follows(prev: Row | None, f: Row) -> tuple[str, str] | None:
+    """How a line follows the line before it, where who has the two frames settles it: the
+    first line opens on its own, a line that holds or a second line to camera keeps what is on
+    screen, and the person and the content changing places is a cut, never a move into a
+    talking head. None where it is read from the two pictures."""
+    if prev is None:
+        return "new-topic", "none"
+    if f.get("hold") or (prev.get("presence") == "person" and f.get("presence") == "person"):
+        return "same-picture", "none"
+    if prev.get("presence") != f.get("presence") and "person" in (
+        prev.get("presence"),
+        f.get("presence"),
+    ):
+        return "swap", str(REL["swap"]["transition"])
+    return None
+
+
 def stage_design(plan: Row, out: list[str], fresh: bool, ask: Ask) -> None:
     jobs: list[tuple[str, Any, Row]] = []
     order: list[tuple[Row, Row | None]] = []
@@ -499,22 +516,11 @@ def stage_design(plan: Row, out: list[str], fresh: bool, ask: Ask) -> None:
                     round(a["picture"]["confidence"], 2),
                 )
                 f["arrangement"] = a["arrangement"]["choice"]
-            if prev is None:
-                f["relation"], f["transition"] = "new-topic", "none"
-            elif f.get("hold") or (
-                prev.get("presence") == "person" and f.get("presence") == "person"
-            ):
-                f["relation"], f["transition"] = (
-                    "same-picture",
-                    "none",
-                )  # the picture, or the person, stays
+            settled = follows(prev, f)
+            if settled is not None:
+                f["relation"], f["transition"] = settled
             elif "relation" in a:
                 rel = a["relation"]["choice"]
-                if prev.get("presence") != f.get("presence") and "person" in (
-                    prev.get("presence"),
-                    f.get("presence"),
-                ):
-                    rel = "swap"  # the person and the content change places: a cut, never a move into a talking head
                 f["relation"], f["transition"] = rel, REL[rel]["transition"]
             for o in f.get("objects", []):
                 ans = a.get("obj_" + o["id"])

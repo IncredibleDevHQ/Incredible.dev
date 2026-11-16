@@ -107,6 +107,14 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
       </section>
 
       <aside className="ep-peek" aria-label="The film">
+        <header className="ep-panel-head">
+          <b>{rendered ? "The film" : "Preview"}</b>
+          {!rendered && (
+            <span>
+              Chapter {number} · line {lines.indexOf(line) + 1} of {lines.length}
+            </span>
+          )}
+        </header>
         {rendered ? (
           <video className="ep-film-video" src={film.file!.url} controls preload="metadata" />
         ) : (
@@ -120,9 +128,7 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
                 </span>
               </button>
             </Tooltip>
-            <p className="ep-peek-line">
-              Chapter {number} · line {lines.indexOf(line) + 1} of {lines.length} · {LAYOUTS[line.layout] ?? line.layout}
-            </p>
+            <p className="ep-peek-line">{LAYOUTS[line.layout] ?? line.layout}</p>
           </>
         )}
         <div className="ep-film-sum">

@@ -22,6 +22,10 @@ export function Slides({ view, at, onAt }: { view: EpisodeView; at: string; onAt
   const recorded = chapters.filter((c) => takeOf(view, c.id)).length;
   return (
     <nav className="ep-slides" aria-label="The film and its chapters">
+      <header className="ep-rail-head">
+        <span>Chapters</span>
+        <b>{chapters.length}</b>
+      </header>
       <ol>
         <li>
           <button ref={film ? current : undefined} type="button" className="ep-slide" aria-current={film || undefined} onClick={() => !film && onAt(FILM)}>

@@ -109,8 +109,23 @@ as it stands. Their words are theirs:
 - Keep a `by_person` line word for word, in every later turn, unless a change is asked of that
   very line. Leave the `by_person` mark where it is.
 - Nothing is drawn again for a change of words. If one of the line's cues landed on a word
-  that is gone, a fix turn names the line: fit that cue to the new words (the word it lands
-  on, or the cue itself) and change nothing else.
+  that is gone, a redo turn names the line once the person applies their changes: fit that
+  cue to the new words (the word it lands on, or the cue itself) and change nothing else.
+
+## When a person adds or cuts a line
+
+A person can add a line to a chapter, or cut one, as they would in a text. A line they add
+takes an id nothing has used and is marked `by_person`, with nothing under `was`: the words
+were never yours. Keep them word for word, like any of theirs. It is one of three:
+
+| The line | What you do |
+| --- | --- |
+| Said to camera | Nothing |
+| Said over the picture before it (`hold`) | Nothing. Its picture is drawn again with it |
+| Brought in with a picture of a type they picked | A redo turn names it: write its `shows`, objects and cues for its words, as at the frames stage, for a picture of that type |
+
+A line they cut is gone, with its id. A picture whose lines are all cut goes with them. Two
+lines they join are one: the first keeps its id, with the words of both.
 
 ## When a person asks for a change
 

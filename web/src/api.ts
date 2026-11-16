@@ -374,7 +374,9 @@ export type EpisodeView = EpisodeCard & {
   builders: Record<string, WriterId>;
   // What the person's picks leave the writer (a line that now needs a picture), waiting for
   // them to apply their changes: nothing is planned or drawn until they do.
-  waiting: { line: string; do: string }[];
+  // What the person's changes leave the writer, run when they apply them: a line given a picture
+  // by a pick, a line they added with one, or a line whose new words a picture's step no longer finds.
+  waiting: { line: string; do: string; kind: "pick" | "added" | "words" }[];
   runs: EpisodeRun[];
   options: EpisodeOptions;
   // The turn under way or last made: when it began, and a person's own words when they asked for it.
@@ -391,6 +393,9 @@ export type EpisodeView = EpisodeCard & {
 };
 export type WorkEvent = { kind: "step" | "note"; text: string; at: number };
 export type AskScope = "film" | "chapter" | "line" | "picture";
+// What a line a person adds is: more of its block, said to camera, or a picture of a type.
+export type PictureKind = "diagram" | "list" | "typeset-code" | "chips" | "illustration" | "slide";
+export type LineKind = "more" | "camera" | PictureKind;
 export type EpisodeAsk = { scope: AskScope; target?: string; text: string };
 export type EpisodeChange = {
   why: string;
@@ -555,6 +560,13 @@ export const api = {
   // A change asked for in words; the writer makes it (a note on how a picture is drawn goes to its builder).
   askEpisode: (id: string, ask: EpisodeAsk) => call<EpisodeView>("POST", `/api/episodes/${id}/ask`, ask),
   editLine: (id: string, frame: string, text: string) => call<EpisodeView>("POST", `/api/episodes/${id}/lines/${encodeURIComponent(frame)}`, { text }),
+  // A line a person adds after another (or first in a chapter, by the chapter's id): going on in
+  // its block, said to camera, or bringing in a picture of a type. `keep` is what the line it
+  // was split from keeps.
+  addLine: (id: string, line: { after: string; text: string; kind: LineKind; keep?: string }) => call<EpisodeView>("POST", `/api/episodes/${id}/lines`, line),
+  // Lines a person cuts; with `join`, the one line's words go on at the end of the line before it
+  // (as `words`, when the person changed that line's words too).
+  cutLines: (id: string, frames: string[], join = false, words?: string) => call<EpisodeView>("POST", `/api/episodes/${id}/cut`, { frames, join, words }),
   undoEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/undo`),
   redoEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/redo`),
   planAgain: (id: string, writer: WriterId | "" = "") => call<EpisodeView>("POST", `/api/episodes/${id}/again`, { writer }),

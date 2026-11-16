@@ -4,10 +4,10 @@
 // a document in the middle (the whole script on the film's page, one chapter's on a chapter's),
 // and the frame on the right. Words are changed where they are read; anything else is asked for
 // in the change bar under the script. Recording happens in the same screen.
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Circle, Maximize2, Mic, Minimize2, Moon, Pencil, Play, RotateCcw, Square, Sun, Undo2, Upload } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { api, type EpisodeChapter, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type WriterId } from "../../api";
-import { chapterName, clockLine, LAYOUTS, linesOf, mmss, pictureCount, pictureState, PRESENCE, takeOf, unitOf } from "../../episode";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Circle, Maximize2, Minimize2, Monitor, Moon, Play, RotateCcw, Square, Sun, Upload } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api, type EpisodeChapter, type EpisodeView, type WriterId } from "../../api";
+import { chapterName, clockLine, LAYOUTS, linesOf, mmss, pictureCount, takeOf, unitOf } from "../../episode";
 import { useHouse } from "../../store";
 import { useTheme } from "../../theme";
 import { AgentMark } from "../../ui";
@@ -18,11 +18,10 @@ import { Tooltip } from "../Tooltip";
 import { Ask, turning, useWaiting, type AskHandle, type AskTarget, type Marks, type Run, type Waiting } from "./Ask";
 import { Choices } from "./Choices";
 import { Devices, Level } from "./Devices";
-import { Changed } from "./Diff";
 import { useRecorder, type Recording } from "./recorder";
-import { BlockHead, blockName, blocksOf, type Block } from "./Blocks";
 import { FilmPage, WRITERS, type Open } from "./Film";
-import { agentOptions, PictureBlock, Stills } from "./Picture";
+import { Script, type ScriptHandle } from "./Script";
+import { agentOptions, Stills } from "./Picture";
 import { FILM, Slides } from "./Slides";
 import { Stage, type Playing } from "./Stage";
 import { ApplyChanges, FilmDownload, FilmTools } from "./Tools";
@@ -152,19 +151,21 @@ function Bar({ view, ready, onAt, onClose, run, busy }: { view: EpisodeView; rea
 // Light or dark, as the sidebar sets it, at hand while the studio covers the sidebar: two icons,
 // the one in use pressed.
 function Appearance() {
-  const [theme, setTheme] = useTheme();
+  const [, setTheme, chosen] = useTheme();
+  const looks = [
+    { pick: "light", label: "Light", Icon: Sun },
+    { pick: "dark", label: "Dark", Icon: Moon },
+    { pick: "system", label: "As the system is", Icon: Monitor },
+  ] as const;
   return (
     <div className="ep-appearance" role="group" aria-label="Appearance">
-      <Tooltip content="Light" side="bottom" align="end">
-        <button type="button" aria-label="Light" aria-pressed={theme === "light"} onClick={() => setTheme("light")}>
-          <Sun />
-        </button>
-      </Tooltip>
-      <Tooltip content="Dark" side="bottom" align="end">
-        <button type="button" aria-label="Dark" aria-pressed={theme === "dark"} onClick={() => setTheme("dark")}>
-          <Moon />
-        </button>
-      </Tooltip>
+      {looks.map(({ pick, label, Icon }) => (
+        <Tooltip key={pick} content={label} side="bottom" align="end">
+          <button type="button" aria-label={label} aria-pressed={chosen === pick} onClick={() => setTheme(pick)}>
+            <Icon />
+          </button>
+        </Tooltip>
+      ))}
     </div>
   );
 }
@@ -280,7 +281,6 @@ function Chapter({
   const lines = useMemo(() => linesOf(chapter), [chapter]);
   const number = plan.chapters.indexOf(chapter) + 1;
   const [picked, setPicked] = useState(() => (opening && lines.some((l) => l.id === opening) ? opening : lines[0].id));
-  const [editing, setEditing] = useState<string | null>(null);
   const [playing, setPlaying] = useState<Playing>(null);
   // The frame, its choices and the recorder open full screen over the page. A take opens them,
   // and they stay open after it, so the take can be seen at once.
@@ -290,6 +290,7 @@ function Chapter({
   const arming = useRef(false);
   const upload = useRef<HTMLInputElement>(null);
   const ask = useRef<AskHandle>(null);
+  const script = useRef<ScriptHandle>(null);
   const take = takeOf(view, chapter.id);
   const presenterOff = view.settings.presenter === "off";
   const working = turning(view);
@@ -312,29 +313,8 @@ function Chapter({
   // How long the take was planned to run: the chapter, or the one line said again.
   const planned = solo ? (lines.find((l) => l.id === solo)?.seconds ?? 0) : (view.clock?.chapters.find((c) => c.id === chapter.id)?.seconds ?? chapter.seconds);
   const [sayStep, setSayStep] = useSayStep();
-  const changed = useMemo(() => new Set([...(view.last_change?.lines ?? []), ...(view.last_change?.added ?? [])]), [view.last_change]);
-  // What the last change did, laid into the script: what each changed line said before, and
-  // the lines it cut, each after the line it followed.
+  // What the last change did is marked in the script, except while a take is recorded.
   const marked = marks.on && !recording;
-  const was = view.last_change?.was ?? {};
-  const cuts = useMemo(() => {
-    const by = new Map<string, string[]>();
-    for (const c of view.last_change?.cut ?? []) {
-      if (c.chapter !== chapter.id) continue;
-      const after = lines.some((l) => l.id === c.after) ? c.after : "";
-      by.set(after, [...(by.get(after) ?? []), c.says]);
-    }
-    return by;
-  }, [view.last_change, chapter.id, lines]);
-  const cutRows = (after: string) =>
-    marked &&
-    cuts.get(after)?.map((says, n) => (
-      <li key={`cut-${after}-${n}`} className="ep-line-cut">
-        <del>{says}</del>
-        <small>Cut</small>
-      </li>
-    ));
-
   // A line picked to be said again: the recorder is armed once it knows it has one line.
   const arm = recorder.arm;
   // A chapter is said over its pictures, so they are made before it is recorded. Asking to
@@ -404,15 +384,11 @@ function Chapter({
   };
   const canPlay = Boolean((take && clockLine(view, line.id)?.source.kind === "take") || unit?.picture.clip);
   const pick = (frame: string) => {
+    if (frame === picked) return;
     setPlaying(null);
-    setEditing(null);
     setPicked(frame);
   };
-  const reword = (frame: string, text: string) => {
-    setEditing(null);
-    void run(() => api.editLine(view.id, frame, text));
-  };
-  const canEdit = !recording && !working && !busy;
+  const reword = (frame: string, text: string) => void run(() => api.editLine(view.id, frame, text));
 
   const fullRef = useRef<HTMLDivElement>(null);
   const peekRef = useRef<HTMLButtonElement>(null);
@@ -439,9 +415,10 @@ function Chapter({
     return () => window.removeEventListener("keydown", onKey);
   }, [full, recording]);
 
-  // Up and down move through the lines, Enter changes the words, a slash asks for a change.
+  // Outside the script, up and down move through the lines, Enter puts the caret at the end of
+  // the picked one, and a slash opens the blocks there.
   useEffect(() => {
-    if (recording || editing) return;
+    if (recording) return;
     const onKey = (e: KeyboardEvent) => {
       const on = e.target as HTMLElement;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -452,12 +429,12 @@ function Chapter({
       } else if (e.key === "ArrowUp" && at > 0) {
         e.preventDefault();
         pick(lines[at - 1].id);
-      } else if (e.key === "Enter" && canEdit && !full && (on === document.body || on.classList.contains("ep-line"))) {
+      } else if (e.key === "Enter" && !working && !full && on === document.body) {
         e.preventDefault();
-        setEditing(line.id);
-      } else if (e.key === "/" && !full) {
+        script.current?.focusLine(line.id);
+      } else if (e.key === "/" && !working && !full) {
         e.preventDefault();
-        ask.current?.open();
+        script.current?.focusLine(line.id, true);
       } else if ((e.key === "r" || e.key === "R") && !busy) {
         e.preventDefault();
         begin();
@@ -505,73 +482,6 @@ function Chapter({
       </button>
     ));
 
-  const blocks = useMemo(() => blocksOf(view, lines), [lines, view]);
-  const lineItem = (l: EpisodeFrame) => {
-    const i = lines.indexOf(l);
-    const current = l.id === line.id;
-    const again = view.rerecord.includes(l.id);
-    const before = marked ? was[l.id] : undefined;
-    // What a rich picture does on this line, from its motion plan: on every line while the
-    // picture is drawn and looked at, after that on the line that is picked.
-    const mine = unitOf(view, l.id);
-    const shot = mine?.picture.motion?.shots.find((s) => s.frame === l.id);
-    const reviewing = mine ? ["making", "go"].includes(pictureState(mine)) : false;
-    return [
-      <li key={l.id}>
-        {editing === l.id ? (
-          <LineEditor line={l} onSave={(text) => reword(l.id, text)} onCancel={() => setEditing(null)} />
-        ) : (
-          <div className="ep-line-card" data-current={current || undefined}>
-            <button
-              type="button"
-              className="ep-line"
-              aria-current={current || undefined}
-              disabled={recording}
-              onClick={() => pick(l.id)}
-              onDoubleClick={() => canEdit && setEditing(l.id)}
-            >
-              <i className="ep-who" data-presence={l.presence} aria-label={PRESENCE[l.presence]} />
-              {before ? <Changed was={before} now={l.vo} /> : <span>{l.vo}</span>}
-              {/* the picked line says where it stands under its words, beside its tools */}
-              {recording ? i < recorder.index && !solo && <small>✓</small> : current ? null : again ? <small data-tone="amber">Say again</small> : take && <small aria-label="Recorded">✓</small>}
-              {!recording && !current && !before && changed.has(l.id) && <em aria-label="Changed" />}
-            </button>
-            {shot && !recording && (current || reviewing) && (
-              <p className="ep-shot" title={`It ends on: ${shot.still}`}>
-                {shot.shot || shot.hero}
-              </p>
-            )}
-            {current && !recording && (
-              <div className="ep-line-foot">
-                <small data-tone={again ? "amber" : undefined}>{again ? "Say again" : take ? "Recorded" : changed.has(l.id) && !before ? "Changed" : ""}</small>
-                {before && (
-                  <Tooltip content="Put the old words back" side="bottom">
-                    <button type="button" className="icon-btn" aria-label="Put the old words back" disabled={!canEdit} onClick={() => reword(l.id, before)}>
-                      <Undo2 />
-                    </button>
-                  </Tooltip>
-                )}
-                <Tooltip content="Change the words" shortcut="↵" side="bottom">
-                  <button type="button" className="icon-btn" aria-label="Change the words" disabled={!canEdit} onClick={() => setEditing(l.id)}>
-                    <Pencil />
-                  </button>
-                </Tooltip>
-                {take && (
-                  <Tooltip content="Record this line again" side="bottom">
-                    <button type="button" className="icon-btn" aria-label="Record this line again" disabled={busy} onClick={() => recordLine(l.id)}>
-                      <Mic />
-                    </button>
-                  </Tooltip>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </li>,
-      cutRows(l.id),
-    ];
-  };
-
   return (
     <main className="ep-chapter" data-recording={recording || undefined}>
       <Slides view={view} at={chapter.id} onAt={(id) => onAt(id)} />
@@ -600,37 +510,44 @@ function Chapter({
             </div>
             <h1>{chapter.question}</h1>
           </header>
-          {marked && cuts.has("") && <ol className="ep-block-lines">{cutRows("")}</ol>}
-          {blocks.map((b) =>
-            b.unit ? (
-              <PictureBlock
-                key={b.key}
-                view={view}
-                block={b as Block & { unit: EpisodeUnit }}
-                lines={lines}
-                picked={line.id}
-                onPick={pick}
-                onOpen={() => {
-                  if (!b.lines.some((l) => l.id === line.id)) pick(b.lines[0].id);
-                  setFull(true);
-                }}
-                run={run}
-                busy={busy || working || recording}
-              >
-                {b.lines.flatMap(lineItem)}
-              </PictureBlock>
-            ) : (
-              <section key={b.key} className="ep-block" aria-label={blockName(b)}>
-                <BlockHead block={b} view={view} />
-                <ol className="ep-block-lines">{b.lines.flatMap(lineItem)}</ol>
-              </section>
-            ),
-          )}
+          <Script
+            ref={script}
+            view={view}
+            chapter={chapter}
+            lines={lines}
+            current={line.id}
+            recording={recording}
+            said={recorder.index}
+            solo={solo}
+            take={take}
+            marked={marked}
+            run={run}
+            busy={busy || working}
+            onPick={pick}
+            onOpen={(u) => {
+              if (!u.frames.includes(line.id)) pick(u.frames[0]);
+              setFull(true);
+            }}
+            onReword={reword}
+            onRecordLine={recordLine}
+            onAsk={(frame) => {
+              pick(frame);
+              requestAnimationFrame(() => ask.current?.open("line"));
+            }}
+            onUndo={() => !busy && !working && view.last_change && void run(() => api.undoEpisode(view.id))}
+            onRedo={() => !busy && !working && view.undone && void run(() => api.redoEpisode(view.id))}
+          />
         </div>
-        {!recording && <Ask ref={ask} view={view} targets={targets} run={run} busy={busy} slash waiting={waiting} marks={marks} />}
+        {!recording && <Ask ref={ask} view={view} targets={targets} run={run} busy={busy} waiting={waiting} marks={marks} />}
       </section>
 
       <aside className="ep-peek" aria-label="The frame for this line">
+        <header className="ep-panel-head">
+          <b>Preview</b>
+          <span>
+            Line {at + 1} of {lines.length} · {LAYOUTS[line.layout] ?? line.layout}
+          </span>
+        </header>
         <FileDrop className="ep-peek-drop" label={`Drop a recording of chapter ${number}`} refusal="A recording is a video or an audio file." one disabled={recording || busy} accepts={takesFile} onFiles={([file]) => bring(file)}>
           <Tooltip content="Opens the frame with its choices and the recorder" side="bottom">
             <button ref={peekRef} type="button" className="ep-peek-stage" aria-label="Open the frame, its choices and the recorder" onClick={() => setFull(true)}>
@@ -642,9 +559,6 @@ function Chapter({
             </button>
           </Tooltip>
         </FileDrop>
-        <p className="ep-peek-line">
-          Line {at + 1} of {lines.length} · {LAYOUTS[line.layout] ?? line.layout}
-        </p>
         <div className="ep-peek-actions">
           <Tooltip content={pics.planned ? "Makes this chapter's pictures first" : "Opens the camera and microphone"} shortcut="R" side="bottom">
             <button type="button" className={`btn ${take ? "" : "primary"}`} disabled={busy || (waits > 0 && pics.planned === 0)} onClick={begin}>
@@ -875,66 +789,4 @@ function useSayStep(): [number, (step: number) => void] {
     }
   };
   return [step, set];
-}
-
-// A line's words, changed where they are read. Enter keeps them, Escape leaves them as they
-// were, and clicking away keeps them too.
-function LineEditor({ line, onSave, onCancel }: { line: EpisodeFrame; onSave: (text: string) => void; onCancel: () => void }) {
-  const [text, setText] = useState(line.vo);
-  const field = useRef<HTMLTextAreaElement>(null);
-  const done = useRef(false);
-  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-  // the plan's own pace for this line, so the seconds read as the rest of the script's do
-  const pace = line.words && line.seconds ? line.words / line.seconds : 2.6;
-
-  useLayoutEffect(() => {
-    const el = field.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [text]);
-  useEffect(() => {
-    const el = field.current;
-    if (!el) return;
-    el.focus();
-    el.setSelectionRange(el.value.length, el.value.length);
-  }, []);
-
-  const finish = (keep: boolean) => {
-    if (done.current) return;
-    done.current = true;
-    const said = text.trim().replace(/\s+/g, " ");
-    if (keep && said && said !== line.vo) onSave(said);
-    else onCancel();
-  };
-  return (
-    <div className="ep-line-edit">
-      <textarea
-        ref={field}
-        rows={1}
-        value={text}
-        aria-label="The words of this line"
-        onChange={(e) => setText(e.target.value)}
-        onBlur={() => finish(true)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            finish(true);
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            e.stopPropagation();
-            finish(false);
-          }
-        }}
-      />
-      <p>
-        <span>
-          {words} {words === 1 ? "word" : "words"} · about {Math.max(1, Math.round(words / pace))} s
-        </span>
-        <span>
-          <Kbd keys="enter" size="sm" /> keeps it · <Kbd keys="esc" size="sm" /> leaves it
-        </span>
-      </p>
-    </div>
-  );
 }

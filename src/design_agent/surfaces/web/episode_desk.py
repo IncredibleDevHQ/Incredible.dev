@@ -79,7 +79,7 @@ ROUNDS = 3
 #: Turns on a plan that already stands: a pick that leaves the writer something to redo, a
 #: change a person asks for in words, a line whose words a person changed. One that fails or
 #: is stopped leaves the plan as it was.
-STANDING = ("redo", "change", "edit")
+STANDING = ("redo", "change")
 #: How many of the lines a change cut are kept, with their words, to be shown.
 CUT_SHOWN = 24
 #: What a note on a picture asks to change, as the reader is asked. The first is the builder's
@@ -115,7 +115,11 @@ THEMES = Q.table("themes")
 #: What each kind of picture is, and how long each way in takes, as the plan's own table has them.
 KINDS = Q.table("picture_types")
 WAYS_IN = Q.table("transitions")
+WAYS_BY_RELATION = {str(r["id"]): r["transition"] for r in Q.TYPES["relations"]}
 LEVELS = units.LEVELS
+#: What a person adds to a chapter's script: a line that goes on in its block, a block said to
+#: camera, or a block whose line brings in a picture of one of the types they may pick.
+LINE_KINDS = ("more", "camera", *override.PICTURES)
 VOICES = ("live", "narrator")
 #: A clone of a person's voice is made from their takes: this much speech at least, and no
 #: more than a clone uses. A take over the size ElevenLabs takes for one recording is left out.
@@ -664,16 +668,13 @@ class EpisodeDesk:
         """A turn on a standing plan did not finish: the plan goes back to how it stood, and
         the studio stays open. A person's own words stay; only their picture's steps wait."""
         self._then_draw.discard(episode_id)
-        if stage == "edit":
-            said += " Your words are in; the steps of their picture were not fitted to them."
-        else:
-            kept = self.store.snapshot(episode_id)
-            if kept is not None and kept["data"].get("plan") and not kept["summary"]:
-                self.store.update_episode(
-                    episode_id, plan=kept["data"]["plan"], labels=kept["data"]["labels"]
-                )
-                self.store.drop_snapshot(kept["n"])
-            said += " The plan is as it was."
+        kept = self.store.snapshot(episode_id)
+        if kept is not None and kept["data"].get("plan") and not kept["summary"]:
+            self.store.update_episode(
+                episode_id, plan=kept["data"]["plan"], labels=kept["data"]["labels"]
+            )
+            self.store.drop_snapshot(kept["n"])
+        said += " The plan is as it was."
         self._stage(episode_id, name=stage, state="stopped", said=said)
         self._set(episode_id, status=self._status(episode_id))
 
@@ -865,9 +866,7 @@ class EpisodeDesk:
             if name == "frames":
                 # who has the frame is read from the script before anything is designed
                 report = await self._read(episode_id, worker, ["frames"], checks="")
-            # a person's own words need no turn of the writer's, unless their picture's steps
-            # no longer land on them
-            prompt = "" if name == "edit" else self._prompt(episode, worker, name, report, redo)
+            prompt = self._prompt(episode, worker, name, report, redo)
             for round_number in range(ROUNDS + 1):
                 self._stage(episode_id, name=name, round=round_number, state="working")
                 problems: list[str] = []
@@ -893,15 +892,12 @@ class EpisodeDesk:
                         "frames": (["frames", "design"], "all"),
                         "redo": (["frames", "design"], "all"),
                         "change": (["script", "frames", "design"], "all"),
-                        "edit": (["frames", "design"], "all"),
                     }[name]
                     report = await self._read(episode_id, worker, stages, checks=checks)
-                    problems = self._blocking(episode_id, name, redo if name == "edit" else "")
+                    problems = self._blocking(episode_id, name)
                 if not problems or round_number == ROUNDS:
                     break
-                prompt = self._fix_prompt(
-                    self._episode(episode_id), worker, name, report, redo if name == "edit" else ""
-                )
+                prompt = self._fix_prompt(self._episode(episode_id), worker, name, report)
         episode = self._episode(episode_id)
         full = self._full(episode)
         if full is None:
@@ -996,15 +992,12 @@ class EpisodeDesk:
         )
         return lines
 
-    def _blocking(self, episode_id: str, stage: str, about: str = "") -> list[str]:
+    def _blocking(self, episode_id: str, stage: str) -> list[str]:
         """What still stops this stage from being done: the checks' musts, a line that needs a
-        picture and has none, a brief with nothing in it. With `about` (a line a person
-        reworded), only what that line breaks: the rest of the plan stood before."""
+        picture and has none, a brief with nothing in it."""
         episode = self._episode(episode_id)
         merged = self._merged(episode)
         musts = check.musts(episode["report"].get("rows", []))
-        if about:
-            return [f"{r['where']}: {r['text']}" for r in musts if r["where"] == about]
         out = [f"{r['where']}: {r['text']}" for r in musts]
         if stage == "brief":
             brief = merged.get("brief", {})
@@ -1068,25 +1061,16 @@ class EpisodeDesk:
                 "a pick. Reply with what you changed, one line each."
             )
         return (
-            "Stage: redo.\n\nA person changed who has the frame. What that leaves for you:\n\n"
-            f"{redo}\n\nDo only that, in {root}/plan.json, following {skill}/references/plan.md "
-            '("When a person changes who has the frame"). Never undo a pick. Reply with what '
-            "you changed."
+            "Stage: redo.\n\nA person changed the plan in the studio. What that leaves for "
+            f"you:\n\n{redo}\n\nDo only that, in {root}/plan.json, following "
+            f'{skill}/references/plan.md ("When a person changes who has the frame", "When a '
+            'person changes a line\'s words" and "When a person adds or cuts a line"). Never '
+            "undo a pick, and keep every `by_person` line's words. Reply with what you changed."
         )
 
-    def _fix_prompt(
-        self, episode: Row, worker: Worker, stage: str, report: Sequence[str], about: str = ""
-    ) -> str:
+    def _fix_prompt(self, episode: Row, worker: Worker, stage: str, report: Sequence[str]) -> str:
         root, _ = worker.place(episode)
         said = "\n".join(report)
-        if about:
-            return (
-                f"Stage: fix.\n\nA person changed the words of {about} (it is marked "
-                f"`by_person`). Their words stay exactly as they are. The plan was checked with "
-                f"them:\n\n{said}\n\nFix what {about} breaks in {root}/plan.json by fitting "
-                "its cues to the new words (the word each lands on, or the cue itself), and "
-                "change nothing else. Reply with what you changed."
-            )
         return (
             f"Stage: fix (the {stage} stage).\n\nYour plan was read and checked:\n\n{said}\n\n"
             f"Fix every MUST, and each look you do not waive, in {root}/plan.json. Change "
@@ -1253,11 +1237,7 @@ class EpisodeDesk:
         """A person's own words for one line. They are in at once: nothing is read again and
         nothing is drawn again. Only when a step of the line's picture landed on a word that
         is gone does the writer fit that step to the new words."""
-        words = " ".join(str(text).split())
-        if not words:
-            raise ValueError("A line needs words. To drop it, ask for it to be cut.")
-        if len(words) > 700:
-            raise ValueError("That is long for one line. Ask for the chapter to be changed.")
+        words = _line_words(text)
         episode = self._episode(episode_id)
         if self._full(episode) is None or self.planning(episode_id):
             raise ValueError("The writer is still working. Change the words when that has landed.")
@@ -1274,19 +1254,267 @@ class EpisodeDesk:
             episode_id, plan=after, labels=plans.carried(episode["labels"] or {}, before, after)
         )
         self._note_change(episode_id)
+        self._fit_later(episode_id, [frame], self._report(episode_id))
+        self._say(episode, "Changed a line's words.", by=by, quiet=True)
+        self._queue_pictures(episode_id)
+        self._settle(episode_id)
+        return self.view(episode_id)
+
+    def add_line(
+        self,
+        episode_id: str,
+        *,
+        by: str,
+        after: str,
+        text: str,
+        kind: str,
+        keep: str | None = None,
+    ) -> Row:
+        """A person adds a line to a chapter's script, after the line `after` (or first in the
+        chapter it names). `more` goes on in that line's block: to camera after a line said to
+        camera, over the same picture after a picture's line. `camera` starts a block said to
+        camera, and a picture type a block whose line brings that picture in. `keep` is the
+        line's own words up to where it was split, when the new line is the rest of it.
+
+        The words are the person's and so is what the line is: it is labelled as they chose,
+        and nothing is read again. A line said to camera is ready at once. A new picture waits
+        for the writer to design it, and a picture that gained a line is out of date: both
+        wait for the person to apply their changes."""
+        words = _line_words(text)
+        if kind not in LINE_KINDS:
+            raise ValueError(
+                "A line goes on in its block, is said to camera, or brings in a picture."
+            )
+        episode = self._episode(episode_id)
+        full = self._full(episode)
+        if full is None or self.planning(episode_id):
+            raise ValueError("The writer is still working. Add the line when that has landed.")
+        order = [f for _, _, f in plans.frames_of(full)]
+        opens = next((ch for ch in full["chapters"] if ch["id"] == after), None)
+        prev: Row | None
+        nxt: Row | None
+        if opens is not None:
+            first = opens["beats"][0]["frames"][0]["id"]
+            at = next(k for k, f in enumerate(order) if f["id"] == first)
+            prev, nxt = (order[at - 1] if at else None), order[at]
+            if kind == "more" or keep is not None:
+                raise ValueError("A line goes on after another line.")
+        else:
+            at = next((k for k, f in enumerate(order) if f["id"] == after), -1)
+            if at < 0:
+                raise ValueError("That line is not in the plan.")
+            prev, nxt = order[at], (order[at + 1] if at + 1 < len(order) else None)
+        hold = False
+        if kind == "more":
+            assert prev is not None  # noqa: S101 - a line goes on after one, checked above
+            if prev.get("presence") == "person":
+                kind = "camera"
+            else:
+                hold = True
+        elif nxt is not None and nxt.get("hold") and nxt.get("presence") != "person":
+            raise ValueError("A new block goes after a picture's last line, not inside it.")
+        if kind == "camera" and full.get("brief", {}).get("presenter") == "off":
+            raise ValueError(
+                "Nobody is on camera in this film: a new line here brings in a picture."
+            )
+        now = time.time()
+        before = episode["plan"] or {}
+        plan = copy.deepcopy(before)
+        if keep is not None:
+            plans.reword(plan, after, _line_words(keep), at=now)
+        fid = plans.add_line(plan, after, words, at=now, hold=hold)
+        labels = plans.carried(episode["labels"] or {}, before, plan)
+        merged = self._merged({**episode, "plan": plan, "labels": labels})
+        new_ch, new_b, line = next(
+            (ch, b, f) for ch, b, f in plans.frames_of(merged) if f["id"] == fid
+        )
+        if not new_b.get("subtype"):
+            # what the beat does is what the beat before it does (or the one after, first in
+            # its chapter), and it is the person's
+            beats = new_ch["beats"]
+            here = next(k for k, b in enumerate(beats) if b is new_b)
+            like = next(
+                (b for b in [*reversed(beats[:here]), *beats[here + 1 :]] if b.get("subtype")),
+                None,
+            )
+            if like is not None:
+                new_b.update(
+                    subtype=like["subtype"],
+                    type=like.get("type"),
+                    p=1.0,
+                    reads=[{"id": like["subtype"], "p": 1.0}],
+                    by="person",
+                )
+        if hold:
+            assert prev is not None  # noqa: S101 - a held line goes on after one
+            line["presence_p"] = dict(prev.get("presence_p") or {str(prev["presence"]): 1.0})
+        elif kind == "camera":
+            line["presence_p"] = {"person": 1.0, "both": 0.0, "content": 0.0}
+        else:
+            line["presence_p"] = {"person": 0.0, "both": 1.0, "content": 0.0}
+            merged["_overrides"] = override.merge(
+                merged.get("_overrides") or {}, {"frames": {fid: {"picture": kind}}}
+            )
+            line["picked"] = {"picture": kind}
+        layouts.settle_frames(merged)
+        plans.inherit_holds(merged)
+        if kind == "camera" or hold:
+            line["_designed"] = True  # nothing is drawn for it: what it is, is all it needs
+            if kind == "camera":
+                line["picture"] = "camera"
+        _follow(merged, [fid, str(nxt["id"]) if nxt is not None else ""])
+        self._snapshot(episode_id, why="You added a line", episode=episode)
+        self.store.update_episode(episode_id, plan=plan, labels=plans.labels_of(merged))
+        if kind in override.PICTURES:
+            picks = dict(episode["picks"] or {})
+            writer = dict(picks.get("writer") or {})
+            writer[fid] = {
+                "where": fid,
+                "kind": "added",
+                "was": "a new line",
+                "now": f"{line['presence']} / {line['layout']}",
+                "why": "added by a person",
+                "do": f"A person added this line with a picture: {KINDS[kind]['name']} "
+                f"({KINDS[kind]['reads_as'].rstrip('.')}). Write its `shows`, objects and cues "
+                "for its words, as at the frames stage, and keep its words as they are.",
+            }
+            picks["writer"] = writer
+            self.store.update_episode(episode_id, picks=picks)
+        self._note_change(episode_id)
+        self._fit_later(episode_id, [after] if keep is not None else [], self._report(episode_id))
+        self._say(episode, "Added a line.", by=by, quiet=True)
+        self._queue_pictures(episode_id)
+        self._settle(episode_id)
+        return self.view(episode_id)
+
+    def cut_lines(
+        self,
+        episode_id: str,
+        *,
+        by: str,
+        frames: Sequence[str],
+        join: bool = False,
+        words: str | None = None,
+    ) -> Row:
+        """A person cuts lines from a chapter's script: one, or the run of a block. With
+        `join`, the one line's words go on at the end of the line before it in its block, as
+        the start of a paragraph is deleted in a text; `words` are what that line then says,
+        when the person changed it too. A picture that loses a line is out of date and one that
+        loses all of them goes with them: nothing is drawn until the person applies their
+        changes."""
+        cut = list(dict.fromkeys(str(x) for x in frames))
+        if not cut:
+            raise ValueError("Say which line to cut.")
+        episode = self._episode(episode_id)
+        full = self._full(episode)
+        if full is None or self.planning(episode_id):
+            raise ValueError("The writer is still working. Cut the line when that has landed.")
+        order = [(ch, f) for ch, _b, f in plans.frames_of(full)]
+        where = {str(f["id"]): k for k, (_ch, f) in enumerate(order)}
+        if any(x not in where for x in cut):
+            raise ValueError("That line is not in the plan.")
+        for ch in full["chapters"]:
+            ids = [f["id"] for b in ch["beats"] for f in b["frames"]]
+            if ids and all(x in cut for x in ids):
+                raise ValueError(
+                    "A chapter needs a line. To drop the chapter, ask for it to be cut."
+                )
+        found = self._units(episode, full)
+        for unit in found:
+            if unit["kind"] != "picture":
+                continue
+            if unit["frames"][0] in cut and not all(x in cut for x in unit["frames"]):
+                raise ValueError(
+                    "This line brings its picture in for the lines after it: cut them with it, or keep it."
+                )
+            running = self._builds.get((episode_id, unit["id"]))
+            if running is not None and not running.done() and any(x in cut for x in unit["frames"]):
+                raise ValueError("Its picture is being made. Stop it first, or wait for it.")
+        now = time.time()
+        before = episode["plan"] or {}
+        plan = copy.deepcopy(before)
+        into = ""
+        if join:
+            k = where[cut[0]]
+            ch, gone = order[k]
+            had_ch, had = order[k - 1] if k else (None, None)
+            block = units.by_frame(found)
+            mine, theirs = block.get(str(gone["id"])), block.get(str((had or {}).get("id")))
+            if (
+                len(cut) != 1
+                or had is None
+                or had_ch is None
+                or had_ch["id"] != ch["id"]
+                or (mine or {}).get("id") != (theirs or {}).get("id")
+                or (mine is None and not gone.get("presence") == had.get("presence") == "person")
+            ):
+                raise ValueError("A line joins the line before it in its block.")
+            into = str(had["id"])
+            joined = words or f"{str(had.get('vo', '')).strip()} {str(gone.get('vo', '')).strip()}"
+            plans.reword(plan, into, _line_words(joined), at=now)
+        for x in cut:
+            plans.cut_line(plan, x)
+        labels = plans.carried(episode["labels"] or {}, before, plan)
+        merged = self._merged({**episode, "plan": plan, "labels": labels})
+        layouts.settle_frames(merged)
+        plans.inherit_holds(merged)
+        # the line after each cut follows another line now
+        after_cut = [
+            str(f["id"])
+            for k, (_ch, f) in enumerate(order)
+            if str(f["id"]) not in cut and k and str(order[k - 1][1]["id"]) in cut
+        ]
+        _follow(merged, after_cut)
+        labels = plans.labels_of(merged)
+        # the lines take their picks, and what they waited on, with them
+        frames_picked = dict((labels.get("overrides") or {}).get("frames") or {})
+        for x in cut:
+            frames_picked.pop(x, None)
+        labels["overrides"] = {**(labels.get("overrides") or {}), "frames": frames_picked}
+        picks = dict(episode["picks"] or {})
+        for key in ("writer", "units"):
+            picks[key] = {k: v for k, v in (picks.get(key) or {}).items() if k not in cut}
+        self._snapshot(
+            episode_id, why="You joined two lines" if join else "You cut a line", episode=episode
+        )
+        self.store.update_episode(episode_id, plan=plan, labels=labels, picks=picks)
+        self._note_change(episode_id)
+        self._fit_later(episode_id, [into] if into else [], self._report(episode_id))
+        self._say(episode, "Joined two lines." if join else "Cut a line.", by=by, quiet=True)
+        self._queue_pictures(episode_id)
+        self._settle(episode_id)
+        return self.view(episode_id)
+
+    def _report(self, episode_id: str) -> list[Row]:
+        """The plan checked as it stands after a person's change, kept as its report."""
         merged = self._merged(self._episode(episode_id))
         rows = check.check(merged, "all")
         self.store.update_episode(
             episode_id,
             report={"rows": rows, "lines": check.lines(rows, "all", merged), "at": time.time()},
         )
-        self._say(episode, "Changed a line's words.", by=by, quiet=True)
-        if any(r["where"] == frame for r in check.musts(rows)) and not self.demo:
-            self._start_plan(episode_id, stage="edit", redo=frame)
-        else:
-            self._queue_pictures(episode_id)
-        self._settle(episode_id)
-        return self.view(episode_id)
+        return rows
+
+    def _fit_later(self, episode_id: str, frames: Sequence[str], rows: list[Row]) -> None:
+        """A line whose words a person changed, where a step of its picture lands on a word
+        that is gone: the writer fits that step to the new words, once the person applies
+        their changes. The demo's writer fits nothing."""
+        musts = {str(r["where"]) for r in check.musts(rows)}
+        wrong = [f for f in frames if f and f in musts]
+        if not wrong or self.demo:
+            return
+        picks = dict(self._episode(episode_id)["picks"] or {})
+        writer = dict(picks.get("writer") or {})
+        for frame in wrong:
+            writer[frame] = {
+                "where": frame,
+                "kind": "words",
+                "do": "A person changed its words (it is marked `by_person`), and a step of its "
+                "picture lands on a word that is gone: fit its cues to the new words (the word "
+                "each lands on, or the cue itself), and keep the words exactly as they are.",
+            }
+        picks["writer"] = writer
+        self.store.update_episode(episode_id, picks=picks)
 
     def undo(self, episode_id: str, *, by: str) -> Row:
         """Take the last change back: the plan and its pictures as they stood before it. The
@@ -1371,9 +1599,14 @@ class EpisodeDesk:
             return []
         frames = {f["id"]: f for _, _, f in plans.frames_of(full)}
         off = full.get("brief", {}).get("presenter") == "off"
+        musts = {str(r["where"]) for r in check.musts((episode["report"] or {}).get("rows") or [])}
         out: list[Row] = []
         for where, item in items.items():
             frame = frames.get(str(where))
+            if item.get("kind") == "words":
+                if frame is not None and str(where) in musts:
+                    out.append(item)  # a step still lands on a word that is gone
+                continue
             if frame is None:
                 if off:  # a line written for a face, with no one left on screen
                     out.append(item)
@@ -1400,9 +1633,12 @@ class EpisodeDesk:
         left = self._waiting(episode, full)
         if left:
             told = "\n".join(
-                f"- {x['where']}: {x['was']} is now {x['now']}. {x['do']}" for x in left
+                f"- {x['where']}: {x['do']}"
+                if x.get("kind") == "words"
+                else f"- {x['where']}: {x['was']} is now {x['now']}. {x['do']}"
+                for x in left
             )
-            self._snapshot(episode_id, why="Planned what your picks need")
+            self._snapshot(episode_id, why="Planned what your changes need")
             self._then_draw.add(episode_id)
             self._start_plan(episode_id, stage="redo", redo=told)
         elif not self._refresh(episode_id):
@@ -2618,8 +2854,10 @@ class EpisodeDesk:
                 > max(said[ch["id"]], said.get(f["id"], 0.0))
             ],
             # what the person's picks leave the writer, waiting for them to apply them
+            # (a pick that needs a picture, a line added with one, or words a step no longer finds)
             "waiting": [
-                {"line": str(x["where"]), "do": str(x["do"])} for x in self._waiting(episode, full)
+                {"line": str(x["where"]), "do": str(x["do"]), "kind": str(x.get("kind") or "pick")}
+                for x in self._waiting(episode, full)
             ],
             # who builds each chapter's pictures: the agent picked for it, else the film's writer
             "builders": {
@@ -2738,6 +2976,32 @@ def _dark(colour: str) -> bool:
     except ValueError:
         return True
     return 0.2126 * red + 0.7152 * green + 0.0722 * blue < 0.55
+
+
+def _line_words(text: str) -> str:
+    """A person's words for one line, in one run of spaces."""
+    words = " ".join(str(text).split())
+    if not words:
+        raise ValueError("A line needs words. To drop it, cut it.")
+    if len(words) > 700:
+        raise ValueError("That is long for one line. Ask for the chapter to be changed.")
+    return words
+
+
+def _follow(merged: Row, frames: Sequence[str]) -> None:
+    """How each of `frames` follows the line before it now that the lines around it changed,
+    where who has the two frames settles it. A reading of the two pictures stays as it was,
+    unless it was the person and the content changing places, which they no longer do: then
+    one picture follows another as a new one, on a cut."""
+    order = [f for _, _, f in plans.frames_of(merged)]
+    for k, f in enumerate(order):
+        if f["id"] not in frames or not f.get("_designed"):
+            continue
+        settled = classify.follows(order[k - 1] if k else None, f)
+        if settled is None and f.get("relation") == "swap":
+            settled = "new-topic", str(WAYS_BY_RELATION["new-topic"])
+        if settled is not None:
+            f["relation"], f["transition"] = settled
 
 
 def _changed(before: Row, after: Row) -> Row:

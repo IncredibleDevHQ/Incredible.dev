@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
+from design_agent.episode import plan as plans
 from design_agent.episode import sketch
 from design_agent.surfaces.web import research
 from design_agent.surfaces.web.computer import PROJECTS, Computer
@@ -393,6 +394,37 @@ class BuiltinWorker:
         return str(content)
 
 
+#: A line a person added with a picture, as a redo turn names it: its id and the picture's name.
+ADDED = re.compile(r"^- (\S+): a new line .*? with a picture: ([^(]+?) \(", re.M)
+
+
+def _design_added(plan: dict[str, Any], frame_id: str, kind: str) -> None:
+    """The demo writer's design for a line a person added with a picture: one thing, named by
+    the line's own first words, drawn in on its first word."""
+    found = plans.beat_of(plan, frame_id)
+    if found is None:
+        return
+    _ch, b, f = found
+    if f is None:
+        f = {"id": frame_id}
+        b["frames"] = [f]
+    said = str(f.get("vo") or b.get("says") or "")
+    words = re.findall(r"[A-Za-z0-9][A-Za-z0-9'’-]*", said)
+    if not words:
+        return
+    f["shows"] = f"{kind}: {' '.join(words[:8])}"
+    f["focal"] = "a1"
+    f["objects"] = [
+        {
+            "id": "a1",
+            "what": f"the {kind.lower()} the line names",
+            "words": " ".join(words[:3]),
+            "state": "active",
+        }
+    ]
+    f["cues"] = [{"at": " ".join(words[:2]), "object": "a1", "does": "draws itself in"}]
+
+
 class DemoWorker:
     """The demo's writer: a plan written ahead of time, handed over a stage at a turn, and
     pictures drawn by code. Nothing is asked of any model. Given the house's store, it keeps
@@ -575,6 +607,14 @@ class DemoWorker:
         plan = json.loads(target.read_text("utf8"))
         heard("step", "Reading the plan")
         await asyncio.sleep(self.pause)
+        added = ADDED.findall(prompt)
+        if added:
+            for frame_id, kind in added:
+                _design_added(plan, frame_id, kind)
+            heard("step", "Writing plan.json")
+            target.write_text(json.dumps(plan, indent=1), encoding="utf8")
+            await asyncio.sleep(self.pause)
+            return Told(answer=f"Designed {', '.join(f for f, _ in added)}.")
         named = re.search(r"\b(c\d+)(\.b\d+)?(?:\.f\d+)?\b", prompt)
         chapters = plan.get("chapters") or []
         chapter_id = named.group(1) if named else ""

@@ -18,14 +18,15 @@ export function blocksOf(view: EpisodeView, lines: EpisodeFrame[]): Block[] {
   return out;
 }
 
-// The icon each kind of picture is known by.
-const KIND_ICONS: Record<string, LucideIcon> = { diagram: Workflow, list: List, "typeset-code": Code, chips: Tags, illustration: ImageIcon, slide: Presentation };
+// The icon each kind of picture is known by, and a line said to camera.
+export const KIND_ICONS: Record<string, LucideIcon> = { diagram: Workflow, list: List, "typeset-code": Code, chips: Tags, illustration: ImageIcon, slide: Presentation, camera: User };
 
 const toCamera = (block: Block) => !block.unit && block.lines.every((l) => l.presence === "person");
 
 export function blockName(block: Block): string {
   const u = block.unit;
-  if (u) return u.kind === "undesigned" ? "A picture" : (PICTURES[u.kind_of_picture] ?? "Picture");
+  // a picture the writer has not designed yet goes by the kind a person picked for it, if any
+  if (u) return u.kind === "undesigned" ? (PICTURES[u.kind_of_picture] ?? "A picture") : (PICTURES[u.kind_of_picture] ?? "Picture");
   return toCamera(block) ? "To camera" : "Picture";
 }
 

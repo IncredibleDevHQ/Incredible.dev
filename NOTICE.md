@@ -26,6 +26,7 @@ that code's MIT notice is preserved in [licenses/managed-deepagents-sdk-MIT.txt]
 | LangSmith agent skills (LangChain), vendored unmodified at commit 1fb52e836f2d | `skills/langsmith-trace`, `.agents/skills/langsmith-dataset`, `.agents/skills/langsmith-evaluator` | MIT, [licenses/langsmith-skills-LICENSE.txt](licenses/langsmith-skills-LICENSE.txt) |
 | Deep Agents agent skills (LangChain), vendored unmodified at commit 16a992f09ab3 | `.agents/skills/deep-agents-*` | MIT, [licenses/langchain-skills-LICENSE.txt](licenses/langchain-skills-LICENSE.txt) |
 | affectUI free items: Select (adapted to open on hover), Text Field, Text Area, Thinking Loader, Segmented Control, Tooltip, Popover, Kbd and Shimmer Loader (as they come), Progress Tracker (adapted to follow work as it happens), each in the house's colours | `web/src/components/Select.tsx`, `TextField.tsx`, `TextArea.tsx`, `ThinkingLoader.tsx`, `SegmentedControl.tsx`, `Tooltip.tsx`, `Popover.tsx`, `Kbd.tsx`, `Shimmer.tsx`, `ProgressTracker.tsx` | MIT, [licenses/affectui-MIT.txt](licenses/affectui-MIT.txt) |
+| TipTap (core, React, ProseMirror bundle, suggestion), 3.32.2 | `web/package.json`, the chapter's script editor (`web/src/components/episode/Script.tsx`) | MIT |
 | HyperFrames CLI | installed in the sandbox image, not redistributed here | Apache-2.0 |
 | Geist, Fragment Mono, Inter, IBM Plex Mono, Fira Code, Fraunces | `fonts/` | SIL Open Font License 1.1, [fonts/licenses/](fonts/licenses/) |
 | Apache ECharts | installed in the sandbox image | Apache-2.0 |
@@ -37,9 +38,10 @@ that code's MIT notice is preserved in [licenses/managed-deepagents-sdk-MIT.txt]
 
 Only affectUI's free (MIT) items are in this repository; none of its paid source is. The web
 app's other parts, among them the change bar, the word marks, the drop place, the picture
-tiles, the planning trail and the pictures pill (`web/src/components/episode/Ask.tsx`,
-`Diff.tsx`, `Tiles.tsx`, `Work.tsx`, `web/src/components/FileDrop.tsx`), are written here and
-carry this project's license.
+tiles, the planning trail, the pictures pill, the script's blocks and lines and the slash menu
+(`web/src/components/episode/Ask.tsx`, `Diff.tsx`, `Tiles.tsx`, `Work.tsx`, `Script.tsx`,
+`Slash.tsx`, `web/src/components/FileDrop.tsx`), are written here and carry this project's
+license.
 
 The sample brand in [examples/brands/example-studio/](examples/brands/example-studio/) is original
 work released under CC0-1.0.

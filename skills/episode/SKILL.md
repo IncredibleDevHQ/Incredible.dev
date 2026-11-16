@@ -77,10 +77,13 @@ should be the person's and is not, or the other way round, say so on the frame:
 **fix.** The report names what the plan still breaks, with where every cue lands. Fix those and
 nothing else.
 
-**redo.** A person changed who has the frame for some lines. The turn lists each one and what
-it left for you: a line that was said to camera and now needs a picture gets `shows`, objects
-and cues, or `hold` on the picture before; a greeting with no one to say it is rewritten. Never
-undo a person's pick. `references/plan.md`, "When a person changes who has the frame".
+**redo.** A person changed the plan in the studio and applied their changes. The turn lists
+each line and what it left for you: a line that was said to camera and now needs a picture gets
+`shows`, objects and cues, or `hold` on the picture before; a line they added with a picture
+gets its design; a cue whose word they took out is fitted to their words; a greeting with no
+one to say it is rewritten. Never undo a person's pick, and keep their words. `references/plan.md`,
+"When a person changes who has the frame", "When a person changes a line's words" and "When a
+person adds or cuts a line".
 
 **change.** A person asks, in their own words, for a change to the film, a chapter, a line or
 what a picture shows. The turn quotes them and says what it is about. Make that change and

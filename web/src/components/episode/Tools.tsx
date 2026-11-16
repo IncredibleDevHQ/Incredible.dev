@@ -163,6 +163,14 @@ export function ApplyChanges({ view, run, busy }: Props) {
   const fresh = view.approved ? pictures.filter((u) => u.picture.status === "none") : [];
   const lines = view.waiting.length;
   const writer = WRITERS[view.settings.writer] ?? "The writer";
+  const Writer = writer.slice(0, 1).toUpperCase() + writer.slice(1);
+  const waits = (kind: string) => view.waiting.filter((w) => w.kind === kind).length;
+  // what the writer does first, said for each kind of change that waits on it
+  const writes = [
+    [waits("pick"), "plans a picture for the line you gave one", "plans pictures for the N lines you gave one"],
+    [waits("added"), "designs the picture for the line you added", "designs the pictures for the N lines you added"],
+    [waits("words"), "fits a picture's steps to the words you changed", "fits pictures' steps to the words you changed in N lines"],
+  ] as const;
   const chapters = view.plan?.chapters ?? [];
   const where = (u: (typeof pictures)[number]) => `Chapter ${chapters.findIndex((c) => c.id === u.chapter) + 1} · ${PICTURES[u.kind_of_picture] ?? "Picture"}`;
   const count = lines + again.length + fresh.length;
@@ -175,16 +183,19 @@ export function ApplyChanges({ view, run, busy }: Props) {
       </button>
       <Popover open={open} onClose={() => setOpen(false)} anchor={button} side="bottom" align="end" offset={8} width={420} className="ep-apply-pop" title="Apply your changes" description="Nothing has been planned or drawn for them yet.">
         <ul className="ep-apply-list">
-          {lines > 0 && (
-            <li>
-              <Bot aria-hidden="true" />
-              <span>
-                <b>
-                  {writer.slice(0, 1).toUpperCase() + writer.slice(1)} plans {lines === 1 ? "a picture for the line" : `pictures for the ${lines} lines`} you gave one
-                </b>
-                , first.
-              </span>
-            </li>
+          {writes.map(
+            ([n, one, many]) =>
+              n > 0 && (
+                <li key={one}>
+                  <Bot aria-hidden="true" />
+                  <span>
+                    <b>
+                      {Writer} {n === 1 ? one : many.replace("N", String(n))}
+                    </b>
+                    , first.
+                  </span>
+                </li>
+              ),
           )}
           {again.length > 0 && (
             <li data-tone="amber">

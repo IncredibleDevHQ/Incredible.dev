@@ -701,9 +701,18 @@ app's canvas, from a channel's material or a research frame's notes.
   outside them says what was asked for beside its length); on Auto no length is asked for and
   none is checked, so the material decides how long it runs. While it is written, the stages
   stand as a trail, the one under way opening onto the writer's latest steps and notes.
-- **Changing it** takes two forms and no others. A line's words are changed where they are
-  read: they are in at once, nothing is read or drawn again, and the writer is asked only to
-  fit a step of the line's picture whose word is gone. Anything else is asked for in words, of
+- **Changing it** takes two forms and no others. The chapter's script is edited as a text:
+  words are typed where they are read and kept when the caret leaves the line; Enter starts
+  the next line of its block (in the middle of a line it splits it, as one change), Backspace
+  at a line's start joins it to the line before it in its block, an emptied line is cut, and a
+  block is cut from its head. A slash opens the blocks a chapter can be given (a line said to
+  camera, or a picture of one of the kinds the writer designs: a diagram, a list, code, chips,
+  an illustration, a slide), and "- " or three backticks on an empty line make a list or code
+  as in markdown. A person's lines are labelled as they chose them, so nothing is read again,
+  and nothing typed or added runs an agent: a line said to camera is ready at once, a line
+  added with a picture waits for the writer to design it, a picture that gained or lost a line
+  is out of date, and a step of a picture whose word is gone waits for the writer to fit it,
+  all until the person applies their changes. Anything else is asked for in words, of
   the film, a chapter, a line or a picture: the writer makes the change (a note on how a
   picture is drawn goes to its builder), the studio stays open while it does, and the plan as
   it stood is kept so the change can be taken back. A change that stops leaves the plan as it
@@ -721,7 +730,9 @@ app's canvas, from a channel's material or a research frame's notes.
   order, and is asked when that one lands. If the turn stops, what waits is held until the
   person sends it or lets it go. What waits lives in the open studio, not in the house.
 - **The studio** is the plan and the recording in one place, and every page of it has the same
-  three columns. Down the left are the film and its chapters as slides: the film first, as its
+  three columns. The bar and the slides sit on a ground, and the script and the frame are each
+  a sheet laid on it, with a hairline edge, in light and in dark alike (the look is light,
+  dark or the system's). Down the left are the film and its chapters as slides: the film first, as its
   title card, then each chapter's first picture as it stands, its question and where it
   stands. The film's page has the whole script in the middle as one document (the plan's idea
   and who wrote it, then each chapter's question over its lines, run on as text in its blocks)
@@ -753,7 +764,8 @@ app's canvas, from a channel's material or a research frame's notes.
   preview at once and starts no agent. A picture made before it is out of date: it keeps its
   still and says so on its block, its slide and the pictures pill, and a pick taken back makes it
   current again. A pick that leaves the writer something to do (a line said to camera given a
-  picture, a picture whose first line goes to camera) waits as well. Apply changes, in the bar,
+  picture, a picture whose first line goes to camera, a line added with a picture, a step whose
+  word was typed away) waits as well. Apply changes, in the bar,
   says what will run before anything does: the writer's part first, then the pictures drawn
   again, then (once the plan is approved) the new ones. Drawing a made picture again is another
   full run of its agent, so Apply and a block's Draw it again both say so first. A change asked

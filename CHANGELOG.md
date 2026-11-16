@@ -41,9 +41,16 @@
     what its builder is doing. The ones that stopped are made again on request. While the plan
     is written its stages stand as a trail, the one under way opening onto the writer's latest
     steps and notes (the demo's writer keeps its turns in the record as an agent does).
-  - The plan is read, and changed, before anything is drawn. A line's words are changed where
-    they are read (nothing is read or drawn again; the writer only fits a step whose word is
-    gone). Anything else is asked for in words in a change bar under the script, of the line,
+  - The plan is read, and changed, before anything is drawn. A chapter's script is a document
+    edited as text (TipTap): words are typed in place and kept when the caret leaves the line,
+    Enter starts the next line of the block (splitting a line in one change), Backspace at a
+    line's start joins it to the line before, an emptied line is cut, and a block is cut from
+    its head. A slash opens the blocks a chapter can be given, each by its icon, name and what
+    it is (a line to camera, or a diagram, list, code, chips, illustration or slide that the
+    writer designs), with "- " and three backticks as markdown keys for a list and code, and
+    asks for a change from there too. Nothing typed or added runs an agent: a new picture, and
+    a step whose word was typed away, wait for Apply changes like a pick does. Cmd/Ctrl+Z in a
+    line puts its words back before they are kept. Anything else is asked for in words in a change bar under the script, of the line,
     its picture, the chapter or the film; the writer makes it while the studio stays open, and
     a note on how a picture is drawn goes to its builder. While the writer works the bar shows
     what was asked and for how long, and takes the next change, which waits its turn. What a
@@ -58,7 +65,10 @@
     chapter's frame. Keys: R opens the camera, Cmd/Ctrl+Z takes the last change back and
     Shift+Cmd/Ctrl+Z puts it back. The studio's controls use more of affectUI's free parts
     (Segmented Control, Tooltip, Popover, Kbd, Shimmer Loader); the word marks, the drop
-    place and the device choice are the studio's own.
+    place and the device choice are the studio's own. The bar and the slides sit on a ground
+    and the script and the frame are sheets laid on it, each with a hairline edge, in light and
+    in dark (after Open Slide's stage and inspector); the frame is a titled panel, the slides
+    have a header, and the look can follow the system.
   - Pictures are made when they are asked for: one from its block in the chapter's script (a
     card with the picture, a placeholder until it is made, over the lines it is shown on), a
     chapter's together by asking to record the chapter (the camera opens once they are made),

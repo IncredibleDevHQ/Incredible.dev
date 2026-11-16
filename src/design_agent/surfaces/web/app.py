@@ -32,6 +32,8 @@ runtime), the store of channels, messages and boards, and this API:
   builds it),
   `POST /api/episodes/{id}/ask` (a change in words, of the film, a chapter, a line or a
   picture), `POST /api/episodes/{id}/lines/{frame}` (a person's own words for a line),
+  `POST /api/episodes/{id}/lines` (a line they add: going on in its block, to camera, or with a
+  picture) and `/cut` (lines they cut, or one joined to the line before it),
   `POST /api/episodes/{id}/undo` (the last change, taken back; the one before it is next) and
   `/redo` (put back),
   `POST /api/episodes/{id}/again` (its planning), `/stop` (the plan and the pictures under
@@ -246,6 +248,30 @@ class PicturesIn(BaseModel):
 
     units: list[str] | None = Field(default=None, max_length=200)
     chapter: str = Field(default="", max_length=80)
+
+
+class LineIn(BaseModel):
+    """A line a person adds to a chapter's script: after a line (or first in the chapter
+    named), going on in that line's block, said to camera, or with a picture of a type."""
+
+    after: str = Field(min_length=1, max_length=80)
+    text: str = Field(min_length=1, max_length=2000)
+    kind: str = Field(
+        default="more",
+        pattern=r"^(more|camera|diagram|list|typeset-code|chips|illustration|slide)$",
+    )
+    #: The words the line `after` keeps, when the new line is the rest of it split off.
+    keep: str | None = Field(default=None, max_length=2000)
+
+
+class CutIn(BaseModel):
+    """Lines a person cuts: one, or a block's run. With `join`, the one line's words go on at
+    the end of the line before it."""
+
+    frames: list[str] = Field(min_length=1, max_length=40)
+    join: bool = False
+    #: What the line before says once joined, when the person changed its words too.
+    words: str | None = Field(default=None, max_length=2000)
 
 
 class StopIn(BaseModel):
@@ -713,6 +739,22 @@ def create_app(
     ) -> dict[str, Any]:
         return episode_call(
             lambda: host.episodes.edit(episode_id, by=me, frame=frame_id, text=body.text)
+        )
+
+    @app.post("/api/episodes/{episode_id}/lines")
+    async def add_line(episode_id: str, body: LineIn, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(
+            lambda: host.episodes.add_line(
+                episode_id, by=me, after=body.after, text=body.text, kind=body.kind, keep=body.keep
+            )
+        )
+
+    @app.post("/api/episodes/{episode_id}/cut")
+    async def cut_lines(episode_id: str, body: CutIn, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(
+            lambda: host.episodes.cut_lines(
+                episode_id, by=me, frames=body.frames, join=body.join, words=body.words
+            )
         )
 
     @app.post("/api/episodes/{episode_id}/undo")

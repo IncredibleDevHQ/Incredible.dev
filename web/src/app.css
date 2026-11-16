@@ -82,6 +82,23 @@
   --wash: rgba(20, 27, 23, 0.035);
   color-scheme: light;
 }
+/* The studio's ground and the two sheets laid on it (the script, and the frame), each with a
+   hairline edge and a soft lift, the way Open Slide lays its stage and inspector on its canvas.
+   The bar and the slides sit on the ground. */
+:root {
+  --ep-ground: #090c0a;
+  --ep-sheet: #141a16;
+  --ep-edge: rgba(255, 255, 255, 0.07);
+  --ep-lift: 0 1px 2px rgba(0, 0, 0, 0.45), 0 18px 44px rgba(0, 0, 0, 0.34);
+  --ep-pick: rgba(255, 255, 255, 0.06);
+}
+:root[data-theme="light"] {
+  --ep-ground: #e9e5dc;
+  --ep-sheet: #fffdf9;
+  --ep-edge: rgba(20, 27, 23, 0.08);
+  --ep-lift: 0 1px 2px rgba(28, 36, 31, 0.06), 0 10px 30px rgba(28, 36, 31, 0.07);
+  --ep-pick: rgba(20, 27, 23, 0.055);
+}
 /* Paper on the dark canvas casts a deeper shadow. */
 :root:not([data-theme="light"]) :is(.node:not([data-status="planned"], [data-status="skipped"]), .tpl-node:not(.source), .tpl-node[data-brought]) {
   --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 14px 32px rgba(0, 0, 0, 0.42);
@@ -893,9 +910,9 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 }
 
 /* -- an episode's studio: the plan and the studio in one place --------------------------------- */
-.ep { position: fixed; inset: 0; z-index: 40; display: grid; grid-template-rows: 56px minmax(0, 1fr); background: var(--bg); color: var(--ink); }
+.ep { position: fixed; inset: 0; z-index: 40; display: grid; grid-template-rows: 56px minmax(0, 1fr); background: var(--ep-ground); color: var(--ink); }
 .ep-wait { grid-row: 1 / -1; display: grid; place-items: center; }
-.ep-bar { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 14px 0 12px; border-bottom: 1px solid var(--line-soft); background: var(--surface); }
+.ep-bar { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 14px 0 12px; background: var(--ep-ground); }
 .ep-bar h2 { flex: 0 1 auto; min-width: 0; max-width: 34ch; margin: 0 4px 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 650; }
 .ep-now { display: flex; align-items: center; gap: 10px; flex: none; }
 .ep-now .ep-said { flex: none; font-size: 13px; }
@@ -1032,8 +1049,12 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 /* The page uses the window's width: the slides and the frame grow with it, and the script's
    column widens to 920px with its type growing with it, so a line holds about as many words
    at any width. The script's scroller is the measure: `cqw` below is a hundredth of its width. */
-.ep-chapter { display: grid; grid-template-columns: clamp(208px, 14vw, 248px) minmax(0, 1fr) clamp(240px, 22vw, 420px); min-height: 0; overflow: hidden; }
-.ep-slides { min-height: 0; overflow: auto; padding: 18px 14px 24px; border-right: 1px solid var(--line-soft); background: var(--surface); }
+.ep-chapter { display: grid; grid-template-columns: clamp(208px, 14vw, 248px) minmax(0, 1fr) clamp(260px, 23vw, 440px); gap: 8px; min-height: 0; padding: 0 8px 8px 0; overflow: hidden; }
+.ep-slides { min-height: 0; overflow: auto; padding: 4px 12px 24px 14px; }
+.ep-rail-head { display: flex; align-items: baseline; gap: 8px; padding: 6px 4px 12px; color: var(--muted); font-size: 11.5px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; }
+.ep-rail-head b { color: var(--faint); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* a sheet: the script, and the frame beside it */
+.ep-doc, .ep-peek { border-radius: 12px; background: var(--ep-sheet); box-shadow: 0 0 0 1px var(--ep-edge), var(--ep-lift); }
 .ep-slides ol { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .ep-slide { display: grid; gap: 8px; width: 100%; padding: 6px 6px 9px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--raised); color: var(--ink-2); text-align: left; transition: border-color 140ms ease, box-shadow 140ms ease; }
 .ep-slide:hover:not([aria-current]) { border-color: var(--line-strong); }
@@ -1050,7 +1071,7 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-slide[data-state="recorded"] small { color: var(--green); }
 .ep-slide:is([data-state="go"], [data-state="failed"], [data-state="changed"]) small { color: var(--amber); }
 /* the chapter as a document: its question, then a block for each picture and each run said to camera */
-.ep-doc { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 0 28px 16px; }
+.ep-doc { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 0 28px 16px; overflow: hidden; }
 .ep-doc-body { flex: 1; min-height: 0; overflow: auto; padding: 36px 0 28px; container-type: inline-size; }
 .ep-doc-body > *, .ep-doc > .ep-ask { width: min(100%, 920px); margin-inline: auto; }
 .ep-doc-body :is(.ep-kicker, .ep-block-head, .ep-figure-act, .ep-shot, .ep-nb-head small) { font-size: clamp(12.5px, 1.4cqw, 14px); }
@@ -1166,7 +1187,10 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-film-sum > span[data-tone="amber"] { color: var(--amber); }
 .ep-film-sum > span[data-tone="red"] { color: var(--red); }
 /* the frame for the picked line, small: one click opens it full screen */
-.ep-peek { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; overflow: auto; padding: 36px 24px 24px 0; }
+.ep-peek { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; overflow: auto; padding: 0 16px 16px; }
+.ep-panel-head { position: sticky; top: 0; z-index: 6; display: flex; align-items: baseline; gap: 10px; margin: 0 -16px; padding: 13px 16px 11px; border-bottom: 1px solid var(--line-soft); background: var(--ep-sheet); }
+.ep-panel-head b { font-size: 13px; font-weight: 650; }
+.ep-panel-head span { min-width: 0; overflow: hidden; color: var(--muted); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
 .ep-peek-drop { border-radius: 14px; }
 .ep-peek-stage { position: relative; display: block; width: 100%; padding: 0; border: 0; border-radius: 14px; background: none; cursor: zoom-in; }
 .ep-peek-stage .ep-stage { pointer-events: none; box-shadow: var(--card-shadow); }
@@ -1321,7 +1345,7 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-line[aria-current] span { -webkit-line-clamp: unset; }
 .ep-line small { color: var(--green); font-weight: 700; }
 .ep-line:disabled { cursor: default; }
-.ep-chapter[data-recording] .ep-line:not([aria-current]) { opacity: 0.45; }
+.ep-chapter[data-recording] :is(.ep-line:not([aria-current]), .ep-script .ep-line-card:not([data-current])) { opacity: 0.45; }
 .ep-who { position: relative; display: inline-block; flex: none; width: 22px; height: 14px; margin-top: 3px; }
 .ep-who::before, .ep-who::after { content: ""; position: absolute; }
 .ep-who[data-presence="person"]::before { left: 6px; top: 2px; width: 10px; height: 10px; border-radius: 999px; background: var(--ink-2); }
@@ -1597,3 +1621,53 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
   .ep-full-body { grid-template-columns: minmax(0, 1fr); overflow: auto; }
   .ep-new-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* A chapter's script, edited as a text: a block for each picture and each run said to camera,
+   and in them the lines. The caret's line is the picked one. A line the person added and has
+   not kept yet has a dashed mark; the words typed after a slash are lit while the menu is open. */
+.ep-script-wrap { display: block; }
+.ep-script { display: grid; outline: none; }
+.ep-script .ep-block-lines > [data-node-view-content-react] { display: grid; gap: 2px; }
+.ep-script .ep-line-card { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; padding: 9px 10px; cursor: text; transition: background 120ms ease, border-color 120ms ease; }
+.ep-script .ep-line-card:hover:not([data-current]) { background: var(--wash); }
+.ep-script .ep-line-card > .ep-line-cut { grid-column: 1 / -1; padding: 4px 0 0 30px; }
+.ep-script .ep-who { margin-top: clamp(6px, 0.9cqw, 8px); }
+.ep-line-body { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: start; min-width: 0; }
+.ep-line-text { grid-column: 1; grid-row: 1; margin: 0; color: var(--ink-2); font-size: clamp(15.5px, 2cqw, 19px); line-height: 1.62; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ep-script .ep-line-card[data-current] .ep-line-text { color: var(--ink); }
+.ep-line-hint { position: absolute; top: 0; left: 0; color: var(--faint); font-size: clamp(15.5px, 2cqw, 19px); line-height: 1.62; pointer-events: none; user-select: none; }
+.ep-line-status { grid-column: 2; grid-row: 1; margin-top: 4px; color: var(--green); font-size: 12px; font-weight: 700; user-select: none; }
+.ep-line-status[data-tone="amber"] { color: var(--amber); }
+.ep-line-changed { grid-column: 2; grid-row: 1; width: 7px; height: 7px; margin-top: 11px; border-radius: 999px; background: var(--green); }
+.ep-script .ep-shot { grid-column: 1 / -1; margin: 2px 0 0; user-select: none; }
+.ep-script .ep-line-foot { grid-column: 1 / -1; padding: 2px 0 0; user-select: none; }
+.ep-line-card[data-new] .ep-who:not([data-presence])::before { left: 6px; top: 2px; width: 10px; height: 10px; border: 1.5px dashed var(--faint); border-radius: 999px; }
+.ep-line-card[data-new] .ep-who[data-presence]::before { opacity: 0.55; }
+.ep-script ins { padding: 1px 3px; border-radius: 4px; background: var(--green-soft); color: var(--ink); text-decoration: none; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.ep-script del { color: var(--faint); text-decoration-color: var(--line-strong); user-select: none; }
+.ep-script .suggestion { color: var(--green); font-weight: 600; }
+.ep-block-top { display: flex; align-items: center; gap: 6px; }
+.ep-block-top .ep-block-head { flex: 1; min-width: 0; }
+.ep-script-cut { flex: none; width: 26px; height: 26px; margin-left: auto; color: var(--faint); opacity: 0; transition: opacity 120ms ease, color 120ms ease; }
+.ep-script-cut svg { width: 14px; height: 14px; }
+.ep-script-cut:hover:not(:disabled) { color: var(--red); }
+.ep-block:is(:hover, :focus-within) .ep-script-cut, .ep-script-cut:focus-visible { opacity: 1; }
+.ep-block[data-new] > .ep-block-head { padding-right: 4px; }
+.ep-block.ep-figure[data-new] { border-style: dashed; background: none; }
+.ep-block.ep-figure[data-new] > .ep-block-head { padding: 0 4px 6px; }
+
+/* The menu a slash opens: each block by its icon, its name, a line on what it is, and the keys
+   that make one where there are some. */
+.ep-slash { position: fixed; z-index: 90; width: 336px; max-height: min(440px, 62vh); overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--raised); box-shadow: var(--shadow); }
+.ep-slash-group { display: grid; gap: 1px; }
+.ep-slash-group + .ep-slash-group { margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--line-soft); }
+.ep-slash-group > small { padding: 6px 8px 4px; color: var(--muted); font-size: 11.5px; font-weight: 600; }
+.ep-slash-item { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 6px 8px; border: 0; border-radius: 8px; background: none; color: var(--ink); text-align: left; }
+.ep-slash-item[aria-selected="true"] { background: var(--ep-pick); }
+.ep-slash-tile { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--surface); color: var(--ink-2); }
+.ep-slash-item[aria-selected="true"] .ep-slash-tile { border-color: var(--line); color: var(--green); }
+.ep-slash-tile svg { width: 17px; height: 17px; }
+.ep-slash-words { display: grid; min-width: 0; line-height: 1.35; }
+.ep-slash-words b { font-size: 13.5px; font-weight: 600; }
+.ep-slash-words small { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.ep-slash-none { margin: 0; padding: 12px 10px; color: var(--muted); font-size: 13px; }

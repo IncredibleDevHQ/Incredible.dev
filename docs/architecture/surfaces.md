@@ -72,11 +72,16 @@ takes two turns before it is posed: a `motion plan` turn that writes
 `pictures/<id>.motion.json`, which `picture.motion_plan` holds to its shape and the row keeps,
 then the `picture` turn, whose brief carries that plan.
 
-A plan that stands is changed by one of three turns, and the studio stays open through each.
-A pick that leaves the writer something to do is a `redo`; a change a person asks for in words
-is a `change` (a note on a picture is first read by the classifier: how it is drawn goes to
-its builder, what it shows to the writer); a person's own words for a line are an `edit`, which
-is code's alone unless a cue lost its word. The house's copy of the plan is the plan: it is
+A plan that stands is changed by one of two turns, and the studio stays open through each.
+What a person's own changes leave the writer waits in `picks.writer` until `apply`, which makes
+it one `redo`: a pick that needs a picture, a line they added with a picture of a type they
+picked, a step of a picture whose word their words took away. A change a person asks for in
+words is a `change` (a note on a picture is first read by the classifier: how it is drawn goes
+to its builder, what it shows to the writer). A person's own words for a line (`edit`), a line
+they add (`add_line`: going on in its block, said to camera, or with a picture) and lines they
+cut or join (`cut_lines`) are code's alone: a new line is labelled as the person chose it (its
+beat does what the beat before it does), the line after it is told how it now follows
+(`classify.follows`), and the writer is told nothing until the person applies. The house's copy of the plan is the plan: it is
 written into the writer's folder before every turn, so a person's words reach the writer. The
 plan, its labels and its pictures as they stood are kept in `history`, a row per change: while
 a change stands its row holds the episode as it stood before, and once the change is taken
