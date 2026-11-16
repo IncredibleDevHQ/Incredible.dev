@@ -64,7 +64,7 @@ function LookTool({ view, run, busy }: Props) {
         <>
           <div className="ep-look-cards">
             {looks.map((t) => {
-              const [usual, ...more] = t.kit;
+              const [usual] = t.kit;
               return (
                 <button
                   key={t.id}
@@ -75,25 +75,21 @@ function LookTool({ view, run, busy }: Props) {
                   onClick={() => t.id !== view.settings.theme && void choose(view, run, { theme: t.id })}
                 >
                   {usual && <LayoutThumb view={view} layout={usual.layout} />}
-                  {more.length > 0 && (
-                    <span className="ep-look-kit">
-                      {more.slice(0, 3).map((k) => (
-                        <LayoutThumb key={k.layout} view={view} layout={k.layout} />
-                      ))}
-                    </span>
-                  )}
                   <b>{LOOKS[t.id] ?? t.name}</b>
                   <small>{t.stage}</small>
                 </button>
               );
             })}
           </div>
-          <BackgroundSettings
-            key={[view.id, view.settings.background_color, view.settings.background_texture].join("/")}
-            view={view}
-            run={run}
-            busy={busy}
-          />
+          <details className="ep-look-background">
+            <summary>Video background</summary>
+            <BackgroundSettings
+              key={[view.id, view.settings.background_color, view.settings.background_texture].join("/")}
+              view={view}
+              run={run}
+              busy={busy}
+            />
+          </details>
           {made > 0 && <Untouched />}
         </>
       )}
@@ -118,6 +114,7 @@ function VoiceTool({ view, run, busy }: Props) {
   const narrator = view.options.narrator.ready;
   const voice = view.settings.voice;
   const clone = view.settings.cloned_voice;
+  const usingClone = voice === "narrator" && !!clone && clone.id === view.settings.narrator?.id;
   const [upload, setUpload] = useState(false);
   const value =
     voice === "local" ? "Local narrator" : voice === "narrator" ? (view.settings.narrator?.name ?? "ElevenLabs") : presenterOff ? "Recorded" : "Your voice";
@@ -128,9 +125,17 @@ function VoiceTool({ view, run, busy }: Props) {
           <>
             <Options
               label="Voice"
-              value={voice}
+              value={usingClone ? "clone" : voice}
               disabled={busy}
-              onChange={(v) => void choose(view, run, { voice: v })}
+              onChange={(v) => {
+                if (v === "clone") {
+                  if (clone) void choose(view, run, { voice: "narrator", narrator: clone });
+                  else { close(); setUpload(true); }
+                } else {
+                  const reset = v === "narrator" && clone && clone.id === view.settings.narrator?.id;
+                  void choose(view, run, { voice: v, ...(reset ? { narrator: null } : {}) });
+                }
+              }}
               options={[
                 { value: "live", label: presenterOff ? "Recorded" : "Your voice", note: "You record each chapter; your takes are the film's sound." },
                 ...(view.options.local_narrator
@@ -142,21 +147,10 @@ function VoiceTool({ view, run, busy }: Props) {
                   note: narrator ? "Choose a voice to narrate unrecorded lines." : "Set ELEVENLABS_API_KEY on the Studio host and restart to enable.",
                   disabled: !narrator,
                 },
+                { value: "clone", label: "Cloned voice", note: clone ? clone.name : narrator ? "Record or upload a voice sample." : "Set up ElevenLabs to add a voice sample.", disabled: !narrator },
               ]}
             />
-            <button
-              className="btn ep-choose-clone"
-              type="button"
-              disabled={!narrator || busy}
-              onClick={() => {
-                close();
-                if (clone) void choose(view, run, { voice: "narrator", narrator: clone });
-                else setUpload(true);
-              }}
-            >
-              {clone ? `Use cloned voice · ${clone.name}` : "Cloned voice"}
-            </button>
-            {clone && (
+            {usingClone && (
               <button
                 className="linkish"
                 type="button"
@@ -169,7 +163,8 @@ function VoiceTool({ view, run, busy }: Props) {
                 Replace cloned voice
               </button>
             )}
-            {voice === "narrator" && narrator && <NarratorVoice view={view} run={run} busy={busy} />}
+            {usingClone && clone?.verify && <small>Verify this voice in ElevenLabs before using it for narration.</small>}
+            {voice === "narrator" && !usingClone && narrator && <NarratorVoice view={view} run={run} busy={busy} />}
           </>
         )}
       </Tool>

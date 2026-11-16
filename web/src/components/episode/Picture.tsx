@@ -204,13 +204,13 @@ export function PictureCard({
                 ))}
               </ol>
               <span>{levelCost(unit, toLevel)}</span>
+              {builder}
               <div className="ep-level-do">
-                {builder}
-                <button type="button" className="btn primary" autoFocus disabled={busy} onClick={() => remake(toLevel)}>
-                  Start
-                </button>
                 <button type="button" className="btn" onClick={() => setToLevel(null)}>
                   Cancel
+                </button>
+                <button type="button" className="btn primary" disabled={busy} onClick={() => remake(toLevel)}>
+                  Start
                 </button>
               </div>
             </div>}

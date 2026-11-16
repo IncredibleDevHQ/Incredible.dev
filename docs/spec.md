@@ -879,13 +879,13 @@ app's canvas, from a channel's material or a research frame's notes.
 - **The narrator's voice.** When the film's voice is the narrator, the lines no take covers are
   spoken by ElevenLabs (`ELEVENLABS_API_KEY`) in a voice picked for the episode from the
   account's voices, or else in the house's own (`DESIGN_AGENT_NARRATOR_VOICE_ID`). A person
-  can clone their voice from the takes they kept (30 seconds or more; about three minutes are
-  sent) or from a recording they bring. The recordings go to ElevenLabs, so the form says so,
-  the clone is made only after the person says the voice is theirs or its speaker agreed, and
-  the thread records that they did. Cloning is the person's action in the studio and never a
-  tool the model can call. Selecting Cloned voice opens an upload dialog when the episode
-  has no saved clone. Cancelling keeps the current narrator. A successful clone is selected
-  for the next render and remains available if the person switches to another voice.
+  can record a sample from a reading script in Studio or upload a recording. The dialog plays
+  the sample locally. The person confirms the voice is theirs or the speaker agreed before
+  the sample goes to ElevenLabs. The thread records that consent. The clone endpoint also
+  accepts kept takes as its source. Cloning is a Studio action reserved for the person.
+  The Cloned voice card names the saved voice and opens setup when the episode has none.
+  Cancelling keeps the current narrator. A successful clone is selected for the next render
+  and remains available if the person switches to another voice.
 - In a chapter, expanding the preview places the player above the script. Playback uses the
   current export when available. For a changed film the editor plays the selected take or
   the cached narration for that text and voice, with the draft picture on the same clock.

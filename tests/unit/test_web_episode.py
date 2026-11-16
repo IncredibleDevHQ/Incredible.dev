@@ -787,6 +787,11 @@ async def test_a_narrators_voice_is_picked_for_an_episode_or_cloned_from_its_tak
         episode_id, by="you", change={"settings": {"narrator": picked["settings"]["cloned_voice"]}}
     )
     assert restored["settings"]["narrator"] == picked["settings"]["cloned_voice"]
+    library = house.episodes.choose(
+        episode_id, by="you", change={"settings": {"voice": "narrator", "narrator": None}}
+    )
+    assert not library["settings"].get("narrator")
+    assert library["settings"]["cloned_voice"] == picked["settings"]["cloned_voice"]
     house.episodes.choose(
         episode_id, by="you", change={"settings": {"narrator": picked["settings"]["narrator"]}}
     )
@@ -2531,6 +2536,10 @@ def test_a_take_is_read_from_disk_and_a_voice_needs_a_key_and_a_yes(tmp_path: Pa
         voice = {"id": "voice1234567890", "name": "Ada"}
         picked = client.post(choices, json={"settings": {"narrator": voice}})
         assert picked.status_code == 200 and picked.json()["settings"]["narrator"] == voice
+        unchanged = client.post(choices, json={"settings": {"level": "simple"}})
+        assert unchanged.json()["settings"]["narrator"] == voice
+        reset = client.post(choices, json={"settings": {"narrator": None}})
+        assert reset.status_code == 200 and not reset.json()["settings"].get("narrator")
         bad = client.post(choices, json={"settings": {"narrator": {"id": "a b", "name": "x"}}})
         assert bad.status_code == 422
         assert client.get("/api/voices").status_code == 422

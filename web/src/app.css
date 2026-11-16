@@ -986,7 +986,7 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-voice > small { flex-basis: 100%; }
 .ep-voice > small[data-tone="red"] { color: var(--red); }
 .ep-voice > small[data-tone="amber"] { color: var(--amber); }
-.ep-clone { display: grid; gap: 12px; }
+.ep-clone { display: grid; gap: 18px; }
 .ep-clone .btn { height: 32px; min-width: 0; }
 .ep-clone .btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ep-clone small { color: var(--muted); font-size: 12.5px; line-height: 1.45; }
@@ -998,13 +998,17 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-looks button:hover:not(:disabled) { border-color: var(--line-strong); }
 .ep-looks button[aria-pressed="true"] { background: var(--green-soft); border-color: var(--green); color: var(--green); font-weight: 600; }
 /* the film's look, shown by the frames it is made of: the one it is named for, then the next ones */
+.ui-pop.ep-tool-pop:has(.ep-look-cards) { max-height: min(64dvh, 480px); }
 .ep-look-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .ep-look-card { display: grid; gap: 6px; align-content: start; padding: 7px 7px 10px; border: 1px solid var(--line-soft); border-radius: 12px; background: none; color: var(--ink-2); text-align: left; transition: border-color 140ms ease, box-shadow 140ms ease; }
 .ep-look-card:hover:not(:disabled) { border-color: var(--line-strong); }
 .ep-look-card[aria-pressed="true"] { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); color: var(--ink); }
 .ep-look-card:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
-.ep-look-kit { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
-.ep-look-kit .ep-thumb { border-radius: 4px; }
+.ep-look-card > .ep-thumb { width: min(100%, 92px); }
+.ep-look-background { margin-top: 12px; border-top: 1px solid var(--line-soft); }
+.ep-look-background summary { padding: 10px 0 0; cursor: pointer; font-weight: 600; }
+.ep-look-background .ep-background { margin-top: 6px; border: 0; }
+.ep-look-background .ep-background legend { position: absolute; clip-path: inset(50%); }
 .ep-look-card b { padding: 2px 3px 0; font-size: 13px; font-weight: 650; }
 .ep-look-card[aria-pressed="true"] b { color: var(--green); }
 .ep-look-card small { padding: 0 3px; color: var(--muted); font-size: 12px; line-height: 1.4; }
@@ -1023,15 +1027,14 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-basis: 100%; margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line); font-size: 13px; }
 .ep-confirm > span { flex: 1; min-width: 160px; color: var(--ink); }
 .ep-confirm .btn { height: 30px; }
-.ep-level-confirm { display: grid; justify-items: start; gap: 8px; }
+.ep-level-confirm { display: grid; gap: 12px; }
 .ep-level-confirm > b { color: var(--ink); font-size: 13.5px; font-weight: 600; }
-.ep-level-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0; padding: 0; list-style: none; counter-reset: ep-step; color: var(--ink-2); font-size: 12.5px; }
+.ep-level-steps { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; counter-reset: ep-step; color: var(--ink-2); font-size: 12.5px; }
 .ep-level-steps li { display: inline-flex; align-items: center; gap: 6px; counter-increment: ep-step; }
 .ep-level-steps li::before { content: counter(ep-step); display: inline-grid; place-items: center; width: 18px; height: 18px; border: 1px solid var(--line); border-radius: 50%; background: var(--sunk); color: var(--muted); font-size: 11px; font-weight: 600; }
-.ep-level-steps li:not(:last-child)::after { content: "›"; margin-left: 2px; color: var(--faint); }
 .ep-level-steps li[data-yours] { color: var(--amber); font-weight: 600; }
 .ep-level-steps li[data-yours]::before { border-color: var(--amber); background: var(--amber-soft); color: var(--amber); }
-.ep-level-do { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ep-level-do { display: flex; justify-content: flex-end; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
 .ep-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--sunk); border: 1px solid var(--line-soft); }
 .ep-seg.wide { display: flex; }
 .ep-seg.wide button { flex: 1; justify-content: center; }
@@ -1938,7 +1941,7 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-chapter-sheet .ep-doc-body > .ep-doc-grid, .ep-chapter-sheet .ep-doc-foot { padding-inline: 12px; }
 .ep-chapter-sheet .ep-inline-player { display: block; margin: 0 0 14px; animation: none; box-shadow: none; }
 .ep-chapter-sheet .ep-doc-aside, .ep-editor-tools { background: var(--surface); border-inline-start: 1px solid var(--line-soft); min-width: 0; }
-.ep-editor-tools { display: grid; grid-template-columns: minmax(0, 1fr) 68px; min-height: 0; }
+.ep-editor-tools { display: grid; grid-template-columns: minmax(0, 1fr) max-content; min-height: 0; }
 .ep-editor-tools .ep-pop-panel { border: 0; }
 .ep-editor-tools .ep-pop-rail { align-items: stretch; overflow-y: auto; }
 .ep-editor-tools .ep-collapse { display: grid; place-items: center; padding: 0; flex: none; width: 40px; height: 40px; margin: 0 auto 8px; background: var(--raised); }
@@ -1971,11 +1974,19 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-rate-menu { display: grid; gap: 2px; }
 .ep-rate-menu button { background: transparent; color: var(--ink); border: 0; padding: 5px 8px; border-radius: 5px; text-align: left; }
 .ep-rate-menu button:hover, .ep-rate-menu button[aria-pressed=true] { background: var(--green-soft); }
-.ep-clone-dialog { width: min(390px, calc(100vw - 32px)); max-height: 85dvh; overflow: auto; border: 1px solid var(--line); border-radius: 14px; padding: 20px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.ep-clone-dialog { box-sizing: border-box; width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); overflow: auto; border: 1px solid var(--line); border-radius: 14px; padding: clamp(18px, 3vw, 28px); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
 .ep-clone-dialog::backdrop { background: rgb(0 0 0 / 48%); }
 .ep-clone-dialog h2 { margin: 0 0 6px; font-size: 20px; }
 .ep-clone-dialog > p { color: var(--muted); margin: 0 0 14px; }
-.ep-choose-clone { margin-block: 8px; }
+.ep-sample-script { padding: 14px 16px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--raised); }
+.ep-sample-script h3 { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; margin: 0; gap: 6px; font-size: 14px; }
+.ep-sample-script h3 small { font-weight: 400; }
+.ep-sample-script p { margin: 8px 0 0; font-size: 13px; line-height: 1.55; color: var(--ink-2); }
+.ep-sample-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ep-sample-actions > span { font-variant-numeric: tabular-nums; color: var(--green); font-size: 12px; }
+.ep-sample-preview { display: grid; gap: 6px; overflow-wrap: anywhere; }
+.ep-sample-preview audio { width: 100%; height: 34px; }
+.ep-clone-actions { border-top: 1px solid var(--line-soft); padding-top: 14px; }
 
 @media (min-width: 1101px) {
   .ep-chapter-sheet { display: grid; grid-template-columns: minmax(0,1fr) clamp(280px,22vw,360px); grid-template-rows: minmax(0,1fr) auto; }

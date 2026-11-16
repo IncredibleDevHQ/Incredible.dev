@@ -1,18 +1,12 @@
-// The narrator's voice, under the film's Voice choice: which of the ElevenLabs account's voices
-// says the lines nobody recorded, and a clone of the person's own voice, made from the takes
-// they kept or from a recording they bring. A recording leaves this computer for ElevenLabs, so
-// the form says so and waits for the person to say the voice is theirs to clone.
-import { Upload } from "lucide-react";
+// Account voices and local recording setup for the episode narrator.
+import { Mic, Square, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, type EpisodeView, type Voice } from "../../api";
 import { mmss } from "../../episode";
-import { SegmentedControl } from "../SegmentedControl";
+import { MAX_SAMPLE_BYTES, useVoiceSample } from "./voiceSample";
 import { Select } from "../Select";
 import { TextField } from "../TextField";
 import type { Run } from "./Ask";
-
-// The least speech a clone is made from, in seconds: the desk's own limit.
-const LEAST = 30;
 
 export function NarratorVoice({ view, run, busy }: { view: EpisodeView; run: Run; busy: boolean }) {
   const [voices, setVoices] = useState<Voice[] | null>(null);
@@ -66,14 +60,19 @@ export function NarratorVoice({ view, run, busy }: { view: EpisodeView; run: Run
 }
 
 export function CloneDialog({ view, run, onDone }: { view: EpisodeView; run: Run; onDone: () => void }) {
-  const seconds = view.takes.filter((t) => t.kept && t.audio).reduce((sum, t) => sum + t.seconds, 0);
-  const enough = seconds >= LEAST;
-  const [from, setFrom] = useState<"takes" | "file">("file");
   const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState("");
+  useEffect(() => {
+    if (!file || !file.size || file.size > MAX_SAMPLE_BYTES) { setPreview(""); return; }
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
   const [name, setName] = useState("My voice");
   const [mine, setMine] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
+  const sample = useVoiceSample((next) => { setFile(next); setProblem(""); setMine(false); });
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const node = dialog.current;
@@ -81,16 +80,15 @@ export function CloneDialog({ view, run, onDone }: { view: EpisodeView; run: Run
     return () => node?.close();
   }, []);
   const input = useRef<HTMLInputElement>(null);
-  const fileProblem =
-    from === "file" && file
-      ? file.size === 0
-        ? "This recording is empty."
-        : file.size > 25 * 1024 * 1024
-          ? "Choose a recording smaller than 25 MiB."
-          : ""
-      : "";
-  const ready = !fileProblem && name.trim() !== "" && mine && (from === "takes" ? enough : file !== null) && !busy;
+  const fileProblem = file && (!file.size ? "This recording is empty." : file.size > MAX_SAMPLE_BYTES ? "Choose a recording under 25 MiB." : "");
+  const ready = file && !fileProblem && name.trim() && mine && sample.phase === "idle" && !busy;
+  const backdropPress = useRef(false);
+  function outside(event: React.MouseEvent<HTMLDialogElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return event.target === event.currentTarget && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom);
+  }
   const make = async () => {
+    if (!file || !ready) return;
     setBusy(true);
     setProblem("");
     const made = await run(async () => {
@@ -98,7 +96,7 @@ export function CloneDialog({ view, run, onDone }: { view: EpisodeView; run: Run
         return await api.cloneVoice(view.id, {
           name: name.trim(),
           consent: mine,
-          file: from === "file" ? (file ?? undefined) : undefined,
+          file,
         });
       } catch (error) {
         setProblem(error instanceof Error ? error.message : "Voice cloning failed. Try again.");
@@ -113,13 +111,15 @@ export function CloneDialog({ view, run, onDone }: { view: EpisodeView; run: Run
       ref={dialog}
       aria-labelledby="ep-clone-title"
       className="ep-clone-dialog"
+      onPointerDown={e => { backdropPress.current = outside(e); }}
+      onClick={e => { if (!busy && backdropPress.current && outside(e)) onDone(); }}
       onCancel={(e) => {
         e.preventDefault();
         if (!busy) onDone();
       }}
     >
       <h2 id="ep-clone-title">Clone your voice</h2>
-      <p>Upload a recording to use your voice for the video’s unrecorded lines.</p>
+      <p>Record or upload a sample to narrate this episode’s unrecorded lines.</p>
       <form
         className="ep-clone"
         onSubmit={(e) => {
@@ -127,44 +127,39 @@ export function CloneDialog({ view, run, onDone }: { view: EpisodeView; run: Run
           if (ready) void make();
         }}
       >
-        <TextField size="sm" label="Name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
-        <SegmentedControl
-          size="sm"
-          aria-label="What the voice is made from"
-          value={from}
-          onChange={setFrom}
-          options={[
-            { value: "takes", label: `Your takes · ${mmss(seconds)}`, disabled: !enough },
-            { value: "file", label: "A recording" },
-          ]}
-        />
-        {from === "file" && (
-          <>
-            <button type="button" className="btn" onClick={() => input.current?.click()}>
-              <Upload />
-              <span>{file ? file.name : "Choose a recording"}</span>
+        <TextField size="sm" label="Name" value={name} maxLength={60} disabled={busy} onChange={(e) => setName(e.target.value)} />
+        <section className="ep-sample-script" aria-label="Reading script">
+          <h3>Read aloud <small>About 1 minute</small></h3>
+          <p>Last Saturday, I took a map and a bottle of water and set out for the river. At the corner, a small sign pointed down a street I’d never noticed. Where did it go? I had time to find out. I turned left, passed a bakery, and followed the sound of running water.</p>
+          <p>Just beyond the bridge, a woman was painting the view. I asked what she liked most about it. She set down her brush and pointed to the sky. “Wait a moment,” she said. A cloud moved, the water caught the light, and suddenly I saw what she meant. I stayed for a while. On the way home, I folded up the map and put it in my pocket.</p>
+        </section>
+        <div className="ep-sample-actions">
+          {sample.phase === "recording" ? (
+            <button type="button" className="btn" onClick={sample.stop}><Square />Stop recording</button>
+          ) : (
+            <button type="button" className="btn" disabled={busy || sample.phase !== "idle"} onClick={() => void sample.start()}>
+              <Mic />{sample.phase === "asking" ? "Waiting for microphone" : sample.phase === "stopping" ? "Finishing recording" : "Record sample"}
             </button>
-            <input
-              ref={input}
-              type="file"
-              accept="audio/*,video/mp4,video/quicktime,video/webm"
-              hidden
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
-          </>
-        )}
-        <small>
-          {enough || from === "file"
-            ? "A minute or two of clear speech works best."
-            : `Your takes need ${LEAST} seconds or more to clone from.`}
-        </small>
+          )}
+          <button type="button" className="btn" disabled={busy || sample.phase !== "idle"} onClick={() => input.current?.click()}><Upload />Upload file</button>
+          {sample.phase === "recording" && <span>Recording · {mmss(sample.elapsed)}</span>}
+          <input ref={input} type="file" accept="audio/*,video/mp4,video/quicktime,video/webm" hidden
+            onChange={e => {
+              const next = e.target.files?.[0];
+              if (next) { setFile(next); setProblem(""); sample.clearError(); setMine(false); }
+              e.target.value = "";
+            }} />
+        </div>
+        {file && sample.phase === "idle" && <div className="ep-sample-preview"><small>{file.name}</small>
+          {preview && <audio controls src={preview} aria-label="Preview recording" />}
+        </div>}
         <label className="ep-check">
-          <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />
+          <input type="checkbox" disabled={busy} checked={mine} onChange={(e) => setMine(e.target.checked)} />
           <span>This is my voice, or its speaker agreed. The recording goes to ElevenLabs.</span>
         </label>
-        {(fileProblem || problem) && (
+        {(fileProblem || sample.error || problem) && (
           <small role="alert" data-tone="red">
-            {fileProblem || problem}
+            {fileProblem || sample.error || problem}
           </small>
         )}
         <div className="ep-clone-actions">

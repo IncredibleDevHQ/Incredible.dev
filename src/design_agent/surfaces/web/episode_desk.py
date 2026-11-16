@@ -569,7 +569,9 @@ class EpisodeDesk:
             raise ValueError("Local narration needs macOS speech or espeak-ng.")
         if given.get("voice") in VOICES:
             out["voice"] = given["voice"]
-        if given.get("narrator"):
+        if "narrator" in given and given["narrator"] is None:
+            out.pop("narrator", None)
+        elif given.get("narrator"):
             from design_agent.tools.media import VOICE_ID
 
             picked = given["narrator"]

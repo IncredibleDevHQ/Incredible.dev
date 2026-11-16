@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8">
+  <title>Voice setup</title>
+  <div id="root"></div>
+  <script type="module">
+    import "/src/app.css";
+    import React, { useState } from "react";
+    import { createRoot } from "react-dom/client";
+    import { CloneDialog } from "/src/components/episode/Voice.tsx";
+    import { FilmTools } from "/src/components/episode/Tools.tsx";
+    function SavedVoice() {
+      const clone = { id: "stored-voice", name: "Sample narrator" };
+      const [settings, setSettings] = useState({ voice: "live", level: "simple", cloned_voice: clone });
+      const view = { id: "test-episode", settings, units: [], options: { writers: [], themes: [], narrator: {ready: true} } };
+      return React.createElement(FilmTools, {view, busy: false, run: async task => {
+        const next = await task();
+        setSettings(prev => ({ ...prev, ...next.settings }));
+        return true;
+      }});
+    }
+    function Fixture() {
+      const [open, setOpen] = useState(true);
+      return open ? React.createElement(CloneDialog, {
+        view: { id: "test-episode", takes: [] }, run: (task) => task(), onDone: () => setOpen(false)
+      }) : React.createElement("button", {onClick: () => setOpen(true)}, "Open voice setup");
+    }
+    createRoot(document.getElementById("root")).render(React.createElement(location.search === "?saved" ? SavedVoice : Fixture));
+  </script>
+</html>

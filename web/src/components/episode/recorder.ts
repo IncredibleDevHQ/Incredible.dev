@@ -54,6 +54,11 @@ function pictureBits(stream: MediaStream): number {
   return Math.round(Math.min(24_000_000, Math.max(4_000_000, width * height * Math.min(frameRate, 30) * 0.25)));
 }
 
+export function createRecorder(source: MediaStream, camera: boolean) {
+  const type = TYPES.filter((t) => camera || t.startsWith("audio")).find((t) => MediaRecorder.isTypeSupported(t));
+  return new MediaRecorder(source, { ...(type ? { mimeType: type } : {}), audioBitsPerSecond: SOUND_BITS, ...(camera ? { videoBitsPerSecond: pictureBits(source) } : {}) });
+}
+
 // A microphone that sits in the computer, its screen or its webcam hears the room and the fan
 // with the voice, so its sound is cleaned up unless the person says otherwise. One they set up
 // for their voice is recorded as it is.
@@ -181,8 +186,7 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
   const begin = useCallback(() => {
     const source = live.current;
     if (!source) return;
-    const type = TYPES.filter((t) => camera || t.startsWith("audio")).find((t) => MediaRecorder.isTypeSupported(t));
-    const made = new MediaRecorder(source, { ...(type ? { mimeType: type } : {}), audioBitsPerSecond: SOUND_BITS, ...(camera ? { videoBitsPerSecond: pictureBits(source) } : {}) });
+    const made = createRecorder(source, camera);
     chunks.current = [];
     marks.current = [{ frame: frames[0], t: 0 }];
     kept.current = true;

@@ -743,6 +743,8 @@ def create_app(
         # what was sent, as it was sent: a null is a pick taken back, not a pick left out
         change = body.model_dump(exclude_unset=True)
         change["settings"] = body.settings.model_dump(exclude_none=True)
+        if "narrator" in body.settings.model_fields_set and body.settings.narrator is None:
+            change["settings"]["narrator"] = None
         return episode_call(lambda: host.episodes.choose(episode_id, by=me, change=change))
 
     @app.post("/api/episodes/{episode_id}/ask")

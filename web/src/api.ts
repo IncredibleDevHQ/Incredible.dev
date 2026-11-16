@@ -449,7 +449,7 @@ export type EpisodePick = {
   transition?: string | null;
 };
 export type EpisodeChoices = {
-  settings?: Partial<EpisodeSettings>;
+  settings?: Partial<Omit<EpisodeSettings, "narrator">> & { narrator?: Narrator | null };
   frames?: Record<string, EpisodePick>;
   chapters?: Record<string, EpisodePick>;
   all?: EpisodePick;
