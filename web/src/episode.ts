@@ -87,6 +87,25 @@ export function frameSpot(view: EpisodeView, frame: EpisodeFrame): LayoutSpot {
   return frame.window ? { ...spot, person: frame.window.box, person_radius: frame.window.radius } : spot;
 }
 
+// Immediate feedback while a range input is being dragged. The saved box comes from the renderer.
+export function resizePresenter(view: EpisodeView, frame: EpisodeFrame, percent: number): EpisodeFrame {
+  const spot = spotOf(view, frame.layout);
+  if (!spot.person) return frame;
+  const [x, y, w, h] = spot.person;
+  const [frameWidth, frameHeight] = view.options.geometry.frame;
+  let width = Math.min(frameWidth, Math.round(w * percent / 100));
+  let height = Math.min(frameHeight, Math.round(h * percent / 100));
+  const shape = frame.picked?.window_shape;
+  if (shape === "circle") width = height = Math.min(width, height);
+  const radius = shape === "circle" ? Math.floor(width / 2)
+    : shape === "rectangle" ? 0
+    : shape === "rounded" ? Math.round(Math.min(width, height) / 10)
+    : spot.person_radius;
+  const left = Math.min(frameWidth - width, Math.max(0, x + Math.floor((w - width) / 2)));
+  const top = Math.min(frameHeight - height, Math.max(0, y + Math.floor((h - height) / 2)));
+  return { ...frame, window: { box: [left, top, width, height], radius } };
+}
+
 // Where one picture stands: not asked for yet, on its way, its stills waiting for a go, made,
 // out of date, or stopped until someone asks again. Out of date is a picture made for the plan as
 // it was (another frame, kind or level), or a line given a picture that waits for the writer:

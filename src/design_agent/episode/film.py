@@ -3,8 +3,7 @@
 Nothing here is a model's: the page places each line's person and picture where its layout
 says (`geometry`), cuts between layouts where the plan cuts, plays each take from where its
 line was said, and mounts every built picture as a sub-composition whose clock was set from
-the takes (`timeline`, `picture`). Layout changes are cuts, set at an instant, so the render
-never tweens a box. A picture may come in by a move instead (a crossfade, a push, a zoom):
+the takes (`timeline`, `picture`). The presenter eases between consecutive visible layouts on the film clock. A picture may come in by a move instead (a crossfade, a push, a zoom):
 its whole box is moved by transform and opacity, and the picture before it stays mounted for
 that long to leave by the same move.
 """
@@ -34,6 +33,18 @@ PUSH = 0.22
 #: How much smaller a picture starts when the film zooms into it, and how much larger the one
 #: before it ends.
 ZOOM_IN, ZOOM_OUT = 0.86, 1.18
+
+
+def _window(spot: geometry.Region, left: int, top: int) -> Row:
+    assert spot.person is not None  # noqa: S101 - both endpoints are visible
+    x, y, w, h = spot.person
+    return {
+        "x": x - left,
+        "y": y - top,
+        "width": w,
+        "height": h,
+        "borderRadius": min(spot.person_radius, w // 2, h // 2),
+    }
 
 
 def project(
@@ -147,29 +158,49 @@ def project(
                 )
             )
 
-    # the person: one clip for each run of lines said in one take inside one window
+    # Continuous footage and audio keep their decoder across window changes. Different
+    # recordings still use their own offsets, but can enter at the preceding geometry.
     runs: list[Row] = []
+    previous_spot = None
+    previous_end = 0.0
     for line in clock["lines"]:
         f = frames[line["frame"]]
         spot = geometry.for_frame(f)
         source = line["source"]
         on_screen = f.get("presence") in ("person", "both") and spot.person is not None
         take_id = source.get("take") if source["kind"] == "take" else None
-        key = (take_id, spot if on_screen else None)
-        end = line["start"] + line["seconds"]
-        previous = runs[-1] if runs else None
+        key = (take_id, on_screen, spot if not take_id else None)
+        start = float(line["start"])
+        end = start + line["seconds"]
+        # The schedule rounds starts and durations independently to milliseconds.
+        adjacent = abs(start - previous_end) < 0.0015
+        moves: list[tuple[float, float, geometry.Region, geometry.Region]] = []
         if (
-            previous is not None
+            adjacent
+            and on_screen
+            and previous_spot
+            and previous_spot != spot
+            and line["seconds"] > 0
+        ):
+            moves.append((start, min(0.45, round(line["seconds"], 6)), previous_spot, spot))
+        previous_spot = spot if on_screen else None
+        previous_end = end
+        previous = runs[-1] if runs else None
+        offset = float(source.get("offset", 0.0))
+        if (
+            adjacent
+            and previous
             and previous["key"] == key
-            and take_id is not None
-            and abs(previous["media_end"] - float(source.get("offset", 0.0))) < 0.05
-        ) or (previous is not None and previous["key"] == key and take_id is None):
+            and (not take_id or abs(previous["media_end"] - offset) < 0.05)
+        ):
             previous["end"] = end
-            previous["media_end"] = float(source.get("offset", 0.0)) + line["seconds"]
+            previous["media_end"] = offset + line["seconds"]
+            previous["moves"].extend(moves)
             continue
         runs.append(
             {
                 "key": key,
+                "moves": moves,
                 "take": take_id,
                 "spot": spot,
                 "on_screen": on_screen,
@@ -192,17 +223,29 @@ def project(
             )
             if take is not None and take.get("video"):
                 body.append(
-                    f'<div class="person" style="{box}"><video id="person-{i}" '
+                    f'<div id="window-{i}" class="person" style="{box}"><video id="person-{i}" '
                     f'src="{_attr(take["video"])}" muted playsinline data-start="{run["start"]:.3f}" '
                     f'data-duration="{seconds:.3f}" data-media-start="{run["offset"]:.3f}" '
                     f'data-track-index="{track}" style="transform: scale({spot.zoom})"></video></div>'
                 )
             else:
                 body.append(
-                    f'<div class="person {STAND_IN} clip" id="person-{i}" style="{box}" '
+                    f'<div class="person {STAND_IN} clip" id="window-{i}" style="{box}" '
                     f'data-start="{run["start"]:.3f}" data-duration="{seconds:.3f}" '
                     f'data-track-index="{track}"><i></i><b></b></div>'
                 )
+            for at, duration, before, after in run["moves"]:
+                source_box = _window(before, left, top)
+                target_box = _window(after, left, top)
+                tween = {"duration": duration, "ease": "power2.inOut", "immediateRender": False}
+                if source_box != target_box:
+                    script.append(
+                        f'tl.fromTo("#window-{i}", {json.dumps(source_box)}, {json.dumps({**target_box, **tween})}, {at:.3f});'
+                    )
+                if take and take.get("video") and before.zoom != after.zoom:
+                    script.append(
+                        f'tl.fromTo("#person-{i}", {{scale:{before.zoom}}}, {json.dumps({"scale": after.zoom, **tween})}, {at:.3f});'
+                    )
         if take is not None and take.get("audio"):
             body.append(
                 f'<audio id="said-{i}" src="{_attr(take["audio"])}" data-start="{run["start"]:.3f}" '

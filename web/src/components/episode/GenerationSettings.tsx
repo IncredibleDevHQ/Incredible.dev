@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { ChevronDown } from "lucide-react";
 import { api, type EpisodeUnit, type EpisodeView, type WriterId } from "../../api";
-import { Popover } from "../Popover";
 import { Select } from "../Select";
 import { TextArea } from "../TextArea";
 import type { Run } from "./Ask";
@@ -9,45 +7,49 @@ import type { Run } from "./Ask";
 const title = (id: string) => id.replaceAll("-", " ").replace(/^./, (c) => c.toUpperCase());
 type Props = { view: EpisodeView; unit: EpisodeUnit; busy: boolean; run: Run };
 
-export function GenerationSettings(props: Props) {
-  const { unit, busy } = props;
-  const [open, setOpen] = useState(false);
-  const used = unit.picture.generation;
-  const legacy = !used && !!unit.picture.builder;
-  const gen = used ?? unit.generation;
-  const priorWriter = props.view.options.picture_writers.find((w) => w.id === unit.picture.builder);
+function providers(view: EpisodeView, unit: EpisodeUnit) {
+  const inherited = view.builders[unit.chapter] || view.writer;
+  return [
+    { value: "", label: "Chapter default", description: view.options.picture_writers.find((w) => w.id === inherited)?.provider },
+    ...view.options.picture_writers.map((w) => ({
+      value: w.id,
+      label: w.provider,
+      description: w.ready ? w.title : w.title + " · unavailable on this host",
+      disabled: !w.ready,
+    })),
+  ];
+}
+
+export function GenerationSettings({ view, unit, busy, run }: Props) {
+  const used = unit.picture.generation?.provider;
+  const inherited = view.builders[unit.chapter] || view.writer;
   return (
-    <div className="ep-generation">
-      <button
-        type="button"
-        className="linkish"
-        aria-haspopup="dialog"
-        aria-expanded={open}
+    <div className="ep-generation" title={used ? "Last built with " + used : undefined}>
+      <Select
+        size="sm"
+        aria-label="Picture provider"
         disabled={busy}
-        onClick={() => setOpen(!open)}
-        title="Change provider, model and effort"
-      >
-        {legacy ? priorWriter?.provider || unit.picture.builder : gen.provider} <ChevronDown size={13} />
-      </button>
-      <small>{legacy ? "Model and effort unrecorded" : `${gen.model} · ${gen.effort}`}</small>
-      {used &&
-        (used.provider !== unit.generation.provider ||
-          used.model !== unit.generation.model ||
-          used.effort !== unit.generation.effort) && (
-          <small>
-            Next · {unit.generation.provider} · {unit.generation.model} · {unit.generation.effort}
-          </small>
+        value={unit.builder_pick ?? ""}
+        options={providers(view, unit).map((p) =>
+          p.value
+            ? p
+            : {
+                ...p,
+                label: view.options.picture_writers.find((w) => w.id === inherited)?.provider ?? inherited,
+                description: "Chapter default",
+              },
         )}
-      <Popover open={open} onClose={() => setOpen(false)} title="Picture generation" align="start" width={420}>
-        {open && <SettingsForm {...props} close={() => setOpen(false)} />}
-      </Popover>
+        onChange={(id) =>
+          void run(() =>
+            api.chooseEpisode(view.id, { units: { [unit.id]: { builder: (id as WriterId) || null, model: "", effort: "" } } }),
+          )
+        }
+      />
     </div>
   );
 }
 
-function SettingsForm({ view, unit, run, busy, close }: Props & { close: () => void }) {
-  const [component, setComponent] = useState(unit.visual.automatic ? "" : unit.visual.component);
-  const [variant, setVariant] = useState(unit.visual.variant_pick || "");
+export function SettingsForm({ view, unit, run, busy }: Props) {
   const [direction, setDirection] = useState(unit.visual.direction);
   const [providerPick, setProviderPick] = useState<WriterId | "">(unit.builder_pick || "");
   const inherited = view.builders[unit.chapter] || view.writer;
@@ -61,34 +63,20 @@ function SettingsForm({ view, unit, run, busy, close }: Props & { close: () => v
   const save = async (generate: boolean) => {
     const fields = {
       builder: providerPick || null,
-      component: component || null,
-      variant: variant || null,
       direction: direction.trim(),
       model,
       effort,
     };
     const ok = await run(() => api.chooseEpisode(view.id, { units: { [unit.id]: fields } }));
     if (!ok) return;
-    if (generate && !(await run(() => api.makePictures(view.id, { units: [unit.id], level: unit.level })))) return;
-    close();
+    if (generate) await run(() => api.makePictures(view.id, { units: [unit.id], level: unit.level }));
   };
   return (
     <div className="ep-generation-form">
       <Select
         label="Provider"
         value={providerPick}
-        options={[
-          {
-            value: "",
-            label: "Use chapter provider (" + (options.picture_writers.find((p) => p.id === inherited)?.provider ?? inherited) + ")",
-          },
-          ...options.picture_writers.map((w) => ({
-            value: w.id,
-            label: w.provider,
-            description: w.ready ? w.title : w.title + " · unavailable on this host",
-            disabled: !w.ready,
-          })),
-        ]}
+        options={providers(view, unit)}
         onChange={(v) => {
           setProviderPick(v as WriterId | "");
           setModel("");
@@ -114,17 +102,6 @@ function SettingsForm({ view, unit, run, busy, close }: Props & { close: () => v
           ...efforts.map((e) => ({ value: e, label: title(e) })),
         ]}
         onChange={setEffort}
-      />
-      <ComponentFields
-        unit={unit}
-        view={view}
-        component={component}
-        variant={variant}
-        onComponent={(v) => {
-          setComponent(v);
-          setVariant("");
-        }}
-        onVariant={setVariant}
       />
       <TextArea
         label="Custom visual direction"

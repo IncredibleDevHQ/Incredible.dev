@@ -191,3 +191,49 @@ done""",
         for a, b in zip(frames, frames[1:], strict=False):
             assert max(ImageStat.Stat(ImageChops.difference(a, b)).mean) > 0.12, name
         assert max(ImageStat.Stat(frames[-1]).stddev) > 12, name
+
+
+def test_presenter_window_interpolates_in_encoded_frames(tmp_path: Path) -> None:
+    from PIL import Image
+
+    full = derive.full(plans.merged(SCRIPT["plan"], SCRIPT["labels"]))
+    chapter = full["chapters"][0]
+    full["chapters"], full["marks"] = [chapter], []
+    lines = [f for b in chapter["beats"] for f in b["frames"]]
+    for f, layout in zip(lines, ("full-frame", "avatar-bubble", "corner-window"), strict=True):
+        f.update(layout=layout, presence="person" if layout == "full-frame" else "both")
+    take = {
+        "id": "camera",
+        "chapter": chapter["id"],
+        "seconds": 3,
+        "marks": [{"frame": f["id"], "t": i} for i, f in enumerate(lines)],
+    }
+    clock = timeline.schedule(full, [take])
+    project = tmp_path / "film"
+    project.mkdir()
+    (project / "index.html").write_text(
+        film.project(full, clock, [], {}, takes={"camera": {"video": "camera.mp4"}})["index.html"]
+    )
+    times = (0.9, 1.2, 1.6, 2.2, 2.6)
+    extract = " && ".join(
+        f"ffmpeg -v error -ss {t} -i out.mp4 -frames:v 1 -vf scale=480:270 {i}.png"
+        for i, t in enumerate(times)
+    )
+    result = run(
+        tmp_path,
+        f"cp {GSAP} film/ && ffmpeg -v error -f lavfi -i color=red:s=320x180:r=30 -t 3 -c:v libx264 -pix_fmt yuv420p film/camera.mp4 && hyperframes render film --quality draft --fps 30 --output out.mp4 --quiet && {extract}",
+    )
+    assert result.returncode == 0, result.stderr[-1000:]
+    boxes = []
+    for i in range(len(times)):
+        with Image.open(tmp_path / f"{i}.png") as im:
+            mask = im.convert("RGB").split()[1].point(lambda g: 255 if g < 40 else 0)
+            box = mask.getbbox()
+            assert box
+            boxes.append(box)
+            if i == 2:
+                assert mask.getpixel((box[0] + 1, box[1] + 1)) == 0
+                assert mask.getpixel(((box[0] + box[2]) // 2, (box[1] + box[3]) // 2)) == 255
+    full_box, shrinking, circle, sliding, rectangle = boxes
+    assert full_box[2] - full_box[0] > shrinking[2] - shrinking[0] > circle[2] - circle[0]
+    assert circle[0] < sliding[0] < rectangle[0]

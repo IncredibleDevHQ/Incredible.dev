@@ -71,7 +71,7 @@ import mimetypes
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
@@ -235,7 +235,9 @@ class FramePickIn(BaseModel):
     #: The type of the picture a line brings in, and how it comes in (a line's picks only).
     picture: str | None = Field(default=None, max_length=40)
     transition: str | None = Field(default=None, max_length=40)
-    window_size: Literal["small", "large"] | None = None
+    window_size: (
+        Annotated[int, Field(strict=True, ge=25, le=125)] | Literal["small", "large"] | None
+    ) = None
     window_shape: Literal["rectangle", "rounded", "circle"] | None = None
 
 

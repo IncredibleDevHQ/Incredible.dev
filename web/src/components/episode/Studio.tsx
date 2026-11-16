@@ -21,9 +21,10 @@ import {
   Sun,
   Upload,
 } from "lucide-react";
+import { flushSync } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type EpisodeAsk, type EpisodeChapter, type EpisodeView, type WriterId } from "../../api";
-import { chapterName, clockLine, LAYOUTS, linesOf, mmss, pictureCount, takeOf, unitOf } from "../../episode";
+import { chapterName, clockLine, resizePresenter, LAYOUTS, linesOf, mmss, pictureCount, takeOf, unitOf } from "../../episode";
 import { useHouse } from "../../store";
 import { useTheme } from "../../theme";
 import { AgentMark } from "../../ui";
@@ -331,6 +332,9 @@ function Chapter({
   const unit = unitOf(view, line.id);
   const at = lines.indexOf(line);
   const scheduled = clockLine(view, line.id);
+  const [resizing, setResizing] = useState<{line: string; size: number} | null>(null);
+  const draftSize = resizing?.line === line.id ? resizing.size : null;
+  const previewLine = draftSize === null ? line : resizePresenter(view, line, draftSize);
   const playerKey = [line.id, view.film_state.stale, view.film_state.file?.id, view.settings.voice, unit?.picture.clip?.id, scheduled?.audio_url, scheduled?.source.take].join("/");
   const following = plan.chapters[number];
   const previous = number > 1 ? plan.chapters[number - 2] : undefined;
@@ -398,20 +402,60 @@ function Chapter({
   const playhead = span && progress !== null ? span.start + progress * span.seconds : null;
   const pick = (frame: string) => {
     if (frame === picked) return;
-    setProgress(null);
-    setPicked(frame);
+    const select = () => {
+      setProgress(null);
+      setPicked(frame);
+    };
+    const person = () => fullRef.current?.querySelector<HTMLElement>(".ep-stage-person");
+    const before = full && !recording ? person() : null;
+    if (!before || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return select();
+    const geometry = (element: HTMLElement): Keyframe => {
+      const { left, top, width, height, borderRadius } = getComputedStyle(element);
+      return { left, top, width, height, borderRadius };
+    };
+    const start = geometry(before);
+    flushSync(select);
+    const after = person();
+    if (after) after.animate([start, geometry(after)], { duration: 450, easing: "ease-in-out" });
   };
   const reword = (frame: string, text: string) => void run(() => api.editLine(view.id, frame, text));
 
   const fullRef = useRef<HTMLDivElement>(null);
   const peekRef = useRef<HTMLButtonElement>(null);
+  const scriptScroll = useRef(0);
+  const transition = useRef<ViewTransition | null>(null);
+  const toggleEditor = useCallback((open: boolean) => {
+    const scroller = (peekRef.current ?? fullRef.current)?.closest<HTMLElement>(".ep-doc-body");
+    if (open) scriptScroll.current = scroller?.scrollTop ?? 0;
+    const source = open ? peekRef.current : fullRef.current?.querySelector<HTMLElement>(".ep-pop-stage");
+    const from = source?.getBoundingClientRect();
+    const update = () => {
+      flushSync(() => setFull(open));
+      if (scroller) scroller.scrollTop = open ? 0 : scriptScroll.current;
+    };
+    transition.current?.skipTransition();
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { update(); return; }
+    if (document.startViewTransition) {
+      transition.current = document.startViewTransition(update);
+    } else {
+      update();
+      const target = open ? fullRef.current?.querySelector<HTMLElement>(".ep-pop-stage") : peekRef.current;
+      if (from && target) {
+        const to = target.getBoundingClientRect();
+        if (to.width && to.height) target.animate([
+          {transformOrigin:"top left", transform:`translate(${from.left-to.left}px,${from.top-to.top}px) scale(${from.width/to.width},${from.height/to.height})`},
+          {transformOrigin:"top left", transform:"none"}
+        ], {duration:360, easing:"cubic-bezier(.22,1,.36,1)"});
+      }
+    }
+  }, []);
   const wasFull = useRef(false);
   const askAfter = useRef(false);
   useEffect(() => {
     if (recording) setFull(true);
   }, [recording]);
   useEffect(() => {
-    if (full) { fullRef.current?.scrollIntoView({block: "start"}); fullRef.current?.focus({ preventScroll: true }); }
+    if (full) { fullRef.current?.focus({ preventScroll: true }); }
     else if (askAfter.current) script.current?.askAt(line.id, "picture");
     else if (wasFull.current) peekRef.current?.focus({ preventScroll: true });
     askAfter.current = false;
@@ -422,7 +466,7 @@ function Chapter({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented || (e.target as HTMLElement).closest("textarea, input")) return;
       e.preventDefault();
-      setFull(false);
+      toggleEditor(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -494,6 +538,49 @@ function Chapter({
       </button>
     ));
 
+  const chapterActions = (
+<div className="ep-doc-top">
+                  <p className="ep-kicker">
+                    Chapter {number} · {chapterName(chapter)} · {mmss(view.clock?.chapters.find((c) => c.id === chapter.id)?.seconds ?? chapter.seconds)}
+                  </p>
+                  <div className="ep-doc-actions">
+                    {/* where more than one agent is ready, a chapter's pictures can be another's to draw */}
+                    {pics.all > 0 && agents.length > 1 && (
+                      <label className="ep-figure-by">
+                        Pictures by
+                        <Select
+                          size="sm"
+                          aria-label={`The agent that draws chapter ${number}'s pictures`}
+                          value={view.builders[chapter.id]}
+                          options={agents}
+                          disabled={busy || recording}
+                          onChange={(id) =>
+                            id !== view.builders[chapter.id] && void run(() => api.chooseEpisode(view.id, { builders: { [chapter.id]: id === view.settings.writer ? null : (id as WriterId) } }))
+                          }
+                        />
+                      </label>
+                    )}
+                    {take && (
+                      <small className="ep-peek-take">
+                        Take {take.n} · {mmss(take.seconds)}
+                      </small>
+                    )}
+                    <Tooltip content="Asks the writer for a change, at the caret" shortcut={ASK_KEYS} side="bottom" align="end">
+                      <button type="button" className="btn" disabled={recording} onClick={() => script.current?.askAt(line.id, "chapter")}>
+                        <Sparkles />
+                        Ask AI
+                      </button>
+                    </Tooltip>
+                    <Tooltip content={pics.planned ? "Makes this chapter's pictures first" : "Opens the camera and microphone"} shortcut="R" side="bottom" align="end">
+                      <button type="button" className={`btn ${take ? "" : "primary"}`} disabled={busy || (waits > 0 && pics.planned === 0)} onClick={begin}>
+                        <Circle />
+                        {take ? "Retake" : `Record chapter ${number}`}
+                      </button>
+                    </Tooltip>
+                    {onward}
+                  </div>
+                </div>
+  );
   return (
     <main className="ep-chapter" data-recording={recording || undefined}>
       <Slides view={view} at={chapter.id} onAt={(id) => onAt(id)} />
@@ -513,13 +600,6 @@ function Chapter({
           >
             <section className="ep-pop-main">
               <header className="ep-pop-head">
-                {!recording && (
-                  <Tooltip content="Back to the script" shortcut="Esc" side="bottom" align="start">
-                    <button type="button" className="icon-btn" aria-label="Back to the script" onClick={() => setFull(false)}>
-                      <Minimize2 />
-                    </button>
-                  </Tooltip>
-                )}
                 <b>Chapter {number}</b>
                 <span>
                   {chapterName(chapter)}
@@ -529,12 +609,6 @@ function Chapter({
                   <Tooltip content="Bring a recording of this chapter: pick a video or audio file, or drop one on the frame" side="bottom">
                     <button type="button" className="icon-btn" aria-label="Bring a recording of this chapter" disabled={busy} onClick={() => upload.current?.click()}>
                       <Upload />
-                    </button>
-                  </Tooltip>
-                  <Tooltip content={pics.planned ? "Makes this chapter's pictures first" : "Opens the camera and microphone"} shortcut="R" side="top">
-                    <button type="button" className={`btn ${take ? "" : "primary"}`} disabled={busy || (waits > 0 && pics.planned === 0)} onClick={begin}>
-                      <Circle />
-                      {take ? "Retake" : `Record chapter ${number}`}
                     </button>
                   </Tooltip>
                   <input
@@ -578,11 +652,12 @@ function Chapter({
                   {recording ? (
                     <Stage view={view} frame={line} unit={unit} stream={recorder.stream} />
                   ) : (
-                    <LinePlayer key={playerKey} view={view} frame={line} unit={unit} captions={captions} onCaptions={setCaptions} onProgress={setProgress} />
+                    <LinePlayer key={playerKey} view={view} frame={previewLine} editingWindow={draftSize !== null} unit={unit} captions={captions} onCaptions={setCaptions} onProgress={setProgress} />
                   )}
                   {recorder.state === "count" && <span className="ep-count">{recorder.count}</span>}
                 </FileDrop>
               </div>
+              {!recording && chapterActions}
               {recording ? (
                 <div className="ep-recbar" data-recording>
                   {recorder.state === "asking" && (
@@ -680,6 +755,7 @@ function Chapter({
             ) : (
               <section className="ep-pop-panel">
                 <ChoicePanel
+                  draftSize={draftSize} onDraftSize={size => setResizing(size === null ? null : {line: line.id, size})}
                   panel={panel}
                   view={view}
                   chapter={chapter}
@@ -690,12 +766,19 @@ function Chapter({
                   onFilm={() => onAt(FILM)}
                   onAskPicture={() => {
                     askAfter.current = true;
-                    setFull(false);
+                    toggleEditor(false);
                   }}
                 />
               </section>
             )}
             <nav className="ep-pop-rail" aria-label="Choices for this line">
+                {!recording && (
+                  <Tooltip content="Back to the script" shortcut="Esc" side="bottom" align="start">
+                    <button type="button" className="icon-btn ep-collapse" aria-label="Back to the script" onClick={() => toggleEditor(false)}>
+                      <Minimize2 />
+                    </button>
+                  </Tooltip>
+                )}
               {PANELS.map(({ id, label, icon: Icon }) => (
                 <button key={id} type="button" aria-pressed={!recording && panel === id} disabled={recording} onClick={() => setPanel(id)}>
                   <Icon aria-hidden="true" />
@@ -709,47 +792,6 @@ function Chapter({
           <div className="ep-doc-grid" data-expanded={full || undefined}>
             <div className="ep-doc-main">
               <header className="ep-doc-head">
-                <div className="ep-doc-top">
-                  <p className="ep-kicker">
-                    Chapter {number} · {chapterName(chapter)} · {mmss(view.clock?.chapters.find((c) => c.id === chapter.id)?.seconds ?? chapter.seconds)}
-                  </p>
-                  <div className="ep-doc-actions">
-                    {/* where more than one agent is ready, a chapter's pictures can be another's to draw */}
-                    {pics.all > 0 && agents.length > 1 && (
-                      <label className="ep-figure-by">
-                        Pictures by
-                        <Select
-                          size="sm"
-                          aria-label={`The agent that draws chapter ${number}'s pictures`}
-                          value={view.builders[chapter.id]}
-                          options={agents}
-                          disabled={busy || recording}
-                          onChange={(id) =>
-                            id !== view.builders[chapter.id] && void run(() => api.chooseEpisode(view.id, { builders: { [chapter.id]: id === view.settings.writer ? null : (id as WriterId) } }))
-                          }
-                        />
-                      </label>
-                    )}
-                    {take && (
-                      <small className="ep-peek-take">
-                        Take {take.n} · {mmss(take.seconds)}
-                      </small>
-                    )}
-                    <Tooltip content="Asks the writer for a change, at the caret" shortcut={ASK_KEYS} side="bottom" align="end">
-                      <button type="button" className="btn" disabled={recording} onClick={() => script.current?.askAt(line.id, "chapter")}>
-                        <Sparkles />
-                        Ask AI
-                      </button>
-                    </Tooltip>
-                    <Tooltip content={pics.planned ? "Makes this chapter's pictures first" : "Opens the camera and microphone"} shortcut="R" side="bottom" align="end">
-                      <button type="button" className={`btn ${take ? "" : "primary"}`} disabled={busy || (waits > 0 && pics.planned === 0)} onClick={begin}>
-                        <Circle />
-                        {take ? "Retake" : `Record chapter ${number}`}
-                      </button>
-                    </Tooltip>
-                    {onward}
-                  </div>
-                </div>
                 <h1>{chapter.question}</h1>
               </header>
               <Script
@@ -768,7 +810,7 @@ function Chapter({
                 onPick={pick}
                 onOpen={(u) => {
                   if (!u.frames.includes(line.id)) pick(u.frames[0]);
-                  setFull(true);
+                  toggleEditor(true);
                 }}
                 onReword={reword}
                 onRecordLine={recordLine}
@@ -804,7 +846,7 @@ function Chapter({
                   onFiles={([file]) => bring(file)}
                 >
                   <Tooltip content="Opens the frame with its choices and the recorder" side="bottom">
-                    <button ref={peekRef} type="button" className="ep-peek-stage ep-float-frame" aria-label="Open the frame, its choices and the recorder" onClick={() => setFull(true)}>
+                    <button ref={peekRef} type="button" className="ep-peek-stage ep-float-frame" aria-label="Open the frame, its choices and the recorder" onClick={() => toggleEditor(true)}>
                       {full ? <span className="ep-peek-blank" /> : <FrameCanvas view={view} frame={line} unit={unit} take={take} label={`The frame for line ${at + 1}`} />}
                       <span className="ep-peek-open" aria-hidden="true">
                         <Maximize2 />
@@ -813,6 +855,7 @@ function Chapter({
                     </button>
                   </Tooltip>
                 </FileDrop>
+                {chapterActions}
                 <p className="ep-float-line">
                   Line {at + 1} of {lines.length}
                   {span ? ` · ${mmss(span.start)}–${mmss(span.start + span.seconds)}` : ""} · {LAYOUTS[line.layout] ?? line.layout}
@@ -881,7 +924,7 @@ function Chapter({
                 onJoin={(frame) => {
                   pick(frame);
                   setPanel("transition");
-                  setFull(true);
+                  toggleEditor(true);
                 }}
               />
             </div>

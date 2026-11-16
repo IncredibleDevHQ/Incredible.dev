@@ -281,7 +281,7 @@ export type EpisodeFrame = {
   picture?: string;
   transition?: string;
   // What the person picked over the plan's reading, for the line that brings a picture in.
-  picked?: { picture?: string; transition?: string; window_size?: string; window_shape?: string };
+  picked?: { picture?: string; transition?: string; window_size?: number | "small" | "large"; window_shape?: string };
   window?: { box: Box; radius: number };
   // The person's own words are on this line: what the writer had, and when they changed it.
   by_person?: { was: string; at: number };
@@ -435,7 +435,7 @@ export type EpisodeChange = {
 };
 // A pick for a line, a chapter or the film. null takes that pick back and leaves the others.
 export type EpisodePick = {
-  window_size?: string | null;
+  window_size?: number | "small" | "large" | null;
   window_shape?: string | null;
   presence?: Presence | null;
   layout?: string | null;

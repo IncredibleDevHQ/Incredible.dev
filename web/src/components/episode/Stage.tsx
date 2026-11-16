@@ -3,7 +3,7 @@
 // recording, the take once there is one, and a stand-in before that. The picture is its posed
 // still, its draft clip while playing, or a sketch of what the plan says it shows.
 import { useEffect, useRef } from "react";
-import type { EpisodeFrame, EpisodeTake, EpisodeUnit, EpisodeView } from "../../api";
+import type { LayoutSpot, EpisodeFrame, EpisodeTake, EpisodeUnit, EpisodeView } from "../../api";
 import { boxStyle, clockLine, frameSpot, spotOf } from "../../episode";
 
 export function Stage({
@@ -13,6 +13,8 @@ export function Stage({
   take,
   stream,
   previewAt,
+  incoming,
+  motionTime,
 }: {
   view: EpisodeView;
   frame: EpisodeFrame;
@@ -20,10 +22,23 @@ export function Stage({
   take?: EpisodeTake;
   stream?: MediaStream | null;
   previewAt?: number;
+  incoming?: LayoutSpot;
+  motionTime?: number;
 }) {
   const spot = frameSpot(view, frame);
+  // Match the exported GSAP power2.inOut interpolation on the selected line's clock.
+  const t = Math.max(0, Math.min(1, motionTime ?? 1));
+  const ease = t < 0.5 ? 4 * t ** 3 : 1 - ((-2 * t + 2) ** 3) / 2;
+  const mix = (a: number, b: number) => a + (b - a) * ease;
+  let box = spot.person, radius = spot.person_radius, zoom = spot.zoom;
+  if (t < 1 && incoming?.person && box) {
+    const from = incoming.person;
+    radius = mix(Math.min(incoming.person_radius, from[2] / 2, from[3] / 2), Math.min(radius, box[2] / 2, box[3] / 2));
+    box = [mix(from[0], box[0]), mix(from[1], box[1]), mix(from[2], box[2]), mix(from[3], box[3])];
+    zoom = mix(incoming.zoom, zoom);
+  }
   const size = view.options.geometry.frame;
-  const person = frame.presence !== "content" ? spot.person : null;
+  const person = frame.presence !== "content" ? box : null;
   const picture = frame.presence !== "person" ? spot.picture : null;
   const still = unit?.picture.stills[frame.id];
   const clip = unit?.picture.clip;
@@ -43,11 +58,11 @@ export function Stage({
         </div>
       )}
       {person && (
-        <div className="ep-stage-person" style={boxStyle(person, size, spot.person_radius)}>
+        <div className="ep-stage-person" data-editing={motionTime === undefined || undefined} style={boxStyle(person, size, radius)}>
           {stream ? (
             <Live stream={stream} />
           ) : previewAt !== undefined && take?.video ? (
-            <ScrubVideo src={take.video.url} time={offset + previewAt} zoom={spot.zoom} />
+            <ScrubVideo src={take.video.url} time={offset + previewAt} zoom={zoom} />
           ) : (
             <span className="ep-stand-in" aria-label="Where you will be">
               <i />

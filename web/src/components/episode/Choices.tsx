@@ -3,11 +3,11 @@
 // sets who has the frame and how), the picture the line shows, how that picture comes in, and
 // the steps it takes on the line. A pick is the line's own until it is widened, in one click, to
 // the picture's other lines, the chapter or the film; like every pick it draws nothing.
-import { Blend, LayoutTemplate, ListOrdered, Shapes, type LucideIcon } from "lucide-react";
+import { Settings2, Blend, LayoutTemplate, ListOrdered, Shapes, type LucideIcon } from "lucide-react";
 import { api, type EpisodeChapter, type EpisodeChoices, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Presence } from "../../api";
 import { allLines, LAYOUTS, LEVEL_NAMES, linesIn, LOOKS, MOVES, PICTURES, pictureWords, TRANSITIONS } from "../../episode";
 import { Select } from "../Select";
-import { ComponentFields } from "./GenerationSettings";
+import { ComponentFields, SettingsForm } from "./GenerationSettings";
 import { Tooltip } from "../Tooltip";
 import type { Run } from "./Ask";
 import { KindArt, MoveArt } from "./PictureArt";
@@ -17,12 +17,13 @@ import { Tiles } from "./Tiles";
 const WHO: Record<Presence, string> = { person: "You", both: "You and the picture", content: "The picture alone" };
 const ORDER: Record<Presence, number> = { person: 0, both: 1, content: 2 };
 
-export type Panel = "layout" | "picture" | "transition" | "steps";
+export type Panel = "layout" | "picture" | "transition" | "steps" | "others";
 export const PANELS: { id: Panel; label: string; icon: LucideIcon }[] = [
   { id: "layout", label: "Layout", icon: LayoutTemplate },
   { id: "picture", label: "Picture", icon: Shapes },
   { id: "transition", label: "Transition", icon: Blend },
   { id: "steps", label: "Steps", icon: ListOrdered },
+  { id: "others", label: "Others", icon: Settings2 },
 ];
 
 type Props = {
@@ -34,14 +35,24 @@ type Props = {
   busy: boolean;
   onFilm: () => void;
   onAskPicture: () => void;
+  draftSize: number | null;
+  onDraftSize: (value: number | null) => void;
 };
 
 export function ChoicePanel({ panel, ...props }: Props & { panel: Panel }) {
+  const panels = { layout: LayoutPanel, picture: PicturePanel, transition: TransitionPanel, steps: StepsPanel, others: OtherSettings };
+  const Selected = panels[panel];
   return (
-    <div className="ep-choices" aria-label={`${PANELS.find((p) => p.id === panel)?.label ?? ""} for this line`}>
-      {panel === "layout" ? <LayoutPanel {...props} /> : panel === "picture" ? <PicturePanel {...props} /> : panel === "transition" ? <TransitionPanel {...props} /> : <StepsPanel {...props} />}
+    <div className="ep-choices" aria-label={`${PANELS.find((p) => p.id === panel)?.label} for this line`}>
+      <Selected {...props} />
     </div>
   );
+}
+
+function OtherSettings({ view, unit, busy, run }: Props) {
+  if (unit?.kind !== "picture") return <small>This line has no generated picture.</small>;
+  const revision = [unit.id, unit.builder_pick, unit.builder, unit.model_pick.model, unit.model_pick.effort, unit.visual.direction];
+  return <SettingsForm key={revision.join("/")} view={view} unit={unit} busy={busy} run={run} />;
 }
 
 const choosing = (view: EpisodeView, run: Run) => (body: EpisodeChoices) => run(() => api.chooseEpisode(view.id, body));
@@ -49,13 +60,21 @@ const choosing = (view: EpisodeView, run: Run) => (body: EpisodeChoices) => run(
 // The look's layouts, you first, then you with a picture, then the picture alone; one pick sets
 // who has the frame and how. The line's own layout is always among them, even one the look no
 // longer has.
-function LayoutPanel({ view, chapter, line, unit, run, busy, onFilm }: Props) {
+function LayoutPanel({ view, chapter, line, unit, run, busy, onFilm, draftSize, onDraftSize }: Props) {
   const presenterOff = view.settings.presenter === "off";
   const theme = view.options.themes.find((t) => t.id === view.settings.theme);
   const choose = choosing(view, run);
   const kit = [...(theme?.kit ?? [])].sort((a, b) => ORDER[a.presence] - ORDER[b.presence]);
   const frames = kit.some((k) => k.layout === line.layout) ? kit : [{ layout: line.layout, presence: line.presence }, ...kit];
   const setFrame = (presence: Presence, layout: string) => choose({ frames: { [line.id]: { presence, layout } } });
+
+  const size = line.picked?.window_size;
+  const savedSize = typeof size === "number" ? size : size === "small" ? 72 : size === "large" ? 125 : 100;
+  const commitSize = async () => {
+    if (draftSize === null || busy) return;
+    if (draftSize !== savedSize) await choose({frames: {[line.id]: {window_size: draftSize === 100 ? null : draftSize}}});
+    onDraftSize(null);
+  };
 
   // Widening a pick. A layout for the chapter or the film reaches the lines of this presence
   // there. Like any pick it draws nothing: the pictures it puts out of date wait to be applied.
@@ -102,9 +121,14 @@ function LayoutPanel({ view, chapter, line, unit, run, busy, onFilm }: Props) {
         ))}
       </div>
       {!presenterOff && line.presence !== "content" && <div className="ep-window-fields">
-        <Select size="sm" label="Video box size" value={line.picked?.window_size ?? ""} disabled={busy}
-          options={[{value:"",label:"Layout default"}, {value:"small",label:"Small"},{value:"large",label:"Large"}]}
-          onChange={(v) => void choose({frames:{[line.id]:{window_size:v || null}}})} />
+        <label className="ep-size-range">
+          <span>Video box size <output>{draftSize ?? savedSize}%</output></span>
+          <input type="range" aria-label="Video box size" min={25} max={125} step={1}
+            value={draftSize ?? savedSize} disabled={busy}
+            onChange={e => onDraftSize(Number(e.target.value))}
+            onPointerUp={commitSize} onPointerCancel={() => onDraftSize(null)}
+            onKeyUp={commitSize} onBlur={commitSize} />
+        </label>
         <Select size="sm" label="Video box shape" value={line.picked?.window_shape ?? ""} disabled={busy}
           options={[{value:"",label:"Layout default"},{value:"rectangle",label:"Rectangle"},{value:"rounded",label:"Rounded"},{value:"circle",label:"Circle"}]}
           onChange={(v) => void choose({frames:{[line.id]:{window_shape:v || null}}})} />

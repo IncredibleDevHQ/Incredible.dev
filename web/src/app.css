@@ -1908,3 +1908,26 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
   .ep-bar { overflow-x: auto; }
   .ep-bar > :is(b, .ep-tools, .ep-now, .ep-appearance) { flex-shrink: 0; }
 }
+
+.ep-script .ep-line-text { font-size: clamp(14px, 1.5cqw, 16px); line-height: 1.55; }
+.ep-float .ep-doc-top, .ep-pop-main > .ep-doc-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0; }
+.ep-float .ep-doc-actions { justify-content: flex-start; }
+.ep-inline-player .ep-pop-panel { max-height: none; align-self: stretch; }
+.ep-size-range { display: grid; gap: 6px; font-size: 12px; color: var(--ink); }
+.ep-size-range span { display: flex; justify-content: space-between; }
+.ep-size-range output { font-variant-numeric: tabular-nums; color: var(--muted); }
+.ep-size-range input { width: 100%; accent-color: var(--green); cursor: pointer; }
+.ep-pop-rail .ep-collapse { background: var(--raised); color: var(--ink); border: 1px solid var(--line); align-self: center; width: 34px; height: 34px; padding: 6px; place-items: center; }
+.ep-pop-rail .ep-collapse:hover { color: var(--ink); background: var(--wash); }
+.ep-chapter .ep-float-frame, .ep-inline-player .ep-pop-stage { view-transition-name: episode-preview; }
+::view-transition-group(episode-preview) { animation-duration: 360ms; animation-timing-function: cubic-bezier(.22,1,.36,1); }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(episode-preview) { animation-duration: 0s; }
+}
+@media (max-width: 1100px) {
+  .ep-inline-player .ep-pop-panel { max-height: min(55vh,420px); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ep-stage-person[data-editing] { transition: left .24s ease-out, top .24s ease-out, width .24s ease-out, height .24s ease-out, border-radius .24s ease-out; }
+}

@@ -2873,14 +2873,17 @@ async def test_demo_picture_retry_can_read_the_original_brief(
     assert len(calls) == 2
 
 
-async def test_presenter_window_is_saved_for_one_line_and_used_by_film(house: AgentHost) -> None:
+@pytest.mark.parametrize("size", ["small", 43])
+async def test_presenter_window_is_saved_for_one_line_and_used_by_film(
+    house: AgentHost, size: str | int
+) -> None:
     from design_agent.episode import film, geometry
 
     ep = await planned(house)
     view = house.episodes.choose(
         ep,
         by="you",
-        change={"frames": {"c1.b2.f1": {"window_size": "small", "window_shape": "circle"}}},
+        change={"frames": {"c1.b2.f1": {"window_size": size, "window_shape": "circle"}}},
     )
     frame = next(
         f

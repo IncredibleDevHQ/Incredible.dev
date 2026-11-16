@@ -97,12 +97,17 @@ def refuse(new: Row) -> None:
     if new.get("all"):
         every.append(new["all"])
     for picks in every:
-        for key, allowed in (
-            ("window_size", geometry.WINDOW_SIZES),
-            ("window_shape", geometry.WINDOW_SHAPES),
+        size = picks.get("window_size")
+        if size is not None and not (
+            (type(size) is int and 25 <= size <= 125)
+            or (isinstance(size, str) and size in geometry.WINDOW_SIZES)
         ):
-            if picks.get(key) is not None and picks[key] not in allowed:
-                raise ValueError(f"Invalid presenter {key}.")
+            raise ValueError("Presenter size must be between 25 and 125 percent.")
+        if (
+            picks.get("window_shape") is not None
+            and picks["window_shape"] not in geometry.WINDOW_SHAPES
+        ):
+            raise ValueError("Invalid presenter window_shape.")
         if picks.get("picture") is not None and picks["picture"] not in PICTURES:
             raise ValueError(f"There is no picture type called {picks['picture']}.")
         if picks.get("transition") is not None and picks["transition"] not in TRANSITIONS:

@@ -856,3 +856,39 @@ def test_component_reader_reuses_a_scene_until_its_held_data_changes() -> None:
     first["_component_picked"] = True
     classify.stage_design(plan, [], True, read)
     assert all("component" not in group for group in questions)
+
+
+def test_presenter_morph_keeps_a_continuous_take_and_bounds_short_lines(full: Row) -> None:
+    chapter = full["chapters"][0]
+    frames = [f for beat in chapter["beats"] for f in beat["frames"]]
+    for f, layout in zip(frames, ["full-frame", "avatar-bubble", "corner-window"], strict=True):
+        f.update(layout=layout, presence="person" if layout == "full-frame" else "both")
+    marks = [0, 1, 1.4]
+    take = {
+        "id": "camera",
+        "chapter": chapter["id"],
+        "frame": "",
+        "seconds": 2.2,
+        "marks": [{"frame": f["id"], "t": t} for f, t in zip(frames, marks, strict=True)],
+    }
+    page = film.project(
+        full,
+        timeline.schedule(full, [take]),
+        [],
+        {},
+        takes={"camera": {"video": "cam.mp4", "audio": "cam.m4a"}},
+    )["index.html"]
+    assert page.count('src="cam.mp4"') == page.count('src="cam.m4a"') == 1
+    assert 'tl.fromTo("#window-0"' in page
+    assert '"duration": 0.4' in page
+    assert '"borderRadius": 135' in page
+
+
+def test_window_percentage_and_saved_presets() -> None:
+    base = {"layout": "corner-window"}
+    for pick, width in [(37, 142), ("small", 276), (100, 384), ("large", 480)]:
+        frame = {**base, "picked": {"window_size": pick}}
+        assert geometry.for_frame(frame).person[2] == width
+    for invalid in (0, 126, True, "75", 50.5):
+        with pytest.raises(ValueError):
+            override.refuse({"frames": {"f": {"window_size": invalid}}})

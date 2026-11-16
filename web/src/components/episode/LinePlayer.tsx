@@ -1,9 +1,9 @@
 // A line has one playback clock. The finished film carries its mix. While editing, a kept
 // take or cached narration supplies the clock and the draft picture follows it.
 import { Captions as CC, Pause, Play, Volume2, VolumeX } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { EpisodeFrame, EpisodeUnit, EpisodeView } from "../../api";
-import { clockLine, mmss } from "../../episode";
+import { allLines, clockLine, frameSpot, mmss } from "../../episode";
 import { Captions } from "./Captions";
 import { Stage } from "./Stage";
 
@@ -11,19 +11,27 @@ type Props = {
   view: EpisodeView;
   frame: EpisodeFrame;
   unit?: EpisodeUnit;
+  editingWindow?: boolean;
   captions: boolean;
   onCaptions: (show: boolean) => void;
   onProgress: (fraction: number | null) => void;
 };
 
-export function LinePlayer({ view, frame, unit, captions, onCaptions, onProgress }: Props) {
+export function LinePlayer({ view, frame, unit, editingWindow, captions, onCaptions, onProgress }: Props) {
   const line = clockLine(view, frame.id);
-  const film = view.film_state.status === "done" && !view.film_state.stale ? view.film_state.file?.url : undefined;
+  const film = !editingWindow && view.film_state.status === "done" && !view.film_state.stale ? view.film_state.file?.url : undefined;
   const take = line?.source.kind === "take" ? view.takes.find((t) => t.id === line.source.take) : undefined;
   const sound = take?.audio?.url ?? take?.video?.url ?? line?.audio_url;
   const src = film ?? sound;
   const start = film ? (line?.start ?? frame.start) : take ? (line?.source.offset ?? 0) : 0;
   const seconds = Math.max(0.1, line?.seconds ?? frame.seconds);
+  const incoming = useMemo(() => {
+    const frames = allLines(view);
+    const index = frames.findIndex(({line}) => line.id === frame.id);
+    const previous = frames[index - 1]?.line;
+    if (!previous || previous.presence === "content") return undefined;
+    return frameSpot(view, previous);
+  }, [view, frame.id]);
   const media = useRef<HTMLVideoElement>(null);
   const [position, setPosition] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -51,7 +59,7 @@ export function LinePlayer({ view, frame, unit, captions, onCaptions, onProgress
     const tick = (now: number) => {
       const next = media.current ? media.current.currentTime - start : pos.current + (now - last) / 1000;
       pos.current = Math.min(seconds, Math.max(0, next));
-      if (next >= seconds || now - lastPaint >= 65) {
+      if ((incoming && !film && next < 0.45) || next >= seconds || now - lastPaint >= 65) {
         setPosition(pos.current);
         onProgress(pos.current / seconds);
         lastPaint = now;
@@ -64,7 +72,7 @@ export function LinePlayer({ view, frame, unit, captions, onCaptions, onProgress
     };
     id = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(id);
-  }, [playing, start, seconds, onProgress]);
+  }, [playing, start, seconds, onProgress, incoming, film]);
   useEffect(() => {
     return () => onProgress(null);
   }, [onProgress]);
@@ -85,7 +93,7 @@ export function LinePlayer({ view, frame, unit, captions, onCaptions, onProgress
   };
   return (
     <div className="ep-line-player" role="group" aria-label="Line player">
-      {!film && <Stage view={view} frame={frame} unit={unit} take={take} previewAt={position} />}
+      {!film && <Stage view={view} frame={frame} unit={unit} take={take} previewAt={position} incoming={incoming} motionTime={!editingWindow && (playing || position > 0) ? position / Math.min(0.45, seconds) : undefined} />}
       {src && (
         <video
           ref={media}

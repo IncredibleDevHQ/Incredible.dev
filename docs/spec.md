@@ -889,7 +889,11 @@ app's canvas, from a channel's material or a research frame's notes.
   the cached narration for that text and voice, with the draft picture on the same clock.
   The player supports line seeking, volume and optional transcripts. The Picture panel
   chooses the component and variant. Layout changes the size and shape of the presenter window
-  in the preview and the export. Picture cards open model settings from the provider name.
+  in the preview and the export. The size slider spans 25% to 125% of the layout's window.
+  A presenter moving between visible layouts eases to the next position, size and corner
+  radius over the first 450 ms of the new line, shortened to fit short lines. Continuous
+  takes retain their media clock. Picture cards select the provider. The expanded editor's
+  Others tab holds model, effort and custom direction.
 - The ElevenLabs choice under Voice lists the account’s voices and offers available voice
   samples. Configure `ELEVENLABS_API_KEY` on the Studio host and restart it to enable the choice.
 - **Local narration.** When the host has macOS speech or `espeak-ng`, Studio also offers a
@@ -907,7 +911,7 @@ app's canvas, from a channel's material or a research frame's notes.
   renderer leaves a failed, retryable attempt. A finished attempt retains its duration.
   A film is marked outdated if its inputs change during export.
 - **The film** is one HyperFrames page written by code and rendered on the thread's computer.
-  Layouts change at a cut. A picture that comes in by a move is moved as a whole box, by
+  Picture layouts change at a cut. A picture that comes in by a move is moved as a whole box, by
   transform and opacity, and the picture before it stays that much longer to leave the same way.
 
 Acceptance: the same plan, picks, takes and pictures render the same film; a recording never

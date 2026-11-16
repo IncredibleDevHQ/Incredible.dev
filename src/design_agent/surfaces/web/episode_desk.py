@@ -2527,6 +2527,22 @@ class EpisodeDesk:
         )
         spoken = sorted((k, v.get("h")) for k, v in self._voice(episode).items())
         parts: list[Any] = [full.get("chapters"), full.get("brief"), takes, made, spoken]
+        previous = None
+        for _, _, frame in plans.frames_of(full):
+            current = (
+                geometry.for_frame(frame) if frame.get("presence") in ("person", "both") else None
+            )
+            if (
+                previous
+                and current
+                and previous.person
+                and current.person
+                and (previous.person, previous.person_radius, previous.zoom)
+                != (current.person, current.person_radius, current.zoom)
+            ):
+                parts.append("presenter-motion-v1")
+                break
+            previous = current
         if any(p.get("generation") for p in pictures):
             parts.append((look or self._look(episode)).tokens())
         picked = (episode["settings"].get("narrator") or {}).get("id")

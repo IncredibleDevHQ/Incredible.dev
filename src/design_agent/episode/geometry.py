@@ -74,7 +74,10 @@ def for_frame(frame: Row) -> Region:
     if not spot.person or not (pick.get("window_size") or pick.get("window_shape")):
         return spot
     x, y, w, h = spot.person
-    scale = WINDOW_SIZES.get(str(pick.get("window_size") or ""), 1.0)
+    size = pick.get("window_size")
+    scale = (
+        size / 100 if type(size) is int and 25 <= size <= 125 else WINDOW_SIZES.get(str(size), 1.0)
+    )
     width, height = min(FRAME_W, round(w * scale)), min(FRAME_H, round(h * scale))
     radius = spot.person_radius
     shape = pick.get("window_shape")
