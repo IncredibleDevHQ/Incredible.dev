@@ -36,7 +36,7 @@ export function Sidebar() {
         <strong>Creative House</strong>
         {/* The demo's agent is scripted: it says so, so its sample work is never taken for the real thing. */}
         {session?.demo && (
-          <span className="chip demo-chip" title="A scripted agent makes the same sample work, whatever you bring. No AI runs and nothing costs.">
+          <span className="chip demo-chip" title="Chat uses a scripted demo. Episodes can use a live writer and its model allowance.">
             Demo
           </span>
         )}

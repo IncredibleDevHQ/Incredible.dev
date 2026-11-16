@@ -236,22 +236,21 @@ class EpisodeDesk:
 
     # -- what an episode can be made with -------------------------------------------------------
 
-    def options(self) -> dict[str, Any]:
-        writers: list[dict[str, Any]] = []
+    def options(self, writer: str | None = None) -> dict[str, Any]:
+        writers: list[dict[str, Any]] = [
+            {
+                "id": h.id,
+                "title": h.title,
+                "ready": self.host.research.ready(h.id),
+                "local": True,
+            }
+            for h in research.HARNESSES.values()
+        ]
         if self.demo:
             writers.append(
-                {"id": DEMO, "title": "The demo's writer", "ready": True, "local": False}
+                {"id": DEMO, "title": "HTTP caching sample", "ready": True, "local": False}
             )
         else:
-            for harness in research.HARNESSES.values():
-                writers.append(
-                    {
-                        "id": harness.id,
-                        "title": harness.title,
-                        "ready": self.host.research.ready(harness.id),
-                        "local": True,
-                    }
-                )
             writers.append(
                 {
                     "id": BUILTIN,
@@ -260,18 +259,7 @@ class EpisodeDesk:
                     "local": False,
                 }
             )
-        picture_writers = list(writers)
-        if self.demo:
-            picture_writers.extend(
-                {
-                    "id": h.id,
-                    "title": h.title,
-                    "local": True,
-                    "ready": self.host.research.ready(h.id),
-                }
-                for h in research.HARNESSES.values()
-            )
-        for w in picture_writers:
+        for w in writers:
             w["provider"] = episode_models.generation(self.host.settings, w["id"], {})["provider"]
         return {
             "writers": writers,
@@ -279,10 +267,9 @@ class EpisodeDesk:
                 k: {"purpose": v.purpose, "layouts": v.layouts}
                 for k, v in catalog.COMPONENTS.items()
             },
-            "picture_writers": picture_writers,
+            "picture_writers": writers,
             "generation_models": {
-                w["id"]: episode_models.options(self.host.settings, w["id"])
-                for w in picture_writers
+                w["id"]: episode_models.options(self.host.settings, w["id"]) for w in writers
             },
             "themes": [
                 {
@@ -300,7 +287,11 @@ class EpisodeDesk:
             ],
             "seconds": {"least": SECONDS[0], "most": SECONDS[1], "usual": list(USUAL), "gap": GAP},
             "local_narrator": local_speech.engine() is not None,
-            "reader": "demo" if self.demo else "jev" if self._jev_key() else "writer",
+            "reader": "demo"
+            if writer == DEMO or writer is None and self.demo
+            else "jev"
+            if self._jev_key()
+            else "writer",
             # a narrator can speak (ElevenLabs has a key), and the house has a voice of its
             # own for one; without that, an episode picks a voice or clones the person's
             "narrator": {
@@ -346,7 +337,7 @@ class EpisodeDesk:
             and (model or effort)
         ):
             scoped = copy.copy(worker)
-            scoped.model, scoped.effort = model, effort
+            scoped.model, scoped.effort = model or worker.model, effort
             return scoped
         return worker
 
@@ -368,6 +359,8 @@ class EpisodeDesk:
             made = LocalWorker(
                 writer, store=self.store, data_dir=self.data_dir, project_root=self.project_root
             )
+            if writer == "codex":
+                made.model = self.host.settings.episode_codex_model
         else:
             raise ValueError(f"There is no writer called {writer}.")
         self.workers[writer] = made
@@ -481,6 +474,10 @@ class EpisodeDesk:
         research frame's notes in that frame."""
         chosen = self._settings(settings or {})
         words = text.strip()
+        if self.demo and not (settings or {}).get("writer") and (words or frame_id or file_ids):
+            raise ValueError(
+                "Choose a writer for your notes or explicitly select the HTTP caching sample."
+            )
         material = [words] if words else []
         if frame_id:
             frame = self.store.thread(frame_id)
@@ -984,7 +981,9 @@ class EpisodeDesk:
             self._snapshot(episode_id, why=str(asked.get("text") or redo))
         # the house's plan is the plan: what a person changed in it reaches the writer's folder
         plan_text = (
-            json.dumps(episode["plan"], ensure_ascii=False, indent=1) if episode["plan"] else "{}"
+            json.dumps(episode["plan"], ensure_ascii=False, indent=1)
+            if episode["plan"] and start != "brief"
+            else "{}"
         )
         files = {"material/notes.md": str(episode["material"]), "plan.json": plan_text + "\n"}
         await worker.prepare(episode, files)
@@ -1115,6 +1114,17 @@ class EpisodeDesk:
         for _, _, f in plans.frames_of(merged):
             if picks.get(f["id"], {}).get("component"):
                 f["_component_picked"] = True
+        # A framing turn can edit a chapter question or its narration. Refresh any
+        # invalidated script labels before the final checks consume them.
+        if (
+            checks == "all"
+            and "script" not in stages
+            and (
+                any(not ch.get("type") for ch in merged.get("chapters", []))
+                or any(not beat.get("subtype") for _, beat in plans.beats_of(merged))
+            )
+        ):
+            stages = ["script", *stages]
         ask = self._reader(worker)
         lines: list[str] = []
         for stage in stages:
@@ -1232,16 +1242,21 @@ class EpisodeDesk:
             if owner == episode_id and unit_id in ("", unit) and not build.done():
                 build.cancel()
 
-    def again(self, episode_id: str, *, writer: str = "") -> Row:
+    def again(self, episode_id: str, *, writer: str = "", from_start: bool = False) -> Row:
         """Pick the planning up where it stopped, with another writer if one is named: the
         files and the house's record of the turns carry over."""
         episode = self._episode(episode_id)
+        if self.planning(episode_id):
+            raise ValueError("The writer is already planning this episode.")
+        if from_start and (episode["approved"] or episode["status"] != "failed"):
+            raise ValueError("Only a stopped or failed draft can restart from the source.")
         if writer:
             chosen = self._settings({"writer": writer}, episode["settings"])
             self.store.update_episode(episode_id, settings=chosen)
         stage = str((episode["stage"] or {}).get("name") or "brief")
         self._start_plan(
-            episode_id, stage=stage if stage in ("brief", "script", "frames") else "brief"
+            episode_id,
+            stage=stage if not from_start and stage in ("brief", "script", "frames") else "brief",
         )
         return self.view(episode_id)
 
@@ -1378,7 +1393,7 @@ class EpisodeDesk:
             feedback = override.apply(merged, new)
             self.store.update_episode(episode_id, labels=plans.labels_of(merged))
         left = override.redo(feedback)
-        if left and not self.demo:
+        if left and not (self.demo and episode["settings"].get("writer") == DEMO):
             # What the pick leaves the writer waits for the person to apply their picks: trying
             # frames out costs nothing, and nothing is planned or drawn until they say so.
             for item in left:
@@ -1758,7 +1773,7 @@ class EpisodeDesk:
         their changes. The demo's writer fits nothing."""
         musts = {str(r["where"]) for r in check.musts(rows)}
         wrong = [f for f in frames if f and f in musts]
-        if not wrong or self.demo:
+        if not wrong or (self.demo and self._episode(episode_id)["settings"].get("writer") == DEMO):
             return
         picks = dict(self._episode(episode_id)["picks"] or {})
         writer = dict(picks.get("writer") or {})
@@ -3253,6 +3268,9 @@ class EpisodeDesk:
             "settings": episode["settings"],
             "steps": [{"id": key, "label": label} for key, label in STEPS],
             "plan": full,
+            "sample_notes": episode["material"]
+            if episode["settings"].get("writer") == DEMO
+            else None,
             "written": {
                 "material": len((episode["plan"] or {}).get("material", [])),
                 "idea": (episode["plan"] or {}).get("brief", {}).get("idea", ""),
@@ -3317,7 +3335,7 @@ class EpisodeDesk:
             },
             "runs": runs[-40:],
             "working": _live(live) if live else None,
-            "options": self.options(),
+            "options": self.options(episode["settings"].get("writer")),
         }
 
     def _file(self, file_id: Any) -> dict[str, Any] | None:

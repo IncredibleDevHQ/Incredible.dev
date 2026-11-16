@@ -1,16 +1,13 @@
-// The sheet an episode starts from: the notes (or a research frame's) and how long it may run,
-// as a least and a most, or Auto when the notes decide. The rest has an answer already (you on
-// camera, the usual look, the first writer that is ready), said in one line that opens to
-// change it. The look is easier to pick in the studio, where its effect on every line shows.
-// One button plans it.
+// New episodes start from notes or a research frame. The sample writer is an explicit choice.
 import { Paperclip, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, type EpisodeOptions, type FileView, type WriterId } from "../../api";
+import { api, type EpisodeOptions, type EpisodeSettings, type FileView, type WriterId } from "../../api";
 import { keepWriter, lastWriter, LOOKS, mmss } from "../../episode";
 import { useHouse, type EpisodeStart } from "../../store";
-import { AgentMark, FileList } from "../../ui";
+import { FileList } from "../../ui";
 import { FileDrop } from "../FileDrop";
 import { RangeSlider } from "../RangeSlider";
+import { Select } from "../Select";
 import { SegmentedControl } from "../SegmentedControl";
 import { TextArea } from "../TextArea";
 import { TextField } from "../TextField";
@@ -23,16 +20,17 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
   const startEpisode = useHouse((s) => s.startEpisode);
   const openEpisode = useHouse((s) => s.openEpisode);
   const [options, setOptions] = useState<EpisodeOptions | null>(null);
-  const [title, setTitle] = useState("");
-  const [text, setText] = useState("");
+  const [title, setTitle] = useState(start.title ?? "");
+  const [text, setText] = useState(start.notes ?? "");
   const [files, setFiles] = useState<FileView[]>([]);
   const [range, setRange] = useState<[number, number]>([300, 420]);
   const [auto, setAuto] = useState(false);
   const [presenter, setPresenter] = useState<"on" | "off">("on");
   const [theme, setTheme] = useState("corner-window");
+  const [voice, setVoice] = useState<EpisodeSettings["voice"] | null>(null);
   const [writer, setWriter] = useState<WriterId | null>(null);
   const [busy, setBusy] = useState(false);
-  // The look and the writer have an answer already; they open only to change it.
+  // The layout can be changed after planning.
   const [more, setMore] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const close = () => startEpisode(null);
@@ -43,9 +41,11 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
       .then((o) => {
         setOptions(o);
         setRange(o.seconds.usual);
+        setVoice(o.local_narrator ? "local" : "live");
         // the agent picked last on this computer, while it is ready; else the first that is
         const last = lastWriter();
-        setWriter(o.writers.find((w) => w.ready && w.id === last)?.id ?? o.writers.find((w) => w.ready)?.id ?? null);
+        const writers = o.writers.filter((w) => w.ready && w.id !== "demo");
+        setWriter(writers.find((w) => w.id === last)?.id ?? writers[0]?.id ?? null);
       })
       .catch((error: Error) => useHouse.getState().say(error.message));
   }, []);
@@ -68,7 +68,7 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
 
   const hasMaterial = Boolean(start.frame) || text.trim().length > 0 || files.length > 0;
   const plan = async () => {
-    if (!channelId || !writer || !hasMaterial) return;
+    if (!channelId || !writer || !voice || !hasMaterial) return;
     setBusy(true);
     keepWriter(writer);
     try {
@@ -77,7 +77,8 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
         text,
         files: files.map((f) => f.id),
         from_frame: start.frame,
-        settings: { seconds: auto ? "auto" : range, presenter, theme: presenter === "off" ? "voice-only" : theme, writer },
+        resolve_links: text !== start.notes,
+        settings: { seconds: auto ? "auto" : range, presenter, theme: presenter === "off" ? "voice-only" : theme, writer, voice },
       });
       startEpisode(null);
       useHouse.getState().setMode("canvas");
@@ -90,8 +91,7 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
   };
 
   const themes = options?.themes.filter((t) => t.presenter === "on") ?? [];
-  const by = options?.writers.find((w) => w.id === writer);
-  const nobody = Boolean(options) && !options?.writers.some((w) => w.ready);
+  const nobody = Boolean(options) && !options?.writers.some((w) => w.ready && w.id !== "demo");
   return (
     <div className="picker ep-new" role="dialog" aria-modal="true" aria-label="New episode">
       <FileDrop
@@ -108,7 +108,7 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
             <X />
           </button>
         </header>
-        <p className="picker-lede">A presenter-led explainer of one idea. It is planned from your notes, then you record it chapter by chapter in its studio.</p>
+        <p className="picker-lede">Choose who narrates your episode, then plan its chapters.</p>
         <div className="ep-new-grid">
           <section>
             <TextField label="Working title" optional value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What it explains" />
@@ -184,59 +184,54 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
                 ]}
               />
             </div>
-            {more || nobody ? (
-              <>
-                {presenter === "on" && (
-                  <div className="ep-new-row">
-                    <span>Look</span>
-                    <span className="ep-looks">
-                      {themes.map((t) => (
-                        <button type="button" key={t.id} aria-pressed={theme === t.id} title={t.stage} onClick={() => setTheme(t.id)}>
-                          {LOOKS[t.id] ?? t.name}
-                        </button>
-                      ))}
-                    </span>
-                  </div>
-                )}
-                <div className="ep-new-row">
-                  <span>Written by</span>
-                  <div className="agents named" role="radiogroup" aria-label="Who writes it">
-                    {options?.writers.map((w) => (
-                      <button
-                        type="button"
-                        role="radio"
-                        key={w.id}
-                        aria-checked={writer === w.id}
-                        disabled={!w.ready}
-                        title={w.ready ? (w.local ? `${w.title}, on this computer, signed in as you are` : "The model this house is set up with") : `${w.title} isn't ready on this computer`}
-                        onClick={() => setWriter(w.id)}
-                      >
-                        <AgentMark mark={w.local ? w.id : undefined} size="sm" />
-                        <span>{w.title}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {nobody && <p className="ep-new-from">No writer is ready: install Claude Code, Codex or Kimi Code, or set a model for the built-in agent.</p>}
-              </>
+            <Select
+              label="Narration voice"
+              value={voice}
+              placeholder="Loading voices…"
+              disabled={!options}
+              onChange={(value) => {
+                if (value === "local" || value === "live" || value === "narrator") setVoice(value);
+              }}
+              hint={voice === "local" ? "Reads unrecorded lines aloud on this computer." : voice === "live" ? "Record your chapters in Studio. Unrecorded lines will be silent." : voice === "narrator" ? "Choose an ElevenLabs voice in Studio before rendering." : undefined}
+              options={[
+                { value: "local", label: "Local narrator", description: options?.local_narrator ? "Offline speech" : "No speech engine installed", disabled: !options?.local_narrator },
+                { value: "live", label: "Your recordings", description: "Use your own chapter takes" },
+                { value: "narrator", label: "ElevenLabs", description: options?.narrator.ready ? "Use a library or cloned voice" : "Requires an ElevenLabs connection", disabled: !options?.narrator.ready },
+              ]}
+            />
+            <Select
+              label="Episode writer"
+              value={writer}
+              placeholder="Choose a writer"
+              onChange={(id) => setWriter(options?.writers.find((w) => w.id === id && w.ready)?.id ?? null)}
+              options={(options?.writers ?? []).map((w) => ({value: w.id, label: w.title, disabled: !w.ready}))}
+              hint={writer === "demo" ? "Uses the fixed HTTP caching example. Your notes are ignored." : writer ? "Uses your notes and the selected writer’s model allowance." : nobody ? "Set up a writer to plan from your notes." : undefined}
+            />
+            {presenter === "on" && (more ? (
+              <div className="ep-new-row">
+                <span>Look</span>
+                <span className="ep-looks">
+                  {themes.map((t) => (
+                    <button type="button" key={t.id} aria-pressed={theme === t.id} title={t.stage} onClick={() => setTheme(t.id)}>
+                      {LOOKS[t.id] ?? t.name}
+                    </button>
+                  ))}
+                </span>
+              </div>
             ) : (
               <p className="ep-new-rest">
-                <span>
-                  {presenter === "on" ? `${LOOKS[theme] ?? "The usual"} look, written` : "Written"} by {by?.title ?? "the first agent that is ready"}
-                </span>
-                <button type="button" className="linkish" onClick={() => setMore(true)}>
-                  Change
-                </button>
+                <span>{LOOKS[theme] ?? "The usual"} look</span>
+                <button type="button" className="linkish" onClick={() => setMore(true)}>Change</button>
               </p>
-            )}
+            ))}
           </section>
         </div>
         <footer className="ep-new-foot">
           <button type="button" className="btn" onClick={close}>
             Cancel
           </button>
-          <button type="button" className="btn primary" disabled={busy || !writer || !hasMaterial} onClick={() => void plan()}>
-            Plan the episode
+          <button type="button" className="btn primary" disabled={busy || !writer || !voice || !hasMaterial} onClick={() => void plan()}>
+            {writer === "demo" ? "Plan HTTP caching sample" : "Plan the episode"}
           </button>
         </footer>
       </FileDrop>

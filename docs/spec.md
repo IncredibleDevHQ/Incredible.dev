@@ -913,8 +913,9 @@ app's canvas, from a channel's material or a research frame's notes.
   and documents. Arrows and labels follow the approved relationships and cue clock.
 - The ElevenLabs choice under Voice lists the account’s voices and offers available voice
   samples. Configure `ELEVENLABS_API_KEY` on the Studio host and restart it to enable the choice.
-- **Local narration.** When the host has macOS speech or `espeak-ng`, Studio also offers a
-  local English narrator. Lines without a kept take use synthesized speech. The film uses
+- **Local narration.** When the host has macOS speech or `espeak-ng`, the new-episode dialog selects a
+  local English narrator by default. It also offers chapter recordings and a configured ElevenLabs
+  narrator. Hosts without local speech default to chapter recordings. Lines without a kept take use synthesized speech. The film uses
   each recording's measured duration and estimates cue positions within that line.
 - A picture carries a catalog component and layout. The existing design reader selects a
   component on the opening frame. Studio can override it, supply custom direction and choose
@@ -923,6 +924,10 @@ app's canvas, from a channel's material or a research frame's notes.
   Explicit endpoints take priority. Directional cues and ordered pipelines can supply missing
   endpoints in older plans. A blocked connection retains its cross and narration cue.
   Demo pictures are scripted. Older builds can have unknown settings.
+- In the new-episode dialog, a ready writer plans from the supplied notes, including when the
+  rest of Studio runs in demo mode. The fixed HTTP caching sample requires explicit selection.
+  Existing sample episodes can start a new plan from their saved source. Set
+  `DESIGN_AGENT_EPISODE_CODEX_MODEL` to override the Codex CLI model for the episode writer and reader.
 - Export waits for requested picture builds to finish and needs a built picture or a kept take.
   Studio shows the render stage, frame counts when available, and elapsed time. An interrupted
   renderer leaves a failed, retryable attempt. A finished attempt retains its duration.

@@ -55,7 +55,7 @@ export function App() {
       )}
       {page === "channel" && <ThreadPanel />}
       {frameId && <FrameReview />}
-      {episodeId && <EpisodeStudio />}
+      {episodeId && !startingEpisode && <EpisodeStudio />}
       {startingEpisode && <NewEpisode start={startingEpisode} />}
       <PreviewDialog />
       <Viewer />

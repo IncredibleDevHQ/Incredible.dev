@@ -396,6 +396,7 @@ export type EpisodeView = EpisodeCard & {
   steps: { id: string; label: string }[];
   plan: EpisodePlan | null;
   // What the writer has put down so far, shown while the plan is still being written.
+  sample_notes?: string | null;
   written: { material: number; idea: string; chapters: { id: string; question: string; beats: number }[] };
   clock: EpisodeClock | null;
   units: EpisodeUnit[];
@@ -581,7 +582,7 @@ export const api = {
   placeTemplate: (channelId: string, body: { template: string; text: string; files: string[]; from_asset: string; from_frame?: string }) =>
     call<Message>("POST", `/api/channels/${channelId}/templates`, body),
   episodeOptions: () => call<EpisodeOptions>("GET", "/api/episodes/options"),
-  newEpisode: (channelId: string, body: { title: string; text: string; files: string[]; from_frame?: string; settings: Partial<EpisodeSettings> }) =>
+  newEpisode: (channelId: string, body: { title: string; text: string; files: string[]; from_frame?: string; resolve_links?: boolean; settings: Partial<EpisodeSettings> }) =>
     call<EpisodeView>("POST", `/api/channels/${channelId}/episodes`, body),
   episode: (id: string) => call<EpisodeView>("GET", `/api/episodes/${id}`),
   approveEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/approve`),

@@ -155,6 +155,7 @@ function Bar({ view, ready, onAt, onClose, run, busy }: { view: EpisodeView; rea
       </Tooltip>
       <h2>{view.title}</h2>
       {ready && <FilmTools view={view} run={run} busy={busy} />}
+      {view.sample_notes && <button type="button" className="btn" title="Start a new episode using the notes saved with this sample" onClick={() => useHouse.getState().startEpisode({title: view.title, notes: view.sample_notes ?? ""})}>Plan from saved notes</button>}
       <span className="ep-gap" />
       {ready && <Now view={view} run={run} busy={busy} onAt={onAt} />}
       {ready && <FilmDownload view={view} />}

@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     model: str = DEFAULT_MODEL_SPEC
     model_effort: str | None = None
     """Lead effort; unset uses the registry default for the model (`high` for Claude 5)."""
+    episode_codex_model: str = ""
+    """Optional account-supported Codex CLI model for episode planning and classification."""
     helper_model: str | None = None
     look_model: str | None = None
     tool_selector_model: str | None = None

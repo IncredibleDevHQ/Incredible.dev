@@ -91,7 +91,9 @@ async def house(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncGenerat
 
 async def planned(host: AgentHost, **settings: Any) -> str:
     channel = host.store.channels()[0]["id"]
-    view = host.episodes.create(channel, by="you", title="One idea", text=NOTES, settings=settings)
+    view = host.episodes.create(
+        channel, by="you", title="One idea", text=NOTES, settings={"writer": DEMO, **settings}
+    )
     await settle(lambda: not host.episodes.planning(view["id"]))
     return str(view["id"])
 
@@ -180,6 +182,35 @@ def test_an_episode_needs_material_and_a_writer_that_is_ready(house: AgentHost) 
         house.episodes.create(channel, by="you", text=NOTES, settings={"theme": "sepia"})
 
 
+def test_demo_house_offers_source_writers_and_requires_a_writer_for_custom_notes(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    desk = house.episodes
+    monkeypatch.setattr(house.research, "ready", lambda name: name == "codex")
+    choices = {w["id"]: w for w in desk.options()["writers"]}
+    assert choices["codex"]["ready"] and not choices["claude"]["ready"]
+    assert desk._settings({"writer": "codex"})["writer"] == "codex"
+    house.settings = house.settings.model_copy(update={"episode_codex_model": "account-model"})
+    worker = desk._worker_called("codex")
+    assert isinstance(worker, LocalWorker) and worker.model == "account-model"
+    with pytest.raises(ValueError, match="Choose a writer"):
+        desk.create(house.store.channels()[0]["id"], by="you", text="Index useful memories.")
+
+
+async def test_frame_review_refreshes_a_chapter_label_after_its_question_changes(
+    house: AgentHost,
+) -> None:
+    eid = await planned(house)
+    desk = house.episodes
+    episode = desk._episode(eid)
+    chapter = episode["plan"]["chapters"][0]
+    chapter["question"] = "How do you decide which events are worth indexing?"
+    house.store.update_episode(eid, plan=episode["plan"])
+    assert not desk._merged(desk._episode(eid))["chapters"][0].get("type")
+    await desk._read(eid, desk._worker(episode), ["frames", "design"], checks="all")
+    assert desk._merged(desk._episode(eid))["chapters"][0].get("type")
+
+
 def test_the_shape_of_a_plan_is_checked_before_any_of_it_is_read() -> None:
     assert _shape([], "brief") == ["plan.json must hold one JSON object."]
     assert _shape({"brief": {}, "material": [{"id": "m1", "text": "x"}]}, "brief") == []
@@ -219,8 +250,9 @@ async def test_a_plan_that_breaks_a_rule_goes_back_to_the_writer_with_the_report
     assert "Stage: fix (the brief stage)" in prompts[1] and "not valid JSON" in prompts[1]
 
 
+@pytest.mark.parametrize("from_start", [False, True])
 async def test_a_writer_that_gives_no_reply_stops_the_plan_and_it_can_be_picked_up(
-    tmp_path: Path, house: AgentHost
+    tmp_path: Path, house: AgentHost, from_start: bool
 ) -> None:
     class Silent(DemoWorker):
         fail = True
@@ -239,9 +271,12 @@ async def test_a_writer_that_gives_no_reply_stops_the_plan_and_it_can_be_picked_
     assert house.store.thread(view["thread_id"])["status"] == "needs_you"  # type: ignore[index]
     assert house.store.asset(view["asset_id"])["status"] == "blocked"  # type: ignore[index]
     worker.fail = False
-    house.episodes.again(episode_id)
+    restarted = house.episodes.again(episode_id, from_start=from_start)
+    assert restarted["stage"]["name"] == ("brief" if from_start else "script")
     await settle(lambda: not house.episodes.planning(episode_id))
     assert house.episodes.view(episode_id)["status"] == "plan"
+    with pytest.raises(ValueError, match="Only a stopped or failed draft"):
+        house.episodes.again(episode_id, from_start=True)
 
 
 # -- the studio: approval, picks, pictures --------------------------------------------------------
@@ -2165,6 +2200,16 @@ def local(
     return worker, store, {"id": "ep_1", "thread_id": "th_1"}
 
 
+async def test_codex_brief_receives_the_saved_source_and_plan_format(tmp_path: Path) -> None:
+    runner = Runner([[Event("answer", "Done.")]])
+    worker, _, episode = local(tmp_path, runner, "codex")
+    episode["material"] = "Index only the events needed for future queries."
+    await worker.turn(episode, lane="plan", prompt="Stage: brief.", heard=lambda *_: None)
+    prompt = runner.calls[0]["prompt"]
+    assert episode["material"] in prompt and '"says"' in prompt
+    assert "untrusted source" in prompt.lower()
+
+
 async def test_a_local_writer_works_in_the_episodes_own_folder_with_the_skill(
     tmp_path: Path,
 ) -> None:
@@ -2344,7 +2389,8 @@ def test_the_app_serves_an_episode_at_every_address(tmp_path: Path) -> None:
     settings = Settings(_env_file=None, workspace_root=tmp_path / "workspace", sandbox="host")
     with TestClient(create_app(ROOT, settings, demo=True)) as client:
         options = client.get("/api/episodes/options").json()
-        assert [w["id"] for w in options["writers"]] == [DEMO] and options["reader"] == "demo"
+        assert {w["id"] for w in options["writers"]} == {DEMO, "claude", "codex", "kimi"}
+        assert options["reader"] == "demo"
         assert set(options["geometry"]["layouts"]) >= {"corner-window", "full-frame"}
         channel = client.get("/api/channels").json()[0]["id"]
         assert (

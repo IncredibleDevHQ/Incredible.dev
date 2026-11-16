@@ -266,7 +266,7 @@ function TaskFrame({ task }: { task: CanvasTask }) {
         </div>
       </header>
       {/* The demo's sample is the same whatever was brought: said where that work shows. */}
-      {demo && <p className="tf-demo">Demo: a scripted agent makes the same sample work whatever you bring, so this isn't made from your source.</p>}
+      {demo && !task.episodes?.some((e) => e.writer !== "demo") && <p className="tf-demo">Demo: a scripted agent makes the same sample work whatever you bring, so this isn't made from your source.</p>}
       {running.length > 0 && <Running work={running} />}
       <TaskFlow task={task} />
       {adding && <MakeMenu task={task} anchor={adding} onClose={() => setAdding(null)} />}

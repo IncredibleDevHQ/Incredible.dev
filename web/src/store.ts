@@ -26,7 +26,7 @@ import {
 
 export type Page = "channel" | "needs" | "brand" | "read-brand" | "skills" | "computer";
 // The sheet an episode is started from: open, with the research frame its notes come from if any.
-export type EpisodeStart = { frame?: string };
+export type EpisodeStart = { frame?: string; title?: string; notes?: string };
 export type Mode = "chat" | "canvas";
 // The template picker on the canvas: open on the list, or on one template (started from an asset,
 // or placed onto a research frame, made from its notes).

@@ -224,6 +224,7 @@ class EpisodeIn(BaseModel):
     #: A research frame whose notes it is made from, in that frame.
     from_frame: str = Field(default="", max_length=64)
     settings: EpisodeSettingsIn = Field(default_factory=EpisodeSettingsIn)
+    resolve_links: bool = True
 
 
 class FramePickIn(BaseModel):
@@ -328,6 +329,7 @@ class WordsIn(BaseModel):
 
 
 class AgainIn(BaseModel):
+    from_start: bool = False
     writer: str = Field(default="", pattern=r"^(claude|codex|kimi|builtin|demo|)$")
 
 
@@ -715,7 +717,7 @@ def create_app(
     ) -> dict[str, Any]:
         if store.channel(channel_id) is None:
             raise HTTPException(status_code=404, detail="no such channel")
-        files = [*body.files, *(await linked(body.text, me))]
+        files = [*body.files, *(await linked(body.text, me) if body.resolve_links else [])]
         return episode_call(
             lambda: host.episodes.create(
                 channel_id,
@@ -807,7 +809,9 @@ def create_app(
         body: AgainIn,
         me: str = Depends(person),  # noqa: ARG001
     ) -> dict[str, Any]:
-        return episode_call(lambda: host.episodes.again(episode_id, writer=body.writer))
+        return episode_call(
+            lambda: host.episodes.again(episode_id, writer=body.writer, from_start=body.from_start)
+        )
 
     @app.post("/api/episodes/{episode_id}/stop")
     async def stop_episode(
