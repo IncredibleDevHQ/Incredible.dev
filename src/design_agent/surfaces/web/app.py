@@ -247,10 +247,11 @@ class UnitPickIn(BaseModel):
 
 class PicturesIn(BaseModel):
     """Which pictures to make: the ones named, a chapter's, or with neither the ones that
-    stopped or failed."""
+    stopped or failed. With a level, the ones named are made again that way."""
 
     units: list[str] | None = Field(default=None, max_length=200)
     chapter: str = Field(default="", max_length=80)
+    level: Literal["simple", "rich"] | None = None
 
 
 class LineIn(BaseModel):
@@ -815,7 +816,9 @@ def create_app(
     ) -> dict[str, Any]:
         asked = body or PicturesIn()
         return episode_call(
-            lambda: host.episodes.make(episode_id, by=me, only=asked.units, chapter=asked.chapter)
+            lambda: host.episodes.make(
+                episode_id, by=me, only=asked.units, chapter=asked.chapter, level=asked.level or ""
+            )
         )
 
     @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/go")

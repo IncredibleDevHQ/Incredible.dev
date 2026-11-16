@@ -712,13 +712,15 @@ app's canvas, from a channel's material or a research frame's notes.
   and nothing typed or added runs an agent: a line said to camera is ready at once, a line
   added with a picture waits for the writer to design it, a picture that gained or lost a line
   is out of date, and a step of a picture whose word is gone waits for the writer to fit it,
-  all until the person applies their changes. Placing the caret in a line shows a small
-  "Ask AI" pill at its end (or at the end of the words selected in it); the pill, or Cmd/Ctrl+J,
-  opens a prompt under the line, with three changes to pick, that asks the writer about the line
-  or those words, and while the writer works the line shows it at work there. Anything else is asked for in words, of
-  the film, a chapter, a line or a picture: the writer makes the change (a note on how a
-  picture is drawn goes to its builder), the studio stays open while it does, and the plan as
-  it stood is kept so the change can be taken back. A change that stops leaves the plan as it
+  all until the person applies their changes. Anything else is asked for in words, at the
+  caret: placing it in a line shows a small "Ask AI" pill at its end (or at the end of the words
+  selected in it), and the pill, Cmd/Ctrl+J or Ask AI at the editor's top right opens a prompt
+  under the line that asks the writer about those words, the line, the picture it shows, its
+  chapter or the film (Ask AI opens it on the chapter), in words or with one of three changes to
+  pick; while the writer works the line shows it at work there. A chapter's page asks nowhere
+  else; the film's page asks in a change bar under its script. The writer makes the change (a
+  note on how a picture is drawn goes to its builder), the studio stays open while it does, and
+  the plan as it stood is kept so the change can be taken back. A change that stops leaves the plan as it
   was and can be asked again in the same words; one the writer made nothing of says so. A
   change keeps who has the frame for every line it does not redesign, and a picture is
   drawn again only when what it shows changed: its lines' words only move its clock.
@@ -729,8 +731,9 @@ app's canvas, from a channel's material or a research frame's notes.
   back until the next change is made. A person's picks are not a change's: the ones made
   since stay when it is taken back, except a pick that itself needed the writer, which goes
   back with the picture planned for it.
-- **Asking ahead.** While the writer is on one change, the next can be typed: it waits, in
-  order, and is asked when that one lands. If the turn stops, what waits is held until the
+- **Asking ahead.** While the writer is on one change, the next can be asked for at the caret
+  (or in the film's change bar): it waits, in order, listed with what the writer is on, and is
+  asked when that one lands. If the turn stops, what waits is held until the
   person sends it or lets it go. What waits lives in the open studio, not in the house.
 - **The studio** is the plan and the recording in one place, and every page of it is laid out
   the same way: the slides down the left, and the editor, one sheet holding the script with the
@@ -751,10 +754,16 @@ app's canvas, from a channel's material or a research frame's notes.
   where it stands, how it is made and what it shows, over the lines it is shown on. The frame
   for the line the caret is on floats beside it, level with it while it is in sight, and Record
   sits at the editor's top right with the take. Along the bottom of the page runs the chapter's
-  timeline on its own clock (the take's once there is one, the plan's before): each line a span
-  as long as it lasts, a picture's lines tinted together, under a ruler of times. Placing the
-  caret on a line lands the playhead on its span, and a click on a span puts the caret on its
-  line. The frame opens in a pop-up over the studio, as
+  timeline on its own clock (the take's once there is one, the plan's before), after the Figma
+  editor's strip: every block of the script is a tile as long as its lines, a small screen in it
+  showing its kind (dark for the block the caret is in) and, where there is room, its name;
+  where a block brings a picture in, the join before it carries a mark of how it comes in, which
+  opens that choice; and what the film shows that no line says stands at the ends (its title
+  before the first chapter, a chapter's card, the end card after the last). Under the tiles each
+  line is a span as long as it lasts, a picture's lines tinted together, under a ruler of times.
+  Placing the caret on a line lands the playhead on its span, a click on a span puts the caret on
+  its line and a click on a tile on its block's first. Over the timeline one line says what the
+  writer is on (with Stop), what its last change did (with Undo) and what waits. The frame opens in a pop-up over the studio, as
   the Figma editor's preview does: the frame large, with the chapters either side as a
   carousel that keeps the pop-up open; its controls and the recorder under it; under those the
   same timeline, taller, with each line's frame in its span and the playhead following what
@@ -792,7 +801,8 @@ app's canvas, from a channel's material or a research frame's notes.
   together by asking to record the chapter, or the whole film's from the bar.
 - **Picks are free to try; nothing runs until it is applied.** A pick (a frame, a layout for the
   chapter or the film, a kind of picture, the look, a level, an agent) changes the plan and the
-  preview at once and starts no agent. A picture made before it is out of date: it keeps its
+  preview at once and starts no agent (a made picture's level is the one pick that asks first,
+  and its yes is the apply: see Simple and motion graphics). A picture made before it is out of date: it keeps its
   still and says so on its block, its slide and the pictures pill, and a pick taken back makes it
   current again. A pick that leaves the writer something to do (a line said to camera given a
   picture, a picture whose first line goes to camera, a line added with a picture, a step whose
@@ -801,21 +811,31 @@ app's canvas, from a channel's material or a research frame's notes.
   again, then (once the plan is approved) the new ones. Drawing a made picture again is another
   full run of its agent, so Apply and a block's Draw it again both say so first. A change asked
   for in words is the writer's turn the person asked for; the pictures it puts out of date wait
-  in the same way. While pictures
-  are made, their blocks say the step each builder is on, and a pill in the bar fills as they
-  land and opens onto every picture; one opens its chapter. Stop ends the pictures under way
+  in the same way. While a picture
+  is made, its block follows the build stage by stage (motion graphics: plan each shot, draw
+  it, take a still of each line, your go; a simple one: draw it, check it), the stage under way
+  opening onto its builder's steps and notes as they happen, and a pill in the bar fills as
+  the pictures land and opens onto every picture; one opens its chapter. Stop ends the pictures under way
   as well as the plan, or one picture from its block; the ones that stopped are made again
   only on request.
-- **Simple and rich.** A picture is simple (drawn at once from the plan) or rich, by the
-  film's choice or its own. A rich picture is planned before it is drawn, the way a
+- **Simple and motion graphics.** A picture is simple (drawn at once from the plan) or motion
+  graphics (`rich` in the plan), by the film's choice or its own. Both move on their cues; motion
+  graphics are planned before they are drawn, the way a
   HyperFrames explainer plans a frame as a shot sequence before any HTML: its builder writes
   a motion plan (how the picture carries its idea, from a closed list of nine devices; where
   it happens; and for each of its lines what it opens on, the one move the line is about, how
   the rest lands and what its still shows). The plan never moves a word or a cue: code still
   sets every time. Code holds it to its shape (one shot per line), the studio shows it on the
   picture's lines while the picture is drawn, the picture is built to it, its builder looks at
-  the stills once, and the stills wait for the person's go. A made picture switched to the
-  other level is out of date until it is applied or drawn again.
+  the stills once, and the stills wait for the person's go. The picture is built and moving
+  before its stills are taken, so the go makes nothing more: it puts the picture in the film as
+  built, and the block says so where the stills were. Any made picture plays in its block once
+  its draft clip is rendered, and a clip rendered for what was drawn before is dropped the
+  moment the new drawing lands. The switch on a picture's block says how it was made.
+  Switching a picture not made yet only sets how it will be made; switching a made one asks
+  first, listing the stages to come (the go among them, as the person's), what it costs and
+  the agent to make it (its own, or another that is ready), and the yes (Start) makes it
+  again that way at once, one made before its level was kept included.
 - **Which agent works** is a person's choice at three levels, each among the agents that are
   ready (a coding agent on their computer, or the built-in one). The film's agent, in the bar,
   writes the changes asked for and draws the pictures from then on. A chapter can have another

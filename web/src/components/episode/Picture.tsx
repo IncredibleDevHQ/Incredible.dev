@@ -1,15 +1,21 @@
 // A picture's card at the head of its block in a chapter's script: the picture itself, a
 // placeholder until it is made, beside what it is, how it is made and where it stands. A
 // picture is asked for here, on its own (or with its chapter's, by recording the chapter, or
-// with the whole film's, from the bar). It is simple (drawn at once from the plan) or rich
-// (its motion planned shot by shot, then drawn and posed as stills for a go). A pick never draws
-// anything: a picture made before it is out of date until the person applies their changes or
-// draws it again here, and drawing a made picture again says what it costs first. A chapter's
-// pictures are built by the agent picked for the chapter; one can be drawn by another.
-import { ChevronDown, RotateCcw, Sparkles, Square } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+// with the whole film's, from the bar). It is simple (drawn at once from the plan) or motion
+// graphics (each line planned as a shot, then drawn, with a still of each line for a go). A pick
+// never draws anything: a picture made before it is out of date until the person applies their
+// changes or draws it again here, and drawing a made picture again says what it costs first.
+// Changing how a made picture is made is that same yes: before it starts it lists the stages to
+// come, the one that waits on the person among them, what it costs and who makes it, and the yes
+// makes it again at once. While a picture is made, its card follows the build stage by stage, its
+// builder's steps and notes as they happen. A made picture plays in its card once its clip is
+// rendered, and the go on motion graphics says what it did: the picture was built before its
+// stills, so the go puts it in the film and nothing more is made. A chapter's pictures are built
+// by the agent picked for the chapter; one can be drawn by another.
+import { Check, ChevronDown, Play, RotateCcw, Sparkles, Square } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Level, type Motion, type WriterId } from "../../api";
-import { pictureState, pictureWords } from "../../episode";
+import { LEVEL_NAMES, pictureState, pictureWords } from "../../episode";
 import { Popover } from "../Popover";
 import { SegmentedControl } from "../SegmentedControl";
 import { Select } from "../Select";
@@ -18,6 +24,7 @@ import { AgentMark } from "../../ui";
 import { blockName, KindIcon, type Block } from "./Blocks";
 import { Changed } from "./Diff";
 import { WRITERS } from "./Film";
+import { BUILD, PictureTrail } from "./Work";
 import { KindArt } from "./PictureArt";
 
 // The agents that are ready on this computer, as a select lists them: each by its mark and name.
@@ -25,7 +32,7 @@ export const agentOptions = (view: EpisodeView) =>
   view.options.writers.filter((w) => w.ready).map((w) => ({ value: w.id, label: w.title, icon: <AgentMark mark={w.local ? w.id : undefined} size="sm" /> }));
 
 const LEVELS: Record<Level, string> = {
-  rich: "Its motion is planned shot by shot, then it is drawn and posed as stills for your go.",
+  rich: "Each line is planned as a shot, then drawn. You play it and check a still of each line before your go.",
   simple: "Drawn at once from the plan.",
 };
 
@@ -36,13 +43,23 @@ export function planCost(unit: EpisodeUnit, writer: string): string {
   return `${by.slice(0, 1).toUpperCase() + by.slice(1)} fits it to your words, then ${builder} draws it again: two runs, so the tokens are spent again.`;
 }
 
+// What making a made picture another way asks of the person and costs, said before it is done
+// under the stages its builder goes through: what comes back to them (a still of each line to
+// check, or nothing), and another full run of its builder.
+export function levelCost(unit: EpisodeUnit, to: Level): string {
+  const builder = WRITERS[unit.builder] ?? unit.builder;
+  return to === "rich"
+    ? `You play it and check a still of each line before your go puts it in the film. Another full run of ${builder}, so the tokens are spent again.`
+    : `No shots to plan and no stills to check: it goes straight into the film. Another full run of ${builder}, so the tokens are spent again.`;
+}
+
 // What drawing a made picture again costs, said before it is done: another full run of its
 // agent, so its tokens are spent again.
 export function againCost(units: EpisodeUnit[]): string {
   const names = [...new Set(units.map((u) => WRITERS[u.builder] ?? u.builder))];
   const rich = units.some((u) => u.level === "rich");
   const who = names.length === 1 ? names[0] : names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
-  return `${units.length === 1 ? "It is" : "Each is"} another full run of ${who}${rich ? ", and a rich picture plans its motion first" : ""}, so the tokens are spent again.`;
+  return `${units.length === 1 ? "It is" : "Each is"} another full run of ${who}${rich ? ", and motion graphics plan each shot first" : ""}, so the tokens are spent again.`;
 }
 
 export function PictureCard({
@@ -76,13 +93,37 @@ export function PictureCard({
   const name = blockName(block);
   // the picture as it ends: its last line's still
   const still = p.stills[unit.frames[unit.frames.length - 1]] ?? Object.values(p.stills).pop();
+  // The picture moving, in its card: its draft clip, once one is rendered for it as made. What
+  // plays is held by the clip's address, so a clip rendered for a later make never starts alone.
+  const clip = p.status === "made" || p.status === "go" ? p.clip : null;
+  const [playing, setPlaying] = useState<string | null>(null);
+  const moving = Boolean(clip && playing === clip.url);
+  const play = () => setPlaying(moving || !clip ? null : clip.url);
   // Drawing a made picture again, or planning it again, waits for a yes that knows what it costs.
   const [asking, setAsking] = useState<"draw" | "plan" | null>(null);
+  // The way the person switched a made picture to, while they say yes to making it so; and the
+  // one they said yes to, until the plan has it.
+  const [toLevel, setToLevel] = useState<Level | null>(null);
+  const [sent, setSent] = useState<Level | null>(null);
   const again = asking === "draw";
   const setAgain = (on: boolean) => setAsking(on ? "draw" : null);
   const choose = (pick: { level?: Level; builder?: WriterId | null }) => run(() => api.chooseEpisode(view.id, { units: { [unit.id]: pick } }));
   const make = () => void run(() => api.makePictures(view.id, { units: [unit.id] }));
-  const level = (next: Level) => next !== unit.level && void choose({ level: next });
+  // The switch says how the picture is made: a made one as it was built (one made before that was
+  // kept is rich when it has a motion plan), else how it will be. A picture not made yet is only
+  // set to be made the other way (Generate makes it); a made one asks first, and the yes makes it
+  // again that way.
+  const madeAs: Level = state === "planned" ? unit.level : p.level || (p.motion ? "rich" : "simple");
+  const level = (next: Level) => {
+    if (next === madeAs) return setToLevel(null);
+    if (state === "planned") return void choose({ level: next });
+    setToLevel(next);
+  };
+  const remake = (to: Level) => {
+    setToLevel(null);
+    setSent(to);
+    void run(() => api.makePictures(view.id, { units: [unit.id], level: to })).then(() => setSent(null));
+  };
   // A picture that was not made can be tried with another agent than its chapter's.
   const agents = agentOptions(view);
   const builder = agents.length > 1 && (
@@ -102,16 +143,29 @@ export function PictureCard({
   return (
     <>
       <div className="ep-figure-top">
-        <button
-          type="button"
-          className="ep-figure-pic"
-          data-empty={!still || undefined}
-          data-working={(designed && state === "making") || undefined}
-          aria-label={`Open the ${name.toLowerCase()} with its choices`}
-          onClick={onOpen}
-        >
-          {still ? <img src={still.url} alt="" loading="lazy" /> : <KindArt kind={unit.kind_of_picture} />}
-        </button>
+        <div className="ep-figure-shot">
+          <button
+            type="button"
+            className="ep-figure-pic"
+            data-empty={!still || undefined}
+            data-working={(designed && state === "making") || undefined}
+            aria-label={`Open the ${name.toLowerCase()} with its choices`}
+            onClick={onOpen}
+          >
+            {moving && clip ? (
+              <video src={clip.url} autoPlay muted playsInline onEnded={() => setPlaying(null)} />
+            ) : still ? (
+              <img src={still.url} alt="" loading="lazy" />
+            ) : (
+              <KindArt kind={unit.kind_of_picture} />
+            )}
+          </button>
+          {clip && (
+            <button type="button" className="ep-figure-play" aria-label={`${moving ? "Stop" : "Play"} the ${name.toLowerCase()}`} aria-pressed={moving} onClick={play}>
+              {moving ? <Square /> : <Play />}
+            </button>
+          )}
+        </div>
         <div className="ep-figure-meta">
           <header className="ep-block-head" data-status={state}>
             <KindIcon block={block} />
@@ -123,19 +177,49 @@ export function PictureCard({
                 size="sm"
                 aria-label={`How the ${name.toLowerCase()} is made`}
                 className="ep-figure-level"
-                value={unit.level}
-                disabled={busy || state === "making"}
+                value={toLevel ?? sent ?? madeAs}
+                disabled={busy || state === "making" || Boolean(sent)}
                 onChange={level}
                 options={[
-                  { value: "simple", label: "Simple" },
-                  { value: "rich", label: "Rich" },
+                  { value: "simple", label: LEVEL_NAMES.simple },
+                  { value: "rich", label: LEVEL_NAMES.rich },
                 ]}
               />
             )}
             {tools}
           </header>
           {unit.shows && <p className="ep-block-shows">{unit.shows}</p>}
-          {!designed ? (
+          {toLevel ? (
+            <div
+              className="ep-confirm ep-level-confirm"
+              role="alertdialog"
+              aria-label={toLevel === "rich" ? "Make it as motion graphics?" : "Make it simple?"}
+              onKeyDown={(e) => {
+                if (e.key !== "Escape") return;
+                e.stopPropagation();
+                setToLevel(null);
+              }}
+            >
+              <b>{toLevel === "rich" ? "Make it as motion graphics?" : "Make it simple?"}</b>
+              <ol className="ep-level-steps" aria-label="What happens, in order">
+                {BUILD[toLevel].map((s) => (
+                  <li key={s.id} data-yours={s.yours || undefined}>
+                    {s.label}
+                  </li>
+                ))}
+              </ol>
+              <span>{levelCost(unit, toLevel)}</span>
+              <div className="ep-level-do">
+                {builder}
+                <button type="button" className="btn primary" autoFocus disabled={busy} onClick={() => remake(toLevel)}>
+                  Start
+                </button>
+                <button type="button" className="btn" onClick={() => setToLevel(null)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : !designed ? (
             state === "changed" && <p className="ep-figure-note">Apply your changes in the bar and the writer plans it.</p>
           ) : state === "planned" ? (
             <div className="ep-figure-act">
@@ -145,7 +229,7 @@ export function PictureCard({
               </button>
               <small>
                 {LEVELS[unit.level]}
-                {unit.level === "simple" && unit.suggest === "rich" ? " Rich is suggested for this one." : ""}
+                {unit.level === "simple" && unit.suggest === "rich" ? " Motion graphics are suggested for this one." : ""}
               </small>
             </div>
           ) : state === "changed" ? (
@@ -237,11 +321,10 @@ export function PictureCard({
               </>
             )
           ) : state === "making" ? (
-            <div className="ep-figure-act" role="status">
-              <span className="spin" />
-              {/* the step its builder is on; where it stands is said once, in the head */}
-              <span className="ep-figure-doing">{p.doing}</span>
-              <button type="button" className="linkish" onClick={() => void api.stopEpisode(view.id, unit.id).catch(() => undefined)}>
+            <div className="ep-figure-build">
+              {/* the build stage by stage, its builder's steps under the one it is on */}
+              <PictureTrail unit={unit} builder={WRITERS[p.builder || unit.builder] ?? unit.builder} />
+              <button type="button" className="btn" onClick={() => void api.stopEpisode(view.id, unit.id).catch(() => undefined)}>
                 <Square />
                 Stop
               </button>
@@ -258,7 +341,7 @@ export function PictureCard({
           ) : null}
         </div>
       </div>
-      {state === "go" && <Stills view={view} unit={unit} lines={lines} picked={picked} onPick={onPick} run={run} busy={busy} />}
+      {(state === "go" || state === "made") && <Stills view={view} unit={unit} lines={lines} picked={picked} onPick={onPick} run={run} busy={busy} onPlay={play} playing={moving} />}
     </>
   );
 }
@@ -340,8 +423,10 @@ function MotionPlan({ motion, lines }: { motion: Motion; lines: EpisodeFrame[] }
   );
 }
 
-// A rich picture's stills, one for the end of each of its lines, waiting for the person's go:
-// they give it, or say what should change.
+// Motion graphics' stills, one for the end of each of their lines, waiting for the person's go.
+// The picture is built and moving by then, so where it can be played they play it; they give the
+// go, or say what should change. The go makes nothing more: it puts the picture in the film as
+// built, and says so where the stills were until the picture is made again.
 export function Stills({
   view,
   unit,
@@ -350,6 +435,8 @@ export function Stills({
   onPick,
   run,
   busy,
+  onPlay,
+  playing,
 }: {
   view: EpisodeView;
   unit: EpisodeUnit;
@@ -358,10 +445,35 @@ export function Stills({
   onPick: (frame: string) => void;
   run: Run;
   busy: boolean;
+  // plays the picture where it is shown (its clip, once rendered), and whether it plays
+  onPlay?: () => void;
+  playing?: boolean;
 }) {
   const [noting, setNoting] = useState(false);
   const [note, setNote] = useState("");
+  const [went, setWent] = useState(false);
   const p = unit.picture;
+  const gone = went && p.status === "made";
+  useEffect(() => {
+    if (p.status !== "made") setWent(false);
+  }, [p.status]);
+  const builder = WRITERS[p.builder || unit.builder] ?? unit.builder;
+  const playIt = onPlay && (
+    <button type="button" className="btn" aria-pressed={playing} disabled={!p.clip} title={p.clip ? undefined : "Its clip is still rendering"} onClick={onPlay}>
+      {playing ? <Square /> : <Play />}
+      {playing ? "Stop" : "Play it"}
+    </button>
+  );
+  if (gone)
+    return (
+      <div className="ep-stills" data-went="">
+        <div className="ep-stills-act">
+          <Check aria-hidden="true" />
+          <span role="status">Given the go: it's in the film. It was built before its stills, so nothing more is made.</span>
+          {playIt}
+        </div>
+      </div>
+    );
   if (p.status !== "go") return null;
   const mine = lines.filter((l) => unit.frames.includes(l.id));
   const send = () => {
@@ -406,11 +518,21 @@ export function Stills({
         </div>
       ) : (
         <div className="ep-stills-act">
-          <span>These stills are how the picture ends each line.</span>
+          <span>{builder.slice(0, 1).toUpperCase() + builder.slice(1)} built it. Play it and check where each line ends: your go puts it in the film.</span>
+          {playIt}
           <button type="button" className="btn" disabled={busy} onClick={() => setNoting(true)}>
             Send a note
           </button>
-          <button type="button" className="btn primary" disabled={busy} onClick={() => void run(() => api.pictureGo(view.id, unit.id))}>
+          <button
+            type="button"
+            className="btn primary"
+            disabled={busy}
+            onClick={() =>
+              void run(() => api.pictureGo(view.id, unit.id)).then((taken) => {
+                if (taken) setWent(true);
+              })
+            }
+          >
             Give the go
           </button>
         </div>

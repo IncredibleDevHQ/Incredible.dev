@@ -375,6 +375,35 @@ async def test_a_rich_picture_is_planned_shot_by_shot_before_it_is_drawn(
     assert brief["motion_plan"] == motion and brief["level"] == "rich"
 
 
+async def test_switching_a_made_picture_to_rich_with_a_yes_makes_it_again_that_way(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    desk = house.episodes
+    desk.workers[DEMO] = DemoWorker(data_dir=tmp_path, script=SCRIPT, pause=0, store=house.store)
+    episode_id = await planned(house)
+    unit = next(u for u in desk.view(episode_id)["units"] if len(u["frames"]) > 1)
+    desk.make(episode_id, by="you", only=[unit["id"]])
+    await settle(lambda: not desk._busy(episode_id))
+    # made simple by a build that kept no level, as pictures made before levels were kept, with
+    # a clip of it as it was
+    desk.store.set_picture(episode_id, unit["id"], level="", clip="f_was")
+    made = next(u for u in desk.view(episode_id)["units"] if u["id"] == unit["id"])["picture"]
+    assert made["status"] == "made" and made["motion"] is None
+    # asked for as it stands, it is left as it is
+    desk.make(episode_id, by="you", only=[unit["id"]])
+    assert not desk._busy(episode_id)
+    # switched to rich with a yes: the level is the person's, and it is made again that way
+    view = desk.make(episode_id, by="you", only=[unit["id"]], level="rich")
+    again = next(u for u in view["units"] if u["id"] == unit["id"])
+    assert again["level"] == "rich" and again["level_by"] == "person"
+    assert again["picture"]["status"] in ("queued", "making")
+    await settle(lambda: not desk._busy(episode_id))
+    rich = next(u for u in desk.view(episode_id)["units"] if u["id"] == unit["id"])["picture"]
+    assert rich["status"] == "go" and rich["level"] == "rich" and rich["motion"]["shots"]
+    # the clip of the picture as it was never plays for the one made again
+    assert desk.store.picture(episode_id, unit["id"])["clip"] != "f_was"
+
+
 async def test_a_motion_plan_that_breaks_its_shape_goes_back_once_then_the_picture_says_so(
     tmp_path: Path, house: AgentHost
 ) -> None:
@@ -1722,12 +1751,19 @@ async def test_the_studio_sees_the_writers_steps_and_each_builders_step_as_they_
     pictures = {u["id"]: u["picture"] for u in view["units"]}
     assert pictures[unit["id"]]["doing"] == "Editing compositions/p.html"
     assert all(p["doing"] == "" for i, p in pictures.items() if i != unit["id"])
+    # the picture being built streams its builder's turn as the plan does, its steps and notes
+    assert pictures[unit["id"]]["live"] == {
+        "harness": "kimi",
+        "since": built["started_at"],
+        "events": [{"kind": "step", "text": "Editing compositions/p.html", "at": 1.0}],
+    }
+    assert all(p["live"] is None for i, p in pictures.items() if i != unit["id"])
     # a turn that ends is no longer under way
     store.update_run(str(plan["id"]), state="done")
     store.update_run(str(built["id"]), state="done")
     view = house.episodes.view(episode_id)
     assert view["working"] is None
-    assert all(u["picture"]["doing"] == "" for u in view["units"])
+    assert all(u["picture"]["doing"] == "" and u["picture"]["live"] is None for u in view["units"])
 
 
 async def test_the_demos_writer_keeps_each_turn_in_the_record_as_a_writer_does(
@@ -2287,6 +2323,11 @@ def test_the_app_serves_an_episode_at_every_address(tmp_path: Path) -> None:
         unit = view["units"][0]["id"]
         named = client.post(f"/api/episodes/{episode_id}/pictures", json={"units": ["nope"]})
         assert named.status_code == 422 and "no picture to make there" in named.text
+        # a picture is made again only as simple or rich
+        odd = client.post(
+            f"/api/episodes/{episode_id}/pictures", json={"units": [unit], "level": "fancy"}
+        )
+        assert odd.status_code == 422
         assert client.post(f"/api/episodes/{episode_id}/stop", json={"unit": unit}).json() == {
             "ok": True
         }

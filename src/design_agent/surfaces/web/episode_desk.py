@@ -1833,7 +1833,8 @@ class EpisodeDesk:
                 else [f"{brief['file']} was not written"]
             )
             if not faults:
-                self.store.set_picture(episode_id, unit_id, status="posing", html=html)
+                # a clip rendered for what was drawn before no longer plays this picture
+                self.store.set_picture(episode_id, unit_id, status="posing", html=html, clip="")
                 self._changed(episode_id)
                 # What the layout and contrast checks flag is sent back, but never keeps a
                 # picture that renders from being used: the last try holds it to less.
@@ -2046,15 +2047,35 @@ class EpisodeDesk:
         return self.view(episode_id)
 
     def make(
-        self, episode_id: str, *, by: str, only: list[str] | None = None, chapter: str = ""
+        self,
+        episode_id: str,
+        *,
+        by: str,
+        only: list[str] | None = None,
+        chapter: str = "",
+        level: str = "",
     ) -> Row:
         """Ask for pictures: the ones named (drawn again when they failed or are out of date), a
         chapter's that were never asked for (recording it asks for them), or with neither every
-        one that stopped or failed. One that is current, or on its way, is left as it is."""
+        one that stopped or failed. One that is current, or on its way, is left as it is. With a
+        level the ones named are made again that way, current or not: the person said yes to
+        making them so (switching how a made picture is made is that yes)."""
         episode = self._episode(episode_id)
         full = self._full(episode)
         if full is None or self.planning(episode_id):
             raise ValueError("The writer is still working. Ask when that has landed.")
+        again = level in LEVELS and only is not None
+        if again:
+            picks = dict(episode["picks"] or {})
+            units_picked = dict(picks.get("units", {}))
+            for unit_id in only or ():
+                units_picked[str(unit_id)] = {
+                    **(units_picked.get(str(unit_id)) or {}),
+                    "level": level,
+                }
+            self.store.update_episode(episode_id, picks={**picks, "units": units_picked})
+            episode = self._episode(episode_id)
+            full = self._full(episode) or full
         found = [u for u in self._units(episode, full) if u["kind"] == "picture"]
         failed = {
             str(p["unit"]) for p in self.store.pictures(episode_id) if p["status"] == "failed"
@@ -2081,7 +2102,7 @@ class EpisodeDesk:
             if (
                 have is None
                 or (have["status"] == "failed" and (named or not chapter))
-                or (named and (_outdated(have, unit) or _reworded(have, unit)))
+                or (named and (again or _outdated(have, unit) or _reworded(have, unit)))
             ):
                 self.store.set_picture(
                     episode_id, unit_id, status="queued", sig="", failure="", level=unit["level"]
@@ -2861,11 +2882,12 @@ class EpisodeDesk:
             if r["lane"]
         ]
         # The work under way, as it happens: the writer's steps and notes on the plan, newest
-        # last, and the step each picture's builder is on.
+        # last, and for each picture being built the step its builder is on and its turn's own.
         live = next(
             (r for r in reversed(every) if r["lane"] == "plan" and r["state"] == "working"), None
         )
         doing: dict[str, str] = {}
+        building: dict[str, Row] = {}
         for r in every:
             lane = str(r["lane"])
             if lane.startswith("picture:") and r["state"] == "working":
@@ -2873,6 +2895,7 @@ class EpisodeDesk:
                 doing[lane.removeprefix("picture:")] = (
                     _clean(str(last["text"]), 120) if last else ""
                 )
+                building[lane.removeprefix("picture:")] = _live(r)
         return {
             **self.card(episode),
             "channel_id": thread["channel_id"] if thread else "",
@@ -2898,6 +2921,7 @@ class EpisodeDesk:
                     "picture": {
                         **self._picture_view(pictures.get(unit["id"]), unit, said_now),
                         "doing": doing.get(unit["id"], ""),
+                        "live": building.get(unit["id"]),
                     },
                     "kind_of_picture": unit["picture"],
                 }
@@ -2941,23 +2965,7 @@ class EpisodeDesk:
                 for c in (full or {}).get("chapters", [])
             },
             "runs": runs[-40:],
-            "working": (
-                {
-                    "harness": live["harness"],
-                    "since": live["started_at"],
-                    "events": [
-                        {
-                            "kind": e.get("kind"),
-                            "text": _clean(str(e.get("text") or ""), 400),
-                            "at": e.get("at"),
-                        }
-                        for e in (live["steps"] or [])[-14:]
-                        if e.get("text")
-                    ],
-                }
-                if live
-                else None
-            ),
+            "working": _live(live) if live else None,
             "options": self.options(),
         }
 
@@ -3122,6 +3130,23 @@ def _follow(merged: Row, frames: Sequence[str]) -> None:
             settled = "new-topic", str(WAYS_BY_RELATION["new-topic"])
         if settled is not None:
             f["relation"], f["transition"] = settled
+
+
+def _live(run: Row) -> Row:
+    """A turn under way as the studio follows it: who runs it, since when, and its newest steps
+    and notes (the agent's own words), newest last."""
+    return {
+        "harness": run["harness"],
+        "since": run["started_at"],
+        "events": [
+            {
+                "kind": e.get("kind"),
+                "text": _clean(str(e.get("text") or ""), 400),
+                "at": e.get("at"),
+            }
+            for e in [e for e in (run["steps"] or []) if e.get("text")][-14:]
+        ],
+    }
 
 
 def _changed(before: Row, after: Row) -> Row:

@@ -3,7 +3,7 @@
 // notebook both read a chapter in these blocks, under the same heads.
 import { Code, Image as ImageIcon, List, Presentation, Tags, User, Workflow, type LucideIcon } from "lucide-react";
 import type { EpisodeFrame, EpisodeUnit, EpisodeView } from "../../api";
-import { PICTURES, pictureState, pictureWords, unitOf } from "../../episode";
+import { LEVEL_NAMES, PICTURES, pictureState, pictureWords, unitOf } from "../../episode";
 
 export type Block = { key: string; unit?: EpisodeUnit; lines: EpisodeFrame[] };
 
@@ -46,7 +46,7 @@ export function BlockHead({ block, view }: { block: Block; view?: EpisodeView })
       <b>{blockName(block)}</b>
       {u && (
         <span>
-          {u.level === "rich" ? "Rich" : "Simple"} · {pictureWords(u, view)}
+          {LEVEL_NAMES[u.level]} · {pictureWords(u, view)}
         </span>
       )}
     </header>

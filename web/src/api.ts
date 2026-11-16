@@ -314,7 +314,8 @@ export type EpisodeUnit = {
   builder: WriterId;
   // `status` is "none" until the picture is asked for. `level` and `builder` are what it was
   // built as and by whom (empty for one made before they were kept), `motion` a rich one's
-  // plan, `doing` the step its builder is on while it is being made.
+  // plan, `doing` the step its builder is on while it is being made and `live` that turn as
+  // it happens: its newest steps and notes, as the plan's trail has the writer's.
   picture: {
     status: PictureStatus;
     level: Level | "";
@@ -330,6 +331,7 @@ export type EpisodeUnit = {
     failure: string;
     note: string;
     doing: string;
+    live: { harness: string; since: number; events: WorkEvent[] } | null;
   };
 };
 export type EpisodeTake = {
@@ -345,7 +347,15 @@ export type EpisodeTake = {
   created_at: number;
 };
 export type EpisodeLine = { frame: string; chapter: string; start: number; seconds: number; source: { kind: "take" | "voice" | "plan"; take?: string; offset?: number } };
-export type EpisodeClock = { total: number; chapters: { id: string; start: number; seconds: number }[]; lines: EpisodeLine[]; cues: Record<string, number> };
+// `marks` are what the film shows that no line says: its title before the first line, a chapter's
+// card over its first words, the end card after the last line.
+export type EpisodeClock = {
+  total: number;
+  chapters: { id: string; start: number; seconds: number }[];
+  lines: EpisodeLine[];
+  cues: Record<string, number>;
+  marks: { mark: "title-sting" | "chapter-card" | "end-card"; start: number; seconds: number; chapter?: string }[];
+};
 export type EpisodeCard = {
   id: string;
   thread_id: string;
@@ -579,7 +589,8 @@ export const api = {
   // Runs what the picks and changes wait on: the writer's part, then the pictures out of date.
   applyEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/apply`),
   // Asks for pictures: the ones named, a chapter's, or with neither the ones that stopped.
-  makePictures: (id: string, which: { units?: string[]; chapter?: string } = {}) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures`, which),
+  // with a level, the pictures named are made again that way (the person's yes to switching them)
+  makePictures: (id: string, which: { units?: string[]; chapter?: string; level?: Level } = {}) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures`, which),
   pictureGo: (id: string, unit: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/go`),
   pictureNote: (id: string, unit: string, text: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/note`, { text }),
   addTake: (id: string, take: { chapter: string; frame?: string; marks: { frame: string; t: number }[]; file: Blob; name: string }) => {

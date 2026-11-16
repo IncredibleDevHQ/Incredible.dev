@@ -3,7 +3,8 @@
 // The writer makes the change. While it does, the bar says what was asked and for how long,
 // can stop it, and still takes the next change, which waits its turn. When a change has landed
 // the bar says what it did and takes it back; one that was taken back can be put back; one that
-// stopped can be asked again in the same words.
+// stopped can be asked again in the same words. Where the asking is done at the caret, in the
+// script, the bar is only its status line: what is under way, what landed, what waits.
 import { ArrowUp, ChevronDown, CornerDownLeft, Redo2, RotateCcw, Square, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from "react";
 import { api, type AskScope, type EpisodeAsk, type EpisodeChange, type EpisodeView } from "../../api";
@@ -125,24 +126,29 @@ export function Elapsed({ since }: { since: number }) {
 
 export function Ask({
   view,
-  targets,
+  targets: given,
   run,
   busy,
   ref,
   slash,
   waiting,
   marks,
+  bare,
 }: {
   view: EpisodeView;
-  targets: AskTarget[];
+  targets?: AskTarget[];
   run: Run;
   busy: boolean;
   ref?: Ref<AskHandle>;
   slash?: boolean;
   waiting: Waiting;
   marks?: Marks;
+  // only where the writer is and what the last change did, with no field to ask in: where the
+  // asking is done at the caret, in the script
+  bare?: boolean;
 }) {
-  const [scope, setScope] = useState<AskScope>(targets[0].scope);
+  const targets = given ?? [];
+  const [scope, setScope] = useState<AskScope>(targets[0]?.scope ?? "film");
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -152,7 +158,7 @@ export function Ask({
   const [closed, setClosed] = useState<number | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const chip = useRef<HTMLButtonElement>(null);
-  const at = targets.find((t) => t.scope === scope) ?? targets[0];
+  const at = targets.find((t) => t.scope === scope) ?? targets[0] ?? { scope: "film" as const, label: "The film", name: "The film", hint: "Ask for a change to the film", presets: [] };
   const working = turning(view);
   const stage = view.stage;
   // A turn that ended without a change says why: it stopped (in red), or the writer changed nothing.
@@ -164,7 +170,7 @@ export function Ask({
 
   // What is picked changed (another line, another chapter): the bar goes back to its first scope
   // unless the one it had still exists there.
-  const first = targets[0].scope;
+  const first = targets[0]?.scope ?? "film";
   const has = targets.some((t) => t.scope === scope);
   useEffect(() => {
     if (!has) setScope(first);
@@ -201,14 +207,10 @@ export function Ask({
   };
   const act = (call: () => Promise<EpisodeView>, say: string) => void run(call).then((done) => done && setTold(say));
 
-  return (
-    <form
-      className="ep-ask"
-      onSubmit={(e) => {
-        e.preventDefault();
-        send(text);
-      }}
-    >
+  // where the writer is, what its last change did and what waits its turn: the same in the bar
+  // and in the status line
+  const notes = (
+    <>
       {working ? (
         <div className="ep-ask-working">
           <p aria-live="polite">
@@ -274,7 +276,12 @@ export function Ask({
                 {marks.on ? "Hide" : "Show"}
               </button>
             )}
-            <Tooltip content={`Takes back “${short(change.why)}”${change.earlier ? `. ${plural(change.earlier, "change", "changes")} before it can go too.` : ""}`} shortcut={UNDO_KEYS} side="top" align="end">
+            <Tooltip
+              content={`Takes back “${short(change.why)}”${change.earlier ? `. ${plural(change.earlier, "change", "changes")} before it can go too.` : ""}`}
+              shortcut={UNDO_KEYS}
+              side="top"
+              align="end"
+            >
               <button type="button" className="linkish" disabled={busy} onClick={() => act(() => api.undoEpisode(view.id), "Taken back.")}>
                 <Undo2 />
                 Undo
@@ -303,6 +310,32 @@ export function Ask({
           ))}
         </ol>
       )}
+    </>
+  );
+  const status = (
+    <span className="sr-only" role="status">
+      {told}
+    </span>
+  );
+  if (bare) {
+    // nothing under way, nothing done yet and nothing waiting: the line takes no room at all
+    if (!working && !ended && !undone && !change && waiting.notes.length === 0) return null;
+    return (
+      <div className="ep-ask" data-bare="">
+        {notes}
+        {status}
+      </div>
+    );
+  }
+  return (
+    <form
+      className="ep-ask"
+      onSubmit={(e) => {
+        e.preventDefault();
+        send(text);
+      }}
+    >
+      {notes}
       <div className="ep-ask-box" data-focus={focused || undefined}>
         {targets.length > 1 && (
           <span className="ep-ask-scope">
@@ -371,9 +404,7 @@ export function Ask({
           ))}
         </div>
       )}
-      <span className="sr-only" role="status">
-        {told}
-      </span>
+      {status}
     </form>
   );
 }

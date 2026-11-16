@@ -3,12 +3,14 @@
 //
 // - `WorkTrail`: the plan's stages as a trail. The stage under way opens onto what the writer is
 //   doing in it: its steps and its own notes, newest last, the older ones folded away.
+// - `PictureTrail`: one picture's build as the same trail, its builder's steps and notes under
+//   the stage it is on.
 // - `WorkPill`: the pictures in the bar, as one pill with a ring that fills as they are made. It
 //   opens onto every picture as a cell, filtered by state, each saying what its builder is on or
 //   why it stopped; a cell opens its chapter.
 import { Check, ChevronDown, RotateCcw, Square, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { api, type EpisodeUnit, type EpisodeView, type WorkEvent } from "../../api";
+import { api, type EpisodeUnit, type EpisodeView, type Level, type WorkEvent } from "../../api";
 import { PICTURES, pictureState, type PictureState } from "../../episode";
 import { useHouse } from "../../store";
 import { Popover } from "../Popover";
@@ -74,6 +76,102 @@ export function WorkTrail({ view }: { view: EpisodeView }) {
               </span>
               {open && (
                 <div className="ep-trail-branch" aria-label={`What ${view.working?.harness ? "the writer" : "it"} is doing`}>
+                  {events.length > SHOWN && (
+                    <button type="button" className="ep-trail-fold" aria-expanded={all} onClick={() => setAll((a) => !a)}>
+                      {all ? "Show fewer" : `+${folded} earlier`}
+                    </button>
+                  )}
+                  <ol>
+                    {shown.map((e, n) => (
+                      <TrailEvent key={`${e.at}-${n + folded}`} event={e} latest={n === shown.length - 1} />
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+      <span className="sr-only" role="status" aria-live="polite">
+        {heard}
+      </span>
+    </div>
+  );
+}
+
+// How a picture is made, stage by stage, as the yes to making it lists them before it starts:
+// motion graphics have each line planned as a shot first and wait for the person's go on a still
+// of each line at the end (the stage that is theirs); a simple one is drawn and checked.
+export const BUILD: Record<Level, { id: string; label: string; yours?: boolean }[]> = {
+  rich: [
+    { id: "motion", label: "Plan each shot" },
+    { id: "draw", label: "Draw it" },
+    { id: "pose", label: "Take a still of each line" },
+    { id: "go", label: "Your go", yours: true },
+  ],
+  simple: [
+    { id: "draw", label: "Draw it" },
+    { id: "pose", label: "Check it" },
+  ],
+};
+
+// One picture being made, as a trail: the stage it is on opens onto its builder's steps and
+// notes as they happen, the older ones folded away. One that waits for its builder (another
+// picture of the builder's is being made) says so on its first stage.
+export function PictureTrail({ unit, builder }: { unit: EpisodeUnit; builder: string }) {
+  const p = unit.picture;
+  const level: Level = p.level || unit.level;
+  const steps = BUILD[level];
+  const stage = p.status === "posing" ? "pose" : p.status === "go" ? "go" : level === "rich" && !p.motion ? "motion" : "draw";
+  const waiting = p.status === "queued";
+  const at = waiting
+    ? 0
+    : Math.max(
+        0,
+        steps.findIndex((s) => s.id === stage),
+      );
+  const events = waiting ? [] : (p.live?.events ?? []);
+  const [all, setAll] = useState(false);
+  const folded = all ? 0 : Math.max(0, events.length - SHOWN);
+  const shown = events.slice(folded);
+
+  // What a screen reader hears: a stage that finishes, said once.
+  const [heard, setHeard] = useState("");
+  const was = useRef(at);
+  useEffect(() => {
+    if (at > was.current) setHeard(`${steps[at - 1]?.label ?? "A stage"}: done`);
+    was.current = at;
+  }, [at, steps]);
+
+  return (
+    <div className="ep-trail ep-build-trail">
+      <ol aria-label="How the picture is being made">
+        {steps.map((s, i) => {
+          const state = i < at ? "done" : i === at ? (waiting ? "next" : "running") : "next";
+          const open = state === "running" && shown.length > 0;
+          return (
+            <li key={s.id} className="ep-trail-step" data-state={state} data-open={open || undefined} aria-current={i === at ? "step" : undefined}>
+              <span className="ep-trail-row">
+                <span className="ep-trail-mark" aria-hidden="true">
+                  {state === "done" ? <Check /> : null}
+                </span>
+                <span className="ep-trail-title">{s.label}</span>
+                <span className="ep-trail-meta">
+                  {i === at && waiting && `Waiting for ${builder}`}
+                  {state === "running" &&
+                    (p.live ? (
+                      <>
+                        <span className="ep-trail-doing">{builder}</span>
+                        <Elapsed since={p.live.since} />
+                      </>
+                    ) : (
+                      // between the builder's turns the house renders and checks on its own
+                      <span className="ep-trail-doing">{s.id === "pose" ? "Rendering" : builder}</span>
+                    ))}
+                </span>
+              </span>
+              {open && (
+                <div className="ep-trail-branch" aria-label={`What ${builder} is doing`}>
                   {events.length > SHOWN && (
                     <button type="button" className="ep-trail-fold" aria-expanded={all} onClick={() => setAll((a) => !a)}>
                       {all ? "Show fewer" : `+${folded} earlier`}

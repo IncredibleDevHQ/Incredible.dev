@@ -5,7 +5,7 @@
 // the picture's other lines, the chapter or the film; like every pick it draws nothing.
 import { Blend, LayoutTemplate, ListOrdered, Shapes, type LucideIcon } from "lucide-react";
 import { api, type EpisodeChapter, type EpisodeChoices, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Presence } from "../../api";
-import { allLines, LAYOUTS, linesIn, LOOKS, MOVES, PICTURES, pictureWords, TRANSITIONS } from "../../episode";
+import { allLines, LAYOUTS, LEVEL_NAMES, linesIn, LOOKS, MOVES, PICTURES, pictureWords, TRANSITIONS } from "../../episode";
 import { Tooltip } from "../Tooltip";
 import type { Run } from "./Ask";
 import { KindArt, MoveArt } from "./PictureArt";
@@ -164,7 +164,7 @@ function PicturePanel({ view, line, unit, run, busy, onAskPicture }: Props) {
           ) : (
             <div className="ep-picture-row">
               <small>
-                {unit.level === "rich" ? "Rich" : "Simple"} · {pictureWords(unit, view)}
+                {LEVEL_NAMES[unit.level]} · {pictureWords(unit, view)}
               </small>
               <button type="button" className="linkish" onClick={onAskPicture}>
                 Ask for a change

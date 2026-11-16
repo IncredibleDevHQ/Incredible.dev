@@ -1,6 +1,6 @@
 // What the studio reads off an episode: its lines, each line's picture and take, and where a
 // chapter stands. The server derives every number (episode_desk.py); nothing here recounts one.
-import type { EpisodeChapter, EpisodeFrame, EpisodeLine, EpisodeTake, EpisodeUnit, EpisodeView, LayoutSpot, Presence } from "./api";
+import type { EpisodeChapter, EpisodeFrame, EpisodeLine, EpisodeTake, EpisodeUnit, EpisodeView, LayoutSpot, Level, Presence } from "./api";
 
 export const PRESENCE: Record<Presence, string> = { person: "You", both: "Both", content: "Picture" };
 export const LAYOUTS: Record<string, string> = {
@@ -126,6 +126,10 @@ export function pictureCount(view: EpisodeView, chapter?: string) {
 }
 
 // What a picture's state reads as on its block.
+// What each way of making a picture is called where a person meets it: drawn at once from the
+// plan, or as motion graphics, each line planned as a shot first.
+export const LEVEL_NAMES: Record<Level, string> = { simple: "Simple", rich: "Motion graphics" };
+
 export function pictureWords(unit: EpisodeUnit, view?: EpisodeView): string {
   if (unit.kind === "undesigned") return pictureState(unit, view) === "changed" ? "Waits for the writer" : "Being planned";
   const p = unit.picture;
@@ -136,8 +140,8 @@ export function pictureWords(unit: EpisodeUnit, view?: EpisodeView): string {
   if (p.status === "go") return "Needs your go";
   if (p.status === "made") return "Made";
   if (p.status === "queued") return "Waiting its turn";
-  if (p.status === "posing") return "Posing its stills";
-  return p.level === "rich" && !p.motion ? "Planning its motion" : "Being drawn";
+  if (p.status === "posing") return "Taking its stills";
+  return p.level === "rich" && !p.motion ? "Planning each shot" : "Being drawn";
 }
 
 // The agent picked last on this computer (for a new episode, or as a film's agent), so the next

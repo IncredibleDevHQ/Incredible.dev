@@ -7,7 +7,7 @@
 import { AudioLines, Bot, ChevronDown, Download, LayoutTemplate, RotateCcw, Shapes, Sparkles, TriangleAlert, type LucideIcon } from "lucide-react";
 import { useId, useRef, useState, type ReactNode } from "react";
 import { api, type EpisodeChoices, type EpisodeView } from "../../api";
-import { keepWriter, LOOKS, pictureCount, PICTURES, pictureState } from "../../episode";
+import { keepWriter, LEVEL_NAMES, LOOKS, pictureCount, PICTURES, pictureState } from "../../episode";
 import { Popover } from "../Popover";
 import { Tooltip } from "../Tooltip";
 import { turning, type Run } from "./Ask";
@@ -133,12 +133,12 @@ function VoiceTool({ view, run, busy }: Props) {
 }
 
 // How the film's pictures are made, where a picture has no level of its own: at once from the
-// plan, or planned shot by shot and posed as stills for a go. Free to try: a picture already made
+// plan, or as motion graphics, each line planned as a shot, with a still of each line for a go. Free to try: a picture already made
 // at the other level is out of date until the person applies their changes.
 function PicturesTool({ view, run, busy }: Props) {
   const level = view.settings.level;
   return (
-    <Tool icon={Shapes} label="Pictures" value={level === "rich" ? "Rich" : "Simple"} width={380}>
+    <Tool icon={Shapes} label="Pictures" value={LEVEL_NAMES[level]} width={380}>
       {() => (
         <>
           <Options
@@ -147,8 +147,8 @@ function PicturesTool({ view, run, busy }: Props) {
             disabled={busy}
             onChange={(next) => void choose(view, run, { level: next })}
             options={[
-              { value: "simple", label: "Simple", note: "Drawn at once from the plan." },
-              { value: "rich", label: "Rich", note: "Motion planned shot by shot, then drawn and posed as stills for your go." },
+              { value: "simple", label: LEVEL_NAMES.simple, note: "Drawn at once from the plan." },
+              { value: "rich", label: LEVEL_NAMES.rich, note: "Each line planned as a shot, then drawn. You check a still of each line before your go." },
             ]}
           />
           {asked(view) > 0 && <Untouched />}

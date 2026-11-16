@@ -27,7 +27,7 @@ import type { Run } from "./Ask";
 import { BlockHead, blocksOf, KIND_ICONS, type Block } from "./Blocks";
 import { wordDiff } from "./Diff";
 import { AgentMark } from "../../ui";
-import { AskHere } from "./AskHere";
+import { AskHere, type HereScope } from "./AskHere";
 import { WRITERS } from "./Film";
 import { PictureCard } from "./Picture";
 import { SHORTCUTS, SlashMenu, slashItems, type SlashItem, type SlashState } from "./Slash";
@@ -167,8 +167,8 @@ type Ctx = {
   onRecordLine: (frame: string) => void;
   onCutBlock: (uid: string) => void;
   // the line asked about at the caret (and the words selected in it), and how to ask
-  asking: { line: string; words: string } | null;
-  onAskHere: (text: string) => void;
+  asking: Asking | null;
+  onAskHere: (text: string, scope: HereScope) => void;
   onCloseAsk: () => void;
   // the writer, by name and logo, and the line its turn is on while it works
   writer: string;
@@ -357,7 +357,18 @@ function LineView({ node }: ReactNodeViewProps) {
           </div>
         )}
       </div>
-      {c.asking?.line === attrs.id && attrs.id && <AskHere words={c.asking.words} writer={c.writer} mark={c.mark} waits={c.working} onAsk={c.onAskHere} onClose={c.onCloseAsk} />}
+      {c.asking?.line === attrs.id && attrs.id && (
+        <AskHere
+          words={c.asking.words}
+          scopes={[...(c.asking.words ? (["words"] as const) : []), "line", ...(mine?.kind === "picture" ? (["picture"] as const) : []), "chapter", "film"]}
+          start={c.asking.scope}
+          writer={c.writer}
+          mark={c.mark}
+          waits={c.working}
+          onAsk={c.onAskHere}
+          onClose={c.onCloseAsk}
+        />
+      )}
       {c.marked &&
         c.cuts.get(attrs.id)?.map((says, n) => (
           <div key={n} className="ep-line-cut" contentEditable={false}>
@@ -500,7 +511,14 @@ function hint(open: () => void): Plugin<{ show: boolean }> {
 
 // -- the editor --------------------------------------------------------------------------------
 
-export type ScriptHandle = { focusLine: (frame: string, slash?: boolean) => void };
+// What the prompt at the caret is open on: a line, the words selected in it, and what it asks about.
+type Asking = { line: string; words: string; scope: HereScope };
+
+export type ScriptHandle = {
+  focusLine: (frame: string, slash?: boolean) => void;
+  // opens the prompt at the end of a line, asking about it, its picture, the chapter or the film
+  askAt: (frame: string, scope: HereScope) => void;
+};
 
 export function Script({
   ref,
@@ -519,7 +537,6 @@ export function Script({
   onOpen,
   onReword,
   onRecordLine,
-  onAsk,
   onAskLine,
   onUndo,
   onRedo,
@@ -541,9 +558,8 @@ export function Script({
   onOpen: (unit: EpisodeUnit) => void;
   onReword: (frame: string, text: string) => void;
   onRecordLine: (frame: string) => void;
-  onAsk: (frame: string) => void;
   // the writer asked, at the caret, to change a line or the words selected in it
-  onAskLine: (frame: string, words: string, text: string) => void;
+  onAskLine: (frame: string, words: string, text: string, scope: HereScope) => void;
   // the studio's own undo and redo, of the last change kept
   onUndo: () => void;
   onRedo: () => void;
@@ -554,24 +570,26 @@ export function Script({
   const menuRef = useRef<SlashState | null>(null);
   menuRef.current = menu;
   const queue = useRef<Promise<unknown>>(Promise.resolve());
-  const on = useRef({ onPick, onAsk, onUndo, onRedo, chapter: chapter.id, view: view.id, pictures: view.options.pictures });
-  on.current = { onPick, onAsk, onUndo, onRedo, chapter: chapter.id, view: view.id, pictures: view.options.pictures };
+  const on = useRef({ onPick, onUndo, onRedo, chapter: chapter.id, view: view.id, pictures: view.options.pictures });
+  on.current = { onPick, onUndo, onRedo, chapter: chapter.id, view: view.id, pictures: view.options.pictures };
   const caret = useRef("");
   const editorRef = useRef<Editor | null>(null);
-  const [asking, setAsking] = useState<{ line: string; words: string } | null>(null);
+  const [asking, setAsking] = useState<Asking | null>(null);
   const [focused, setFocused] = useState(false);
   const [typing, setTyping] = useState(false);
   const quietTimer = useRef(0);
-  const openRef = useRef(() => {});
-  openRef.current = () => {
+  const openRef = useRef((_scope?: HereScope) => {});
+  // while the writer is on a change the script can't be edited, but a change can still be asked
+  // for here: it waits its turn
+  openRef.current = (scope) => {
     const ed = editorRef.current;
-    if (!ed || recording || working) return;
+    if (!ed || recording) return;
     const here = lineAt(ed.state);
     if (!here?.id) return;
     const sel = ed.state.selection;
     const words = !sel.empty && sel.$from.parent === sel.$to.parent ? ed.state.doc.textBetween(sel.from, sel.to).trim() : "";
     onPick(here.id);
-    setAsking({ line: here.id, words });
+    setAsking({ line: here.id, words, scope: scope ?? (words ? "words" : "line") });
   };
 
   // Every call the document makes goes one after another, so a line is kept before the line
@@ -705,12 +723,18 @@ export function Script({
     const here = lineAt(editor.state);
     if (!here) return;
     if (item.kind === "ask") {
+      // the prompt at the caret, on the line the slash was typed in (or the kept line before it)
       const about =
         here.id ||
         linesIn(editor.state.doc)
           .filter((l) => l.pos < here.pos && l.id)
           .pop()?.id;
-      return about ? on.current.onAsk(about) : undefined;
+      if (about && about !== here.id) {
+        const kept = linesIn(editor.state.doc).find((l) => l.id === about)!;
+        editor.commands.setTextSelection(kept.pos + 1 + kept.text.length);
+      }
+      if (about) window.setTimeout(() => openRef.current("line"), 0);
+      return;
     }
     place(editor, item.kind);
   };
@@ -1004,6 +1028,15 @@ export function Script({
   );
 
   useImperativeHandle(ref, () => ({
+    askAt: (frame, scope) => {
+      if (!editor) return;
+      const l = linesIn(editor.state.doc).find((x) => x.id === frame);
+      if (!l) return;
+      // the caret goes to the line's end without the editor taking the focus, which it would do a
+      // frame later: the prompt's field takes it
+      editor.commands.setTextSelection(l.pos + 1 + l.text.length);
+      openRef.current(scope);
+    },
     focusLine: (frame, slash = false) => {
       if (!editor) return;
       const l = linesIn(editor.state.doc).find((x) => x.id === frame);
@@ -1050,9 +1083,9 @@ export function Script({
     onReword,
     onRecordLine,
     asking,
-    onAskHere: (text) => {
+    onAskHere: (text, scope) => {
       if (!asking) return;
-      onAskLine(asking.line, asking.words, text);
+      onAskLine(asking.line, asking.words, text, scope);
       setAsking(null);
     },
     onCloseAsk: () => {

@@ -60,10 +60,13 @@
     in the frame's panel. The words a change brings in are written in as it lands. From
     affectUI's agent items (Writing Assistant, Agent Cursors, Run Controls, Inline Diff, read
     for their behaviour; none of their source is here) came the caret prompt's shape, the
-    writer shown at work where it works, Stop beside it, a read-only diff and Keep it. Anything else is asked for in words in a change bar under the script, of the line,
-    its picture, the chapter or the film; the writer makes it while the studio stays open, and
-    a note on how a picture is drawn goes to its builder. While the writer works the bar shows
-    what was asked and for how long, and takes the next change, which waits its turn. What a
+    writer shown at work where it works, Stop beside it, a read-only diff and Keep it. That
+    prompt asks about the selected words, the line, its picture, the chapter or the film (Ask AI
+    at the editor's top right opens it on the chapter), so a chapter's page has no other field to
+    ask in; the film's page keeps a change bar under its script. The writer makes the change
+    while the studio stays open, and a note on how a picture is drawn goes to its builder. While
+    the writer works, a line over the timeline shows what was asked and for how long, with Stop,
+    and the prompt still takes the next change, which waits its turn there. What a
     change did is marked in the script word by word, with the lines it cut; changes are taken
     back one at a time, newest first, a change taken back can be put back, and the picks made
     since stay. A change that stops can be asked again in the same words. One pick of a frame
@@ -82,14 +85,22 @@
   - Pictures are made when they are asked for: one from its block in the chapter's script (a
     card with the picture, a placeholder until it is made, over the lines it is shown on), a
     chapter's together by asking to record the chapter (the camera opens once they are made),
-    or the whole film's from the bar. A picture is simple or rich, on its block or for the
-    film. A rich one is planned before it is drawn: its builder writes a motion plan (a
+    or the whole film's from the bar. A picture is simple or motion graphics (`rich` in the
+    plan), on its block or for the film. Motion graphics are planned before they are drawn:
+    their builder writes a motion plan (a
     device, a world, and a shot for each line: what it opens on, the one move the line is
     about, what its still shows), code holds it to its shape, the studio shows it on the
-    picture's lines, and the picture is built to it and posed for the person's go. One picture
-    can be stopped by itself.
+    picture's lines, and the picture is built to it and posed for the person's go. Switching a
+    made picture to the other level asks first (the stages to come, the go among them, what it
+    costs, and which agent makes it) and Start makes it again that way (`POST …/pictures` with
+    a `level`); while it is made, its block follows the build stage by stage with its builder's
+    steps and notes streaming under the stage under way (`picture.live` in the view). One
+    picture can be stopped by itself. A made picture plays in its block from its draft clip;
+    the stills ask the person to play it before the go, and the go, which makes nothing more,
+    says so where the stills were.
   - Picks are free to try: a frame, a layout for the chapter or the film, a kind of picture, the
-    look, a level or an agent changes the plan and the preview and starts no agent. A picture
+    look, a level or an agent changes the plan and the preview and starts no agent (a made
+    picture's level asks first, and its yes makes it again). A picture
     made before is out of date until the person presses Apply changes in the bar (or Draw it
     again on its block); a pick that needs the writer waits too, and Apply runs the writer's
     part first. Apply says what will run, and that drawing a made picture again is another full
@@ -117,10 +128,12 @@
     rail at the right edge opening one panel at a time (Layout, Picture, Transition, Steps).
     Play plays a line's take, else its picture's draft, else its words at the plan's pace, and
     a Script switch (C) shows the line's words over the frame in time with what plays. Under
-    the script runs the chapter's timeline on its own clock, each line a span as long as it
-    lasts: the caret's line lands the playhead on its span and a span's click puts the caret on
-    its line; the pop-up shows it taller, with each line's frame and the playhead following
-    what plays. Every
+    the script runs the chapter's timeline on its own clock, after the Figma editor's strip:
+    each block a tile as long as its lines with its kind on a small screen and its name, a mark
+    on the join where a picture comes in (which opens that choice), the film's title, a
+    chapter's card or the end card at the ends, and each line a span as long as it lasts: the
+    caret's line lands the playhead on its span and a span's click puts the caret on its line;
+    the pop-up shows it taller, with each line's frame and the playhead following what plays. Every
     block of a chapter's script is a section of its own, a run said to camera as much as a
     picture.
   - The web app wears Incredible's own palette, as the old product and its Figma had it: zinc

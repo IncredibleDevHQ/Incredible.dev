@@ -3,7 +3,8 @@
 // rendered, its file. Every page is the same three columns: the film and its chapters as slides,
 // a document in the middle (the whole script on the film's page, one chapter's on a chapter's),
 // and the frame on the right. Words are changed where they are read; anything else is asked for
-// in the change bar under the script. Recording happens in the same screen.
+// at the caret, about the line, its picture, the chapter or the film (the film's page keeps a
+// change bar of its own). Recording happens in the same screen.
 import {
   ArrowLeft,
   ArrowRight,
@@ -18,12 +19,13 @@ import {
   Moon,
   Play,
   RotateCcw,
+  Sparkles,
   Square,
   Sun,
   Upload,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { api, type EpisodeChapter, type EpisodeView, type WriterId } from "../../api";
+import { api, type EpisodeAsk, type EpisodeChapter, type EpisodeView, type WriterId } from "../../api";
 import { chapterName, clockLine, LAYOUTS, linesOf, mmss, pictureCount, takeOf, unitOf } from "../../episode";
 import { useHouse } from "../../store";
 import { useTheme } from "../../theme";
@@ -32,7 +34,7 @@ import { FileDrop } from "../FileDrop";
 import { Kbd } from "../Kbd";
 import { Select } from "../Select";
 import { Tooltip } from "../Tooltip";
-import { Ask, turning, useWaiting, type AskHandle, type AskTarget, type Marks, type Run, type Waiting } from "./Ask";
+import { Ask, turning, useWaiting, type Marks, type Run, type Waiting } from "./Ask";
 import { ChoicePanel, PANELS, type Panel } from "./Choices";
 import { Devices, Level } from "./Devices";
 import { useRecorder, type Recording } from "./recorder";
@@ -266,6 +268,9 @@ function WriterPick({ writers, value, onChange }: { writers: EpisodeView["option
   );
 }
 
+// The key that opens the prompt at the caret, as this computer writes it.
+const ASK_KEYS = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘J" : "Ctrl+J";
+
 // One chapter: the script, the frame for the picked line, that line's choices.
 function Chapter({
   view,
@@ -312,7 +317,6 @@ function Chapter({
   const [solo, setSolo] = useState<string | null>(null);
   const arming = useRef(false);
   const upload = useRef<HTMLInputElement>(null);
-  const ask = useRef<AskHandle>(null);
   const script = useRef<ScriptHandle>(null);
   const take = takeOf(view, chapter.id);
   const sayAgain = lines.filter((l) => view.rerecord.includes(l.id)).length;
@@ -475,7 +479,7 @@ function Chapter({
   }, [recording]);
   useEffect(() => {
     if (full) fullRef.current?.focus({ preventScroll: true });
-    else if (askAfter.current) ask.current?.open("picture");
+    else if (askAfter.current) script.current?.askAt(line.id, "picture");
     else if (wasFull.current) peekRef.current?.focus({ preventScroll: true });
     askAfter.current = false;
     wasFull.current = full;
@@ -497,6 +501,12 @@ function Chapter({
     if (recording) return;
     const onKey = (e: KeyboardEvent) => {
       const on = e.target as HTMLElement;
+      // the prompt at the caret, from anywhere outside a field (in the script, the editor has it)
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "j" && !e.defaultPrevented && !full && !on.closest('textarea, input, select, [contenteditable="true"]')) {
+        e.preventDefault();
+        script.current?.askAt(line.id, "line");
+        return;
+      }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (on.closest("textarea, input, select, [contenteditable], [role=menu], [role=alertdialog], [role=radiogroup], details")) return;
       if (e.key === "ArrowDown" && at < lines.length - 1) {
@@ -522,32 +532,6 @@ function Chapter({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
-
-  // What a change can be about, nearest first: this line, its picture, the chapter, the film.
-  const targets: AskTarget[] = [
-    { scope: "line", target: line.id, label: "This line", name: `Ch ${number} · line ${at + 1}`, hint: "Ask for a change to this line", presets: ["Shorter", "Plainer words", "Cut this line"] },
-    ...(unit?.kind === "picture"
-      ? [
-          {
-            scope: "picture" as const,
-            target: line.id,
-            label: "Its picture",
-            name: `Ch ${number} · picture of line ${at + 1}`,
-            hint: "Ask for a change to this picture",
-            presets: ["Simpler", "Larger text", "Show it another way"],
-          },
-        ]
-      : []),
-    {
-      scope: "chapter",
-      target: chapter.id,
-      label: "This chapter",
-      name: `Chapter ${number}`,
-      hint: "Ask for a change to this chapter",
-      presets: ["Shorter", "Add an example", "Open with a question"],
-    },
-    { scope: "film", label: "The whole film", name: "The film", hint: "Ask for a change to the film", presets: ["Make it shorter", "A stronger opening", "Plainer words"] },
-  ];
 
   // A take of the chapter from a file: picked, or dropped on the frame.
   const takesFile = (file: File) => /^(video|audio)\//.test(file.type) || /\.(mp4|mov|m4v|webm|mkv|m4a|mp3|wav|aac|ogg)$/i.test(file.name);
@@ -612,6 +596,12 @@ function Chapter({
                         Take {take.n} · {mmss(take.seconds)}
                       </small>
                     )}
+                    <Tooltip content="Asks the writer for a change, at the caret" shortcut={ASK_KEYS} side="bottom" align="end">
+                      <button type="button" className="btn" disabled={recording} onClick={() => script.current?.askAt(line.id, "chapter")}>
+                        <Sparkles />
+                        Ask AI
+                      </button>
+                    </Tooltip>
                     <Tooltip content={pics.planned ? "Makes this chapter's pictures first" : "Opens the camera and microphone"} shortcut="R" side="bottom" align="end">
                       <button type="button" className={`btn ${take ? "" : "primary"}`} disabled={busy || (waits > 0 && pics.planned === 0)} onClick={begin}>
                         <Circle />
@@ -643,16 +633,20 @@ function Chapter({
                 }}
                 onReword={reword}
                 onRecordLine={recordLine}
-                onAsk={(frame) => {
-                  pick(frame);
-                  requestAnimationFrame(() => ask.current?.open("line"));
-                }}
-                onAskLine={(frame, words, text) => {
-                  // what was asked at the caret, about the line or the words selected in it
-                  const said = words ? `About the words “${words}”: ${text}` : text;
-                  const label = `Ch ${number} · line ${lines.findIndex((l) => l.id === frame) + 1}`;
-                  if (working) return waiting.add({ scope: "line", target: frame, text: said, label });
-                  void run(() => api.askEpisode(view.id, { scope: "line", target: frame, text: said }));
+                onAskLine={(frame, words, text, scope) => {
+                  // what was asked at the caret: about the line (or the words selected in it), the
+                  // picture it shows, its chapter or the whole film
+                  const n = lines.findIndex((l) => l.id === frame) + 1;
+                  const [asked, label]: [EpisodeAsk, string] =
+                    scope === "picture"
+                      ? [{ scope, target: frame, text }, `Ch ${number} · picture of line ${n}`]
+                      : scope === "chapter"
+                        ? [{ scope, target: chapter.id, text }, `Chapter ${number}`]
+                        : scope === "film"
+                          ? [{ scope, text }, "The film"]
+                          : [{ scope: "line", target: frame, text: scope === "words" && words ? `About the words “${words}”: ${text}` : text }, `Ch ${number} · line ${n}`];
+                  if (working) return waiting.add({ ...asked, label });
+                  void run(() => api.askEpisode(view.id, asked));
                 }}
                 onUndo={() => !busy && !working && view.last_change && void run(() => api.undoEpisode(view.id))}
                 onRedo={() => !busy && !working && view.undone && void run(() => api.redoEpisode(view.id))}
@@ -726,6 +720,9 @@ function Chapter({
         {!recording && (
           <div className="ep-doc-grid ep-doc-foot">
             <div className="ep-doc-main">
+              {/* what the writer is on, what its last change did and what waits: the asking itself
+                  is done at the caret */}
+              <Ask bare view={view} run={run} busy={busy} waiting={waiting} marks={marks} />
               <Timeline
                 view={view}
                 chapter={chapter}
@@ -736,8 +733,12 @@ function Chapter({
                   pick(frame);
                   script.current?.focusLine(frame);
                 }}
+                onJoin={(frame) => {
+                  pick(frame);
+                  setPanel("transition");
+                  setFull(true);
+                }}
               />
-              <Ask ref={ask} view={view} targets={targets} run={run} busy={busy} waiting={waiting} marks={marks} />
             </div>
             <span />
           </div>
@@ -940,8 +941,21 @@ function Chapter({
                   </button>
                 </p>
               )}
-              {!recording && unit && <Stills view={view} unit={unit} lines={lines} picked={line.id} onPick={pick} run={run} busy={busy} />}
-              <Timeline view={view} chapter={chapter} lines={lines} current={line.id} playhead={playhead} recording={recording} tall onPick={pick} />
+              {!recording && unit && <Stills key={unit.id} view={view} unit={unit} lines={lines} picked={line.id} onPick={pick} run={run} busy={busy} />}
+              <Timeline
+                view={view}
+                chapter={chapter}
+                lines={lines}
+                current={line.id}
+                playhead={playhead}
+                recording={recording}
+                tall
+                onPick={pick}
+                onJoin={(frame) => {
+                  pick(frame);
+                  setPanel("transition");
+                }}
+              />
             </section>
             {recording ? (
               <section className="ep-say" aria-label="Say it" aria-live="polite" style={{ "--say": `${SAY_SIZES[sayStep]}px` } as React.CSSProperties}>
