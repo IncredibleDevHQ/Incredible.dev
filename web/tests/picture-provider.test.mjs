@@ -39,3 +39,12 @@ test('saved models and explicit local preview take priority over a suggestion', 
   assert.deepEqual(editModel(unit, available, catalog), {writer:'claude',model:'my-choice',suggested:false});
   assert.equal(editModel({...unit, builder:'demo',builder_pick:'demo'},available,catalog).writer,'demo');
 });
+
+test('the compact trigger names the model, falling back to the provider or an action', async () => {
+  const { editTriggerText } = await import('../src/components/episode/pictureProvider.ts');
+  assert.equal(editTriggerText('codex', 'gpt-example'), 'gpt-example');
+  assert.equal(editTriggerText('claude', undefined), 'Claude');
+  assert.equal(editTriggerText('kimi', 'CLI default'), 'Kimi');
+  assert.equal(editTriggerText('demo', 'demo'), 'Local preview');
+  assert.equal(editTriggerText(null, undefined), 'Choose model');
+});

@@ -1956,13 +1956,19 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-chapter-poster img { display: block; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .ep-chapter-poster b { padding: 12px 24px; }
 .ep-chapter-poster small { position: absolute; left: 8px; bottom: 8px; padding: 3px 7px; border-radius: 5px; color: white; background: rgba(20,20,20,.75); }
-.ep-generation .ep-provider-trigger { gap: 6px; padding: 3px 8px; font-size: 12px; }
-.ep-provider-option { border-bottom: 1px solid var(--line-soft); }
-.ep-provider-row { width: 100%; display: flex; align-items: center; gap: 8px; padding: 9px 4px; border: 0; background: transparent; color: var(--ink); text-align: left; }
-.ep-provider-row small { margin-left: auto; color: var(--muted); }
-.ep-provider-row svg, .ep-provider-trigger svg { width: 14px; height: 14px; }
-.ep-provider-fields { display: grid; gap: 8px; padding: 4px 4px 12px; }
-.ep-provider-used { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+.ep-generation .ep-provider-trigger { max-width: 100%; min-height: 24px; gap: 4px; padding: 0 6px; border-radius: 6px; font-size: 11.5px; }
+.ep-provider-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ep-generation .ep-provider-trigger svg { width: 12px; height: 12px; flex: none; color: var(--muted); }
+.ui-pop.ep-edit-picker:not([data-unstyled]) { padding: 12px; border-radius: 10px; }
+.ep-edit-picker .ui-pop__head:not(:last-child) { margin-bottom: 8px; }
+.ep-provider-fields { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 8px; margin-top: 8px; }
+.ep-edit-picker .ui-sel__label { font-size: 12px; }
+.ep-provider-used { margin: 9px 0 0; font-size: 11.5px; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere; }
+.ep-provider-footer { display: flex; align-items: center; gap: 8px; margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
+.ep-provider-footer .btn { margin-left: auto; min-height: 26px; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
+@media (pointer: coarse) {
+  .ep-generation .ep-provider-trigger, .ep-provider-footer .btn { min-height: 36px; }
+}
 .ep-rate-menu { display: grid; gap: 2px; }
 .ep-rate-menu button { background: transparent; color: var(--ink); border: 0; padding: 5px 8px; border-radius: 5px; text-align: left; }
 .ep-rate-menu button:hover, .ep-rate-menu button[aria-pressed=true] { background: var(--green-soft); }

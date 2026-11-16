@@ -1,6 +1,6 @@
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, Sparkles } from "lucide-react";
 import { Popover } from "../Popover";
-import { editModel, pictureProvider, writerName } from "./pictureProvider";
+import { editModel, editTriggerText, pictureProvider, writerName } from "./pictureProvider";
 import { useRef, useState } from "react";
 import { api, type EpisodeUnit, type EpisodeView, type WriterId } from "../../api";
 import { Select } from "../Select";
@@ -27,16 +27,23 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
   const writers = view.options.picture_writers;
   const used = pictureProvider(unit, writers);
   const edit = editModel(unit, writers, view.options.generation_models);
-  const modelName = edit.writer && view.options.generation_models[edit.writer]?.find(m => m.id === edit.model)?.name;
-  const label = !edit.writer ? "Choose edit model" : edit.writer === "demo" ? "Local preview"
-    : [writerName(edit.writer), modelName].filter(Boolean).join(" · ");
+  const availableModels = view.options.generation_models;
+  const modelName = edit.writer ? availableModels[edit.writer]?.find(m => m.id === edit.model)?.name : undefined;
+  const caption = editTriggerText(edit.writer, modelName);
+  const details = edit.writer && edit.writer !== "demo" && caption !== writerName(edit.writer)
+    ? `${writerName(edit.writer)} · ${caption}` : caption;
+  const accessibleLabel = `${edit.suggested && edit.writer ? "Suggested edit model" : "Edit model"}: ${details}`;
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const [expanded, setExpanded] = useState<WriterId | null>(null);
+  const [writer, setWriter] = useState<WriterId | null>(null);
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState("");
-  const inspect = (writer: WriterId, toggle = true) => {
-    setExpanded(toggle && expanded === writer ? null : writer);
+  const models = writer ? availableModels[writer] ?? [] : [];
+  const efforts = models.find(m => m.id === model)?.efforts ?? [];
+  const ready = writers.some(w => w.id === writer && w.ready);
+  const inspect = (writer: WriterId | null) => {
+    setWriter(writer);
+    if (!writer) return;
     const saved = writer === unit.builder ? unit.model_pick : undefined;
     const made = writer === used ? unit.picture.generation : undefined;
     const models = view.options.generation_models[writer] ?? [];
@@ -59,16 +66,17 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
         ref={trigger}
         type="button"
         className="btn ep-provider-trigger"
-        aria-label={`${edit.suggested && edit.writer ? "Suggested edit model" : "Edit model"}: ${label}`}
+        aria-label={accessibleLabel}
+        title={accessibleLabel}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => {
-          if (!open && edit.writer) inspect(edit.writer, false);
-          else setExpanded(null);
+          if (!open) inspect(edit.writer);
           setOpen(!open);
         }}
       >
-        {edit.suggested && edit.writer && <small>Suggested</small>} {label} <ChevronDown />
+        {edit.suggested && edit.writer && <Sparkles aria-hidden="true" />}
+        <span>{caption}</span><ChevronDown aria-hidden="true" />
       </button>
       <Popover
         open={open}
@@ -76,59 +84,54 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
         anchor={trigger}
         side="bottom"
         align="start"
-        width={300}
-        title="Model for edits"
+        width={272}
+        className="ep-edit-picker"
+        title="Beat edit model"
       >
-        <p className="ep-provider-used">Choose a model for this beat’s script edits and motion graphics.</p>
+        <Select
+          size="sm" label="Provider" value={writer} placeholder="Choose provider"
+          options={writers.map(w => ({
+            value: w.id,
+            label: w.id === "demo" ? "Local preview" : writerName(w.id),
+            description: !w.ready ? "Unavailable on this host" :
+              edit.suggested && w.id === edit.writer ? "Suggested for this beat" : undefined,
+            disabled: !w.ready,
+          }))}
+          onChange={v => inspect(v as WriterId)}
+        />
+        {writer && writer !== "demo" && (
+          <div className="ep-provider-fields">
+            <Select
+              size="sm" label="Model" value={model} disabled={!ready || models.length <= 1}
+              options={models.map(m => ({value: m.id, label: m.name}))}
+              onChange={v => { setModel(v); setEffort(""); }}
+            />
+            <Select
+              size="sm" label="Effort" value={effort} disabled={!ready || !efforts.length}
+              options={[
+                {value: "", label: efforts.length ? "Default" : "Automatic"},
+                ...efforts.map(e => ({value: e, label: title(e)})),
+              ]}
+              onChange={setEffort}
+            />
+          </div>
+        )}
         {unit.picture.generation && (
           <p className="ep-provider-used">
-            Last generated with {writerName(used)} · {unit.picture.generation.model} · {unit.picture.generation.effort}
+            Last picture · {used === "demo" ? "Local preview" :
+              [writerName(used), unit.picture.generation.model, unit.picture.generation.effort].join(" · ")}
           </p>
         )}
-        {[...writers.filter(w => w.id !== "demo"), ...writers.filter(w => w.id === "demo")].map((w) => {
-          const models = view.options.generation_models[w.id] ?? [];
-          const efforts = models.find((m) => m.id === model)?.efforts ?? [];
-          return (
-            <div key={w.id} className="ep-provider-option">
-              <button type="button" className="ep-provider-row" aria-expanded={expanded === w.id} onClick={() => inspect(w.id)}>
-                {w.id === "demo" ? "Local preview" : writerName(w.id)} <small>{!w.ready ? "Unavailable" : w.id === edit.writer ? (edit.suggested ? "Suggested" : "Selected") : ""}</small>
-                {expanded === w.id ? <ChevronDown /> : <ChevronRight />}
-              </button>
-              {expanded === w.id && (
-                <div className="ep-provider-fields">
-                  <Select
-                    label="Model"
-                    value={model}
-                    disabled={!w.ready || models.length <= 1}
-                    options={models.map((m) => ({ value: m.id, label: m.name }))}
-                    onChange={(v) => {
-                      setModel(v);
-                      setEffort("");
-                    }}
-                  />
-                  <Select
-                    label="Effort"
-                    value={effort}
-                    disabled={!w.ready || !efforts.length}
-                    options={[
-                      { value: "", label: efforts.length ? "Provider default" : "Not configurable" },
-                      ...efforts.map((e) => ({ value: e, label: title(e) })),
-                    ]}
-                    onChange={setEffort}
-                  />
-                  <button type="button" className="btn primary" disabled={busy || !w.ready} onClick={() => void save(w.id)}>
-                    Use for this beat
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {unit.builder_pick && (
-          <button className="linkish" type="button" disabled={busy} onClick={() => void save(null)}>
-            Use chapter default
+        <div className="ep-provider-footer">
+          {unit.builder_pick && (
+            <button className="linkish" type="button" disabled={busy} onClick={() => void save(null)}>
+              Use chapter default
+            </button>
+          )}
+          <button type="button" className="btn primary" disabled={busy || !ready} onClick={() => void save(writer)}>
+            Use for beat
           </button>
-        )}
+        </div>
       </Popover>
     </div>
   );

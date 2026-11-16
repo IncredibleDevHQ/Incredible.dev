@@ -35,3 +35,9 @@ export function editModel(
   const writer = (ready.find(w => w.id === "codex") || ready[0])?.id ?? null;
   return { writer, model: writer ? models[writer]?.find(m => m.id)?.id || "" : "", suggested: true };
 }
+
+export function editTriggerText(writer: WriterId | null, model?: string): string {
+  if (!writer) return "Choose model";
+  if (writer === "demo") return "Local preview";
+  return model && model !== "CLI default" ? model : writerName(writer);
+}
