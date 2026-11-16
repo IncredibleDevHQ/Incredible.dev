@@ -102,6 +102,7 @@ The Studio can pick a component, layout, custom visual direction and builder set
 
 A film export waits for requested picture builds and needs a built picture or a kept take.
 If the studio marks a render outdated, render again to include the changed material.
+The film panel shows elapsed time, the current render stage and captured frames. A stopped renderer can be retried from that panel.
 
 ## Reference
 

@@ -1225,6 +1225,13 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-film-page .ep-peek-stage { cursor: pointer; }
 .ep-film-page .ep-doc-head h1 { font-size: clamp(23px, 2.8cqw, 30px); line-height: 1.32; }
 .ep-film-sum { display: grid; gap: 3px; padding-top: 12px; border-top: 1px solid var(--line-soft); font-size: 13px; line-height: 1.45; }
+.ep-render-status { display: grid; gap: 5px; padding-block: 10px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.ep-render-heading { display: flex; justify-content: space-between; gap: 8px; color: var(--ink); }
+.ep-render-status[data-failed] strong { color: var(--red); }
+.ep-render-status progress { appearance: none; width: 100%; height: 6px; border: 0; border-radius: 6px; overflow: hidden; background: var(--line-soft); }
+.ep-render-status progress::-webkit-progress-bar { background: var(--line-soft); }
+.ep-render-status progress::-webkit-progress-value { background: var(--green); }
+.ep-render-status progress::-moz-progress-bar { background: var(--green); }
 .ep-film-sum b { font-weight: 650; }
 .ep-film-sum > span { color: var(--muted); }
 .ep-film-sum > span[data-tone="amber"] { color: var(--amber); }

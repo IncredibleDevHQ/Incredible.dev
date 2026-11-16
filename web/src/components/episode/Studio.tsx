@@ -38,7 +38,7 @@ import { Ask, turning, useWaiting, type Marks, type Run, type Waiting } from "./
 import { ChoicePanel, PANELS, type Panel } from "./Choices";
 import { Devices, Level } from "./Devices";
 import { useRecorder, type Recording } from "./recorder";
-import { FilmPage, WRITERS, type Open } from "./Film";
+import { FilmPage, RenderStatus, WRITERS, type Open } from "./Film";
 import { Script, type ScriptHandle } from "./Script";
 import { agentOptions, Stills } from "./Picture";
 import { FILM, Slides } from "./Slides";
@@ -682,6 +682,12 @@ function Chapter({
                   <p className="ep-notice" data-tone="amber">
                     {sayAgain === 1 ? "A line was" : `${sayAgain} lines were`} changed after this take: say {sayAgain === 1 ? "it" : "them"} again, or retake the chapter.
                   </p>
+                )}
+                {view.film_state.status && <RenderStatus film={view.film_state} />}
+                {view.film_state.status === "failed" && (
+                  <button type="button" className="linkish" disabled={busy || working || !!view.film_state.blocked} onClick={() => void run(() => api.renderEpisode(view.id))}>
+                    Retry render
+                  </button>
                 )}
                 {view.film_state.status === "done" && view.film_state.stale && (
                   <p className="ep-notice" data-tone="amber">

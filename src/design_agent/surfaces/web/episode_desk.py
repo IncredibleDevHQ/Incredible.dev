@@ -53,7 +53,7 @@ from design_agent.episode import (
 )
 from design_agent.episode import plan as plans
 from design_agent.episode import questions as Q
-from design_agent.surfaces.web import episode_models, research
+from design_agent.surfaces.web import episode_models, episode_render, research
 from design_agent.surfaces.web.computer import GSAP, PROJECTS, Computer
 from design_agent.surfaces.web.episode_workers import (
     BUILTIN,
@@ -151,7 +151,6 @@ STEPS: tuple[tuple[str, str], ...] = (
     ("frames", "Frame every line"),
     ("check", "Check the plan"),
 )
-PROGRESS = re.compile(r"@hf-progress (\{[^\n]*\})")
 #: The renderer's check prints its findings under these heads. A file that breaks the first two
 #: does not render as written; the rest are about how it looks.
 CHECK_SECTIONS = ("Lint", "Runtime", "Layout", "Motion", "Contrast", "Snapshots")
@@ -2535,7 +2534,18 @@ class EpisodeDesk:
             raise ValueError(blocked)
         self.store.update_episode(
             episode_id,
-            film={**(episode["film"] or {}), "status": "rendering", "fraction": 0.0, "failure": ""},
+            film={
+                **{
+                    k: v
+                    for k, v in (episode["film"] or {}).items()
+                    if k in ("voice", "file", "sig", "at", "seconds")
+                },
+                "status": "rendering",
+                "started_at": time.time(),
+                "phase": "prepare",
+                "fraction": 0.0,
+                "failure": "",
+            },
         )
         self._jobs[f"film:{episode_id}"] = asyncio.get_running_loop().create_task(
             self._rendered(episode_id), name=f"episode film {episode_id}"
@@ -2723,6 +2733,7 @@ class EpisodeDesk:
                 film={
                     **(episode["film"] or {}),
                     "status": "failed",
+                    "ended_at": time.time(),
                     "failure": _clean(str(error), 300),
                 },
             )
@@ -2736,7 +2747,8 @@ class EpisodeDesk:
         if full is None:
             raise ValueError("The plan isn't written yet.")
         computer = self._ready(episode)
-        folder = f"{PROJECTS}/{episode_id}/film"
+        attempt = new_id("render")
+        folder = f"{PROJECTS}/{episode_id}/{attempt}/film"
         kept = [t for t in self.store.takes(episode_id) if t["kept"]]
         spoken = self._voice(episode)
         clock = timeline.schedule(full, kept, spoken)
@@ -2776,42 +2788,45 @@ class EpisodeDesk:
             p["unit"]: p["html"] for p in rows if p["html"] and p["status"] in ("made", "go")
         }
         files = film.project(full, clock, found, pictures, takes=takes, voice=voice, look=look)
-        computer.run(f"rm -rf {folder} && mkdir -p {folder}/out", timeout=120)
-        computer.put([(f"{folder}/{path}", text.encode()) for path, text in files.items()] + media)
-        # Each picture was held to the checks when it was posed; the page around them is code's.
-        computer.run(
-            f"cd {folder} && cp -n {GSAP} gsap.min.js; rm -f render.log render.exit && "
-            "(nohup sh -c 'hyperframes render . "
-            "--quality looks --fps 30 --output out/episode.mp4 > render.log 2>&1; echo $? > "
-            "render.exit' >/dev/null 2>&1 &)",
-            timeout=60,
-        )
-        started = time.time()
-        while True:
-            time.sleep(3.0)
-            seen = computer.run(
-                f"cd {folder} && (cat render.exit 2>/dev/null || echo running); "
-                "tr '\\r' '\\n' < render.log | grep '@hf-progress' | tail -1",
-                timeout=60,
-            ).output
-            state = seen.split("\n", 1)[0].strip()
-            progress = PROGRESS.search(seen)
-            if progress is not None:
-                with contextlib.suppress(ValueError):
-                    fraction = float(json.loads(progress.group(1)).get("pct", 0)) / 100
-                    episode = self._episode(episode_id)
-                    self.store.update_episode(
-                        episode_id, film={**(episode["film"] or {}), "fraction": round(fraction, 2)}
-                    )
+        try:
+            computer.put(
+                [(f"{folder}/{path}", text.encode()) for path, text in files.items()] + media
+            )
+            setup = computer.run(
+                f"mkdir -p {folder}/out && {episode_render.launch(folder, attempt)}", timeout=60
+            )
+            if not setup.ok:
+                raise ValueError(
+                    "The renderer could not start: " + _clean(setup.output[-240:], 240)
+                )
+            started = time.monotonic()
+            while True:
+                time.sleep(3.0)
+                if self._closing:
+                    return
+                poll = computer.run(episode_render.probe(folder, attempt), timeout=60)
+                if not poll.ok:
+                    raise ValueError("Lost contact with the renderer. Retry the render.")
+                state = poll.output.partition("\n")[0].strip()
+                update = episode_render.progress(poll.output)
+                current = self._episode(episode_id)["film"]
+                if any(current.get(k) != v for k, v in update.items()):
+                    self.store.update_episode(episode_id, film={**current, **update})
                     self._changed(episode_id)
-            if state != "running":
-                break
-            if time.time() - started > 3 * 3600:
-                raise ValueError("The render took longer than three hours.")
-        content = computer.get(f"{folder}/out/episode.mp4") if state == "0" else None
-        if not content:
-            tail = computer.run(f"tail -5 {folder}/render.log").output
-            raise ValueError(f"The render stopped: {_clean(tail[-300:])}")
+                if state == "stopped":
+                    raise ValueError("The renderer stopped before finishing. Retry the render.")
+                if state != "running":
+                    break
+                if time.monotonic() - started > 3 * 3600:
+                    raise ValueError("The render took longer than three hours.")
+            content = computer.get(f"{folder}/out/episode.mp4") if state == "0" else None
+            if not content:
+                tail = computer.run(f"tail -5 {folder}/render.log").output
+                raise ValueError(f"The render stopped: {_clean(tail[-300:])}")
+        finally:
+            # Each attempt owns its scratch files. A retry cannot read another attempt's MP4.
+            with contextlib.suppress(Exception):
+                computer.run(f"rm -rf {PROJECTS}/{episode_id}/{attempt}", timeout=60)
         slug = (
             re.sub(r"[^a-z0-9]+", "-", str(episode["title"]).lower()).strip("-")[:48] or "episode"
         )
@@ -2829,6 +2844,8 @@ class EpisodeDesk:
             film={
                 **({"voice": narration} if narration else {}),
                 "status": "done",
+                "started_at": episode["film"]["started_at"],
+                "ended_at": time.time(),
                 "fraction": 1.0,
                 "file": row["id"],
                 "sig": signature,
@@ -2967,6 +2984,7 @@ class EpisodeDesk:
                     film={
                         **episode["film"],
                         "status": "failed",
+                        "ended_at": time.time(),
                         "failure": "Stopped when the house restarted.",
                     },
                 )

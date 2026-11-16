@@ -11,10 +11,42 @@ import { api, type EpisodeChapter, type EpisodeView } from "../../api";
 import { chapterName, chapterState, LAYOUTS, linesOf, mmss, pictureCount, STATE_WORDS, takeOf, unitOf } from "../../episode";
 import { AgentMark } from "../../ui";
 import { Tooltip } from "../Tooltip";
-import { Ask, type AskTarget, type Run, type Waiting } from "./Ask";
+import { Ask, Elapsed, type AskTarget, type Run, type Waiting } from "./Ask";
 import { BlockHead, blockName, blocksOf } from "./Blocks";
 import { FILM, Slides } from "./Slides";
 import { FrameCanvas } from "./FrameCanvas";
+
+const renderPhases: Record<string, string> = {
+  prepare: "Preparing film", compile: "Preparing scenes", start_browsers: "Starting renderer",
+  extract_video: "Reading source video",
+  prepare_audio: "Preparing audio", capture: "Capturing frames", encode: "Encoding video",
+  mux: "Combining video and audio", finalize: "Finishing export",
+};
+
+export function RenderStatus({ film }: { film: EpisodeView["film_state"] }) {
+  const running = film.status === "rendering";
+  const stopped = film.status === "failed";
+  const percent = Math.round(100 * (film.fraction ?? 0));
+  const phase = renderPhases[film.phase ?? ""] ?? "Rendering film";
+  return (
+    <section className="ep-render-status" aria-label="Film export" data-failed={stopped || undefined}>
+      <div className="ep-render-heading">
+        <strong role="status">{running ? phase : stopped ? "Render stopped" : "Render complete"}</strong>
+        {running && <span>{percent}%</span>}
+      </div>
+      {running && <progress aria-label="Overall render progress" max={100} value={percent} />}
+      {running && film.phase === "capture" && film.frames_done != null && film.frames_total != null && (
+        <span>{film.frames_done.toLocaleString()} of {film.frames_total.toLocaleString()} frames</span>
+      )}
+      {stopped && <span>{film.failure || "Retry the render."}</span>}
+      {film.started_at != null && (running || film.ended_at != null) && (
+        <span>{running ? "Elapsed" : stopped ? "Stopped after" : "Rendered in"}{" "}
+          {running ? <Elapsed since={film.started_at} accessible /> : mmss(Math.max(0, film.ended_at! - film.started_at))}
+        </span>
+      )}
+    </section>
+  );
+}
 
 export const WRITERS: Record<string, string> = { claude: "Claude Code", codex: "Codex", kimi: "Kimi Code", builtin: "the built-in agent", demo: "the demo's writer" };
 
@@ -54,18 +86,11 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
     const cut = new Set((change?.cut ?? []).map((c) => c.chapter));
     return new Set(plan.chapters.filter((c) => cut.has(c.id) || linesOf(c).some((l) => changed.has(l.id))).map((c) => c.id));
   }, [view.last_change, plan.chapters]);
-  const note =
-    film.status === "rendering"
-      ? `Rendering · ${Math.round((film.fraction ?? 0) * 100)}%`
-      : film.status === "failed"
-        ? film.failure || "The render stopped."
-        : film.status === "done"
-          ? film.stale
-            ? "Changed since it was rendered"
-            : "Rendered"
-          : started && recorded < plan.chapters.length
-            ? "A draft shows a stand-in where you haven't recorded"
-            : "";
+  const note = film.stale
+    ? "Changed since it was rendered"
+    : !film.status && started && recorded < plan.chapters.length
+      ? "A draft shows a stand-in where you haven't recorded"
+      : "";
 
   return (
     <main className="ep-chapter ep-film-page">
@@ -152,6 +177,7 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
                   </b>
                   {(film.blocked || note) && <span data-tone={film.status === "failed" ? "red" : film.stale ? "amber" : undefined}>{film.blocked || note}</span>}
                 </div>
+                {film.status && <RenderStatus film={film} />}
                 <div className="ep-peek-actions">
                   {next && (
                     <Tooltip content={waits ? "Its pictures are made first" : "Opens it with the camera on, ready for Space"} side="bottom">
@@ -169,7 +195,7 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
                       onClick={() => void run(() => api.renderEpisode(view.id))}
                     >
                       <Clapperboard />
-                      {film.status === "rendering" ? "Rendering" : film.status === "done" ? "Render again" : next ? "Render a draft" : "Render the film"}
+                      {film.status === "rendering" ? "Rendering" : film.status === "failed" ? "Retry render" : film.status === "done" ? "Render again" : next ? "Render a draft" : "Render the film"}
                     </button>
                   )}
                 </div>

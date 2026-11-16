@@ -557,8 +557,13 @@ async def test_a_restart_stops_what_was_under_way_and_the_card_says_where_it_sta
     house.store.set_picture(episode_id, one, status="making")
     house.set_asset(view["asset_id"], status="making")
     house.store.update_thread(view["thread_id"], status="working")
+    house.store.update_episode(
+        episode_id, film={"status": "rendering", "started_at": time.time() - 5}
+    )
     house.episodes.restore()
     after = house.episodes.view(episode_id)
+    film = after["film_state"]
+    assert film["status"] == "failed" and film["ended_at"] >= film["started_at"]
     stopped = next(u for u in after["units"] if u["id"] == one)["picture"]
     assert stopped["status"] == "failed" and "restarted" in stopped["failure"]
     assert next(u for u in after["units"] if u["id"] == other)["picture"]["status"] == "go"
@@ -2708,3 +2713,95 @@ async def test_builtin_picture_model_is_scoped_to_one_turn(
         assert answer and not failure
     assert seen == [("openai:gpt-6.1-sol", "medium"), None]
     assert house.settings.model_effort == "low"
+
+
+async def test_renderer_disappearance_ends_attempt_and_allows_retry(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from design_agent.surfaces.web.computer import Ran
+
+    eid = await planned(house)
+    house.episodes.approve(eid, by="you")
+    await settle(lambda: not house.episodes._busy(eid))
+
+    class Computer:
+        state = "stopped"
+
+        def put(self, files: list[tuple[str, bytes]]) -> None:
+            pass
+
+        def run(self, command: str, *, timeout: int = 60) -> Ran:
+            if "cat render.exit" in command:
+                return Ran(
+                    self.state
+                    + '\n@hf-progress {"code":"capture","done":120,"total":9240,"pct":26}',
+                    0,
+                )
+            return Ran("", 0)
+
+        def get(self, path: str) -> bytes:
+            return b"mp4"
+
+    computer = Computer()
+    monkeypatch.setattr(house.episodes, "_computer", lambda episode: computer)
+    monkeypatch.setattr("design_agent.surfaces.web.episode_desk.time.sleep", lambda _s: None)
+    started = house.episodes.render(eid, by="you")["film_state"]
+    assert started["started_at"] and started["phase"] == "prepare"
+    await settle(lambda: not house.episodes._busy(eid))
+    failed = house.episodes.view(eid)["film_state"]
+    assert failed["status"] == "failed" and "stopped" in failed["failure"].lower()
+    assert failed["ended_at"] >= started["started_at"]
+    assert (failed["frames_done"], failed["frames_total"]) == (120, 9240)
+    computer.state = "0"
+    retry = house.episodes.render(eid, by="you")["film_state"]
+    assert retry["started_at"] > failed["started_at"] and not retry.get("ended_at")
+    assert not retry.get("frames_done")
+    await settle(lambda: not house.episodes._busy(eid))
+    done = house.episodes.view(eid)["film_state"]
+    assert done["status"] == "done" and done["ended_at"] >= retry["started_at"]
+
+
+def test_renderer_probe_distinguishes_dead_reused_and_completed_processes(tmp_path: Path) -> None:
+    import subprocess
+
+    from design_agent.surfaces.web.episode_render import probe
+
+    script = probe(str(tmp_path), "render_ab12")
+
+    def status() -> str:
+        return subprocess.check_output(["sh", "-c", script], text=True).splitlines()[0]
+
+    (tmp_path / "render.log").write_text(
+        '@hf-progress {"code":"capture","done":120,"total":9240,"pct":26}\n'
+    )
+    (tmp_path / "render.pid").write_text("2147483647")
+    assert status() == "stopped"
+    with subprocess.Popen(["sh", "-c", "sleep 4; exit 0", "render_ab12"]) as child:
+        try:
+            (tmp_path / "render.pid").write_text(str(child.pid))
+            assert status() == "running"
+            wrong = probe(str(tmp_path), "render_ffff")
+            assert (
+                subprocess.check_output(["sh", "-c", wrong], text=True).splitlines()[0] == "stopped"
+            )
+        finally:
+            child.terminate()
+    assert status() == "stopped"
+    (tmp_path / "render.exit").write_text("0")
+    assert status() == "0"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "@hf-progress {",
+        '@hf-progress {"pct":true}',
+        '@hf-progress {"pct":140}',
+        '@hf-progress {"pct":null}',
+        "@hf-progress []",
+    ],
+)
+def test_invalid_render_progress_does_not_replace_last_measurement(line: str) -> None:
+    from design_agent.surfaces.web.episode_render import progress
+
+    assert progress("running\n" + line) == {}

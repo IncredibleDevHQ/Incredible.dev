@@ -111,14 +111,14 @@ export function useWaiting(view: EpisodeView | null): Waiting {
 
 // How long the turn has run, counted from when the house began it. It ticks on its own, so
 // nothing around it is drawn again, and it is never read aloud.
-export function Elapsed({ since }: { since: number }) {
+export function Elapsed({ since, accessible = false }: { since: number; accessible?: boolean }) {
   const [now, setNow] = useState(() => Date.now() / 1000);
   useEffect(() => {
     const tick = window.setInterval(() => setNow(Date.now() / 1000), 1000);
     return () => window.clearInterval(tick);
   }, []);
   return (
-    <time className="ep-elapsed" aria-hidden="true">
+    <time className="ep-elapsed" aria-hidden={accessible ? undefined : true} role={accessible ? "timer" : undefined}>
       {mmss(Math.max(0, now - since))}
     </time>
   );
