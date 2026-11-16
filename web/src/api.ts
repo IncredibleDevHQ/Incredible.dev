@@ -254,7 +254,10 @@ export type EpisodeLength = [number, number] | "auto";
 export type Narrator = { id: string; name: string; verify?: boolean };
 // A voice the ElevenLabs account can speak in: one made in it (a clone), and the house's own.
 export type Voice = { id: string; name: string; own: boolean; usual: boolean; preview?: string };
+export type BackgroundTexture = "solid" | "dots" | "grid" | "diagonal";
 export type EpisodeSettings = {
+  background_color?: string;
+  background_texture?: BackgroundTexture;
   seconds: EpisodeLength;
   presenter: "on" | "off";
   theme: string;
@@ -387,6 +390,7 @@ export type EpisodeCard = {
 export type EpisodeCheck = { group: string; rule: string; level: "must" | "look"; where: string; text: string };
 export type EpisodeRun = { id: string; lane: string; harness: string; state: string; asked: string; said: string; steps: number; started_at: number; ended_at: number | null };
 export type EpisodeView = EpisodeCard & {
+  background: {color: string; brand_color: string; textures: Record<BackgroundTexture, [string, string]>};
   channel_id: string;
   settings: EpisodeSettings;
   steps: { id: string; label: string }[];

@@ -1994,3 +1994,14 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
   ::view-transition-group(episode-preview) { animation-duration: 620ms; animation-timing-function: cubic-bezier(.45,0,.2,1); }
   ::view-transition-old(episode-preview), ::view-transition-new(episode-preview) { animation-duration: 620ms; }
 }
+
+.ep-background { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px 12px; margin: 14px 0 0; padding: 10px 0 0; border: 0; border-top: 1px solid var(--line-soft); }
+.ep-background legend { padding-right: 8px; font-size: 13px; font-weight: 600; }
+.ep-background-sample { grid-column: 1 / -1; height: 60px; border: 1px solid var(--line-soft); border-radius: 8px; }
+.ep-background-color, .ep-background-textures { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ep-background-color input { width: 28px; height: 26px; padding: 1px; border: 1px solid var(--line); background: var(--raised); border-radius: 4px; }
+.ep-background-color input[type=text] { width: 8ch; font: 12px monospace; color: var(--ink); padding: 3px 5px; }
+.ep-background-color input[aria-invalid=true] { border-color: var(--amber); }
+.ep-background > .linkish, .ep-background > .primary { justify-self: end; }
+.ep-background-textures .btn { font-size: 12px; padding: 4px 7px; }
+.ep-background-textures .btn[aria-pressed=true] { color: var(--ink); background: var(--green-soft); border-color: var(--green); }

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from design_agent.episode import catalog, geometry
@@ -55,6 +55,32 @@ SHOT_CHARS = 1500
 SHOT_WORDS = 24
 
 
+# Fixed, offline CSS patterns shared by the picker and both render surfaces.
+_MARK = "color-mix(in srgb, currentColor 16%, transparent)"
+TEXTURES = {
+    "solid": ("none", "auto"),
+    "dots": (f"radial-gradient(circle, {_MARK} 1.6px, transparent 2px)", "26px 26px"),
+    "grid": (
+        f"linear-gradient(to right, {_MARK} 1px, transparent 1px), "
+        f"linear-gradient(to bottom, {_MARK} 1px, transparent 1px)",
+        "40px 40px",
+    ),
+    "diagonal": (
+        f"repeating-linear-gradient(135deg, transparent 0 17px, {_MARK} 17px 18px)",
+        "auto",
+    ),
+}
+
+
+def _luminance(hex_color: str) -> float:
+    raw = hex_color.lstrip("#")
+    if len(raw) == 3:
+        raw = "".join(ch * 2 for ch in raw)
+    rgb = [int(raw[i : i + 2], 16) / 255 for i in (0, 2, 4)]
+    r, g, b = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in rgb]
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
 @dataclass(frozen=True)
 class Look:
     """What a film's pictures and its own cards wear: the brand's colours by role and its
@@ -66,11 +92,31 @@ class Look:
     mono: str = "IBM Plex Mono"
     series: tuple[str, ...] = ()
 
+    texture: str = "solid"
+    custom_color: bool = False
+
+    def with_background(self, color: str, texture: str) -> Look:
+        if not color:
+            return replace(self, texture=texture)
+        palette = {**self.palette, "ground": color}
+        ground, ink = _luminance(color), _luminance(palette["ink"])
+        if (max(ground, ink) + 0.05) / (min(ground, ink) + 0.05) < 4.5:
+            if ground < 0.179:
+                palette.update(ink="#ffffff", panel="#17212c", muted="#e4e8ed", line="#697685")
+            else:
+                palette.update(ink="#101114", panel="#fafafa", muted="#26282b", line="#85888b")
+        return replace(self, palette=palette, texture=texture, custom_color=True)
+
+    def background_css(self) -> str:
+        image, size = TEXTURES[self.texture]
+        return f"background-color:{self.palette['ground']};background-image:{image};background-size:{size};color:{self.palette['ink']}"
+
     def tokens(self) -> Row:
         return {
             "palette": self.palette,
             "fonts": {"display": self.display, "text": self.text, "mono": self.mono},
             "series": self.series,
+            **({"texture": self.texture} if self.texture != "solid" else {}),
         }
 
     @property
@@ -184,6 +230,9 @@ def dressed(html: str, own: Row, look: Look | None = None) -> str:
         count=1,
         flags=re.S,
     )
+    if theme.custom_color or theme.texture != "solid":
+        style = f"<style>#root {{ {theme.background_css()} }}</style>"
+        html = re.sub(r"</template>", lambda m: style + m[0], html, count=1)
     timed = with_clock(html, own)
     return re.sub(r"(<template\b[^>]*>)", lambda m: m.group(1) + faces, timed, count=1)
 
@@ -278,9 +327,7 @@ def brief(
             ),
         },
         "look": {
-            "series": look.series,
-            "palette": look.palette,
-            "fonts": {"display": look.display, "text": look.text, "mono": look.mono},
+            **look.tokens(),
             "other_fonts_on_the_rendering_computer": [
                 f for f in FONTS if f not in (look.display, look.text, look.mono)
             ],

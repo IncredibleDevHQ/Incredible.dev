@@ -14,7 +14,12 @@ const links = brief.connections?.length
   ? brief.connections.map((e) => ({
       a: endpoint(e.from),
       b: endpoint(e.to),
-      item: { id: e.object, frame: e.frame, cue: e.cue, words: e.label },
+      item: {
+        id: e.object,
+        frame: e.frame,
+        cue: e.cue,
+        words: e.label || (e.object !== e.from && e.object !== e.to ? byName.get(e.object)?.words : "")
+      },
       blocked: e.blocked
     }))
   : edges.map((o) => ({ a: endpoint(o.from), b: endpoint(o.to), item: o, blocked: false }));
@@ -39,8 +44,13 @@ const graphHeight = notes.length ? h * 0.66 : h;
 const horizontal = variant === "left-to-right",
   swim = variant === "swimlanes";
 const owners = [...new Set(nodes.map((o) => String(o.owner || "")))];
-const bw = Math.min(w * 0.33, horizontal ? (w / Math.max(1, ids.length)) * 0.7 : w * 0.27),
-  bh = Math.min(size * 2.4, graphHeight / (horizontal ? 3 : Math.max(4, ids.length * 1.55)));
+const glyphScale = Math.min(
+  w / (horizontal ? Math.max(1, ids.length) * 158 : 360),
+  graphHeight / (horizontal ? 190 : Math.max(1, ids.length) * 122),
+  2.7
+);
+const bw = glyphScale * 112,
+  bh = glyphScale * 70;
 const coords = new Map();
 function depth(id) {
   const visited = new Set([id]);
@@ -99,10 +109,11 @@ links.forEach(({ a, b, item, blocked }) => {
   const ux = dx / length,
     uy = dy / length;
   const offset = Math.min(bw / 2 / Math.max(0.0001, Math.abs(ux)), bh / 2 / Math.max(0.0001, Math.abs(uy)));
+  const parallel = horizontal && links.some((other) => other.a === b && other.b === a) ? Math.sign(dx) * bh * 0.24 : 0;
   const x0 = sx + ux * offset,
-    y0 = sy + uy * offset,
+    y0 = sy + uy * offset + parallel,
     x1 = ex - ux * offset,
-    y1 = ey - uy * offset;
+    y1 = ey - uy * offset + parallel;
   const g = node("g", { "data-from": a, "data-to": b, "data-blocked": !!blocked });
   const bypass = horizontal && Math.abs(ids.indexOf(a) - ids.indexOf(b)) > 1;
 
@@ -127,22 +138,57 @@ links.forEach(({ a, b, item, blocked }) => {
       { attr: { "stroke-dashoffset": 0 }, duration: 0.35 },
       at(item)
     );
+    const pulse = node(
+      "circle",
+      { cx: tip.x, cy: tip.y, r: 3, fill: "none", stroke, "stroke-width": 3, opacity: 0 },
+      g
+    );
+    tl.fromTo(
+      pulse,
+      { attr: { r: 3 }, opacity: 0.8 },
+      { attr: { r: 15 }, opacity: 0, duration: 0.36, immediateRender: false },
+      at(item) + 0.35
+    );
     if (kind === "flowchart") {
       const head = path("M-14 -7 L0 0 L-14 7", stroke, g, 4);
       head.setAttribute("transform", `translate(${tip.x} ${tip.y}) rotate(${(angle * 180) / Math.PI})`);
     }
   }
-  if (item.words) label(item.words, mid.x, mid.y - size * 0.7, w * 0.3, size * 0.62, g, "middle");
+  if (item.words) {
+    const caption = label(
+      item.words,
+      mid.x,
+      mid.y - size * 0.58,
+      Math.min(w * 0.32, Math.max(size * 2, len * 0.85)),
+      size * 0.68,
+      g,
+      "middle"
+    );
+    caption.setAttribute("paint-order", "stroke");
+    caption.setAttribute("stroke", colors.ground);
+    caption.setAttribute("stroke-width", 6);
+  }
   reveal(g, item);
 });
 for (const id of ids) {
   const [x, y] = coords.get(id),
     g = node("g", { "data-node": id });
-  const box = rect(x - bw / 2, y - bh / 2, bw, bh, colors.panel, g, 14);
-  box.setAttribute("stroke", colors.line);
-  box.setAttribute("stroke-width", 2);
   const item = byName.get(id);
-  label(item ? words(item) : id, x, y, bw * 0.88, Math.min(size, bh * 0.55), g, "middle");
+  const name = item ? words(item) : id;
+  participant(x, y, glyphScale, name, item?.what || "", g);
+  const font = Math.min(size * 1.15, glyphScale * 18);
+  const text = label(
+    name,
+    x,
+    y + bh * 0.55 + font * 0.75,
+    horizontal ? (w / ids.length) * 0.89 : w * 0.55,
+    font,
+    g,
+    "middle"
+  );
+  text.setAttribute("paint-order", "stroke");
+  text.setAttribute("stroke", colors.ground);
+  text.setAttribute("stroke-width", 5);
   // Establish participants before their first exchange so the arrow always has two visible ends.
 }
 const cols = Math.min(4, notes.length),
@@ -153,8 +199,8 @@ notes.forEach((item, i) => {
   const x = left + (i % cols) * cw,
     y = top + graphHeight + Math.floor(i / cols) * rh;
   const g = node("g");
-  rect(x + 4, y + 3, cw - 8, rh - 6, colors.panel, g, 6);
-  rect(x + 4, y + 3, 4, rh - 6, colors.accent, g, 2);
-  label(words(item), x + cw / 2, y + rh / 2, cw * 0.88, Math.min(size * 0.66, rh * 0.5), g, "middle");
+  const font = Math.min(size * 0.72, rh * 0.4);
+  path(`M${x + 6} ${y + rh * 0.5}h${font * 0.7}`, colors.accent, g, 4);
+  label(words(item), x + font + 10, y + rh / 2, cw - font - 20, font, g, "start");
   reveal(g, item);
 });

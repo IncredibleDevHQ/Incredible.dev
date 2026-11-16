@@ -14,21 +14,25 @@ function sequence() {
   if (!messages.length) return false;
   const horizontal = variant === "horizontal-lanes";
   const lane = (name) => (people.indexOf(name) + 0.5) / people.length;
+  const headerScale = Math.min(size / 34, w / people.length / 140, h / people.length / 110);
+  const header = size * 3.5;
   for (const person of people) {
     const x = left + w * lane(person),
       y = top + h * lane(person);
     if (horizontal) {
-      label(person, left, y, w * 0.21, size);
-      path("M" + (left + w * 0.23) + " " + y + "H" + right, colors.line);
+      participant(left + w * 0.09, y - headerScale * 17, headerScale * 0.7, person, "", stage);
+      label(person, left + w * 0.09, y + headerScale * 25, w * 0.17, size * 0.7, stage, "middle");
+      path(`M${left + w * 0.19} ${y}H${right}`, colors.line).setAttribute("stroke-dasharray", "5 8");
     } else {
-      label(person, x, top + size, (w / people.length) * 0.9, size, stage, "middle");
-      path("M" + x + " " + (top + size * 2) + "V" + (top + h), colors.line);
+      participant(x, top + headerScale * 32, headerScale, person, "", stage);
+      label(person, x, top + headerScale * 75, (w / people.length) * 0.9, size * 0.84, stage, "middle");
+      path(`M${x} ${top + header}V${top + h}`, colors.line).setAttribute("stroke-dasharray", "5 8");
     }
   }
   messages.forEach((item, i) => {
     const t = (i + 1) / (messages.length + 1);
     const x = horizontal ? left + w * (0.26 + 0.67 * t) : left + w * lane(item.from);
-    const y = horizontal ? top + h * lane(item.from) : top + h * (0.15 + 0.8 * t);
+    const y = horizontal ? top + h * lane(item.from) : top + header + (h - header) * t;
     const ex = horizontal ? x : left + w * lane(item.to),
       ey = horizontal ? top + h * lane(item.to) : y;
     const g = node("g", { "data-from": item.from, "data-to": item.to }),

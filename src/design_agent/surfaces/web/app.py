@@ -209,6 +209,8 @@ class EpisodeSettingsIn(BaseModel):
     presenter: str | None = Field(default=None, pattern=r"^(on|off)$")
     theme: str | None = Field(default=None, max_length=60)
     voice: str | None = Field(default=None, pattern=r"^(live|narrator|local)$")
+    background_color: str | None = Field(default=None, pattern=r"^(#[0-9a-fA-F]{6})?$")
+    background_texture: Literal["solid", "dots", "grid", "diagonal"] | None = None
     narrator: NarratorIn | None = None
     level: str | None = Field(default=None, pattern=r"^(simple|rich)$")
     writer: str | None = Field(default=None, pattern=r"^(claude|codex|kimi|builtin|demo)$")

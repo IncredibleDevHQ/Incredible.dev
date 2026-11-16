@@ -358,7 +358,7 @@ def _leaves(
 def _page(
     colours: dict[str, str], look: picture.Look, total: float, body: list[str], script: list[str]
 ) -> str:
-    ground, ink, muted = colours["ground"], colours["ink"], colours["muted"]
+    ground, muted = colours["ground"], colours["muted"]
     accent, on_accent, line = colours["accent"], colours["accent_ink"], colours["line"]
     markup = "\n      ".join(body)
     moves = "\n      ".join(script)
@@ -371,7 +371,7 @@ def _page(
     <style>
       {look.faces()}
       html, body {{ margin: 0; width: {geometry.FRAME_W}px; height: {geometry.FRAME_H}px; overflow: hidden; background: {ground}; }}
-      #root {{ position: relative; width: 100%; height: 100%; overflow: hidden; background: {ground}; color: {ink}; font-family: '{look.text}', sans-serif; }}
+      #root {{ position: relative; width: 100%; height: 100%; overflow: hidden; {look.background_css()}; font-family: '{look.text}', sans-serif; }}
       .pic {{ position: absolute; left: 0; top: 0; transform-origin: 0 0; overflow: hidden; z-index: 1; }}
       .pic > div {{ position: absolute; inset: 0; }}
       .person {{ position: absolute; overflow: hidden; z-index: 2; }}
@@ -379,7 +379,7 @@ def _page(
       .{STAND_IN} {{ background: {line}; }}
       .{STAND_IN} i {{ position: absolute; left: 50%; top: 24%; width: 26%; aspect-ratio: 1; margin-left: -13%; border-radius: 999px; background: {muted}; opacity: 0.55; }}
       .{STAND_IN} b {{ position: absolute; left: 50%; bottom: -8%; width: 62%; height: 46%; margin-left: -31%; border-radius: 999px 999px 0 0; background: {muted}; opacity: 0.55; }}
-      .card {{ position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 0 220px; box-sizing: border-box; background: {ground}; text-align: center; }}
+      .card {{ position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 0 220px; box-sizing: border-box; {look.background_css()}; text-align: center; }}
       .card h1 {{ margin: 0; font-family: '{look.display}', serif; font-weight: 600; font-size: 92px; line-height: 1.08; letter-spacing: -0.02em; text-wrap: balance; }}
       .card p {{ margin: 0; font-size: 38px; line-height: 1.35; color: {muted}; text-wrap: balance; }}
       .chapter {{ position: absolute; left: 64px; top: 56px; z-index: 4; }}

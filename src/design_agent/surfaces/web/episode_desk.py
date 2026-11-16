@@ -388,7 +388,13 @@ class EpisodeDesk:
             folder = self.host.settings.resolved_brand_path(self.project_root)
         return folder if (folder / "brand.toml").is_file() else None
 
-    def _look(self, episode: Row) -> picture.Look:
+    def _look(self, episode: Row, brand: picture.Look | None = None) -> picture.Look:
+        settings = episode["settings"]
+        return (brand or self._brand_look(episode)).with_background(
+            settings.get("background_color", ""), settings.get("background_texture", "solid")
+        )
+
+    def _brand_look(self, episode: Row) -> picture.Look:
         """What the episode's pictures and the film's own cards wear: the brand's colours by
         role and the first family of each of its type stacks."""
         root = self._brand_root(str(episode["thread_id"]))
@@ -576,6 +582,18 @@ class EpisodeDesk:
             clone = out.get("cloned_voice") or {}
             if clone.get("id") == picked["id"] and clone.get("verify"):
                 out["narrator"]["verify"] = True
+        if "background_color" in given:
+            color = given["background_color"]
+            if not isinstance(color, str) or (
+                color and not re.fullmatch(r"#[0-9a-fA-F]{6}", color)
+            ):
+                raise ValueError("Choose a six-digit hex background color.")
+            out["background_color"] = color.lower()
+        if "background_texture" in given:
+            texture = given["background_texture"]
+            if not isinstance(texture, str) or texture not in picture.TEXTURES:
+                raise ValueError("Unknown background texture.")
+            out["background_texture"] = texture
         if given.get("level") in LEVELS:
             out["level"] = given["level"]
         if "writer" in given:
@@ -630,7 +648,7 @@ class EpisodeDesk:
         full["title"] = episode["title"]
         return full
 
-    def _units(self, episode: Row, full: Row) -> list[Row]:
+    def _units(self, episode: Row, full: Row, look: picture.Look | None = None) -> list[Row]:
         found = units.units(
             full, episode["picks"] or {}, level=str(episode["settings"].get("level", "simple"))
         )
@@ -638,11 +656,13 @@ class EpisodeDesk:
         by_chapter = self._chapter_builders(episode)
         writer = str(episode["settings"].get("writer") or "")
         said = {str(f["id"]): f for _, _, f in plans.frames_of(full)}
-        theme_sig = (
-            plans.digest(json.dumps(self._look(episode).tokens(), sort_keys=True)) if found else ""
-        )
+        if not found:
+            return []
+        look = look or self._look(episode)
+        theme_sig = plans.digest(json.dumps(look.tokens(), sort_keys=True))
         for unit in found:
             unit["theme_sig"] = theme_sig
+            unit["custom_background"] = look.custom_color or look.texture != "solid"
             # who builds it: the agent picked for this picture, else its chapter's, else the
             # film's writer
             unit["builder"] = str(
@@ -1337,7 +1357,13 @@ class EpisodeDesk:
         if chosen.get("presenter") == "off" and before.get("presenter") != "off":
             new["presenter"] = "off"
         feedback: list[Row] = []
-        if any(f.get("presence") for _, _, f in plans.frames_of(merged)):
+        background_only = change.keys() == {"settings"} and (
+            change.get("settings") or {}
+        ).keys() <= {
+            "background_color",
+            "background_texture",
+        }
+        if not background_only and any(f.get("presence") for _, _, f in plans.frames_of(merged)):
             feedback = override.apply(merged, new)
             self.store.update_episode(episode_id, labels=plans.labels_of(merged))
         left = override.redo(feedback)
@@ -2015,6 +2041,7 @@ class EpisodeDesk:
             **unit["generation"],
             "theme_sig": unit["theme_sig"],
             "catalog_version": catalog.CATALOG_VERSION,
+            "drawing_version": catalog.DRAWING_VERSION,
         }
         if isinstance(worker, LocalWorker):
             if worker.reported_model:
@@ -2546,7 +2573,11 @@ class EpisodeDesk:
                 parts.append("presenter-motion-v1")
                 break
             previous = current
-        if any(p.get("generation") for p in pictures):
+        if (
+            any(p.get("generation") for p in pictures)
+            or episode["settings"].get("background_color")
+            or episode["settings"].get("background_texture", "solid") != "solid"
+        ):
             parts.append((look or self._look(episode)).tokens())
         picked = (episode["settings"].get("narrator") or {}).get("id")
         if picked and episode["settings"].get("voice") == "narrator":
@@ -3101,7 +3132,9 @@ class EpisodeDesk:
         episode = self._episode(episode_id)
         thread = self.store.thread(str(episode["thread_id"]))
         full = self._full(episode)
-        found = self._units(episode, full) if full is not None else []
+        brand = self._brand_look(episode)
+        look = self._look(episode, brand)
+        found = self._units(episode, full, look) if full is not None else []
         pictures = {p["unit"]: p for p in self.store.pictures(episode_id)}
         said_now = {str(f["id"]): f for _, _, f in plans.frames_of(full or {})}
         kept = self._kept(episode_id)
@@ -3123,7 +3156,7 @@ class EpisodeDesk:
         film_state["blocked"] = self._render_blocked(picture_rows, kept)
         if full is not None and film_state.get("status") == "done":
             film_state["stale"] = film_state.get("sig") != self._film_sig(
-                episode, full, picture_rows, kept
+                episode, full, picture_rows, kept, look
             )
         film_state["file"] = self._file(film_state.get("file"))
         report = episode["report"] or {}
@@ -3167,6 +3200,11 @@ class EpisodeDesk:
                 building[lane.removeprefix("picture:")] = _live(r)
         return {
             **self.card(episode),
+            "background": {
+                "brand_color": brand.palette["ground"],
+                "color": look.palette["ground"],
+                "textures": picture.TEXTURES,
+            },
             "channel_id": thread["channel_id"] if thread else "",
             "settings": episode["settings"],
             "steps": [{"id": key, "label": label} for key, label in STEPS],
@@ -3307,11 +3345,18 @@ def _outdated(have: Row, unit: Row) -> bool:
     previous = have.get("generation") or {}
     if previous.get("catalog_version", catalog.CATALOG_VERSION) != catalog.CATALOG_VERSION:
         return True
+    if (
+        have.get("builder") == DEMO
+        and unit.get("visual", {}).get("component") in catalog.ILLUSTRATED
+        and previous.get("drawing_version", 1) != catalog.DRAWING_VERSION
+    ):
+        return True
     theme = previous.get("theme_sig")
     return (
         not units.same(str(have["sig"]), unit)
         or (bool(built_as) and built_as != unit["level"])
         or bool(theme and theme != unit.get("theme_sig"))
+        or bool(not theme and unit.get("custom_background"))
     )
 
 

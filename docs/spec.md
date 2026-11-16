@@ -897,6 +897,11 @@ app's canvas, from a channel's material or a research frame's notes.
   takes retain their media clock. Each picture card names the provider that made its current
   picture. Expanding a provider shows its models and effort levels for the next generation.
   The expanded editor’s Others tab also accepts custom direction.
+- **Video backgrounds.** Look offers a brand or custom color and solid, dot, grid, or
+  diagonal textures. The choice belongs to the episode and travels with its picture briefs,
+  stills, and film cards. Saving a background marks affected pictures for regeneration.
+  Diagrams use distinct silhouettes for participants, including browsers, servers, storage,
+  and documents. Arrows and labels follow the approved relationships and cue clock.
 - The ElevenLabs choice under Voice lists the account’s voices and offers available voice
   samples. Configure `ELEVENLABS_API_KEY` on the Studio host and restart it to enable the choice.
 - **Local narration.** When the host has macOS speech or `espeak-ng`, Studio also offers a

@@ -128,3 +128,5 @@ line, at the end of that line. Open every one. Fix what only a render shows: two
 overlapping, a label cut off or too small, something under the person's window, a line whose
 still does not show what the line added. Change nothing else. If they are right, reply
 “Nothing to change.”
+
+Use the supplied look’s ground and texture throughout the composition. Keep the texture behind the artwork. For diagrams, give recognizable actors distinct silhouettes and place labels beside them. Trace messages between their named endpoints on the supplied cues.

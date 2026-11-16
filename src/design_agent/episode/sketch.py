@@ -106,9 +106,11 @@ _ADAPTERS = {
 @lru_cache(maxsize=12)
 def _scene_script(adapter: str) -> str:
     folder = Path(__file__).with_name("components")
-    return (folder / "stage.js").read_text(encoding="utf8") + (folder / f"{adapter}.js").read_text(
-        encoding="utf8"
-    )
+    scripts = ["stage"]
+    if adapter in ("graph", "sequence"):
+        scripts.append("participants")
+    scripts.append(adapter)
+    return "\n".join((folder / f"{name}.js").read_text(encoding="utf8") for name in scripts)
 
 
 def component_scene(brief: Row) -> str:

@@ -61,6 +61,25 @@ function blocks() {
       }
       if (prev) tl.to(prev.marker, { attr: { fill: colors.panel, stroke: colors.accent }, duration: 0.2 }, at(item));
       prev = { cx, cy, marker };
+    } else if (kind === "list") {
+      const text = words(item);
+      const numbered = text.match(/^\s*(\d+)\s*[.·):–-]\s*(.+)$/);
+      const font = Math.min(size * 1.18, ch * 0.4);
+      const cx = x + (horizontal || grid ? cw * 0.5 : font * 0.8);
+      const cy = y + (horizontal || grid ? ch * 0.36 : ch * 0.5);
+      if (horizontal || grid) {
+        const marker = Math.min(font * 1.45, cw * 0.35);
+        if (numbered) label(numbered[1], cx, cy, cw * 0.8, marker, g, "middle", colors.accent, brief.look.fonts.mono);
+        else node("circle", { cx, cy, r: font * 0.14, fill: colors.accent }, g);
+        label(numbered?.[2] || text, cx, cy + font * 1.5, cw * 0.88, font, g, "middle");
+        if (i % cols !== cols - 1 && i + 1 < n)
+          path(`M${x + cw + gap / 2} ${cy - font * 0.7}v${font * 2.7}`, colors.line, g, 2);
+      } else {
+        if (numbered) label(numbered[1], cx, cy, font * 1.45, font, g, "middle", colors.accent, brief.look.fonts.mono);
+        else node("circle", { cx, cy, r: font * 0.13, fill: colors.accent }, g);
+        label(numbered?.[2] || text, x + font * 2, cy, cw - font * 2.2, font, g);
+        if (i < n - 1) path(`M${x} ${y + ch + gap / 2}h${cw}`, colors.line, g, 2);
+      }
     } else {
       if (!isText) {
         rect(x, y, cw, ch, colors.panel, g);

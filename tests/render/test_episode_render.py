@@ -237,3 +237,55 @@ def test_presenter_window_interpolates_in_encoded_frames(tmp_path: Path) -> None
     full_box, shrinking, circle, sliding, rectangle = boxes
     assert full_box[2] - full_box[0] > shrinking[2] - shrinking[0] > circle[2] - circle[0]
     assert circle[0] < sliding[0] < rectangle[0]
+
+
+def test_diagram_background_and_participant_art_survive_capture(tmp_path: Path) -> None:
+    from PIL import Image, ImageChops
+
+    unit = {"id": "sample", "canvas": [800, 450]}
+    own = {"seconds": 1, "lines": {"a": [0, 1]}, "cues": {}}
+    comp = picture.composition_id(unit["id"])
+    for texture in ("solid", "dots"):
+        look = picture.Look().with_background("#203044", texture)
+        folder = tmp_path / texture
+        (folder / picture.FOLDER).mkdir(parents=True)
+        brief = {
+            "composition_id": comp,
+            "canvas": {"width": 800, "height": 450},
+            "keep_clear": None,
+            "look": look.tokens(),
+            "visual": {"component": "flowchart", "variant": "left-to-right"},
+            "lines": [
+                {
+                    "frame": "a",
+                    "cues": [],
+                    "objects": [
+                        {"id": "a1", "words": "Browser", "what": "Browser"},
+                        {"id": "a2", "words": "Server", "what": "Server"},
+                        {"id": "msg", "words": "Rules", "from": "a2", "to": "a1"},
+                    ],
+                }
+            ],
+        }
+        (folder / "index.html").write_text(picture.stage(unit, own, ground=look.palette["ground"]))
+        (folder / picture.FOLDER / f"{comp}.html").write_text(
+            picture.dressed(sketch.built(brief), own, look)
+        )
+    result = run(
+        tmp_path,
+        f"set -e; for scene in solid dots; do cd $scene; cp {GSAP} .; hyperframes snapshot . --at 0.8 --no-end --keep -o stills --describe false; cd ..; done",
+    )
+    assert result.returncode == 0, result.stderr[-1500:]
+    shots = [
+        Image.open(next((tmp_path / style / "stills").glob("*.png"))).convert("RGB")
+        for style in ("solid", "dots")
+    ]
+    corner = (0, 0, 96, 64)
+    assert shots[0].getpixel((4, 4)) == (32, 48, 68)
+    assert ImageChops.difference(shots[0], shots[1]).crop(corner).getbbox()
+    # The two actors have visibly different silhouettes even with the captions cropped out.
+    left = shots[0].crop((98, 156, 322, 272))
+    right = shots[0].crop((478, 156, 702, 272))
+    for actor in (left, right):
+        assert len(actor.getcolors(actor.width * actor.height) or []) > 12
+    assert ImageChops.difference(left, right).getbbox()

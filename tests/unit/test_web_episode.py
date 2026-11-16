@@ -2923,3 +2923,45 @@ async def test_presenter_window_is_saved_for_one_line_and_used_by_film(
         for b in c["beats"]
         for f in b["frames"]
     )
+
+
+async def test_episode_background_reaches_the_picture_and_film_and_can_be_reset(
+    house: AgentHost,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from design_agent.episode import film
+    from design_agent.surfaces.web.episode_desk import _outdated
+
+    eid = await planned(house)
+    desk = house.episodes
+    original = desk._look(desk._episode(eid))
+
+    def unexpected_layout_change(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Changing the background must preserve approved frame layouts.")
+
+    monkeypatch.setattr("design_agent.episode.override.apply", unexpected_layout_change)
+    desk.choose(
+        eid,
+        by="you",
+        change={"settings": {"background_color": "#152030", "background_texture": "dots"}},
+    )
+    view = desk.view(eid)
+    look = desk._look(desk._episode(eid))
+    assert view["background"]["color"] == look.palette["ground"] == "#152030"
+    assert look.texture == "dots" and look.palette["ink"] != original.palette["ink"]
+    unit = view["units"][0]
+    legacy = {"status": "made", "sig": unit["sig"], "level": unit["level"]}
+    assert _outdated(legacy, unit)
+    assert picture.brief(unit, view["plan"], look=look)["look"]["texture"] == "dots"
+    assert (
+        "radial-gradient"
+        in film.project(view["plan"], view["clock"], [], {}, look=look)["index.html"]
+    )
+    for invalid in ({"background_color": "red; url(x)"}, {"background_texture": "unknown"}):
+        with pytest.raises(ValueError):
+            desk.choose(eid, by="you", change={"settings": invalid})
+    desk.choose(
+        eid, by="you", change={"settings": {"background_color": "", "background_texture": "solid"}}
+    )
+    assert desk._look(desk._episode(eid)) == original
+    assert not _outdated(legacy, desk.view(eid)["units"][0])

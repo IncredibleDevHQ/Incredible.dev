@@ -10,6 +10,9 @@ from design_agent.episode import connections
 
 Row = dict[str, Any]
 CATALOG_VERSION = 1
+# Drawing revisions are independent of the classifier's choice vocabulary.
+ILLUSTRATED = {"flowchart", "relationship-diagram", "sequence-diagram", "list"}
+DRAWING_VERSION = 2
 
 
 @dataclass(frozen=True)
