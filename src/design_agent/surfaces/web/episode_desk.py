@@ -573,6 +573,9 @@ class EpisodeDesk:
                 "id": str(picked["id"]),
                 "name": _clean(str(picked.get("name") or ""), 80) or "A voice",
             }
+            clone = out.get("cloned_voice") or {}
+            if clone.get("id") == picked["id"] and clone.get("verify"):
+                out["narrator"]["verify"] = True
         if given.get("level") in LEVELS:
             out["level"] = given["level"]
         if "writer" in given:
@@ -2763,7 +2766,13 @@ class EpisodeDesk:
             picked["verify"] = True
         episode = self._episode(episode_id)
         self.store.update_episode(
-            episode_id, settings={**episode["settings"], "voice": "narrator", "narrator": picked}
+            episode_id,
+            settings={
+                **episode["settings"],
+                "voice": "narrator",
+                "narrator": picked,
+                "cloned_voice": picked,
+            },
         )
         self._say(
             episode,

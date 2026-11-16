@@ -14,7 +14,7 @@ import { turning, type Run } from "./Ask";
 import { WRITERS } from "./Film";
 import { againCost } from "./Picture";
 import { LayoutThumb } from "./Stage";
-import { NarratorVoice } from "./Voice";
+import { CloneDialog, NarratorVoice } from "./Voice";
 
 type Props = { view: EpisodeView; run: Run; busy: boolean };
 
@@ -110,26 +110,64 @@ function VoiceTool({ view, run, busy }: Props) {
   const presenterOff = view.settings.presenter === "off";
   const narrator = view.options.narrator.ready;
   const voice = view.settings.voice;
-  const value = voice === "local" ? "Local narrator" : voice === "narrator" ? (view.settings.narrator?.name ?? "ElevenLabs") : presenterOff ? "Recorded" : "Your voice";
+  const clone = view.settings.cloned_voice;
+  const [upload, setUpload] = useState(false);
+  const value =
+    voice === "local" ? "Local narrator" : voice === "narrator" ? (view.settings.narrator?.name ?? "ElevenLabs") : presenterOff ? "Recorded" : "Your voice";
   return (
-    <Tool icon={AudioLines} label="Voice" value={value} width={380}>
-      {() => (
-        <>
-          <Options
-            label="Voice"
-            value={voice}
-            disabled={busy}
-            onChange={(v) => void choose(view, run, { voice: v })}
-            options={[
-              { value: "live", label: presenterOff ? "Recorded" : "Your voice", note: "You record each chapter; your takes are the film's sound." },
-              ...(view.options.local_narrator ? [{ value: "local" as const, label: "Local narrator", note: "An installed synthetic voice reads the script offline." }] : []),
-              { value: "narrator", label: "ElevenLabs", note: narrator ? "Choose a voice to narrate unrecorded lines." : "Set ELEVENLABS_API_KEY on the Studio host and restart to enable.", disabled: !narrator },
-            ]}
-          />
-          {voice === "narrator" && narrator && <NarratorVoice view={view} run={run} busy={busy} />}
-        </>
-      )}
-    </Tool>
+    <>
+      <Tool icon={AudioLines} label="Voice" value={value} width={380}>
+        {(close) => (
+          <>
+            <Options
+              label="Voice"
+              value={voice}
+              disabled={busy}
+              onChange={(v) => void choose(view, run, { voice: v })}
+              options={[
+                { value: "live", label: presenterOff ? "Recorded" : "Your voice", note: "You record each chapter; your takes are the film's sound." },
+                ...(view.options.local_narrator
+                  ? [{ value: "local" as const, label: "Local narrator", note: "An installed synthetic voice reads the script offline." }]
+                  : []),
+                {
+                  value: "narrator",
+                  label: "ElevenLabs",
+                  note: narrator ? "Choose a voice to narrate unrecorded lines." : "Set ELEVENLABS_API_KEY on the Studio host and restart to enable.",
+                  disabled: !narrator,
+                },
+              ]}
+            />
+            <button
+              className="btn ep-choose-clone"
+              type="button"
+              disabled={!narrator || busy}
+              onClick={() => {
+                close();
+                if (clone) void choose(view, run, { voice: "narrator", narrator: clone });
+                else setUpload(true);
+              }}
+            >
+              {clone ? `Use cloned voice · ${clone.name}` : "Cloned voice"}
+            </button>
+            {clone && (
+              <button
+                className="linkish"
+                type="button"
+                disabled={!narrator || busy}
+                onClick={() => {
+                  close();
+                  setUpload(true);
+                }}
+              >
+                Replace cloned voice
+              </button>
+            )}
+            {voice === "narrator" && narrator && <NarratorVoice view={view} run={run} busy={busy} />}
+          </>
+        )}
+      </Tool>
+      {upload && <CloneDialog view={view} run={run} onDone={() => setUpload(false)} />}
+    </>
   );
 }
 

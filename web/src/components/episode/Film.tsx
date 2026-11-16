@@ -136,15 +136,9 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
             {/* the film, or the frame for the line pointed at, beside the script in the editor */}
             <aside className="ep-doc-aside" aria-label="The film">
               <div className="ep-float" style={{ top: 16 }}>
-                <p className="ep-float-line">
-                  <b>{rendered ? "The film" : "Preview"}</b>
-                  {!rendered && (
-                    <>
-                      {" "}
-                      · chapter {number}, line {lines.indexOf(line) + 1} of {lines.length} · {LAYOUTS[line.layout] ?? line.layout}
-                    </>
-                  )}
-                </p>
+                {!rendered && <p className="ep-float-line">
+                      Preview · chapter {number}, line {lines.indexOf(line) + 1} of {lines.length} · {LAYOUTS[line.layout] ?? line.layout}
+                </p>}
                 {rendered ? (
                   <video className="ep-film-video" src={film.file!.url} controls preload="metadata" />
                 ) : (

@@ -487,6 +487,7 @@ function hint(open: () => void): Plugin<{ show: boolean }> {
           const button = document.createElement("button");
           button.type = "button";
           button.className = "ep-ai-hint";
+          if (!some) button.dataset.lineEnd = "true";
           button.contentEditable = "false";
           button.setAttribute("aria-label", `${label} (Cmd J)`);
           const star = document.createElement("i");

@@ -260,6 +260,7 @@ export type EpisodeSettings = {
   theme: string;
   voice: "live" | "narrator" | "local";
   narrator?: Narrator;
+  cloned_voice?: Narrator;
   level: Level;
   writer: WriterId;
 };

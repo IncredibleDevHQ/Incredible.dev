@@ -883,17 +883,20 @@ app's canvas, from a channel's material or a research frame's notes.
   sent) or from a recording they bring. The recordings go to ElevenLabs, so the form says so,
   the clone is made only after the person says the voice is theirs or its speaker agreed, and
   the thread records that they did. Cloning is the person's action in the studio and never a
-  tool the model can call. The clone then narrates the episode; another voice is another film.
+  tool the model can call. Selecting Cloned voice opens an upload dialog when the episode
+  has no saved clone. Cancelling keeps the current narrator. A successful clone is selected
+  for the next render and remains available if the person switches to another voice.
 - In a chapter, expanding the preview places the player above the script. Playback uses the
   current export when available. For a changed film the editor plays the selected take or
   the cached narration for that text and voice, with the draft picture on the same clock.
-  The player supports line seeking, volume and optional transcripts. The Picture panel
+  The player supports line seeking, playback speed, volume and optional transcripts. The Picture panel
   chooses the component and variant. Layout changes the size and shape of the presenter window
   in the preview and the export. The size slider spans 25% to 125% of the layout's window.
   A presenter moving between visible layouts eases to the next position, size and corner
   radius over the first 450 ms of the new line, shortened to fit short lines. Continuous
-  takes retain their media clock. Picture cards select the provider. The expanded editor's
-  Others tab holds model, effort and custom direction.
+  takes retain their media clock. Each picture card names the provider that made its current
+  picture. Expanding a provider shows its models and effort levels for the next generation.
+  The expanded editor’s Others tab also accepts custom direction.
 - The ElevenLabs choice under Voice lists the account’s voices and offers available voice
   samples. Configure `ELEVENLABS_API_KEY` on the Studio host and restart it to enable the choice.
 - **Local narration.** When the host has macOS speech or `espeak-ng`, Studio also offers a

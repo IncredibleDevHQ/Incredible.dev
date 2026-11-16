@@ -782,6 +782,14 @@ async def test_a_narrators_voice_is_picked_for_an_episode_or_cloned_from_its_tak
         change={"settings": {"narrator": {"id": "premade123456", "name": "Ada"}}},
     )
     assert picked["settings"]["narrator"] == {"id": "premade123456", "name": "Ada"}
+    assert picked["settings"]["cloned_voice"] == {"id": "clone1234567890", "name": "My voice"}
+    restored = house.episodes.choose(
+        episode_id, by="you", change={"settings": {"narrator": picked["settings"]["cloned_voice"]}}
+    )
+    assert restored["settings"]["narrator"] == picked["settings"]["cloned_voice"]
+    house.episodes.choose(
+        episode_id, by="you", change={"settings": {"narrator": picked["settings"]["narrator"]}}
+    )
     episode = house.store.episode(episode_id)
     assert (
         episode is not None

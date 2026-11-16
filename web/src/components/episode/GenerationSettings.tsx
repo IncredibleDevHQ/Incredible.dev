@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { Popover } from "../Popover";
+import { pictureProvider, writerName } from "./pictureProvider";
+import { useRef, useState } from "react";
 import { api, type EpisodeUnit, type EpisodeView, type WriterId } from "../../api";
 import { Select } from "../Select";
 import { TextArea } from "../TextArea";
@@ -21,30 +24,106 @@ function providers(view: EpisodeView, unit: EpisodeUnit) {
 }
 
 export function GenerationSettings({ view, unit, busy, run }: Props) {
-  const used = unit.picture.generation?.provider;
-  const inherited = view.builders[unit.chapter] || view.writer;
+  const writers = view.options.picture_writers;
+  const used = pictureProvider(unit, writers);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState<WriterId | null>(null);
+  const [model, setModel] = useState("");
+  const [effort, setEffort] = useState("");
+  const inspect = (writer: WriterId) => {
+    setExpanded(expanded === writer ? null : writer);
+    const saved = writer === unit.builder ? unit.model_pick : undefined;
+    const made = writer === used ? unit.picture.generation : undefined;
+    const models = view.options.generation_models[writer] ?? [];
+    const initial = models.find((m) => m.id === (saved?.model || made?.model));
+    setModel(initial?.id ?? "");
+    const level = saved?.effort || made?.effort || "";
+    setEffort(initial?.efforts.includes(level) ? level : "");
+  };
+  const save = async (builder: WriterId | null) => {
+    if (
+      await run(() =>
+        api.chooseEpisode(view.id, { units: { [unit.id]: { builder, model: builder ? model : "", effort: builder ? effort : "" } } }),
+      )
+    )
+      setOpen(false);
+  };
   return (
-    <div className="ep-generation" title={used ? "Last built with " + used : undefined}>
-      <Select
-        size="sm"
-        aria-label="Picture provider"
-        disabled={busy}
-        value={unit.builder_pick ?? ""}
-        options={providers(view, unit).map((p) =>
-          p.value
-            ? p
-            : {
-                ...p,
-                label: view.options.picture_writers.find((w) => w.id === inherited)?.provider ?? inherited,
-                description: "Chapter default",
-              },
+    <div className="ep-generation">
+      <button
+        ref={trigger}
+        type="button"
+        className="btn ep-provider-trigger"
+        aria-label={`Picture provider: ${writerName(used)}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => {
+          setExpanded(null);
+          setOpen(!open);
+        }}
+      >
+        {writerName(used)} <ChevronDown />
+      </button>
+      <Popover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchor={trigger}
+        side="bottom"
+        align="start"
+        width={300}
+        title="Picture provider"
+      >
+        {unit.picture.generation && (
+          <p className="ep-provider-used">
+            Last generated with {writerName(used)} · {unit.picture.generation.model} · {unit.picture.generation.effort}
+          </p>
         )}
-        onChange={(id) =>
-          void run(() =>
-            api.chooseEpisode(view.id, { units: { [unit.id]: { builder: (id as WriterId) || null, model: "", effort: "" } } }),
-          )
-        }
-      />
+        {writers.map((w) => {
+          const models = view.options.generation_models[w.id] ?? [];
+          const efforts = models.find((m) => m.id === model)?.efforts ?? [];
+          return (
+            <div key={w.id} className="ep-provider-option">
+              <button type="button" className="ep-provider-row" aria-expanded={expanded === w.id} onClick={() => inspect(w.id)}>
+                {writerName(w.id)} <small>{!w.ready ? "Unavailable" : w.id === unit.builder ? "Next generation" : ""}</small>
+                {expanded === w.id ? <ChevronDown /> : <ChevronRight />}
+              </button>
+              {expanded === w.id && (
+                <div className="ep-provider-fields">
+                  <Select
+                    label="Model"
+                    value={model}
+                    disabled={!w.ready || models.length <= 1}
+                    options={models.map((m) => ({ value: m.id, label: m.name }))}
+                    onChange={(v) => {
+                      setModel(v);
+                      setEffort("");
+                    }}
+                  />
+                  <Select
+                    label="Effort"
+                    value={effort}
+                    disabled={!w.ready || !efforts.length}
+                    options={[
+                      { value: "", label: efforts.length ? "Provider default" : "Not configurable" },
+                      ...efforts.map((e) => ({ value: e, label: title(e) })),
+                    ]}
+                    onChange={setEffort}
+                  />
+                  <button type="button" className="btn primary" disabled={busy || !w.ready} onClick={() => void save(w.id)}>
+                    Use {writerName(w.id)}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {unit.builder_pick && (
+          <button className="linkish" type="button" disabled={busy} onClick={() => void save(null)}>
+            Use chapter default
+          </button>
+        )}
+      </Popover>
     </div>
   );
 }
@@ -119,9 +198,7 @@ export function SettingsForm({ view, unit, run, busy }: Props) {
           Save
         </button>
         <button type="button" className="btn primary" disabled={busy || demoCustom} onClick={() => void save(true)}>
-          {writer === "demo"
-            ? "Generate preview"
-            : "Generate with " + (options.picture_writers.find((w) => w.id === writer)?.provider ?? writer)}
+          {writer === "demo" ? "Generate preview" : "Generate picture"}
         </button>
       </div>
     </div>
