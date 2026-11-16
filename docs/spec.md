@@ -889,6 +889,7 @@ app's canvas, from a channel's material or a research frame's notes.
 - In a chapter, expanding the preview places the player above the script. Playback uses the
   current export when available. For a changed film the editor plays the selected take or
   the cached narration for that text and voice, with the draft picture on the same clock.
+  Before playback, an unrecorded camera line shows chapter artwork or the chapter title.
   The player supports line seeking, playback speed, volume and optional transcripts. The Picture panel
   chooses the component and variant. Layout changes the size and shape of the presenter window
   in the preview and the export. The size slider spans 25% to 125% of the layout's window.
@@ -898,8 +899,12 @@ app's canvas, from a channel's material or a research frame's notes.
   Studio suggests a model from a ready AI provider. Confirming a provider, model and effort
   applies to future script edits on that beat’s lines and to picture and motion graphics builds.
   The picker also shows which provider made the existing picture.
+  A picture’s Motion graphics switch opens a confirmation beneath the switch.
   The expanded editor’s Others tab also accepts custom direction.
-- **Video backgrounds.** Look offers a brand or custom color and solid, dot, grid, or
+- The delivered episode card on the canvas opens playback from a thumbnail and provides an
+  Edit episode action. Each render captures a poster from a picture scene when available.
+  Older exports use existing picture artwork when available.
+- **Video backgrounds.** Look and the editor’s Background tab offer a brand or custom color and solid, dot, grid, or
   diagonal textures. The choice belongs to the episode and travels with its picture briefs,
   stills, and film cards. Saving a background marks affected pictures for regeneration.
   Diagrams use distinct silhouettes for participants, including browsers, servers, storage,

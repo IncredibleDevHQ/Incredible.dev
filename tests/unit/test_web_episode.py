@@ -2044,6 +2044,8 @@ async def test_the_film_is_rendered_from_the_plan_the_pictures_and_the_takes(
             return Ran("0 errors, 0 warnings", 0)
 
         def get(self, path: str) -> bytes | None:
+            if path.endswith("poster.jpg") and not picture_changes_during_export:
+                return b"poster"
             return b"mp4" if path.endswith("episode.mp4") else None
 
     monkeypatch.setattr(house.episodes, "_computer", lambda episode: Computer())
@@ -2057,6 +2059,9 @@ async def test_the_film_is_rendered_from_the_plan_the_pictures_and_the_takes(
         and film["stale"] == picture_changes_during_export
         and film["file"]["name"] == "one-idea.mp4"
     )
+    poster = view["film"]["poster"]
+    assert poster["mime"] == ("image/png" if picture_changes_during_export else "image/jpeg")
+    assert view["film"]["seconds"] == film["seconds"]
     page = next(v for k, v in projects[0].items() if k.endswith("/film/index.html")).decode()
     assert f'data-duration="{view["clock"]["total"]:.3f}"' in page
     assert sum(1 for k in projects[0] if "/film/compositions/" in k) == len(view["units"])

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8">
+  <title>Line player preview</title>
+  <div id="root"></div>
+  <script type="module">
+    import React from "react";
+    import { createRoot } from "react-dom/client";
+    import { LinePlayer } from "/src/components/episode/LinePlayer.tsx";
+
+    const full = [0, 0, 1920, 1080];
+    const view = {
+      film_state: {}, takes: [],
+      options: { geometry: { frame: [1920, 1080], layouts: {
+        full: { person: full, person_radius: 0, picture: null, zoom: 1 }
+      } } }
+    };
+    createRoot(document.getElementById("root")).render(React.createElement(LinePlayer, {
+      view, frame: { id: "opening", start: 0, seconds: 10, presence: "person", layout: "full", vo: "Welcome" },
+      cameraPoster: React.createElement("span", null, "Chapter artwork"),
+      speed: 1, captions: false, onProgress() {}
+    }));
+  </script>
+</html>

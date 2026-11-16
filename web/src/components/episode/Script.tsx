@@ -17,7 +17,7 @@ import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } 
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type ReactNodeViewProps } from "@tiptap/react";
 import Suggestion, { type SuggestionKeyDownProps, type SuggestionProps } from "@tiptap/suggestion";
-import { Mic, Trash2, Undo2 } from "lucide-react";
+import { Captions, FileText, PictureInPicture2, Video, Mic, Trash2, Undo2 } from "lucide-react";
 import { createContext, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import { api, type EpisodeChapter, type EpisodeFrame, type EpisodeTake, type EpisodeUnit, type EpisodeView, type LineKind } from "../../api";
 import { pictureState, PICTURES, PRESENCE, unitOf } from "../../episode";
@@ -294,6 +294,7 @@ function LineView({ node }: ReactNodeViewProps) {
   // what was made from this line before its words changed: its picture, or the take
   const theirs = Boolean(line?.by_person) && line?.vo !== line?.by_person?.was;
   const behind = again ? "take" : theirs && mine && pictureState(mine, c.view) === "reworded" ? "picture" : undefined;
+  const TranscriptIcon = presence === "person" ? Video : presence === "both" ? PictureInPicture2 : presence === "content" ? Captions : FileText;
   const status = c.recording ? (i >= 0 && i < c.said && !c.solo ? "✓" : "") : current ? "" : again ? "Say again" : c.take && line ? "✓" : "";
   return (
     <NodeViewWrapper
@@ -305,7 +306,7 @@ function LineView({ node }: ReactNodeViewProps) {
       data-ai={(c.working && c.onLine === attrs.id) || undefined}
       data-recording-at={(c.recording && i === c.said) || undefined}
     >
-      <i className="ep-who" data-presence={presence || undefined} aria-label={presence ? PRESENCE[presence] : "A new line"} contentEditable={false} />
+      <span className="ep-transcript-icon" data-presence={presence} role="img" aria-label={presence ? PRESENCE[presence] : "A new line"} title={presence ? PRESENCE[presence] : "A new line"} contentEditable={false}><TranscriptIcon aria-hidden="true" /></span>
       <div className="ep-line-body">
         <NodeViewContent<"p"> as="p" className="ep-line-text" />
         {empty && (

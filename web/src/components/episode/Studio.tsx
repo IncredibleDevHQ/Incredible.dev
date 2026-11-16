@@ -103,7 +103,7 @@ export function EpisodeStudio() {
     const onKey = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       if (!(e.metaKey || e.ctrlKey) || e.altKey || (key !== "z" && key !== "y")) return;
-      if ((e.target as HTMLElement).closest("textarea, input, [contenteditable]") || document.querySelector(".ep-chapter[data-recording]")) return;
+      if ((e.target as HTMLElement).closest("textarea, input, [contenteditable]") || document.querySelector(".ep-chapter-sheet[data-recording]")) return;
       const back = key === "z" && !e.shiftKey;
       if (busy || turning(view) || !(back ? view.last_change : view.undone)) return;
       e.preventDefault();
@@ -130,10 +130,13 @@ export function EpisodeStudio() {
       <Bar view={view} ready={ready} onAt={go} onClose={() => void openEpisode(null)} run={run} busy={busy} />
       {!ready || !plan ? (
         <Planning view={view} run={run} busy={busy} />
-      ) : chapter ? (
-        <Chapter key={chapter.id} view={view} chapter={chapter} run={run} busy={busy} record={recordNext} line={lineNext} pop={popNext} onAt={go} waiting={waiting} marks={marks} />
       ) : (
-        <FilmPage view={view} run={run} busy={busy} onAt={go} waiting={waiting} />
+        <main className={chapter ? "ep-chapter" : "ep-chapter ep-film-page"}>
+          <Slides view={view} at={chapter?.id ?? FILM} onAt={go} />
+          {chapter ? (
+            <Chapter key={chapter.id} view={view} chapter={chapter} run={run} busy={busy} record={recordNext} line={lineNext} pop={popNext} onAt={go} waiting={waiting} marks={marks} />
+          ) : <FilmPage view={view} run={run} busy={busy} onAt={go} waiting={waiting} />}
+        </main>
       )}
     </div>
   );
@@ -546,6 +549,12 @@ function Chapter({
   const artwork = line.presence === "person" && !previewTake?.video
     ? view.units.filter(u => u.chapter === chapter.id).flatMap(u => Object.values(u.picture.stills))[0]
     : undefined;
+  const cameraPoster = line.presence === "person" && !previewTake?.video ? (
+    <span className="ep-chapter-poster">
+      {artwork ? <img alt={`Artwork for chapter ${number}`} src={artwork.url} /> : <b>{chapter.question}</b>}
+      <small>{artwork ? "Chapter artwork" : "Camera not recorded"}</small>
+    </span>
+  ) : null;
   const chapterActions = (
     <div className="ep-doc-top">
       <p className="ep-kicker">
@@ -607,10 +616,7 @@ function Chapter({
     </nav>
   );
   return (
-    <main className="ep-chapter" data-recording={recording || undefined}>
-      <Slides view={view} at={chapter.id} onAt={(id) => onAt(id)} />
-
-      <section className="ep-doc ep-chapter-sheet" aria-label="Script">
+      <section data-recording={recording || undefined} className="ep-doc ep-chapter-sheet" aria-label="Script">
         <div className="ep-doc-body" ref={scriptBody}>
       {full && (
         <div className={recording ? "ep-pop-scrim" : undefined}>
@@ -677,7 +683,7 @@ function Chapter({
                   {recording ? (
                     <Stage view={view} frame={line} unit={unit} stream={recorder.stream} />
                   ) : (
-                    <LinePlayer key={playerKey} speed={speed} onSpeed={setSpeed} view={view} frame={previewLine} editingWindow={draftSize !== null} unit={unit} captions={captions} onCaptions={setCaptions} onProgress={setProgress} />
+                    <LinePlayer cameraPoster={cameraPoster} key={playerKey} speed={speed} onSpeed={setSpeed} view={view} frame={previewLine} editingWindow={draftSize !== null} unit={unit} captions={captions} onCaptions={setCaptions} onProgress={setProgress} />
                   )}
                   {recorder.state === "count" && <span className="ep-count">{recorder.count}</span>}
                 </FileDrop>
@@ -869,12 +875,7 @@ function Chapter({
             >
               <Tooltip content="Opens the frame with its choices and the recorder" side="bottom">
                 <button ref={peekRef} type="button" className="ep-peek-stage ep-float-frame" aria-label="Open the frame, its choices and the recorder" onClick={() => toggleEditor(true)}>
-                  {line.presence === "person" && !previewTake?.video ? (
-                    <span className="ep-chapter-poster">
-                      {artwork ? <img alt={`Artwork for chapter ${number}`} src={artwork.url} /> : <b>{chapter.question}</b>}
-                      <small>{artwork ? "Chapter artwork" : "Camera not recorded"}</small>
-                    </span>
-                  ) : <FrameCanvas view={view} frame={line} unit={unit} take={previewTake} label={`The frame for line ${at + 1}`} />}
+                  {cameraPoster ?? <FrameCanvas view={view} frame={line} unit={unit} take={previewTake} label={`The frame for line ${at + 1}`} />}
                   <span className="ep-peek-open" aria-hidden="true">
                     <Maximize2 />
                     Open
@@ -951,9 +952,6 @@ function Chapter({
           {choiceRail}
         </aside>}
       </section>
-
-
-    </main>
   );
 }
 

@@ -385,7 +385,7 @@ export type EpisodeCard = {
   chapters: number;
   recorded: number;
   pictures: { made: number; go: number; making: number; failed: number };
-  film: { status?: "rendering" | "done" | "failed"; fraction?: number; failure?: string };
+  film: { status?: "rendering" | "done" | "failed"; fraction?: number; failure?: string; seconds?: number; poster?: FileView | null };
 };
 export type EpisodeCheck = { group: string; rule: string; level: "must" | "look"; where: string; text: string };
 export type EpisodeRun = { id: string; lane: string; harness: string; state: string; asked: string; said: string; steps: number; started_at: number; ended_at: number | null };

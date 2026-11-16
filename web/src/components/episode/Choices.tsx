@@ -3,7 +3,8 @@
 // sets who has the frame and how), the picture the line shows, how that picture comes in, and
 // the steps it takes on the line. A pick is the line's own until it is widened, in one click, to
 // the picture's other lines, the chapter or the film; like every pick it draws nothing.
-import { Settings2, Blend, LayoutTemplate, ListOrdered, Shapes, type LucideIcon } from "lucide-react";
+import { BackgroundSettings } from "./BackgroundSettings";
+import { Palette, Settings2, Blend, LayoutTemplate, ListOrdered, Shapes, type LucideIcon } from "lucide-react";
 import { api, type EpisodeChapter, type EpisodeChoices, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Presence } from "../../api";
 import { allLines, LAYOUTS, LEVEL_NAMES, linesIn, LOOKS, MOVES, PICTURES, pictureWords, TRANSITIONS } from "../../episode";
 import { Select } from "../Select";
@@ -17,12 +18,13 @@ import { Tiles } from "./Tiles";
 const WHO: Record<Presence, string> = { person: "You", both: "You and the picture", content: "The picture alone" };
 const ORDER: Record<Presence, number> = { person: 0, both: 1, content: 2 };
 
-export type Panel = "layout" | "picture" | "transition" | "steps" | "others";
+export type Panel = "layout" | "picture" | "transition" | "steps" | "background" | "others";
 export const PANELS: { id: Panel; label: string; icon: LucideIcon }[] = [
   { id: "layout", label: "Layout", icon: LayoutTemplate },
   { id: "picture", label: "Picture", icon: Shapes },
   { id: "transition", label: "Transition", icon: Blend },
   { id: "steps", label: "Steps", icon: ListOrdered },
+  { id: "background", label: "Background", icon: Palette },
   { id: "others", label: "Others", icon: Settings2 },
 ];
 
@@ -40,11 +42,12 @@ type Props = {
 };
 
 export function ChoicePanel({ panel, ...props }: Props & { panel: Panel }) {
-  const panels = { layout: LayoutPanel, picture: PicturePanel, transition: TransitionPanel, steps: StepsPanel, others: OtherSettings };
+  const panels = { layout: LayoutPanel, picture: PicturePanel, transition: TransitionPanel, steps: StepsPanel, background: BackgroundSettings, others: OtherSettings };
   const Selected = panels[panel];
   return (
     <div className="ep-choices" aria-label={`${PANELS.find((p) => p.id === panel)?.label} for this line`}>
-      <Selected {...props} />
+      {panel === "background" && <small>Applies to the whole video</small>}
+      <Selected key={panel === "background" ? JSON.stringify([props.view.settings.background_color, props.view.settings.background_texture]) : panel} {...props} />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // A line has one playback clock. The finished film carries its mix. While editing, a kept
 // take or cached narration supplies the clock and the draft picture follows it.
 import { Captions as CC, Pause, Play, Settings, Volume2, VolumeX } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { EpisodeFrame, EpisodeUnit, EpisodeView } from "../../api";
 import { allLines, clockLine, frameSpot, mmss } from "../../episode";
 import { Popover } from "../Popover";
@@ -13,6 +13,7 @@ type Props = {
   frame: EpisodeFrame;
   unit?: EpisodeUnit;
   editingWindow?: boolean;
+  cameraPoster: ReactNode;
   speed: number;
   onSpeed: (speed: number) => void;
   captions: boolean;
@@ -20,7 +21,7 @@ type Props = {
   onProgress: (fraction: number | null) => void;
 };
 
-export function LinePlayer({ view, frame, unit, editingWindow, speed, onSpeed, captions, onCaptions, onProgress }: Props) {
+export function LinePlayer({ view, frame, unit, editingWindow, cameraPoster, speed, onSpeed, captions, onCaptions, onProgress }: Props) {
   const line = clockLine(view, frame.id);
   const film = !editingWindow && view.film_state.status === "done" && !view.film_state.stale ? view.film_state.file?.url : undefined;
   const take = line?.source.kind === "take" ? view.takes.find((t) => t.id === line.source.take) : undefined;
@@ -97,9 +98,11 @@ export function LinePlayer({ view, frame, unit, editingWindow, speed, onSpeed, c
       setProblem("Playback could not start. Try again.");
     }
   };
+  const showPoster = !editingWindow && !playing && position === 0;
+  const showStill = showPoster && unit?.picture.stills[frame.id] && !take?.video;
   return (
     <div className="ep-line-player" role="group" aria-label="Line player">
-      {!film && <Stage view={view} frame={frame} unit={unit} take={take} previewAt={position} incoming={incoming} motionTime={!editingWindow && (playing || position > 0) ? position / Math.min(0.45, seconds) : undefined} />}
+      {!film && <Stage view={view} frame={frame} unit={unit} take={take} previewAt={showStill ? undefined : position} incoming={incoming} motionTime={!editingWindow && (playing || position > 0) ? position / Math.min(0.45, seconds) : undefined} />}
       {src && (
         <video
           ref={media}
@@ -123,6 +126,7 @@ export function LinePlayer({ view, frame, unit, editingWindow, speed, onSpeed, c
           }}
         />
       )}
+      {cameraPoster && showPoster && <div className="ep-player-poster">{cameraPoster}</div>}
       {captions && <Captions words={frame.vo} progress={position / seconds} />}
       <div className="ep-player-controls">
         <button type="button" aria-label={playing ? "Pause line" : "Play line"} onClick={() => void toggle()}>

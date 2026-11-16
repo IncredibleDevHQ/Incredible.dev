@@ -2611,7 +2611,7 @@ class EpisodeDesk:
                 **{
                     k: v
                     for k, v in (episode["film"] or {}).items()
-                    if k in ("voice", "file", "sig", "at", "seconds")
+                    if k in ("voice", "file", "poster", "sig", "at", "seconds")
                 },
                 "status": "rendering",
                 "started_at": time.time(),
@@ -2891,6 +2891,14 @@ class EpisodeDesk:
             p["unit"]: p["html"] for p in rows if p["html"] and p["status"] in ("made", "go")
         }
         files = film.project(full, clock, found, pictures, takes=takes, voice=voice, look=look)
+        pictured_frames = {
+            frame for unit in found if unit["id"] in pictures for frame in unit["frames"]
+        }
+        cover_line = next(
+            (line for line in clock["lines"] if line["frame"] in pictured_frames), clock["lines"][0]
+        )
+        cover_at = cover_line["start"] + cover_line["seconds"] * 0.8
+        poster = None
         try:
             computer.put(
                 [(f"{folder}/{path}", text.encode()) for path, text in files.items()] + media
@@ -2926,6 +2934,15 @@ class EpisodeDesk:
             if not content:
                 tail = computer.run(f"tail -5 {folder}/render.log").output
                 raise ValueError(f"The render stopped: {_clean(tail[-300:])}")
+            # A thumbnail failure must not discard a successfully rendered film.
+            with contextlib.suppress(Exception):
+                captured = computer.run(
+                    f"ffmpeg -v error -ss {cover_at:.3f} -i {folder}/out/episode.mp4 "
+                    f"-frames:v 1 -vf scale=640:-2 -q:v 3 {folder}/out/poster.jpg",
+                    timeout=30,
+                )
+                if captured.ok:
+                    poster = computer.get(f"{folder}/out/poster.jpg")
         finally:
             # Each attempt owns its scratch files. A retry cannot read another attempt's MP4.
             with contextlib.suppress(Exception):
@@ -2938,6 +2955,12 @@ class EpisodeDesk:
         row = self.host.save_file(
             str(episode["thread_id"]), f"{slug}.mp4", content, origin="episode"
         )
+        poster_id = None
+        if poster:
+            with contextlib.suppress(Exception):
+                poster_id = self.host.save_file(
+                    str(episode["thread_id"]), f"{slug}-poster.jpg", poster, origin="episode"
+                )["id"]
         episode = self._episode(episode_id)
         # The narration stays with the film: it is what the film's clock and signature were
         # made from, and a line already spoken is not paid for again at the next render.
@@ -2951,6 +2974,7 @@ class EpisodeDesk:
                 "ended_at": time.time(),
                 "fraction": 1.0,
                 "file": row["id"],
+                "poster": poster_id,
                 "sig": signature,
                 "seconds": clock["total"],
                 "failure": "",
@@ -3113,6 +3137,12 @@ class EpisodeDesk:
             if t["kept"] and not t["frame"]
         }
         chapters = len((episode["plan"] or {}).get("chapters", []))
+        poster = self._file(film_state.get("poster"))
+        if not poster and film_state.get("file"):
+            # Older exports have no captured poster. Use artwork that already exists.
+            poster = self._file(
+                next((fid for p in pictures for fid in (p["stills"] or {}).values() if fid), None)
+            )
         return {
             "id": episode["id"],
             "thread_id": episode["thread_id"],
@@ -3130,7 +3160,10 @@ class EpisodeDesk:
                 "making": sum(1 for p in pictures if p["status"] in ("queued", "making", "posing")),
                 "failed": sum(1 for p in pictures if p["status"] == "failed"),
             },
-            "film": {k: film_state.get(k) for k in ("status", "fraction", "failure")},
+            "film": {
+                **{k: film_state.get(k) for k in ("status", "fraction", "failure", "seconds")},
+                "poster": poster,
+            },
         }
 
     def cards(self, thread_id: str) -> list[dict[str, Any]]:

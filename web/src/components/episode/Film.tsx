@@ -13,7 +13,6 @@ import { AgentMark } from "../../ui";
 import { Tooltip } from "../Tooltip";
 import { Ask, Elapsed, type AskTarget, type Run, type Waiting } from "./Ask";
 import { BlockHead, blockName, blocksOf } from "./Blocks";
-import { FILM, Slides } from "./Slides";
 import { FrameCanvas } from "./FrameCanvas";
 
 const renderPhases: Record<string, string> = {
@@ -93,9 +92,6 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
       : "";
 
   return (
-    <main className="ep-chapter ep-film-page">
-      <Slides view={view} at={FILM} onAt={(to) => onAt(to)} />
-
       <section className="ep-doc" aria-label="The script">
         <div className="ep-doc-body">
           <div className="ep-doc-grid">
@@ -204,7 +200,6 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
           <span />
         </div>
       </section>
-    </main>
   );
 }
 

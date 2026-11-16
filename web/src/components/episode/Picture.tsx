@@ -104,6 +104,7 @@ export function PictureCard({
   const [asking, setAsking] = useState<"draw" | "plan" | null>(null);
   // The way the person switched a made picture to, while they say yes to making it so; and the
   // one they said yes to, until the plan has it.
+  const levelAnchor = useRef<HTMLDivElement>(null);
   const [toLevel, setToLevel] = useState<Level | null>(null);
   const [sent, setSent] = useState<Level | null>(null);
   const again = asking === "draw";
@@ -175,34 +176,26 @@ export function PictureCard({
             {p.motion && <MotionPlan motion={p.motion} lines={lines} />}
             {tools}
             {designed && (
-              <SegmentedControl<Level>
-                size="sm"
-                aria-label={`How the ${name.toLowerCase()} is made`}
-                className="ep-figure-level"
-                value={toLevel ?? sent ?? madeAs}
-                disabled={busy || state === "making" || Boolean(sent)}
-                onChange={level}
-                options={[
-                  { value: "simple", label: LEVEL_NAMES.simple },
-                  { value: "rich", label: LEVEL_NAMES.rich },
-                ]}
-              />
+              <div ref={levelAnchor} className="ep-figure-level">
+                <SegmentedControl<Level>
+                  size="sm"
+                  aria-label={`How the ${name.toLowerCase()} is made`}
+                  value={toLevel ?? sent ?? madeAs}
+                  disabled={busy || state === "making" || Boolean(sent)}
+                  onChange={level}
+                  options={[
+                    { value: "simple", label: LEVEL_NAMES.simple },
+                    { value: "rich", label: LEVEL_NAMES.rich },
+                  ]}
+                />
+              </div>
             )}
           </header>
           {designed && <GenerationSettings view={view} unit={unit} run={run} busy={busy || state === "making"} />}
           {unit.shows && <p className="ep-block-shows">{unit.shows}</p>}
-          {toLevel ? (
-            <div
-              className="ep-confirm ep-level-confirm"
-              role="alertdialog"
-              aria-label={toLevel === "rich" ? "Make it as motion graphics?" : "Make it simple?"}
-              onKeyDown={(e) => {
-                if (e.key !== "Escape") return;
-                e.stopPropagation();
-                setToLevel(null);
-              }}
-            >
-              <b>{toLevel === "rich" ? "Make it as motion graphics?" : "Make it simple?"}</b>
+          <Popover open={Boolean(toLevel)} anchor={levelAnchor} onClose={() => setToLevel(null)}
+            side="bottom" align="end" width={296} title={toLevel === "rich" ? "Make it as motion graphics?" : "Make it simple?"}>
+            {toLevel && <div className="ep-level-confirm">
               <ol className="ep-level-steps" aria-label="What happens, in order">
                 {BUILD[toLevel].map((s) => (
                   <li key={s.id} data-yours={s.yours || undefined}>
@@ -220,8 +213,9 @@ export function PictureCard({
                   Cancel
                 </button>
               </div>
-            </div>
-          ) : !designed ? (
+            </div>}
+          </Popover>
+          {!designed ? (
             state === "changed" && <p className="ep-figure-note">Apply your changes in the bar and the writer plans it.</p>
           ) : state === "planned" ? (
             <div className="ep-figure-act">

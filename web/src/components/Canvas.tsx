@@ -8,6 +8,7 @@ import { ArrowLeft, ArrowRight, Check, LayoutTemplate, Maximize, MessageSquare, 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, type Asset, type Board, type CanvasTask, type Capability, type EpisodeCard, type FileView, type FrameView, type Work } from "../api";
+import { mmss } from "../episode";
 import { useFocused, useHouse, type Focus } from "../store";
 import { Avatar, FileList, FooterLine, KindIcon, makesOf, StatusChip } from "../ui";
 import { columnsOf, Lines, useLines, type Edge } from "./Flow";
@@ -400,17 +401,17 @@ function AssetCard({ asset, task, onHot }: { asset: Asset; task: CanvasTask; onH
         )}
       </header>
       <div className="node-body">
-        {episode && <EpisodeFace episode={episode} />}
         {reviewing ? (
           <FilmPreview asset={asset} />
         ) : finished ? (
           <>
-            <Finals files={asset.files} title={asset.title} />
+            <Finals files={asset.files} title={asset.title} poster={episode?.film.poster?.url} />
             {draft && <DraftActions asset={asset} />}
           </>
         ) : board ? (
           <BoardPreview board={board} />
         ) : null}
+        {episode && <EpisodeFace episode={episode} />}
         {!episode && <AssetLine asset={asset} task={task} live={live} />}
       </div>
       <button
@@ -441,7 +442,7 @@ function episodeLine(episode: EpisodeCard): string {
   if (p.go) return `${count(p.go, "picture needs", "pictures need")} your go`;
   if (p.making) return `${count(p.making, "picture", "pictures")} being made`;
   if (p.failed) return `${count(p.failed, "picture", "pictures")} not made`;
-  if (episode.film.status === "done" && episode.recorded === episode.chapters) return "Recorded and rendered";
+  if (episode.film.status === "done") return [episode.film.seconds ? mmss(episode.film.seconds) : "Rendered", count(episode.chapters, "chapter", "chapters")].join(" · ");
   return `${episode.recorded} of ${episode.chapters} chapters recorded`;
 }
 
@@ -454,8 +455,8 @@ function EpisodeFace({ episode }: { episode: EpisodeCard }) {
         {episode.status === "planning" && <span className="spin" style={{ width: 10, height: 10, borderWidth: 1.5 }} />}
         {line}
       </p>
-      <button type="button" className="btn" onClick={() => void openEpisode(episode.id)}>
-        Open the studio
+      <button type="button" className="btn primary" onClick={() => void openEpisode(episode.id)}>
+        Edit episode
         <ArrowRight />
       </button>
     </div>
@@ -616,7 +617,7 @@ function FilmPreview({ asset }: { asset: Asset }) {
 
 // An asset's finished files: a film shows a frame to play, images show (the first large), the rest
 // are files. Any of them opens full size, among the asset's other files.
-function Finals({ files, title }: { files: FileView[]; title: string }) {
+function Finals({ files, title, poster }: { files: FileView[]; title: string; poster?: string }) {
   const openFiles = useHouse((s) => s.openFiles);
   const video = files.find((f) => f.mime.startsWith("video/"));
   const audio = files.find((f) => f.mime.startsWith("audio/"));
@@ -630,7 +631,7 @@ function Finals({ files, title }: { files: FileView[]; title: string }) {
       {video && (
         <button type="button" className="film-hero" onClick={() => open(video)} aria-label={`Play ${title}`}>
           {/* Two seconds in: a film's first frame is often its empty ground. */}
-          <video src={`${video.url}#t=2`} preload="metadata" muted />
+          {poster ? <img src={poster} alt="" loading="lazy" /> : <video key={video.id} src={`${video.url}#t=2`} preload="metadata" muted />}
           <span className="play">
             <Play />
           </span>

@@ -16,7 +16,10 @@ export function Slides({ view, at, onAt }: { view: EpisodeView; at: string; onAt
   // the open slide is in sight when the page opens, however far down the film it is
   // (a block, so the effect returns nothing: scrolling may return a promise, which is no cleanup)
   useEffect(() => {
-    current.current?.scrollIntoView({ block: "nearest" });
+    current.current?.scrollIntoView({
+      block: "nearest", inline: "nearest",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+    });
   }, [at]);
   const film = at === FILM;
   const recorded = chapters.filter((c) => takeOf(view, c.id)).length;
