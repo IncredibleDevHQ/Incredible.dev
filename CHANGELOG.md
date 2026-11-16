@@ -70,8 +70,9 @@
     thread's computer; before anything is recorded it renders as a draft with a stand-in.
   - A take is recorded as the camera and the microphone give it: no echo cancelling, one
     channel, H.264 where the browser can at about 16 Mbit/s for 1080p, and room noise cleaned
-    up only for a microphone that sits in the computer (a switch where the microphone is
-    chosen, beside the picture the camera is giving). A recording brought as a file may be a
+    up only for a microphone that sits in the computer. The recording panel names the
+    microphone and the camera on a button each: the microphone's holds that switch, the
+    camera's shows the picture it is giving. A recording brought as a file may be a
     camera's own, up to 8 GiB: it goes to disk and to the thread's computer as a file. The cut
     brings a high-dynamic-range picture down to the film's range and sets every take's sound
     to −16 LUFS by one gain.

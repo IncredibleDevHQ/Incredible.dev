@@ -1148,9 +1148,15 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 /* the microphone's level: a short track that fills with the voice */
 .ep-level { position: relative; flex: none; display: inline-block; width: 40px; height: 6px; overflow: hidden; border-radius: 999px; background: var(--line); }
 .ep-level::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--green); transform: scaleX(var(--level, 0)); transform-origin: left; transition: transform 60ms linear; }
-.ep-devices { position: relative; display: inline-flex; }
-.ep-devices .btn { gap: 8px; height: 36px; padding: 0 11px; }
-.ep-devices .btn svg:last-child { width: 13px; height: 13px; color: var(--muted); }
+/* the microphone and the camera, each named on its own button; a long name is cut short */
+.ep-devices { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.ep-device { position: relative; display: inline-flex; min-width: 0; }
+.ep-device .btn { gap: 8px; height: 36px; padding: 0 11px; min-width: 0; }
+.ep-device .btn > span:not(.ep-level) { max-width: 104px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ep-device .btn svg { flex: none; }
+.ep-device .btn svg:last-child { width: 13px; height: 13px; color: var(--muted); }
+/* how a take goes sits under the bar, so the buttons keep one row */
+.ep-recbar > .faint { order: 1; flex-basis: 100%; }
 .ep-live-dot { width: 10px; height: 10px; border-radius: 999px; background: var(--red); animation: ep-pulse 1.2s ease-in-out infinite; }
 @keyframes ep-pulse { 50% { opacity: 0.35; } }
 .ep-recbar .ui-kbd { margin-left: 4px; --ui-kbd-bg: rgba(0, 0, 0, 0.16); --ui-kbd-line: transparent; --ui-kbd-depth: transparent; --ui-kbd-ink: currentColor; }

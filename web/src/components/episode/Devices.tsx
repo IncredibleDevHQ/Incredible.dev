@@ -1,10 +1,10 @@
 // The microphone's level while getting ready and during the take, and which microphone and
 // camera are used. The level moves with the voice, so a microphone that is dead, or the wrong
-// one, is seen before the take and not after it. A click opens the choice: the microphone,
-// whether the browser cleans its sound up, and the camera with the picture it gives (so a
-// camera sending less than it can is seen before the take). The picks are kept on this computer.
-import { Check, ChevronDown, Mic } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+// one, is seen before the take and not after it. Each has a button with its name, which opens
+// the choice: for the microphone, also whether the browser cleans its sound up; for the camera,
+// also the picture it gives. The picks are kept on this computer.
+import { Check, ChevronDown, Mic, Video } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Popover } from "../Popover";
 import { Tooltip } from "../Tooltip";
 import type { DevicePick, Devices as Found, Using } from "./recorder";
@@ -41,54 +41,95 @@ export function Level({ stream }: { stream: MediaStream | null }) {
   return <span ref={bar} className="ep-level" aria-hidden="true" />;
 }
 
+// A device's name as a person knows it. The browser adds a USB id after some ("ZV-E10M2
+// (054c:0de8)"), and "Default - " before the one the system itself would pick.
+const listed = (label: string) => label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)$/i, "");
+const named = (label: string) => listed(label).replace(/^(Default|Communications) - /, "");
+
+// The microphone and the camera, each named on its own button: what is in use is read without
+// opening anything, and a click on either opens the others to pick from.
 export function Devices({ stream, devices, using, camera, onChoose }: { stream: MediaStream | null; devices: Found; using: Using; camera: boolean; onChoose: (pick: DevicePick) => void }) {
+  const mic = devices.mics.find((d) => d.deviceId === using.mic);
+  const lens = devices.cameras.find((d) => d.deviceId === using.camera);
+  return (
+    <span className="ep-devices">
+      <Picker what="Microphone" name={mic ? named(mic.label) : "Microphone"} icon={<Mic />} level={<Level stream={stream} />} onChoose={onChoose}>
+        {(pick) => (
+          <>
+            {devices.mics.map((d) => (
+              <button type="button" role="menuitemradio" aria-checked={d.deviceId === using.mic} key={d.deviceId} onClick={() => pick({ mic: d.deviceId })}>
+                {listed(d.label)}
+              </button>
+            ))}
+            {/* off for a microphone set up for the voice; on for one in the computer, which hears the room */}
+            <button type="button" role="menuitemcheckbox" aria-checked={using.clean} onClick={() => pick({ clean: !using.clean })}>
+              Clean up room noise
+              {using.clean && <Check />}
+            </button>
+          </>
+        )}
+      </Picker>
+      {camera && (
+        <Picker what="Camera" name={lens ? named(lens.label) : "Camera"} icon={<Video />} onChoose={onChoose}>
+          {(pick) => (
+            <>
+              {/* what the camera is giving, so one sending less than it can is seen before the take */}
+              {using.picture && (
+                <p>
+                  <small>
+                    {using.picture.width} × {using.picture.height}
+                    {using.picture.rate > 0 && `, ${using.picture.rate} a second`}
+                  </small>
+                </p>
+              )}
+              {devices.cameras.map((d) => (
+                <button type="button" role="menuitemradio" aria-checked={d.deviceId === using.camera} key={d.deviceId} onClick={() => pick({ camera: d.deviceId })}>
+                  {listed(d.label)}
+                </button>
+              ))}
+            </>
+          )}
+        </Picker>
+      )}
+    </span>
+  );
+}
+
+function Picker({
+  what,
+  name,
+  icon,
+  level,
+  onChoose,
+  children,
+}: {
+  what: "Microphone" | "Camera";
+  name: string;
+  icon: ReactNode;
+  level?: ReactNode;
+  onChoose: (pick: DevicePick) => void;
+  children: (pick: (change: DevicePick) => void) => ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
-  const cameras = camera ? devices.cameras : [];
-  const mic = devices.mics.find((d) => d.deviceId === using.mic)?.label ?? "the microphone";
   const pick = (change: DevicePick) => {
     setOpen(false);
     onChoose(change);
   };
   return (
-    <span className="ep-devices">
-      <Tooltip content="Choose the microphone and camera" side="top">
-        <button ref={button} type="button" className="btn" aria-label={`Microphone and camera. Listening to ${mic}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-          <Mic />
-          <Level stream={stream} />
+    <span className="ep-device">
+      {/* the whole name, for one the button had to cut short */}
+      <Tooltip content={`${what}: ${name}`} side="top">
+        <button ref={button} type="button" className="btn" aria-label={`${what}: ${name}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          {icon}
+          {level}
+          <span>{name}</span>
           <ChevronDown />
         </button>
       </Tooltip>
-      <Popover open={open} onClose={() => setOpen(false)} anchor={button} side="top" align="start" offset={6} width={300} className="ep-menu">
-        <div role="menu" aria-label="Microphone and camera">
-          <p>Microphone</p>
-          {devices.mics.map((d) => (
-            <button type="button" role="menuitemradio" aria-checked={d.deviceId === using.mic} key={d.deviceId} onClick={() => pick({ mic: d.deviceId })}>
-              {d.label}
-            </button>
-          ))}
-          {/* off for a microphone set up for the voice; on for one in the computer, which hears the room */}
-          <button type="button" role="menuitemcheckbox" aria-checked={using.clean} onClick={() => pick({ clean: !using.clean })}>
-            Clean up room noise
-            {using.clean && <Check />}
-          </button>
-          {cameras.length > 0 && (
-            <p>
-              Camera
-              {using.picture && (
-                <small>
-                  {" "}
-                  · {using.picture.width} × {using.picture.height}
-                  {using.picture.rate > 0 && `, ${using.picture.rate} a second`}
-                </small>
-              )}
-            </p>
-          )}
-          {cameras.map((d) => (
-            <button type="button" role="menuitemradio" aria-checked={d.deviceId === using.camera} key={d.deviceId} onClick={() => pick({ camera: d.deviceId })}>
-              {d.label}
-            </button>
-          ))}
+      <Popover open={open} onClose={() => setOpen(false)} anchor={button} side="top" align="start" offset={6} width={340} className="ep-menu">
+        <div role="menu" aria-label={what}>
+          {children(pick)}
         </div>
       </Popover>
     </span>

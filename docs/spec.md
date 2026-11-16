@@ -743,8 +743,9 @@ app's canvas, from a channel's material or a research frame's notes.
   channel, and the picture is up to 1080p at 30 frames a second, encoded as H.264 where the
   browser can, at a quarter of a bit for each pixel of each frame. A microphone that sits in
   the computer has its room noise cleaned up by the browser; any other is recorded as it is.
-  The person can switch that either way where the microphone is chosen, and the same place
-  shows the picture the camera is giving. A recording brought as a file may be a camera's own,
+  The microphone and the camera each have a button with their name in the recording panel:
+  the microphone's opens the others and the switch for that clean-up, the camera's opens the
+  others and shows the picture it is giving. A recording brought as a file may be a camera's own,
   up to 8 GiB: it is written to disk as it arrives and copied to the thread's computer as a
   file, never held in memory. Every recording is cut there to the film's format: no taller
   than 1080 lines, 30 frames a second, a picture coded for a brighter screen (an iPhone's)
