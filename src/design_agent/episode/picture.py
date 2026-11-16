@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from design_agent.episode import geometry
+from design_agent.episode import catalog, geometry
 from design_agent.episode import questions as Q
 
 Row = dict[str, Any]
@@ -64,6 +64,14 @@ class Look:
     display: str = "Fraunces"
     text: str = "Inter"
     mono: str = "IBM Plex Mono"
+    series: tuple[str, ...] = ()
+
+    def tokens(self) -> Row:
+        return {
+            "palette": self.palette,
+            "fonts": {"display": self.display, "text": self.text, "mono": self.mono},
+            "series": self.series,
+        }
 
     @property
     def families(self) -> tuple[str, ...]:
@@ -166,7 +174,16 @@ def with_clock(html: str, own: Row) -> str:
 def dressed(html: str, own: Row, look: Look | None = None) -> str:
     """The file as it is rendered: its clock set, and the look's families declared inside the
     template so the renderer finds them."""
-    faces = f"<style>{(look or Look()).faces()}</style>"
+    theme = look or Look()
+    faces = f"<style>{theme.faces()}</style>"
+    tokens = json.dumps(theme.tokens(), ensure_ascii=True).replace("<", r"\u003c")
+    html = re.sub(
+        r'(<script type="application/json" data-episode-theme>).*?(</script>)',
+        lambda match: match[1] + tokens + match[2],
+        html,
+        count=1,
+        flags=re.S,
+    )
     timed = with_clock(html, own)
     return re.sub(r"(<template\b[^>]*>)", lambda m: m.group(1) + faces, timed, count=1)
 
@@ -196,7 +213,24 @@ def brief(
                 or "(holds the picture; adds what its cues say)",
                 "focal": f.get("focal", ""),
                 "objects": [
-                    {k: o[k] for k in ("id", "what", "words", "state", "type") if o.get(k)}
+                    {
+                        k: o[k]
+                        for k in (
+                            "id",
+                            "what",
+                            "words",
+                            "state",
+                            "type",
+                            "value",
+                            "unit",
+                            "series",
+                            "from",
+                            "to",
+                            "parent",
+                            "owner",
+                        )
+                        if o.get(k) is not None
+                    }
                     for o in f.get("objects", [])
                 ],
                 "cues": [
@@ -223,6 +257,14 @@ def brief(
             else None
         ),
         "level": unit.get("level", "simple"),
+        "visual": {
+            **{
+                k: unit["visual"][k]
+                for k in ("component", "variant", "direction")
+                if k in unit.get("visual", {})
+            },
+            "motion": catalog.COMPONENTS[unit.get("visual", {}).get("component", "custom")].motion,
+        },
         "idea_of_the_film": full.get("brief", {}).get("idea", ""),
         "picture": {
             "kind": unit.get("picture", ""),
@@ -235,6 +277,7 @@ def brief(
             ),
         },
         "look": {
+            "series": look.series,
             "palette": look.palette,
             "fonts": {"display": look.display, "text": look.text, "mono": look.mono},
             "other_fonts_on_the_rendering_computer": [

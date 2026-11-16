@@ -147,6 +147,7 @@ ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # can say so.
     ("pictures", "words", "TEXT NOT NULL DEFAULT ''"),
     ("pictures", "builder", "TEXT NOT NULL DEFAULT ''"),
+    ("pictures", "generation", "TEXT NOT NULL DEFAULT '{}'"),
     ("pictures", "motion", "TEXT NOT NULL DEFAULT '{}'"),
 )
 
@@ -171,6 +172,7 @@ JSON_COLUMNS = frozenset(
         "stills",
         "marks",
         "motion",
+        "generation",
     }
 )
 #: Columns that hold a SQLite boolean.

@@ -1,8 +1,7 @@
-"""A picture drawn by code from its brief alone: every object as a labelled block, arriving on
-its cue.
+"""Build a self-contained, cue-driven picture from the episode brief.
 
-It is what the demo shows and what tests build, where no agent is there to design one. It is a
-stand-in, plain on purpose: it proves the clock and the layout, not the craft.
+The demo renders this scene directly. A live worker receives it as the starting picture
+for the selected component, brand and layout.
 """
 
 from __future__ import annotations
@@ -10,15 +9,19 @@ from __future__ import annotations
 import html as html_lib
 import json
 import math
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
-from design_agent.episode import picture
+from design_agent.episode import catalog, picture
 
 Row = dict[str, Any]
 
 
 def built(brief: Row) -> str:
     """The file a picture's brief (`picture.brief`) asks for, drawn the plainest way."""
+    if brief.get("visual", {}).get("component"):
+        return component_scene(brief)
     colours = {**picture.PALETTE, **brief["look"]["palette"]}
     comp = str(brief["composition_id"])
     width, height = int(brief["canvas"]["width"]), int(brief["canvas"]["height"])
@@ -85,3 +88,61 @@ def built(brief: Row) -> str:
   </body>
 </html>
 """
+
+
+_ADAPTERS = {
+    "sequence-diagram": "sequence",
+    "bar-chart": "chart",
+    "line-chart": "chart",
+    "relationship-diagram": "graph",
+    "flowchart": "graph",
+    "detail-card": "card",
+    "comparison": "comparison",
+    "code-block": "code",
+    "custom": "custom",
+}
+
+
+@lru_cache(maxsize=12)
+def _scene_script(adapter: str) -> str:
+    folder = Path(__file__).with_name("components")
+    return (folder / "stage.js").read_text(encoding="utf8") + (folder / f"{adapter}.js").read_text(
+        encoding="utf8"
+    )
+
+
+def component_scene(brief: Row) -> str:
+    """One self-contained stage shared by the demo and the live builder's starting file."""
+    comp = brief["composition_id"]
+    canvas = brief["canvas"]
+    visual = brief["visual"]
+    scene = {key: brief[key] for key in ("canvas", "keep_clear", "look")}
+    scene["subject"] = brief.get("picture", {}).get("shows", "")
+    scene["visual"] = {key: visual[key] for key in ("component", "variant")}
+    chart = visual["component"] in ("bar-chart", "line-chart")
+    scene["lines"] = [
+        {
+            "frame": line["frame"],
+            "objects": [obj for obj in line["objects"] if not chart or catalog.measured(obj)],
+            "cues": [{"key": c["key"], "object": c.get("object", "")} for c in line["cues"]],
+        }
+        for line in brief["lines"]
+    ]
+    payload = json.dumps(scene, ensure_ascii=True).replace("<", r"\u003c")
+    theme = json.dumps(brief["look"], ensure_ascii=True).replace("<", r"\u003c")
+    return f'''<!doctype html><html><body><template>
+<style>#root {{ position:absolute; inset:0; background: {brief["look"]["palette"]["ground"]};
+font-family: '{brief["look"]["fonts"]["text"]}', sans-serif; font-weight: 600; }}</style>
+<div id="root" data-composition-id="{comp}" data-width="{canvas["width"]}" data-height="{canvas["height"]}" data-variant="{visual["variant"]}">
+<script type="application/json" id="{comp}-clock">{{"seconds":0,"lines":{{}},"cues":{{}}}}</script>
+<script type="application/json" data-episode-theme>{theme}</script>
+<svg id="{comp}-art" width="{canvas["width"]}" height="{canvas["height"]}" viewBox="0 0 {canvas["width"]} {canvas["height"]}"></svg></div>
+<script>(() => {{
+const comp={json.dumps(comp)}, brief={payload};
+const clock=JSON.parse(document.getElementById(comp+"-clock").textContent);
+const tl=gsap.timeline({{paused:true}});
+window.__timelines["{comp}"] = tl;
+
+{_scene_script(_ADAPTERS.get(visual["component"], "blocks"))}
+if (!n && brief.subject) label(brief.subject, left + w / 2, top + h / 2, w, size, stage, "middle");
+}})();</script></template></body></html>'''

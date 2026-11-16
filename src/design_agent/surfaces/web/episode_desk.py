@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any
 
 from design_agent.episode import (
+    catalog,
     check,
     classifier,
     classify,
@@ -46,12 +47,13 @@ from design_agent.episode import (
     layouts,
     override,
     picture,
+    sketch,
     timeline,
     units,
 )
 from design_agent.episode import plan as plans
 from design_agent.episode import questions as Q
-from design_agent.surfaces.web import research
+from design_agent.surfaces.web import episode_models, research
 from design_agent.surfaces.web.computer import GSAP, PROJECTS, Computer
 from design_agent.surfaces.web.episode_workers import (
     BUILTIN,
@@ -258,8 +260,26 @@ class EpisodeDesk:
                     "local": False,
                 }
             )
+        picture_writers = list(writers)
+        if self.demo:
+            picture_writers.extend(
+                {"id": h.id, "title": h.title, "local": True, "ready": True}
+                for h in research.HARNESSES.values()
+                if self.host.research.ready(h.id)
+            )
+        for w in picture_writers:
+            w["provider"] = episode_models.generation(self.host.settings, w["id"], {})["provider"]
         return {
             "writers": writers,
+            "components": {
+                k: {"purpose": v.purpose, "layouts": v.layouts}
+                for k, v in catalog.COMPONENTS.items()
+            },
+            "picture_writers": picture_writers,
+            "generation_models": {
+                w["id"]: episode_models.options(self.host.settings, w["id"])
+                for w in picture_writers
+            },
             "themes": [
                 {
                     "id": t["id"],
@@ -310,9 +330,20 @@ class EpisodeDesk:
     def _builder(self, episode: Row, unit: Row) -> Worker:
         """Who builds one picture: the agent a person picked for it, else its chapter's, else
         the film's writer (`_units` settles which)."""
-        return self._worker_called(
+        worker = self._worker_called(
             str(unit.get("builder") or episode["settings"].get("writer") or "")
         )
+        model = unit.get("model_pick", {}).get("model", "")
+        effort = unit.get("model_pick", {}).get("effort", "")
+        if (
+            isinstance(worker, LocalWorker)
+            or isinstance(worker, BuiltinWorker)
+            and (model or effort)
+        ):
+            scoped = copy.copy(worker)
+            scoped.model, scoped.effort = model, effort
+            return scoped
+        return worker
 
     def _can_write(self, writer: str) -> bool:
         ready = {w["id"] for w in self.options()["writers"] if w["ready"]}
@@ -372,8 +403,18 @@ class EpisodeDesk:
         ):
             if roles.get(theirs):
                 palette[ours] = roles[theirs]
+        swatches = {str(c["name"]).lower(): str(c["value"]) for c in view.get("colors", [])}
+        palette["panel"] = (
+            swatches.get("panel")
+            or swatches.get("surface")
+            or (palette["ground"] if _dark(palette["ground"]) else palette["panel"])
+        )
         if roles.get("accent"):
-            palette["accent_ink"] = "#FFFFFF" if _dark(roles["accent"]) else palette["ink"]
+            palette["accent_ink"] = (
+                "#FFFFFF"
+                if _dark(roles["accent"])
+                else (palette["ink"] if _dark(palette["ink"]) else palette["ground"])
+            )
         stacks = view.get("stacks") or {}
 
         def family(role: str, otherwise: str) -> str:
@@ -385,6 +426,7 @@ class EpisodeDesk:
             display=family("display", "Fraunces"),
             text=family("text", "Inter"),
             mono=family("mono", "IBM Plex Mono"),
+            series=tuple(view.get("series", [])),
         )
 
     def _ready(self, episode: Row) -> Computer:
@@ -580,13 +622,27 @@ class EpisodeDesk:
         by_chapter = self._chapter_builders(episode)
         writer = str(episode["settings"].get("writer") or "")
         said = {str(f["id"]): f for _, _, f in plans.frames_of(full)}
+        theme_sig = (
+            plans.digest(json.dumps(self._look(episode).tokens(), sort_keys=True)) if found else ""
+        )
         for unit in found:
+            unit["theme_sig"] = theme_sig
             # who builds it: the agent picked for this picture, else its chapter's, else the
             # film's writer
             unit["builder"] = str(
                 (chosen.get(unit["id"]) or {}).get("builder")
                 or by_chapter.get(str(unit["chapter"]))
                 or writer
+            )
+            pick = chosen.get(unit["id"]) or {}
+            unit["builder_pick"] = pick.get("builder")
+            unit["model_pick"] = (
+                {k: pick.get(k, "") for k in ("model", "effort")}
+                if not pick.get("builder") or pick["builder"] == unit["builder"]
+                else {"model": "", "effort": ""}
+            )
+            unit["generation"] = episode_models.generation(
+                self.host.settings, unit["builder"], unit["model_pick"]
             )
             # what its lines say now, and when a person last made one say something else
             lines = [said.get(str(frame)) or {} for frame in unit["frames"]]
@@ -708,6 +764,7 @@ class EpisodeDesk:
             "level",
             "builder",
             "motion",
+            "generation",
             "words",
         )
         return {
@@ -749,6 +806,15 @@ class EpisodeDesk:
         """The episode goes to how `kept` has it. The picks a person made since stay (see
         `picks_kept`), and so does a picture made since that still fits its lines."""
         episode = self._episode(episode_id)
+        if "unit_choices" in kept["data"]:
+            settings_picks = dict(episode["picks"] or {})
+            unit_choices = dict(settings_picks.get("units") or {})
+            for uid, choice in kept["data"]["unit_choices"].items():
+                if choice is None:
+                    unit_choices.pop(uid, None)
+                else:
+                    unit_choices[uid] = choice
+            self.store.update_episode(episode_id, picks={**settings_picks, "units": unit_choices})
         then, labels = kept["data"]["plan"], dict(kept["data"]["labels"] or {})
         picks = plans.picks_kept(
             labels.get("overrides") or {},
@@ -998,6 +1064,10 @@ class EpisodeDesk:
         the rules. Keeps the labels and the findings; returns the report the writer is shown."""
         episode = self._episode(episode_id)
         merged = self._merged(episode)
+        picks = (episode["picks"] or {}).get("units", {})
+        for _, _, f in plans.frames_of(merged):
+            if picks.get(f["id"], {}).get("component"):
+                f["_component_picked"] = True
         ask = self._reader(worker)
         lines: list[str] = []
         for stage in stages:
@@ -1168,19 +1238,81 @@ class EpisodeDesk:
             picks["chapters"].pop(str(chapter_id), None)
             if builder:
                 picks["chapters"][str(chapter_id)] = {"builder": builder}
+        actual_units = (
+            {u["id"]: u for u in self._units(episode, self._full(episode) or {})}
+            if change.get("units")
+            else {}
+        )
         for unit_id, pick in (change.get("units") or {}).items():
+            unit = actual_units.get(unit_id)
+            if unit is None:
+                raise ValueError("That picture is no longer in this episode.")
             kept = dict(picks["units"].get(str(unit_id)) or {})
             if pick.get("level") in LEVELS:
                 kept["level"] = pick["level"]
             if "builder" in pick:
                 # who builds this picture; nothing picked gives it back to the film's writer
                 builder = str(pick["builder"] or "")
-                if builder and not self._can_write(builder):
+                if builder and not (
+                    builder in self.workers
+                    or any(
+                        w["id"] == builder and w["ready"] for w in self.options()["picture_writers"]
+                    )
+                ):
                     raise ValueError("That agent isn't ready on this computer.")
                 kept.pop("builder", None)
                 if builder:
                     kept["builder"] = builder
+            if "builder" in pick and kept.get("builder") != picks["units"].get(unit_id, {}).get(
+                "builder"
+            ):
+                kept.pop("model", None)
+                kept.pop("effort", None)
+            if "component" in pick and pick["component"] != kept.get("component"):
+                kept.pop("variant", None)
+            for field in ("component", "variant", "direction", "model", "effort"):
+                if field in pick:
+                    value = (pick[field] or "").strip()
+                    if value:
+                        kept[field] = value
+                    else:
+                        kept.pop(field, None)
+            options = unit["visual"]["options"]
+            component = kept.get("component") or unit["visual"]["suggested"]
+            if (
+                component not in options
+                or kept.get("variant")
+                and kept["variant"] not in options[component]
+            ):
+                raise ValueError("That component or layout needs different scene data.")
+            if len(kept.get("direction", "")) > 1600:
+                raise ValueError("Keep the visual direction to 1600 characters.")
+            builder = (
+                kept.get("builder")
+                or (picks["chapters"].get(unit["chapter"]) or {}).get("builder")
+                or chosen["writer"]
+            )
+            if kept.get("model") or kept.get("effort"):
+                episode_models.generation(self.host.settings, builder, kept)
+                kept["builder"] = builder
             picks["units"][str(unit_id)] = kept
+        previous_units = (episode["picks"] or {}).get("units", {})
+        changed_units = {
+            k: previous_units.get(k)
+            for k, change_unit in (change.get("units") or {}).items()
+            if {"component", "variant", "direction", "model", "effort"} & change_unit.keys()
+            and previous_units.get(k) != picks["units"].get(k)
+        }
+        if changed_units:
+            data = self._as_it_stands(episode)
+            data["unit_choices"] = changed_units
+            self.store.put_snapshot(episode_id, why="Changed picture generation", data=data)
+            snap = self.store.snapshot(episode_id)
+            if snap:
+                self.store.note_snapshot(
+                    snap["n"],
+                    {"lines": [], "added": [], "removed": 0, "pictures": list(changed_units)},
+                )
         self.store.update_episode(episode_id, settings=chosen, picks=picks)
         episode = self._episode(episode_id)
         merged = self._merged(episode)
@@ -1613,6 +1745,9 @@ class EpisodeDesk:
             if owner == episode_id and not build.done():
                 build.cancel()
         left = self._as_it_stands(episode)
+        if "unit_choices" in kept["data"]:
+            current = (episode["picks"] or {}).get("units") or {}
+            left["unit_choices"] = {k: current.get(k) for k in kept["data"]["unit_choices"]}
         if kept["data"].get("picked"):
             left["picked"] = kept["data"]["picked"]
         self._go_to(episode_id, kept)
@@ -1779,6 +1914,8 @@ class EpisodeDesk:
         if full is None or unit is None:
             return
         worker = self._builder(episode, unit)
+        if isinstance(worker, DemoWorker) and unit["visual"]["direction"]:
+            raise ValueError("Select a live provider to generate from a custom description.")
         comp = picture.composition_id(unit_id)
         look = self._look(episode)
         level = unit["level"]
@@ -1808,10 +1945,13 @@ class EpisodeDesk:
                 episode, {brief_file: json.dumps(brief, indent=1, ensure_ascii=False)}
             )
             planned = " Its `motion_plan` is the plan this picture is built to, shot by shot."
+        starter = f"pictures/{comp}.starter.html"
+        if not isinstance(worker, DemoWorker):
+            await worker.prepare(episode, {starter: sketch.built(brief), str(brief["file"]): ""})
         prompt = (
             f"Stage: picture.\n\nBuild one picture of the episode. Your folder is {root}. Read "
             f"{skill}/briefs/picture.md, then the brief at {root}/{brief_file}, "
-            f"and write {root}/{brief['file']}.{planned} Deliver nothing: the house reads the "
+            f"and adapt the themed starting scene at {root}/{starter}. Write {root}/{brief['file']}.{planned} Deliver nothing: the house reads the "
             "file from your folder." + (f"\n\nThe person's note on it: {note}" if note else "")
         )
         html = ""
@@ -1826,6 +1966,8 @@ class EpisodeDesk:
             )
             if told.stopped:
                 raise asyncio.CancelledError
+            if told.failure:
+                raise ValueError(told.failure)
             html = await worker.read(self._episode(episode_id), str(brief["file"])) or ""
             faults = (
                 picture.faults(html, unit, full, look)
@@ -1853,6 +1995,16 @@ class EpisodeDesk:
                 episode_id, unit_id, status="failed", html=html, failure="; ".join(faults[:3])
             )
             return
+        generation = {
+            **unit["generation"],
+            "theme_sig": unit["theme_sig"],
+            "catalog_version": catalog.CATALOG_VERSION,
+        }
+        if isinstance(worker, LocalWorker):
+            if worker.reported_model:
+                generation["model"] = worker.reported_model
+            if worker.reported_effort:
+                generation["effort"] = worker.reported_effort
         if level == units.RICH:
             html, stills = await self._looked(episode_id, unit, full, brief, html, stills)
         self.store.set_picture(
@@ -1863,6 +2015,7 @@ class EpisodeDesk:
             stills=stills,
             note="",
             failure="",
+            generation=generation,
             words=unit["words_now"],
         )
         self._changed(episode_id)
@@ -2346,7 +2499,12 @@ class EpisodeDesk:
         return ""
 
     def _film_sig(
-        self, episode: Row, full: Row, pictures: Sequence[Row], kept: Sequence[Row]
+        self,
+        episode: Row,
+        full: Row,
+        pictures: Sequence[Row],
+        kept: Sequence[Row],
+        look: picture.Look | None = None,
     ) -> str:
         takes = [(t["id"], t["marks"]) for t in kept]
         made = sorted(
@@ -2356,6 +2514,8 @@ class EpisodeDesk:
         )
         spoken = sorted((k, v.get("h")) for k, v in self._voice(episode).items())
         parts: list[Any] = [full.get("chapters"), full.get("brief"), takes, made, spoken]
+        if any(p.get("generation") for p in pictures):
+            parts.append((look or self._look(episode)).tokens())
         picked = (episode["settings"].get("narrator") or {}).get("id")
         if picked and episode["settings"].get("voice") == "narrator":
             # a voice picked for this film: another one is another film. A film narrated in
@@ -2610,13 +2770,12 @@ class EpisodeDesk:
         blocked = self._render_blocked(rows, kept)
         if blocked:
             raise ValueError(blocked)
-        signature = self._film_sig(episode, full, rows, kept)
+        look = self._look(episode)
+        signature = self._film_sig(episode, full, rows, kept, look)
         pictures = {
             p["unit"]: p["html"] for p in rows if p["html"] and p["status"] in ("made", "go")
         }
-        files = film.project(
-            full, clock, found, pictures, takes=takes, voice=voice, look=self._look(episode)
-        )
+        files = film.project(full, clock, found, pictures, takes=takes, voice=voice, look=look)
         computer.run(f"rm -rf {folder} && mkdir -p {folder}/out", timeout=120)
         computer.put([(f"{folder}/{path}", text.encode()) for path, text in files.items()] + media)
         # Each picture was held to the checks when it was posed; the page around them is code's.
@@ -3009,6 +3168,7 @@ class EpisodeDesk:
             }
         return {
             "status": have["status"],
+            "generation": have.get("generation") or None,
             # what it was built as (empty for one made before levels were kept), by whom, and
             # a rich one's motion plan
             "level": have["level"],
@@ -3051,7 +3211,15 @@ def _outdated(have: Row, unit: Row) -> bool:
     if have["status"] not in ("made", "go"):
         return False
     built_as = str(have["level"] or "")
-    return not units.same(str(have["sig"]), unit) or (bool(built_as) and built_as != unit["level"])
+    previous = have.get("generation") or {}
+    if previous.get("catalog_version", catalog.CATALOG_VERSION) != catalog.CATALOG_VERSION:
+        return True
+    theme = previous.get("theme_sig")
+    return (
+        not units.same(str(have["sig"]), unit)
+        or (bool(built_as) and built_as != unit["level"])
+        or bool(theme and theme != unit.get("theme_sig"))
+    )
 
 
 def _said(lines: Sequence[Row]) -> str:

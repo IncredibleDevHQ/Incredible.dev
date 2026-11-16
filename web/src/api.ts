@@ -227,7 +227,12 @@ export type Level = "simple" | "rich";
 export type WriterId = HarnessId | "builtin" | "demo";
 export type Box = [number, number, number, number];
 export type LayoutSpot = { person: Box | null; picture: Box | null; person_radius: number; picture_radius: number; glass: boolean; zoom: number };
+export type PictureGeneration = {provider: string; model: string; effort: string};
+export type PicturePick = { level?: Level; builder?: WriterId | null; component?: string | null; variant?: string | null; direction?: string; model?: string; effort?: string };
 export type EpisodeOptions = {
+  components: Record<string,{purpose:string; layouts:string[]}>;
+  picture_writers: {id:WriterId; title:string; ready:boolean; provider:string}[];
+  generation_models: Record<string, {id:string; name:string; efforts:string[]}[]>;
   writers: { id: WriterId; title: string; ready: boolean; local: boolean }[];
   // A look, with its layouts and who has the frame in each: one picker covers both.
   themes: { id: string; name: string; presenter: "on" | "off"; stage: string; kit: { layout: string; presence: Presence }[] }[];
@@ -297,6 +302,10 @@ export type PictureStatus = "none" | "queued" | "making" | "posing" | "go" | "ma
 export type MotionShot = { frame: string; shot: string; opens_on: string; hero: string; others: string; still: string };
 export type Motion = { device: string; world: string; shots: MotionShot[] };
 export type EpisodeUnit = {
+  visual: {component:string; suggested:string; variant_pick:string | null; variant:string; direction:string; automatic:boolean; options:Record<string,string[]>};
+  generation: PictureGeneration;
+  builder_pick: WriterId | null;
+  model_pick: {model:string; effort:string};
   id: string;
   chapter: string;
   kind: "picture" | "undesigned";
@@ -318,6 +327,7 @@ export type EpisodeUnit = {
   // it happens: its newest steps and notes, as the plan's trail has the writer's.
   picture: {
     status: PictureStatus;
+    generation?: PictureGeneration | null;
     level: Level | "";
     builder: string;
     motion: Motion | null;
@@ -435,7 +445,7 @@ export type EpisodeChoices = {
   all?: EpisodePick;
   clear?: string[];
   // A picture's level, and who builds it (null gives it back to its chapter's agent).
-  units?: Record<string, { level?: Level; builder?: WriterId | null }>;
+  units?: Record<string, PicturePick>;
   // Who builds a chapter's pictures, by chapter (null gives them back to the film's writer).
   builders?: Record<string, WriterId | null>;
 };

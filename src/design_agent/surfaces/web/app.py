@@ -244,6 +244,12 @@ class UnitPickIn(BaseModel):
     level: str | None = Field(default=None, pattern=r"^(simple|rich)$")
     builder: str | None = Field(default=None, pattern=r"^(claude|codex|kimi|builtin|demo|)$")
 
+    component: str | None = Field(default=None, max_length=40)
+    variant: str | None = Field(default=None, max_length=40)
+    direction: str | None = Field(default=None, max_length=1600)
+    model: str | None = Field(default=None, max_length=100)
+    effort: str | None = Field(default=None, max_length=16)
+
 
 class PicturesIn(BaseModel):
     """Which pictures to make: the ones named, a chapter's, or with neither the ones that

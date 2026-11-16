@@ -147,6 +147,8 @@ def command(
     fork: bool = False,
     guide: str = GUIDE,
     writes: bool = False,
+    model: str = "",
+    effort: str = "",
 ) -> tuple[list[str], str | None]:
     """The CLI's arguments for one run, and what goes in on stdin (so a prompt that starts with a
     dash is never read as an option). With `fork`, the run continues a copy of `session` under a
@@ -155,6 +157,10 @@ def command(
     writing profile."""
     if harness.id == "claude":
         argv = [binary, "-p", "--output-format", "stream-json", "--verbose"]
+        if model:
+            argv += ["--model", model]
+        if effort:
+            argv += ["--effort", effort]
         if writes:
             argv += ["--permission-mode", "acceptEdits", "--tools", CLAUDE_WRITER_TOOLS]
         else:
@@ -164,12 +170,16 @@ def command(
             argv += ["--resume", session] + (["--fork-session"] if fork else [])
         return argv, prompt
     if harness.id == "codex":
+        selected = (["--model", model] if model else []) + (
+            ["-c", f'model_reasoning_effort="{effort}"'] if effort else []
+        )
         sandbox = "workspace-write" if writes else "read-only"
         if session:
             return [
                 binary,
                 "exec",
                 "fork" if fork else "resume",
+                *selected,
                 "--json",
                 "--skip-git-repo-check",
                 "-c",
@@ -180,6 +190,7 @@ def command(
         return [
             binary,
             "exec",
+            *selected,
             "--json",
             "--sandbox",
             sandbox,
@@ -209,6 +220,9 @@ async def run(
     timeout: float = RUN_SECONDS,
     guide: str = GUIDE,
     writes: bool = False,
+    model: str = "",
+    effort: str = "",
+    report_model: Callable[[str, str], None] | None = None,
 ) -> AsyncGenerator[Event, None]:
     """One run: the CLI in the repository (or, for a run that writes, in its own folder), its
     stream read as it comes. Closing the iterator early (a stop) ends the CLI and anything it
@@ -229,6 +243,8 @@ async def run(
         fork=fork,
         guide=guide,
         writes=writes,
+        model=model,
+        effort=effort,
     )
     process = await asyncio.create_subprocess_exec(
         *argv,
@@ -257,6 +273,25 @@ async def run(
                     continue
                 if not line:
                     break
+                if report_model:
+                    with contextlib.suppress(ValueError):
+                        record = json.loads(line)
+                        if isinstance(record, dict) and record.get("type") in (
+                            "system",
+                            "turn.started",
+                            "session_meta",
+                        ):
+                            metadata = record.get("payload", record)
+                            if isinstance(metadata, dict) and isinstance(
+                                metadata.get("model"), str
+                            ):
+                                used_effort = metadata.get("reasoning_effort") or metadata.get(
+                                    "effort"
+                                )
+                                report_model(
+                                    metadata["model"][:100],
+                                    used_effort[:16] if isinstance(used_effort, str) else "",
+                                )
                 for event in parse(harness_id, line, repo):
                     yield event
             code = await process.wait()

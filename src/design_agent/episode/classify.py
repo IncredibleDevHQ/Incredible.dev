@@ -18,12 +18,13 @@ The script prints what the writer has to look at.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from design_agent.episode import layouts
+from design_agent.episode import catalog, layouts
 from design_agent.episode import plan as planio
 from design_agent.episode import questions as Q
 from design_agent.episode.classifier import Ask, ClassifierError
@@ -432,8 +433,48 @@ def stage_design(plan: Row, out: list[str], fresh: bool, ask: Ask) -> None:
     jobs: list[tuple[str, Any, Row]] = []
     order: list[tuple[Row, Row | None]] = []
     prev: Row | None = None
+    scene_frames: dict[str, list[Row]] = {}
+    current: list[Row] = []
+    for _, _, frame in frames_of(plan):
+        if not frame.get("hold"):
+            current = []
+            scene_frames[frame["id"]] = current
+        current.append(frame)
+    scene_sigs: dict[str, str] = {}
     for _ch, _b, f in frames_of(plan):
         order.append((f, prev))
+        scene = scene_frames.get(f["id"], [])
+        component_q: Row = {}
+        component_state: Row = {}
+        if (
+            scene
+            and f.get("presence") != "person"
+            and f.get("shows")
+            and not f.get("_component_picked")
+        ):
+            objects = [
+                {key: value for key, value in obj.items() if key not in ("p", "type")}
+                for frame in scene
+                for obj in frame.get("objects", [])
+            ]
+            component_state = {
+                "scene_lines": [frame.get("vo", "") for frame in scene],
+                "component_objects": objects,
+            }
+            sig = planio.digest(
+                catalog.CATALOG_VERSION, f.get("shows"), json.dumps(component_state, sort_keys=True)
+            )
+            scene_sigs[f["id"]] = sig
+            if (
+                fresh
+                or not f.get("_designed")
+                or f.get("component_sig")
+                and f["component_sig"] != sig
+            ):
+                component_q["component"] = Q.choice(
+                    "Which component best explains this scene?",
+                    {key: catalog.COMPONENTS[key].purpose for key in catalog.available(objects)},
+                )
         if fresh or not f.get("_designed"):
             qs = {}
             state = {
@@ -442,6 +483,8 @@ def stage_design(plan: Row, out: list[str], fresh: bool, ask: Ask) -> None:
             }
             shows_own = f.get("presence") != "person" and f.get("shows")
             if shows_own and not f.get("hold"):
+                qs.update(component_q)
+                state.update(component_state)
                 qs["picture"] = Q.choice(
                     "What kind of picture fills this frame? Judge from on_screen.",
                     Q.options(
@@ -498,8 +541,11 @@ def stage_design(plan: Row, out: list[str], fresh: bool, ask: Ask) -> None:
                     f"What kind of move is cue {i}? Judge from what_happens.", Q.options("moves")
                 )
             jobs.append((f["id"], state, qs))
+        elif component_q:
+            jobs.append((f["id"], {"on_screen": f["shows"], **component_state}, component_q))
         prev = f
     answers = ask_many([j for j in jobs if j[2]], ask)
+    asked_ids = {job[0] for job in jobs}
     moves: dict[str, int] = {}
     unsure: list[str] = []
     for f, prev in order:
@@ -507,8 +553,7 @@ def stage_design(plan: Row, out: list[str], fresh: bool, ask: Ask) -> None:
         if a is not None and "error" in a:
             out.append(f"{f['id']}: classifier error: {a['error']}")
             continue
-        asked = any(j[0] == f["id"] for j in jobs)
-        if asked:
+        if f["id"] in asked_ids:
             a = a or {}
             if "picture" in a:
                 f["picture"], f["picture_p"] = (
@@ -516,6 +561,9 @@ def stage_design(plan: Row, out: list[str], fresh: bool, ask: Ask) -> None:
                     round(a["picture"]["confidence"], 2),
                 )
                 f["arrangement"] = a["arrangement"]["choice"]
+            if (component := a.get("component", {}).get("choice")) in catalog.COMPONENTS:
+                f["component"] = component
+                f["component_sig"] = scene_sigs[f["id"]]
             settled = follows(prev, f)
             if settled is not None:
                 f["relation"], f["transition"] = settled

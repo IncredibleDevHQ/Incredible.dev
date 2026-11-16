@@ -133,3 +133,12 @@ A held frame and a person frame need no `shows` and no `focal`.
 ## What a person may change, and what follows
 
 Every frame keeps `options`: the theme's layouts ranked for it, for a person to pick from.
+
+### Data for visual components
+
+Put structured facts on the objects they describe so the component classifier and builder
+can reuse them without a separate model call. Keep the visible label in `words`. For a chart
+point give its numeric `value`, common measurement `unit`, and optional `series`. A sequence
+message names its participants in `from` and `to`. A directed edge uses the same fields;
+a child node may name its parent's ID in `parent`, and a step its lane in `owner`. Only
+supply measurements, relationships, and message directions supported by the source.

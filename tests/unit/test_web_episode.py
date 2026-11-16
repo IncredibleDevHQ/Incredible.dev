@@ -2609,3 +2609,102 @@ async def test_an_episode_wears_its_channels_brand(house: AgentHost) -> None:
     house.settings = house.settings.model_copy(update={"brand_path": ROOT / "nowhere"})
     plain = house.episodes._look(house.store.episode(episode_id))  # type: ignore[arg-type]
     assert plain == picture.Look()
+
+
+async def test_picture_generation_settings_survive_build_and_validate_before_save(
+    house: AgentHost,
+) -> None:
+    eid = await planned(house)
+    desk = house.episodes
+    unit = desk.view(eid)["units"][0]
+    key = unit["id"]
+
+    def pick(**fields: Any) -> Any:
+        return desk.choose(eid, by="you", change={"units": {key: fields}})["units"][0]
+
+    listed = pick(component="list", variant="horizontal", direction="Reveal the items in order")
+    assert listed["visual"]["variant"] == "horizontal"
+    assert listed["visual"]["variant_pick"] == "horizontal"
+    assert listed["builder_pick"] is None
+    assert not listed["picture"].get("generation")
+    with pytest.raises(ValueError):
+        pick(component="list", variant="swimlanes")
+    with pytest.raises(ValueError):
+        pick(model="unavailable-model")
+    assert desk.view(eid)["units"][0]["visual"] == listed["visual"]
+    with pytest.raises(ValueError, match="live provider"):
+        await desk._build(eid, key)
+    pick(direction="")
+    desk.approve(eid, by="you")
+    await settle(lambda: not desk._busy(eid))
+    made = desk.view(eid)["units"][0]
+    assert made["picture"]["generation"]["provider"] == "Scripted"
+    assert made["picture"]["generation"]["model"] == "demo"
+    assert 'data-variant="horizontal"' in house.store.picture(eid, key)["html"]
+    changed = pick(component="list", variant="vertical")
+    assert changed["picture"]["stale"]
+    assert changed["picture"]["generation"] == made["picture"]["generation"]
+
+
+async def test_catalog_choices_can_be_undone_without_mutating_other_units(house: AgentHost) -> None:
+    ep = await planned(house)
+    desk = house.episodes
+    first = desk.view(ep)["units"][0]
+    desk.choose(
+        ep, by="you", change={"units": {first["id"]: {"component": "list", "variant": "grid"}}}
+    )
+    assert desk.undo(ep, by="you")["units"][0]["visual"] == first["visual"]
+    assert desk.redo(ep, by="you")["units"][0]["visual"]["variant"] == "grid"
+
+
+def test_generation_overrides_are_passed_to_new_and_resumed_local_turns(tmp_path: Path) -> None:
+    from design_agent.surfaces.web import research
+
+    for harness, model, effort in (
+        ("codex", "gpt-6.1-sol", "medium"),
+        ("claude", "claude-sonnet-5-5", "high"),
+    ):
+        for session in ("", "previous"):
+            args, _ = research.command(
+                research.HARNESSES[harness],
+                harness,
+                repo=tmp_path,
+                prompt="draw",
+                session=session,
+                profile=tmp_path / "agent.md",
+                writes=True,
+                model=model,
+                effort=effort,
+            )
+            assert args[args.index("--model") + 1] == model
+            assert (
+                f'model_reasoning_effort="{effort}"' in args
+                if harness == "codex"
+                else args[args.index("--effort") + 1] == effort
+            )
+
+
+async def test_builtin_picture_model_is_scoped_to_one_turn(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    house.settings = house.settings.model_copy(
+        update={"model": "openai:gpt-6.1-sol", "model_effort": "low"}
+    )
+    thread = house.episodes.view(await planned(house))["thread_id"]
+    runtime = house.runtime
+    assert runtime is not None
+    ask = runtime.ask
+    seen: list[Any] = []
+
+    async def record(text: str, *, model_settings: Settings | None = None, **kw: Any) -> Any:
+        seen.append((model_settings.model, model_settings.model_effort) if model_settings else None)
+        return await ask(text, **kw)
+
+    monkeypatch.setattr(runtime, "ask", record)
+    for scoped in (("gpt-6.1-sol", "medium"), None):
+        answer, failure = await house.told(
+            thread, by="you", text="Draw this picture", picture_model=scoped
+        )
+        assert answer and not failure
+    assert seen == [("openai:gpt-6.1-sol", "medium"), None]
+    assert house.settings.model_effort == "low"

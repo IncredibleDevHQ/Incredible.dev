@@ -163,6 +163,16 @@ class LocalWorker:
         self.runner = runner
         self.profiles = data_dir / "episodes" / ".profiles"
 
+    model = ""
+    effort = ""
+
+    reported_model = ""
+    reported_effort = ""
+
+    def _report_model(self, model: str, effort: str) -> None:
+        self.reported_model = model
+        self.reported_effort = effort
+
     def folder(self, episode: Row) -> Path:
         return self.root / str(episode["id"])
 
@@ -235,6 +245,12 @@ class LocalWorker:
                 timeout=TURN_SECONDS,
                 guide=GUIDE,
                 writes=True,
+                **({"report_model": self._report_model} if self.runner is research.run else {}),
+                **(
+                    {"model": self.model, "effort": self.effort}
+                    if self.model or self.effort
+                    else {}
+                ),
             )
             async with contextlib.aclosing(stream):
                 async for event in stream:
@@ -314,6 +330,8 @@ class LocalWorker:
 class BuiltinWorker:
     """The engine's own agent, on the episode's thread and that thread's computer."""
 
+    model = ""
+    effort = ""
     id = BUILTIN
     title = "The built-in agent"
 
@@ -360,7 +378,15 @@ class BuiltinWorker:
         answer = failure = ""
         try:
             answer, failure = await self.host.told(
-                thread_id, by=str(episode["started_by"]), text=prompt, on_step=step
+                thread_id,
+                by=str(episode["started_by"]),
+                text=prompt,
+                on_step=step,
+                **(
+                    {"picture_model": (self.model, self.effort)}
+                    if self.model or self.effort
+                    else {}
+                ),
             )
         except asyncio.CancelledError:
             stopped = True

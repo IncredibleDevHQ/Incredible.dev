@@ -167,6 +167,7 @@ class AgentHost:
         #: How links people bring are reached (tests swap in their own).
         self.link_resolver = system_resolver
         self.link_transport: Any = None
+        self._picture_models: dict[str, Settings] = {}
         self._turns: dict[str, asyncio.Task[None]] = {}
         self._followups: dict[str, list[FollowUp]] = {}
         self._stops: set[str] = set()
@@ -465,7 +466,21 @@ class AgentHost:
         self._open_turn(thread_id)
         try:
             text = await self._compose(thread_id, inputs)
-            added = await runtime.ask(text, thread_id=thread_id, configurable={"surface": "web"})
+            overrides = [
+                self._picture_models[i.message_id]
+                for i in inputs
+                if i.message_id in self._picture_models
+            ]
+            if overrides and len(inputs) != 1:
+                raise ValueError(
+                    "Start this picture when the current conversation turn has finished."
+                )
+            added = await runtime.ask(
+                text,
+                thread_id=thread_id,
+                configurable={"surface": "web"},
+                **({"model_settings": overrides[0]} if overrides else {}),
+            )
         except asyncio.CancelledError:
             raise
         except Exception as error:
@@ -750,7 +765,13 @@ class AgentHost:
             listener(title)
 
     async def told(
-        self, thread_id: str, *, by: str, text: str, on_step: Callable[[str], None] | None = None
+        self,
+        thread_id: str,
+        *,
+        by: str,
+        text: str,
+        on_step: Callable[[str], None] | None = None,
+        picture_model: tuple[str, str] | None = None,
     ) -> tuple[str, str]:
         """A turn another part of the house asks of the agent on a task's thread (an episode's
         writer on the engine): posted in the thread like any message, so the thread holds the
@@ -758,6 +779,15 @@ class AgentHost:
         thread = self.store.thread(thread_id)
         if thread is None:
             raise KeyError(thread_id)
+        if (
+            picture_model
+            and (running := self._turns.get(thread_id)) is not None
+            and not running.done()
+        ):
+            raise ValueError(
+                "The current thread turn must finish before starting this picture with a different model."
+            )
+        message_id = ""
         if on_step is not None:
             self._step_listeners[thread_id] = on_step
         try:
@@ -768,9 +798,15 @@ class AgentHost:
                 to_agent=True,
                 thread_id=thread_id,
             )
+            message_id = str(asked["id"])
+            if picture_model:
+                from design_agent.surfaces.web.episode_models import settings_for
+
+                self._picture_models[message_id] = settings_for(self.settings, *picture_model)
             while (turn := self._turns.get(thread_id)) is not None and not turn.done():
                 await asyncio.wait({turn})
         finally:
+            self._picture_models.pop(message_id, None)
             self._step_listeners.pop(thread_id, None)
         after = [m for m in self.store.messages(thread_id) if m["created_at"] > asked["created_at"]]
         reply = next((str(m["text"]) for m in reversed(after) if m["kind"] == "agent"), "")

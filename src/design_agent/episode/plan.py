@@ -31,6 +31,8 @@ FRAME_KEYS = (
     "by",
     "picture",
     "picture_p",
+    "component",
+    "component_sig",
     "arrangement",
     "relation",
     "transition",
@@ -283,7 +285,18 @@ def carried(labels: Row, before: Row, after: Row, *, frames_only: bool = False) 
                 if had.get("_designed") and not f.get("_designed"):
                     f["_designed"] = True
                     f.update(
-                        take(had, ("picture", "picture_p", "arrangement", "relation", "transition"))
+                        take(
+                            had,
+                            (
+                                "picture",
+                                "picture_p",
+                                "component",
+                                "component_sig",
+                                "arrangement",
+                                "relation",
+                                "transition",
+                            ),
+                        )
                     )
                     by_id = {o.get("id"): o for o in had.get("objects", [])}
                     for o in f.get("objects", []):
@@ -358,7 +371,20 @@ def _label_frame(f: Row, b: Row, labels: Row) -> None:
     if lab.get("hd") != design_hash(f):
         return
     f["_designed"] = True
-    f.update(take(lab, ("picture", "picture_p", "arrangement", "relation", "transition")))
+    f.update(
+        take(
+            lab,
+            (
+                "picture",
+                "picture_p",
+                "component",
+                "component_sig",
+                "arrangement",
+                "relation",
+                "transition",
+            ),
+        )
+    )
     for o in f.get("objects", []):
         ol = labels.get("objects", {}).get(f["id"] + "/" + str(o.get("id", "")))
         if ol and ol.get("h") == digest(o.get("what")):

@@ -61,6 +61,16 @@ One HyperFrames sub-composition, complete in itself:
   first line. Use it only to hold or to time something to a whole line.
 - The clock in your file is replaced before every render. Leave the block where it is.
 
+## Component and custom direction
+
+The picture brief includes `visual.component`, `variant`, `motion` and the person's
+`direction`. Start from the adjacent themed starter HTML. Use the chosen component and
+layout, adapting its objects and animation to the actual teaching point. For a custom
+request use the elements in the starter wherever they fit. Draw additional shapes locally
+with HTML and inline SVG and animate them on the same GSAP clock. Treat any description
+as creative direction. Keep every label, quantity and relationship grounded in the source.
+Apply the supplied palette and font roles to every element, including captions and charts.
+
 ## What makes it a good picture
 
 - **It is finished at the end of every line.** Code takes a still just before each line ends.

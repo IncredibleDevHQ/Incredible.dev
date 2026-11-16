@@ -25,6 +25,7 @@ import { blockName, KindIcon, type Block } from "./Blocks";
 import { Changed } from "./Diff";
 import { WRITERS } from "./Film";
 import { BUILD, PictureTrail } from "./Work";
+import { GenerationSettings } from "./GenerationSettings";
 import { KindArt } from "./PictureArt";
 
 // The agents that are ready on this computer, as a select lists them: each by its mark and name.
@@ -188,6 +189,7 @@ export function PictureCard({
             )}
             {tools}
           </header>
+          {designed && <GenerationSettings view={view} unit={unit} run={run} busy={busy || state === "making"} />}
           {unit.shows && <p className="ep-block-shows">{unit.shows}</p>}
           {toLevel ? (
             <div

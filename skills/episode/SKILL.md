@@ -98,6 +98,8 @@ follow `briefs/motion.md`. No HTML in that turn.
 **picture.** Build one picture of the plan as a file. The turn names it; follow
 `briefs/picture.md`. A rich picture's brief carries the motion plan it is built to.
 
+The Studio can pick a component, layout, custom visual direction and builder settings for each picture. A live builder receives the themed component starter and the selected direction with the brief.
+
 A film export waits for requested picture builds and needs a built picture or a kept take.
 If the studio marks a render outdated, render again to include the changed material.
 

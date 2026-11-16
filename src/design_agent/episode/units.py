@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from design_agent.episode import geometry
+from design_agent.episode import catalog, geometry
 from design_agent.episode.plan import digest, picture_of
 
 Row = dict[str, Any]
@@ -74,6 +74,15 @@ def units(full: Row, picks: Row | None = None, *, level: str = SIMPLE) -> list[R
         # whose the level is: the person's pick for this picture, or the film's
         unit["level_by"] = "person" if picked in LEVELS else "film"
         built_from: Row = {"theme": theme, "canvas": unit["canvas"], "layout": unit["layout"]}
+        pick = chosen.get(unit["id"]) or {}
+        unit["visual"] = catalog.select(first, frames, pick, unit["picture"], unit["canvas"][0])
+        if first.get("component") or any(
+            pick.get(k) for k in ("component", "variant", "direction", "model", "effort")
+        ):
+            built_from["visual"] = {
+                k: unit["visual"][k] for k in ("component", "variant", "direction")
+            }
+            built_from["generation"] = [pick.get(k) for k in ("builder", "model", "effort")]
         if retyped:  # only a pick is part of it, so a picture made before picks existed stands
             built_from["picture"] = unit["picture"]
         # What a picture is drawn from holds no spoken word: the words, and the word each step
@@ -110,7 +119,24 @@ def _drawn_from(f: Row) -> Row:
         "shows": f.get("shows", ""),
         "focal": f.get("focal", ""),
         "objects": [
-            {k: o.get(k) for k in ("id", "what", "words", "state", "type")}
+            {
+                k: o.get(k)
+                for k in (
+                    "id",
+                    "what",
+                    "words",
+                    "state",
+                    "type",
+                    "value",
+                    "unit",
+                    "series",
+                    "from",
+                    "to",
+                    "owner",
+                    "parent",
+                )
+                if k in ("id", "what", "words", "state", "type") or k in o
+            }
             for o in f.get("objects", [])
         ],
         "cues": [{k: c.get(k) for k in ("object", "does", "move")} for c in f.get("cues", [])],
@@ -137,7 +163,24 @@ def _built_from(f: Row) -> Row:
         "shows": f.get("shows", ""),
         "focal": f.get("focal", ""),
         "objects": [
-            {k: o.get(k) for k in ("id", "what", "words", "state", "type")}
+            {
+                k: o.get(k)
+                for k in (
+                    "id",
+                    "what",
+                    "words",
+                    "state",
+                    "type",
+                    "value",
+                    "unit",
+                    "series",
+                    "from",
+                    "to",
+                    "owner",
+                    "parent",
+                )
+                if k in ("id", "what", "words", "state", "type") or k in o
+            }
             for o in f.get("objects", [])
         ],
         "cues": cues,

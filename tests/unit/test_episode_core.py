@@ -783,3 +783,76 @@ def test_a_film_wears_the_brands_colours_and_type(full: Row) -> None:
     page = film.project(full, timeline.schedule(full), [unit], {unit["id"]: html}, look=look)
     assert "font-family: 'Geist'; src: local('Geist')" in page["index.html"]
     assert "background: #f6f1e7" in page["index.html"]
+
+
+def test_catalog_choices_bind_to_brand_and_cue_clock(full: Row) -> None:
+    from design_agent.episode import catalog
+
+    assert len(catalog.COMPONENTS) == 13
+    unit = units.units(full)[0]
+    look = picture.Look(palette={**picture.PALETTE, "accent": "#ff0077"}, text="Inter")
+    for variant in ("horizontal", "vertical", "grid"):
+        chosen = units.units(
+            full, {"units": {unit["id"]: {"component": "list", "variant": variant}}}
+        )[0]
+        brief = picture.brief(chosen, full, look=look)
+        html = sketch.built(brief)
+        assert f'data-variant="{variant}"' in html
+        assert "#ff0077" in html and picture.faults(html, chosen, full, look) == []
+
+
+def test_component_eligibility_uses_only_grounded_data() -> None:
+    from design_agent.episode import catalog
+
+    invalid = [
+        {"words": "a", "value": False, "unit": "ms"},
+        {"words": "b", "value": float("nan"), "unit": "ms"},
+    ]
+    assert "bar-chart" not in catalog.available(invalid)
+    assert "sequence-diagram" not in catalog.available([])
+    assert "sequence-diagram" in catalog.available([{"from": "Buyer", "to": "Shop"}])
+    data = [{"words": "a", "value": 0, "unit": "ms"}, {"words": "b", "value": 20, "unit": "ms"}]
+    assert catalog.available(data)["bar-chart"] == ["vertical", "horizontal"]
+    assert "bar-chart" not in catalog.available([data[0], {**data[1], "unit": "bytes"}])
+
+
+def test_catalog_scene_is_redressed_for_the_export_theme(full: Row) -> None:
+    unit = units.units(full)[0]
+    original = picture.brief(unit, full)
+    html = sketch.built(original)
+    look = picture.Look(palette={**picture.PALETTE, "accent": "#eca100"}, text="Geist")
+    rendered = picture.dressed(html, {"seconds": 3}, look)
+    start = rendered.index("data-episode-theme>") + len("data-episode-theme>")
+    end = rendered.index("</script>", start)
+    tokens = json.loads(rendered[start:end])
+    assert tokens["palette"]["accent"] == "#eca100" and tokens["fonts"]["text"] == "Geist"
+
+
+def test_component_reader_reuses_a_scene_until_its_held_data_changes() -> None:
+    first = {"id": "a", "presence": "content", "shows": "Two measurements", "vo": "First"}
+    held = {
+        "id": "b",
+        "hold": True,
+        "presence": "content",
+        "vo": "Second",
+        "objects": [{"id": "n", "what": "value", "value": 1}],
+    }
+    plan = {"chapters": [{"id": "ch", "beats": [{"id": "b", "frames": [first, held]}]}]}
+    questions: list[set[str]] = []
+
+    def read(state: Any, qs: Row) -> Row:
+        questions.append(set(qs))
+        return first_option(state, qs)
+
+    classify.stage_design(plan, [], False, read)
+    assert any({"picture", "component"} <= group for group in questions)
+    questions.clear()
+    classify.stage_design(plan, [], False, read)
+    assert not questions
+    held["objects"][0]["value"] = 7
+    classify.stage_design(plan, [], False, read)
+    assert questions == [{"component"}]
+    questions.clear()
+    first["_component_picked"] = True
+    classify.stage_design(plan, [], True, read)
+    assert all("component" not in group for group in questions)
