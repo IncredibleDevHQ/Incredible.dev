@@ -263,9 +263,13 @@ class EpisodeDesk:
         picture_writers = list(writers)
         if self.demo:
             picture_writers.extend(
-                {"id": h.id, "title": h.title, "local": True, "ready": True}
+                {
+                    "id": h.id,
+                    "title": h.title,
+                    "local": True,
+                    "ready": self.host.research.ready(h.id),
+                }
                 for h in research.HARNESSES.values()
-                if self.host.research.ready(h.id)
             )
         for w in picture_writers:
             w["provider"] = episode_models.generation(self.host.settings, w["id"], {})["provider"]
@@ -614,6 +618,12 @@ class EpisodeDesk:
         if not any(f.get("presence") for _, _, f in plans.frames_of(merged)):
             return None
         full = derive.full(merged)
+        for _, _, frame in plans.frames_of(full):
+            pick = frame.get("picked") or {}
+            if pick.get("window_size") or pick.get("window_shape"):
+                spot = geometry.for_frame(frame)
+                if spot.person:
+                    frame["window"] = {"box": list(spot.person), "radius": spot.person_radius}
         full["title"] = episode["title"]
         return full
 
@@ -2558,6 +2568,11 @@ class EpisodeDesk:
         self._settle(episode_id)
         return self.view(episode_id)
 
+    def _speech_identity(self, episode: Row) -> str:
+        if episode["settings"].get("voice") == "local":
+            return f"local:{local_speech.engine()}:en:165:v1"
+        return self._voice_id(episode)
+
     async def _narrate(self, episode_id: str) -> None:
         """Speak every line no take covers, when the film is narrated. A line is spoken once:
         it is spoken again only when its words change."""
@@ -2568,11 +2583,7 @@ class EpisodeDesk:
             return
         if mode == "narrator" and not self._speaks():
             raise ValueError("Narration needs ELEVENLABS_API_KEY.")
-        voice_id = (
-            f"local:{local_speech.engine()}:en:165:v1"
-            if mode == "local"
-            else self._voice_id(episode)
-        )
+        voice_id = self._speech_identity(episode)
         if not voice_id:
             raise ValueError("Narration needs a voice: pick one under Voice, or clone yours.")
         from design_agent.tools.media import MediaKeys, Spoken, speak
@@ -2659,7 +2670,14 @@ class EpisodeDesk:
             heard = self._listed = (time.monotonic(), found)
         usual = str(self.host.settings.narrator_voice_id or "")
         rows = [
-            {"id": v.id, "name": v.name, "own": v.own, "usual": v.id == usual} for v in heard[1]
+            {
+                "id": v.id,
+                "name": v.name,
+                "own": v.own,
+                "usual": v.id == usual,
+                **({"preview": v.preview} if v.preview else {}),
+            }
+            for v in heard[1]
         ]
         if usual and not any(row["usual"] for row in rows):
             # a voice from ElevenLabs' library, used by its id without being kept in the account
@@ -3062,7 +3080,19 @@ class EpisodeDesk:
         pictures = {p["unit"]: p for p in self.store.pictures(episode_id)}
         said_now = {str(f["id"]): f for _, _, f in plans.frames_of(full or {})}
         kept = self._kept(episode_id)
-        clock = timeline.schedule(full, kept, self._voice(episode)) if full is not None else None
+        spoken = self._voice(episode)
+        clock = timeline.schedule(full, kept, spoken) if full is not None else None
+        if clock and spoken:
+            identity = self._speech_identity(episode)
+            for line in clock["lines"]:
+                clip = spoken.get(line["frame"], {})
+                text = said_now[line["frame"]].get("vo") or ""
+                if (
+                    line["source"]["kind"] == "voice"
+                    and clip.get("file")
+                    and clip.get("h") == plans.digest(text, identity)
+                ):
+                    line["audio_url"] = f"/api/files/{clip['file']}"
         film_state = {k: v for k, v in (episode["film"] or {}).items() if k != "voice"}
         picture_rows = list(pictures.values())
         film_state["blocked"] = self._render_blocked(picture_rows, kept)

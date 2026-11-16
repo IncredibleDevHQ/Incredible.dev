@@ -6,7 +6,7 @@
 // still or the take's frame arrives.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { EpisodeFrame, EpisodeTake, EpisodeUnit, EpisodeView } from "../../api";
-import { clockLine, spotOf } from "../../episode";
+import { clockLine, frameSpot } from "../../episode";
 
 const GROUND = "#f4f4f5";
 const PAPER = "#ffffff";
@@ -170,7 +170,7 @@ export function FrameCanvas({
 
     ctx.fillStyle = GROUND;
     ctx.fillRect(0, 0, W, H);
-    const spot = spotOf(view, frame.layout);
+    const spot = frameSpot(view, frame);
     const person = frame.presence !== "content" ? spot.person : null;
     const picture = frame.presence !== "person" ? spot.picture : null;
 
@@ -192,7 +192,7 @@ export function FrameCanvas({
       if (!person) return;
       const [x, y, w, h] = person;
       ctx.save();
-      rounded(ctx, x, y, w, h, Math.min(spot.person_radius ?? 0, 400));
+      rounded(ctx, x, y, w, h, spot.person_radius ?? 0);
       ctx.clip();
       ctx.fillStyle = WINDOW;
       ctx.fillRect(x, y, w, h);

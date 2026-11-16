@@ -82,6 +82,11 @@ export const takeOf = (view: EpisodeView, chapter: string): EpisodeTake | undefi
 export const clockLine = (view: EpisodeView, frame: string): EpisodeLine | undefined => view.clock?.lines.find((l) => l.frame === frame);
 export const spotOf = (view: EpisodeView, layout: string): LayoutSpot => view.options.geometry.layouts[layout] ?? view.options.geometry.layouts["graphic-on-ground"];
 
+export function frameSpot(view: EpisodeView, frame: EpisodeFrame): LayoutSpot {
+  const spot = spotOf(view, frame.layout);
+  return frame.window ? { ...spot, person: frame.window.box, person_radius: frame.window.radius } : spot;
+}
+
 // Where one picture stands: not asked for yet, on its way, its stills waiting for a go, made,
 // out of date, or stopped until someone asks again. Out of date is a picture made for the plan as
 // it was (another frame, kind or level), or a line given a picture that waits for the writer:
@@ -170,6 +175,6 @@ export function boxStyle(box: [number, number, number, number], frame: [number, 
     top: `${(y / frame[1]) * 100}%`,
     width: `${(w / frame[0]) * 100}%`,
     height: `${(h / frame[1]) * 100}%`,
-    borderRadius: `calc(${Math.min(radius, 400) / frame[0]} * 100cqw)`,
+    borderRadius: `calc(${Math.min(radius, w / 2, h / 2) / frame[0]} * 100cqw)`,
   };
 }

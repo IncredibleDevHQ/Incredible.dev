@@ -884,6 +884,14 @@ app's canvas, from a channel's material or a research frame's notes.
   the clone is made only after the person says the voice is theirs or its speaker agreed, and
   the thread records that they did. Cloning is the person's action in the studio and never a
   tool the model can call. The clone then narrates the episode; another voice is another film.
+- In a chapter, expanding the preview places the player above the script. Playback uses the
+  current export when available. For a changed film the editor plays the selected take or
+  the cached narration for that text and voice, with the draft picture on the same clock.
+  The player supports line seeking, volume and optional transcripts. The Picture panel
+  chooses the component and variant. Layout changes the size and shape of the presenter window
+  in the preview and the export. Picture cards open model settings from the provider name.
+- The ElevenLabs choice under Voice lists the account’s voices and offers available voice
+  samples. Configure `ELEVENLABS_API_KEY` on the Studio host and restart it to enable the choice.
 - **Local narration.** When the host has macOS speech or `espeak-ng`, Studio also offers a
   local English narrator. Lines without a kept take use synthesized speech. The film uses
   each recording's measured duration and estimates cue positions within that line.

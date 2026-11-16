@@ -27,7 +27,7 @@ and what the planner must redo.
 
 from __future__ import annotations
 
-from design_agent.episode import layouts
+from design_agent.episode import geometry, layouts
 from design_agent.episode import plan as planio
 from design_agent.episode import questions as Q
 from design_agent.episode.plan import Row, beats_of, frames_of
@@ -97,6 +97,12 @@ def refuse(new: Row) -> None:
     if new.get("all"):
         every.append(new["all"])
     for picks in every:
+        for key, allowed in (
+            ("window_size", geometry.WINDOW_SIZES),
+            ("window_shape", geometry.WINDOW_SHAPES),
+        ):
+            if picks.get(key) is not None and picks[key] not in allowed:
+                raise ValueError(f"Invalid presenter {key}.")
         if picks.get("picture") is not None and picks["picture"] not in PICTURES:
             raise ValueError(f"There is no picture type called {picks['picture']}.")
         if picks.get("transition") is not None and picks["transition"] not in TRANSITIONS:

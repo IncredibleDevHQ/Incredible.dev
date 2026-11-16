@@ -4,11 +4,7 @@
 // still, its draft clip while playing, or a sketch of what the plan says it shows.
 import { useEffect, useRef } from "react";
 import type { EpisodeFrame, EpisodeTake, EpisodeUnit, EpisodeView } from "../../api";
-import { boxStyle, clockLine, spotOf } from "../../episode";
-
-// What plays for a line: its take, its picture's draft, or (with neither) its words alone, read
-// at the plan's own pace.
-export type Playing = { from: number; to: number; of: "take" | "clip" | "words" } | null;
+import { boxStyle, clockLine, frameSpot, spotOf } from "../../episode";
 
 export function Stage({
   view,
@@ -16,23 +12,16 @@ export function Stage({
   unit,
   take,
   stream,
-  playing,
-  onEnded,
-  onTime,
-  small,
+  previewAt,
 }: {
   view: EpisodeView;
   frame: EpisodeFrame;
   unit?: EpisodeUnit;
   take?: EpisodeTake;
   stream?: MediaStream | null;
-  playing?: Playing;
-  onEnded?: () => void;
-  // where what plays has got to, in its file's seconds, so the words can keep pace with it
-  onTime?: (t: number) => void;
-  small?: boolean;
+  previewAt?: number;
 }) {
-  const spot = spotOf(view, frame.layout);
+  const spot = frameSpot(view, frame);
   const size = view.options.geometry.frame;
   const person = frame.presence !== "content" ? spot.person : null;
   const picture = frame.presence !== "person" ? spot.picture : null;
@@ -40,13 +29,12 @@ export function Stage({
   const clip = unit?.picture.clip;
   const line = clockLine(view, frame.id);
   const offset = line?.source.kind === "take" ? (line.source.offset ?? 0) : 0;
-  const showsClip = playing?.of === "clip" && clip;
   return (
-    <div className="ep-stage" data-small={small || undefined} aria-label="The frame for this line">
+    <div className="ep-stage" aria-label="The frame for this line">
       {picture && (
         <div className="ep-stage-pic" data-glass={spot.glass || undefined} style={boxStyle(picture, size, spot.picture_radius)}>
-          {showsClip ? (
-            <Reel src={clip.url} from={playing.from} to={playing.to} onEnded={onEnded} onTime={onTime} />
+          {previewAt !== undefined && clip ? (
+            <ScrubVideo src={clip.url} time={Math.max(0, frame.start - (unit?.start ?? frame.start)) + previewAt * frame.seconds / (line?.seconds || frame.seconds || 1)} />
           ) : still ? (
             <img src={still.url} alt={frame.shows ?? "The picture for this line"} />
           ) : (
@@ -58,18 +46,8 @@ export function Stage({
         <div className="ep-stage-person" style={boxStyle(person, size, spot.person_radius)}>
           {stream ? (
             <Live stream={stream} />
-          ) : take?.video ? (
-            <Reel
-              key={take.id}
-              src={take.video.url}
-              from={playing?.of === "take" ? playing.from : offset}
-              to={playing?.of === "take" ? playing.to : undefined}
-              paused={playing?.of !== "take"}
-              sound
-              zoom={spot.zoom}
-              onEnded={onEnded}
-              onTime={playing?.of === "take" ? onTime : undefined}
-            />
+          ) : previewAt !== undefined && take?.video ? (
+            <ScrubVideo src={take.video.url} time={offset + previewAt} zoom={spot.zoom} />
           ) : (
             <span className="ep-stand-in" aria-label="Where you will be">
               <i />
@@ -78,12 +56,20 @@ export function Stage({
           )}
         </div>
       )}
-      {/* A take with no picture of you (a voice-only film) still has to be heard when played. */}
-      {!person && playing?.of === "take" && take && (take.audio ?? take.video) && (
-        <Reel src={(take.audio ?? take.video)!.url} from={playing.from} to={playing.to} sound hidden onEnded={onEnded} onTime={onTime} />
-      )}
     </div>
   );
+}
+
+// A silent visual sampled against the narration or recorded audio clock.
+function ScrubVideo({ src, time, zoom = 1 }: { src: string; time: number; zoom?: number }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const sync = () => {
+    const video = ref.current;
+    if (video && video.readyState >= 1 && !video.seeking && Math.abs(video.currentTime - time) > 0.06)
+      video.currentTime = Math.min(time, video.duration || time);
+  };
+  useEffect(sync, [time, src]);
+  return <video ref={ref} src={src} muted playsInline preload="auto" onLoadedMetadata={sync} style={{transform: `scale(${zoom})`}} />;
 }
 
 // The camera as it is being recorded, mirrored the way a person expects to see themself.
@@ -93,73 +79,6 @@ function Live({ stream }: { stream: MediaStream }) {
     if (video.current) video.current.srcObject = stream;
   }, [stream]);
   return <video ref={video} className="ep-live" autoPlay muted playsInline />;
-}
-
-// A stretch of a file: held on its first frame, or played from `from` to `to`.
-function Reel({
-  src,
-  from,
-  to,
-  paused,
-  sound,
-  zoom,
-  hidden,
-  onEnded,
-  onTime,
-}: {
-  src: string;
-  from: number;
-  to?: number;
-  paused?: boolean;
-  sound?: boolean;
-  zoom?: number;
-  hidden?: boolean;
-  onEnded?: () => void;
-  onTime?: (t: number) => void;
-}) {
-  const video = useRef<HTMLVideoElement>(null);
-  // while it plays, where it is, every frame (the time updates come only a few times a second)
-  useEffect(() => {
-    const el = video.current;
-    if (!el || paused || !onTime) return;
-    let frame = 0;
-    const tick = () => {
-      onTime(el.currentTime);
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [paused, onTime]);
-  useEffect(() => {
-    const el = video.current;
-    if (!el) return;
-    const seek = () => {
-      el.currentTime = Math.max(0, from);
-      if (paused) el.pause();
-      else void el.play().catch(() => undefined);
-    };
-    if (el.readyState >= 1) seek();
-    else el.addEventListener("loadedmetadata", seek, { once: true });
-    return () => el.removeEventListener("loadedmetadata", seek);
-  }, [src, from, paused]);
-  return (
-    <video
-      ref={video}
-      src={src}
-      muted={!sound || paused}
-      playsInline
-      preload="auto"
-      hidden={hidden}
-      style={zoom && zoom !== 1 ? { transform: `scale(${zoom})` } : undefined}
-      onTimeUpdate={(e) => {
-        if (!paused) onTime?.(e.currentTarget.currentTime);
-        if (paused || to === undefined || e.currentTarget.currentTime < to) return;
-        e.currentTarget.pause();
-        onEnded?.();
-      }}
-      onEnded={() => !paused && onEnded?.()}
-    />
-  );
 }
 
 // Before a picture is built: what the plan says it shows, and the things it will hold.

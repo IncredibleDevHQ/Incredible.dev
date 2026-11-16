@@ -74,6 +74,9 @@ def units(full: Row, picks: Row | None = None, *, level: str = SIMPLE) -> list[R
         # whose the level is: the person's pick for this picture, or the film's
         unit["level_by"] = "person" if picked in LEVELS else "film"
         built_from: Row = {"theme": theme, "canvas": unit["canvas"], "layout": unit["layout"]}
+        if any(f.get("window") for f in frames):
+            clear = geometry.picture_clearance(frames, geometry.canvas(first.get("layout")))
+            unit["keep_clear"] = built_from["keep_clear"] = list(clear) if clear else None
         pick = chosen.get(unit["id"]) or {}
         unit["visual"] = catalog.select(first, frames, pick, unit["picture"], unit["canvas"][0])
         if edges := unit["visual"]["connections"]:

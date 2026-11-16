@@ -8,8 +8,6 @@
 import {
   ArrowLeft,
   ArrowRight,
-  Captions as CaptionsIcon,
-  CaptionsOff,
   ChevronLeft,
   ChevronRight,
   Circle,
@@ -17,14 +15,13 @@ import {
   Minimize2,
   Monitor,
   Moon,
-  Play,
   RotateCcw,
   Sparkles,
   Square,
   Sun,
   Upload,
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type EpisodeAsk, type EpisodeChapter, type EpisodeView, type WriterId } from "../../api";
 import { chapterName, clockLine, LAYOUTS, linesOf, mmss, pictureCount, takeOf, unitOf } from "../../episode";
 import { useHouse } from "../../store";
@@ -42,10 +39,10 @@ import { FilmPage, RenderStatus, WRITERS, type Open } from "./Film";
 import { Script, type ScriptHandle } from "./Script";
 import { agentOptions, Stills } from "./Picture";
 import { FILM, Slides } from "./Slides";
-import { Captions } from "./Captions";
+import { LinePlayer } from "./LinePlayer";
 import { FrameCanvas } from "./FrameCanvas";
 import { spansOf, Timeline } from "./Timeline";
-import { Stage, type Playing } from "./Stage";
+import { Stage } from "./Stage";
 import { ApplyChanges, FilmDownload, FilmTools } from "./Tools";
 import { WorkPill, WorkTrail } from "./Work";
 
@@ -299,13 +296,9 @@ function Chapter({
   const lines = useMemo(() => linesOf(chapter), [chapter]);
   const number = plan.chapters.indexOf(chapter) + 1;
   const [picked, setPicked] = useState(() => (opening && lines.some((l) => l.id === opening) ? opening : lines[0].id));
-  const [playing, setPlaying] = useState<Playing>(null);
-  // where what plays has got to, and whether the line's words are shown over the frame
-  const [heard, setHeard] = useState<number | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
   const [captions, setCaptions] = useCaptions();
-  // The frame, its choices and the recorder open in a pop-up over the page, as the Figma editor
-  // opens its preview. A take opens it, and it stays open after it, so the take can be seen at
-  // once; the carousel keeps it open from one chapter to the next.
+  // The editor expands above the script. Recording brings the same frame into a dialog.
   const [full, setFull] = useState(pop);
   // the rail's panel, kept as the pop-up moves between chapters
   const [panel, setPanelNow] = useState<Panel>(lastPanel);
@@ -337,6 +330,8 @@ function Chapter({
   const line = (recording && recorder.state !== "saving" ? said : undefined) ?? lines.find((l) => l.id === picked) ?? lines[0];
   const unit = unitOf(view, line.id);
   const at = lines.indexOf(line);
+  const scheduled = clockLine(view, line.id);
+  const playerKey = [line.id, view.film_state.stale, view.film_state.file?.id, view.settings.voice, unit?.picture.clip?.id, scheduled?.audio_url, scheduled?.source.take].join("/");
   const following = plan.chapters[number];
   const previous = number > 1 ? plan.chapters[number - 2] : undefined;
   // How long the take was planned to run: the chapter, or the one line said again.
@@ -376,7 +371,7 @@ function Chapter({
   }, [recorder.state]);
   const recordLine = (frame: string) => {
     arming.current = true;
-    setPlaying(null);
+    setProgress(null);
     setPicked(frame);
     setSolo(frame);
   };
@@ -399,86 +394,24 @@ function Chapter({
     return () => window.removeEventListener("keydown", onKey);
   }, [recorder]);
 
-  // A line plays its take once it has one, else its picture's draft, else its words alone at the
-  // plan's pace: so it can be heard through, with its words over the frame, before anything is
-  // recorded or drawn.
-  const play = () => {
-    setHeard(null);
-    const clock = clockLine(view, line.id);
-    if (take && clock?.source.kind === "take") {
-      const from = clock.source.offset ?? 0;
-      return setPlaying({ of: "take", from, to: from + clock.seconds });
-    }
-    if (unit?.picture.clip) {
-      const first = lines.find((l) => l.id === unit.frames[0]) ?? plan.chapters.flatMap(linesOf).find((l) => l.id === unit.frames[0]);
-      const from = Math.max(0, line.start - (first?.start ?? line.start));
-      return setPlaying({ of: "clip", from, to: from + line.seconds });
-    }
-    setPlaying({ of: "words", from: 0, to: Math.max(1, clock?.seconds || line.seconds || 3) });
-  };
-  // the words alone are timed here; a take or a draft says where it is as it plays
-  useEffect(() => {
-    if (playing?.of !== "words") return;
-    const began = performance.now();
-    const timer = window.setInterval(() => {
-      const t = (performance.now() - began) / 1000;
-      if (t >= playing.to) setPlaying(null);
-      else setHeard(t);
-    }, 50);
-    return () => window.clearInterval(timer);
-  }, [playing]);
-  useEffect(() => {
-    if (!playing) setHeard(null);
-  }, [playing]);
-  const progress = playing && heard !== null ? Math.min(1, Math.max(0, (heard - playing.from) / Math.max(0.1, playing.to - playing.from))) : null;
   const span = spansOf(view, chapter, lines).spans.find((x) => x.line.id === line.id);
   const playhead = span && progress !== null ? span.start + progress * span.seconds : null;
   const pick = (frame: string) => {
     if (frame === picked) return;
-    setPlaying(null);
+    setProgress(null);
     setPicked(frame);
   };
   const reword = (frame: string, text: string) => void run(() => api.editLine(view.id, frame, text));
 
   const fullRef = useRef<HTMLDivElement>(null);
   const peekRef = useRef<HTMLButtonElement>(null);
-  // The frame floats beside the line the caret is on, as the Figma editor's preview does: level
-  // with it while it is in sight, and held at the top or the bottom of the editor when it is not.
-  const scroller = useRef<HTMLDivElement>(null);
-  const floating = useRef<HTMLDivElement>(null);
-  const [floatTop, setFloatTop] = useState(16);
-  const place = useCallback(() => {
-    const box = scroller.current;
-    const card = floating.current;
-    if (!box || !card) return;
-    const current = box.querySelector<HTMLElement>(".ep-script .ep-line-card[data-current]");
-    const want = current ? current.getBoundingClientRect().top - box.getBoundingClientRect().top : 16;
-    const most = Math.max(16, box.clientHeight - card.offsetHeight - 16);
-    setFloatTop(Math.round(Math.min(Math.max(16, want), most)));
-  }, []);
-  useLayoutEffect(() => {
-    place();
-    // the script's own views mark the line a moment later
-    const t = window.setTimeout(place, 0);
-    return () => window.clearTimeout(t);
-  }, [place, line.id, view]);
-  useEffect(() => {
-    const box = scroller.current;
-    if (!box) return;
-    box.addEventListener("scroll", place, { passive: true });
-    window.addEventListener("resize", place);
-    return () => {
-      box.removeEventListener("scroll", place);
-      window.removeEventListener("resize", place);
-    };
-  }, [place]);
   const wasFull = useRef(false);
   const askAfter = useRef(false);
   useEffect(() => {
     if (recording) setFull(true);
   }, [recording]);
   useEffect(() => {
-    if (full) fullRef.current?.focus({ preventScroll: true });
+    if (full) { fullRef.current?.scrollIntoView({block: "start"}); fullRef.current?.focus({ preventScroll: true }); }
     else if (askAfter.current) script.current?.askAt(line.id, "picture");
     else if (wasFull.current) peekRef.current?.focus({ preventScroll: true });
     askAfter.current = false;
@@ -566,8 +499,214 @@ function Chapter({
       <Slides view={view} at={chapter.id} onAt={(id) => onAt(id)} />
 
       <section className="ep-doc" aria-label="Script">
-        <div ref={scroller} className="ep-doc-body">
-          <div className="ep-doc-grid">
+        <div className="ep-doc-body">
+      {full && (
+        <div className={recording ? "ep-pop-scrim" : undefined}>
+          <div
+            ref={fullRef}
+            className={recording ? "ep-full ep-pop" : "ep-full ep-pop ep-inline-player"}
+            role={recording ? "dialog" : "region"}
+            aria-modal={recording || undefined}
+            aria-label={`Chapter ${number}: the frame, its choices and the recorder`}
+            tabIndex={-1}
+            data-recording={recording || undefined}
+          >
+            <section className="ep-pop-main">
+              <header className="ep-pop-head">
+                {!recording && (
+                  <Tooltip content="Back to the script" shortcut="Esc" side="bottom" align="start">
+                    <button type="button" className="icon-btn" aria-label="Back to the script" onClick={() => setFull(false)}>
+                      <Minimize2 />
+                    </button>
+                  </Tooltip>
+                )}
+                <b>Chapter {number}</b>
+                <span>
+                  {chapterName(chapter)}
+                </span>
+                <span className="ep-gap" />
+                {!recording && <div className="ep-preview-actions"><FilmDownload view={view} />
+                  <Tooltip content="Bring a recording of this chapter: pick a video or audio file, or drop one on the frame" side="bottom">
+                    <button type="button" className="icon-btn" aria-label="Bring a recording of this chapter" disabled={busy} onClick={() => upload.current?.click()}>
+                      <Upload />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content={pics.planned ? "Makes this chapter's pictures first" : "Opens the camera and microphone"} shortcut="R" side="top">
+                    <button type="button" className={`btn ${take ? "" : "primary"}`} disabled={busy || (waits > 0 && pics.planned === 0)} onClick={begin}>
+                      <Circle />
+                      {take ? "Retake" : `Record chapter ${number}`}
+                    </button>
+                  </Tooltip>
+                  <input
+                    ref={upload}
+                    type="file"
+                    accept="video/*,audio/*"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (file) bring(file);
+                    }}
+                  />
+                </div>}
+                {!recording && (
+                  <span className="ep-pop-chapters" role="group" aria-label="Chapters">
+                    <Tooltip content={previous ? `Chapter ${number - 1}` : "The first chapter"} side="bottom">
+                      <button type="button" className="icon-btn" aria-label="The chapter before" disabled={!previous} onClick={() => previous && onAt(previous.id, false, undefined, true)}>
+                        <ChevronLeft />
+                      </button>
+                    </Tooltip>
+
+                    <Tooltip content={following ? `Chapter ${number + 1}` : "The last chapter"} side="bottom" align="end">
+                      <button type="button" className="icon-btn" aria-label="The chapter after" disabled={!following} onClick={() => following && onAt(following.id, false, undefined, true)}>
+                        <ChevronRight />
+                      </button>
+                    </Tooltip>
+                  </span>
+                )}
+              </header>
+              <div className="ep-pop-frame">
+                <FileDrop
+                  className="ep-pop-stage"
+                  label={`Drop a recording of chapter ${number}`}
+                  refusal="A recording is a video or an audio file."
+                  one
+                  disabled={recording || busy}
+                  accepts={takesFile}
+                  onFiles={([file]) => bring(file)}
+                >
+                  {recording ? (
+                    <Stage view={view} frame={line} unit={unit} stream={recorder.stream} />
+                  ) : (
+                    <LinePlayer key={playerKey} view={view} frame={line} unit={unit} captions={captions} onCaptions={setCaptions} onProgress={setProgress} />
+                  )}
+                  {recorder.state === "count" && <span className="ep-count">{recorder.count}</span>}
+                </FileDrop>
+              </div>
+              {recording ? (
+                <div className="ep-recbar" data-recording>
+                  {recorder.state === "asking" && (
+                    <span className="ep-said">
+                      <span className="spin" />
+                      Waiting for the camera and microphone
+                    </span>
+                  )}
+                  {recorder.state === "ready" && (
+                    <>
+                      <button type="button" className="btn primary" onClick={recorder.start}>
+                        <Circle />
+                        Start recording
+                        <Kbd keys="space" size="sm" />
+                      </button>
+                      <Devices stream={recorder.stream} devices={recorder.devices} using={recorder.using} camera={!presenterOff} onChoose={recorder.choose} />
+                      <span className="faint">{solo ? "Press Space when you have said it." : "Press Space at the end of each line."}</span>
+                    </>
+                  )}
+                  {recorder.state === "count" && <span className="ep-said">Get ready</span>}
+                  {recorder.state === "recording" && (
+                    <>
+                      <span className="ep-live-dot" />
+                      <b className="ep-timer">{mmss(recorder.elapsed)}</b>
+                      {planned > 0 && (
+                        <span className="ep-planned" data-over={recorder.elapsed > planned * 1.25 || undefined}>
+                          of {mmss(planned)}
+                        </span>
+                      )}
+                      <Level stream={recorder.stream} />
+                      <button type="button" className="btn primary" onClick={recorder.next}>
+                        {solo || recorder.index + 1 >= lines.length ? "Finish" : "Next line"}
+                        <Kbd keys="space" size="sm" />
+                      </button>
+                    </>
+                  )}
+                  {recorder.state === "saving" && (
+                    <span className="ep-said">
+                      <span className="spin" />
+                      Saving the take
+                    </span>
+                  )}
+                  {recorder.state !== "saving" && (
+                    <button type="button" className="btn" onClick={() => recorder.stop(false)}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              ) : null}
+              {recorder.problem && (
+                <p className="ep-notice" data-tone="red" role="alert">
+                  {recorder.problem}
+                </p>
+              )}
+              {!recording && unit?.picture.status === "failed" && (
+                <p className="ep-notice" data-tone="red">
+                  This picture couldn't be made: {unit.picture.failure || "it stopped"}.{" "}
+                  <button type="button" className="linkish" disabled={busy} onClick={() => void run(() => api.makePictures(view.id, { units: [unit.id] }))}>
+                    Try again
+                  </button>
+                </p>
+              )}
+              {!recording && unit && <Stills key={unit.id} view={view} unit={unit} lines={lines} picked={line.id} onPick={pick} run={run} busy={busy} />}
+              <Timeline
+                view={view}
+                chapter={chapter}
+                lines={lines}
+                current={line.id}
+                playhead={playhead}
+                recording={recording}
+                tall
+                onPick={pick}
+                onJoin={(frame) => {
+                  pick(frame);
+                  setPanel("transition");
+                }}
+              />
+            </section>
+            {recording ? (
+              <section className="ep-say" aria-label="Say it" aria-live="polite" style={{ "--say": `${SAY_SIZES[sayStep]}px` } as React.CSSProperties}>
+                <header>
+                  <p className="ep-kicker">{solo ? `Say it again · line ${at + 1}` : `Say it · line ${Math.min(recorder.index + 1, lines.length)} of ${lines.length}`}</p>
+                  <span className="ep-say-size" role="group" aria-label="The size of the words">
+                    <button type="button" aria-label="Smaller words" disabled={sayStep === 0} onClick={() => setSayStep(sayStep - 1)}>
+                      A
+                    </button>
+                    <button type="button" aria-label="Larger words" disabled={sayStep === SAY_SIZES.length - 1} onClick={() => setSayStep(sayStep + 1)}>
+                      A
+                    </button>
+                  </span>
+                </header>
+                <p className="ep-say-now">{line.vo}</p>
+                {!solo && lines[recorder.index + 1] && <p className="ep-say-next">{lines[recorder.index + 1].vo}</p>}
+              </section>
+            ) : (
+              <section className="ep-pop-panel">
+                <ChoicePanel
+                  panel={panel}
+                  view={view}
+                  chapter={chapter}
+                  line={line}
+                  unit={unit}
+                  run={run}
+                  busy={busy || working}
+                  onFilm={() => onAt(FILM)}
+                  onAskPicture={() => {
+                    askAfter.current = true;
+                    setFull(false);
+                  }}
+                />
+              </section>
+            )}
+            <nav className="ep-pop-rail" aria-label="Choices for this line">
+              {PANELS.map(({ id, label, icon: Icon }) => (
+                <button key={id} type="button" aria-pressed={!recording && panel === id} disabled={recording} onClick={() => setPanel(id)}>
+                  <Icon aria-hidden="true" />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
+      )}
+          <div className="ep-doc-grid" data-expanded={full || undefined}>
             <div className="ep-doc-main">
               <header className="ep-doc-head">
                 <div className="ep-doc-top">
@@ -653,8 +792,8 @@ function Chapter({
               />
             </div>
             {/* the frame for the line the caret is on, beside it in the editor, drawn on a canvas */}
-            <aside className="ep-doc-aside" aria-label="The frame for this line">
-              <div ref={floating} className="ep-float" style={{ top: floatTop }}>
+            {!full && <aside className="ep-doc-aside" aria-label="The frame for this line">
+              <div className="ep-float" style={{ top: 0 }}>
                 <FileDrop
                   className="ep-peek-drop"
                   label={`Drop a recording of chapter ${number}`}
@@ -720,10 +859,10 @@ function Chapter({
                   pics.changed > 0 && <p className="ep-notice">You can record now: {pics.changed === 1 ? "its picture is" : "its pictures are"} drawn again when you apply your changes.</p>
                 )}
               </div>
-            </aside>
+            </aside>}
           </div>
         </div>
-        {!recording && (
+        {!recording && !full && (
           <div className="ep-doc-grid ep-doc-foot">
             <div className="ep-doc-main">
               {/* what the writer is on, what its last change did and what waits: the asking itself
@@ -751,263 +890,7 @@ function Chapter({
         )}
       </section>
 
-      {full && (
-        <div
-          className="ep-pop-scrim"
-          onMouseDown={(e) => {
-            // a press outside the pop-up closes it, except while a take is recorded
-            if (e.target === e.currentTarget && !recording) setFull(false);
-          }}
-        >
-          <div
-            ref={fullRef}
-            className="ep-full ep-pop"
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Chapter ${number}: the frame, its choices and the recorder`}
-            tabIndex={-1}
-            data-recording={recording || undefined}
-          >
-            <section className="ep-pop-main">
-              <header className="ep-pop-head">
-                {!recording && (
-                  <Tooltip content="Back to the script" shortcut="Esc" side="bottom" align="start">
-                    <button type="button" className="icon-btn" aria-label="Back to the script" onClick={() => setFull(false)}>
-                      <Minimize2 />
-                    </button>
-                  </Tooltip>
-                )}
-                <b>Chapter {number}</b>
-                <span>
-                  {chapterName(chapter)} · line {at + 1} of {lines.length}
-                </span>
-                <span className="ep-gap" />
-                {!recording && (
-                  <span className="ep-pop-chapters" role="group" aria-label="Chapters">
-                    <Tooltip content={previous ? `Chapter ${number - 1}` : "The first chapter"} side="bottom">
-                      <button type="button" className="icon-btn" aria-label="The chapter before" disabled={!previous} onClick={() => previous && onAt(previous.id, false, undefined, true)}>
-                        <ChevronLeft />
-                      </button>
-                    </Tooltip>
-                    <small>
-                      {number} of {plan.chapters.length}
-                    </small>
-                    <Tooltip content={following ? `Chapter ${number + 1}` : "The last chapter"} side="bottom" align="end">
-                      <button type="button" className="icon-btn" aria-label="The chapter after" disabled={!following} onClick={() => following && onAt(following.id, false, undefined, true)}>
-                        <ChevronRight />
-                      </button>
-                    </Tooltip>
-                  </span>
-                )}
-              </header>
-              <div className="ep-pop-frame">
-                <FileDrop
-                  className="ep-pop-stage"
-                  label={`Drop a recording of chapter ${number}`}
-                  refusal="A recording is a video or an audio file."
-                  one
-                  disabled={recording || busy}
-                  accepts={takesFile}
-                  onFiles={([file]) => bring(file)}
-                >
-                  {recording || (playing && playing.of !== "words") ? (
-                    <Stage view={view} frame={line} unit={unit} take={recording ? undefined : take} stream={recorder.stream} playing={playing} onEnded={() => setPlaying(null)} onTime={setHeard} />
-                  ) : (
-                    <FrameCanvas view={view} frame={line} unit={unit} take={take} label={`The frame for line ${at + 1}`} />
-                  )}
-                  {captions && !recording && <Captions words={line.vo} progress={progress} />}
-                  {recorder.state === "count" && <span className="ep-count">{recorder.count}</span>}
-                </FileDrop>
-                {/* the carousel: the chapters either side, at the frame's edges */}
-                {!recording && previous && (
-                  <button type="button" className="ep-pop-side" data-side="left" aria-label={`Chapter ${number - 1}`} onClick={() => onAt(previous.id, false, undefined, true)}>
-                    <ChevronLeft />
-                  </button>
-                )}
-                {!recording && following && (
-                  <button type="button" className="ep-pop-side" data-side="right" aria-label={`Chapter ${number + 1}`} onClick={() => onAt(following.id, false, undefined, true)}>
-                    <ChevronRight />
-                  </button>
-                )}
-              </div>
-              {recording ? (
-                <div className="ep-recbar" data-recording>
-                  {recorder.state === "asking" && (
-                    <span className="ep-said">
-                      <span className="spin" />
-                      Waiting for the camera and microphone
-                    </span>
-                  )}
-                  {recorder.state === "ready" && (
-                    <>
-                      <button type="button" className="btn primary" onClick={recorder.start}>
-                        <Circle />
-                        Start recording
-                        <Kbd keys="space" size="sm" />
-                      </button>
-                      <Devices stream={recorder.stream} devices={recorder.devices} using={recorder.using} camera={!presenterOff} onChoose={recorder.choose} />
-                      <span className="faint">{solo ? "Press Space when you have said it." : "Press Space at the end of each line."}</span>
-                    </>
-                  )}
-                  {recorder.state === "count" && <span className="ep-said">Get ready</span>}
-                  {recorder.state === "recording" && (
-                    <>
-                      <span className="ep-live-dot" />
-                      <b className="ep-timer">{mmss(recorder.elapsed)}</b>
-                      {planned > 0 && (
-                        <span className="ep-planned" data-over={recorder.elapsed > planned * 1.25 || undefined}>
-                          of {mmss(planned)}
-                        </span>
-                      )}
-                      <Level stream={recorder.stream} />
-                      <button type="button" className="btn primary" onClick={recorder.next}>
-                        {solo || recorder.index + 1 >= lines.length ? "Finish" : "Next line"}
-                        <Kbd keys="space" size="sm" />
-                      </button>
-                    </>
-                  )}
-                  {recorder.state === "saving" && (
-                    <span className="ep-said">
-                      <span className="spin" />
-                      Saving the take
-                    </span>
-                  )}
-                  {recorder.state !== "saving" && (
-                    <button type="button" className="btn" onClick={() => recorder.stop(false)}>
-                      Cancel
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="ep-controls">
-                  <Tooltip content="The line before" shortcut="↑" side="bottom">
-                    <button type="button" className="icon-btn" aria-label="Previous line" disabled={at === 0} onClick={() => pick(lines[at - 1].id)}>
-                      <ChevronLeft />
-                    </button>
-                  </Tooltip>
-                  <span className="ep-pos">
-                    Line {at + 1} of {lines.length}
-                  </span>
-                  <Tooltip content="The line after" shortcut="↓" side="bottom">
-                    <button type="button" className="icon-btn" aria-label="Next line" disabled={at === lines.length - 1} onClick={() => pick(lines[at + 1].id)}>
-                      <ChevronRight />
-                    </button>
-                  </Tooltip>
-                  <button type="button" className="btn" onClick={() => (playing ? setPlaying(null) : play())}>
-                    {playing ? <Square /> : <Play />}
-                    {playing ? "Stop" : "Play"}
-                  </button>
-                  <Tooltip content={captions ? "Hide the words over the frame" : "Show the words over the frame, in time with what plays"} shortcut="C" side="bottom">
-                    <button type="button" className="btn ep-toggle" aria-pressed={captions} onClick={() => setCaptions(!captions)}>
-                      {captions ? <CaptionsIcon /> : <CaptionsOff />}
-                      Script
-                    </button>
-                  </Tooltip>
-                  <span className="ep-gap" />
-                  {take && (
-                    <span className="faint">
-                      Take {take.n} · {mmss(take.seconds)}
-                    </span>
-                  )}
-                  <Tooltip content="Bring a recording of this chapter: pick a video or audio file, or drop one on the frame" side="bottom">
-                    <button type="button" className="icon-btn" aria-label="Bring a recording of this chapter" disabled={busy} onClick={() => upload.current?.click()}>
-                      <Upload />
-                    </button>
-                  </Tooltip>
-                  <Tooltip content={pics.planned ? "Makes this chapter's pictures first" : "Opens the camera and microphone"} shortcut="R" side="top">
-                    <button type="button" className={`btn ${take ? "" : "primary"}`} disabled={busy || (waits > 0 && pics.planned === 0)} onClick={begin}>
-                      <Circle />
-                      {take ? "Retake" : `Record chapter ${number}`}
-                    </button>
-                  </Tooltip>
-                  {onward}
-                  <input
-                    ref={upload}
-                    type="file"
-                    accept="video/*,audio/*"
-                    hidden
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      e.target.value = "";
-                      if (file) bring(file);
-                    }}
-                  />
-                </div>
-              )}
-              {recorder.problem && (
-                <p className="ep-notice" data-tone="red" role="alert">
-                  {recorder.problem}
-                </p>
-              )}
-              {!recording && unit?.picture.status === "failed" && (
-                <p className="ep-notice" data-tone="red">
-                  This picture couldn't be made: {unit.picture.failure || "it stopped"}.{" "}
-                  <button type="button" className="linkish" disabled={busy} onClick={() => void run(() => api.makePictures(view.id, { units: [unit.id] }))}>
-                    Try again
-                  </button>
-                </p>
-              )}
-              {!recording && unit && <Stills key={unit.id} view={view} unit={unit} lines={lines} picked={line.id} onPick={pick} run={run} busy={busy} />}
-              <Timeline
-                view={view}
-                chapter={chapter}
-                lines={lines}
-                current={line.id}
-                playhead={playhead}
-                recording={recording}
-                tall
-                onPick={pick}
-                onJoin={(frame) => {
-                  pick(frame);
-                  setPanel("transition");
-                }}
-              />
-            </section>
-            {recording ? (
-              <section className="ep-say" aria-label="Say it" aria-live="polite" style={{ "--say": `${SAY_SIZES[sayStep]}px` } as React.CSSProperties}>
-                <header>
-                  <p className="ep-kicker">{solo ? `Say it again · line ${at + 1}` : `Say it · line ${Math.min(recorder.index + 1, lines.length)} of ${lines.length}`}</p>
-                  <span className="ep-say-size" role="group" aria-label="The size of the words">
-                    <button type="button" aria-label="Smaller words" disabled={sayStep === 0} onClick={() => setSayStep(sayStep - 1)}>
-                      A
-                    </button>
-                    <button type="button" aria-label="Larger words" disabled={sayStep === SAY_SIZES.length - 1} onClick={() => setSayStep(sayStep + 1)}>
-                      A
-                    </button>
-                  </span>
-                </header>
-                <p className="ep-say-now">{line.vo}</p>
-                {!solo && lines[recorder.index + 1] && <p className="ep-say-next">{lines[recorder.index + 1].vo}</p>}
-              </section>
-            ) : (
-              <section className="ep-pop-panel">
-                <ChoicePanel
-                  panel={panel}
-                  view={view}
-                  chapter={chapter}
-                  line={line}
-                  unit={unit}
-                  run={run}
-                  busy={busy || working}
-                  onFilm={() => onAt(FILM)}
-                  onAskPicture={() => {
-                    askAfter.current = true;
-                    setFull(false);
-                  }}
-                />
-              </section>
-            )}
-            <nav className="ep-pop-rail" aria-label="Choices for this line">
-              {PANELS.map(({ id, label, icon: Icon }) => (
-                <button key={id} type="button" aria-pressed={!recording && panel === id} disabled={recording} onClick={() => setPanel(id)}>
-                  <Icon aria-hidden="true" />
-                  <span>{label}</span>
-                </button>
-              ))}
-            </nav>
-          </div>
-        </div>
-      )}
+
     </main>
   );
 }

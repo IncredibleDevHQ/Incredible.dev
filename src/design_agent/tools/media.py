@@ -407,6 +407,7 @@ class Voice:
     id: str
     name: str
     kind: str
+    preview: str = ""
 
     @property
     def own(self) -> bool:
@@ -437,6 +438,15 @@ async def voices(keys: MediaKeys) -> list[Voice] | str:
                             voice_id,
                             " ".join(str(row.get("name") or "").split())[:80] or "A voice",
                             str(row.get("category") or ""),
+                            preview
+                            if isinstance((preview := row.get("preview_url")), str)
+                            and preview.startswith(
+                                (
+                                    "https://storage.googleapis.com/eleven-public-prod/",
+                                    "https://cdn.elevenlabs.io/",
+                                )
+                            )
+                            else "",
                         )
                 token = page.get("next_page_token")
                 if not page.get("has_more") or not token:

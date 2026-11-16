@@ -173,6 +173,7 @@ export function PictureCard({
             <b>{name}</b>
             <span>{pictureWords(unit, view)}</span>
             {p.motion && <MotionPlan motion={p.motion} lines={lines} />}
+            {tools}
             {designed && (
               <SegmentedControl<Level>
                 size="sm"
@@ -187,7 +188,6 @@ export function PictureCard({
                 ]}
               />
             )}
-            {tools}
           </header>
           {designed && <GenerationSettings view={view} unit={unit} run={run} busy={busy || state === "making"} />}
           {unit.shows && <p className="ep-block-shows">{unit.shows}</p>}

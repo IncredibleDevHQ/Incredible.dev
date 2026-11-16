@@ -253,7 +253,7 @@ export type EpisodeLength = [number, number] | "auto";
 // The voice picked to narrate an episode. `verify`: ElevenLabs wants its speaker verified on its site before it speaks.
 export type Narrator = { id: string; name: string; verify?: boolean };
 // A voice the ElevenLabs account can speak in: one made in it (a clone), and the house's own.
-export type Voice = { id: string; name: string; own: boolean; usual: boolean };
+export type Voice = { id: string; name: string; own: boolean; usual: boolean; preview?: string };
 export type EpisodeSettings = {
   seconds: EpisodeLength;
   presenter: "on" | "off";
@@ -281,7 +281,8 @@ export type EpisodeFrame = {
   picture?: string;
   transition?: string;
   // What the person picked over the plan's reading, for the line that brings a picture in.
-  picked?: { picture?: string; transition?: string };
+  picked?: { picture?: string; transition?: string; window_size?: string; window_shape?: string };
+  window?: { box: Box; radius: number };
   // The person's own words are on this line: what the writer had, and when they changed it.
   by_person?: { was: string; at: number };
   // A pick of who has the frame or its layout: the line's own, or one set for its chapter or the film.
@@ -315,6 +316,7 @@ export type EpisodeUnit = {
   layout: string;
   shows: string;
   kind_of_picture: string;
+  start: number;
   seconds: number;
   level: Level;
   // Whose the level is: the person's pick for this picture, or the film's.
@@ -357,7 +359,7 @@ export type EpisodeTake = {
   audio: FileView | null;
   created_at: number;
 };
-export type EpisodeLine = { frame: string; chapter: string; start: number; seconds: number; source: { kind: "take" | "voice" | "plan"; take?: string; offset?: number } };
+export type EpisodeLine = { audio_url?: string; frame: string; chapter: string; start: number; seconds: number; source: { kind: "take" | "voice" | "plan"; take?: string; offset?: number } };
 // `marks` are what the film shows that no line says: its title before the first line, a chapter's
 // card over its first words, the end card after the last line.
 export type EpisodeClock = {
@@ -433,6 +435,8 @@ export type EpisodeChange = {
 };
 // A pick for a line, a chapter or the film. null takes that pick back and leaves the others.
 export type EpisodePick = {
+  window_size?: string | null;
+  window_shape?: string | null;
   presence?: Presence | null;
   layout?: string | null;
   layouts?: Partial<Record<Presence, string | null>>;

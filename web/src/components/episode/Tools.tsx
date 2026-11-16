@@ -110,7 +110,7 @@ function VoiceTool({ view, run, busy }: Props) {
   const presenterOff = view.settings.presenter === "off";
   const narrator = view.options.narrator.ready;
   const voice = view.settings.voice;
-  const value = voice === "local" ? "Local narrator" : voice === "narrator" ? (view.settings.narrator?.name ?? "Narrator") : presenterOff ? "Recorded" : "Your voice";
+  const value = voice === "local" ? "Local narrator" : voice === "narrator" ? (view.settings.narrator?.name ?? "ElevenLabs") : presenterOff ? "Recorded" : "Your voice";
   return (
     <Tool icon={AudioLines} label="Voice" value={value} width={380}>
       {() => (
@@ -123,7 +123,7 @@ function VoiceTool({ view, run, busy }: Props) {
             options={[
               { value: "live", label: presenterOff ? "Recorded" : "Your voice", note: "You record each chapter; your takes are the film's sound." },
               ...(view.options.local_narrator ? [{ value: "local" as const, label: "Local narrator", note: "An installed synthetic voice reads the script offline." }] : []),
-              { value: "narrator", label: "Narrator", note: narrator ? "A voice says the lines you have not recorded." : "Needs ELEVENLABS_API_KEY on the desk.", disabled: !narrator },
+              { value: "narrator", label: "ElevenLabs", note: narrator ? "Choose a voice to narrate unrecorded lines." : "Set ELEVENLABS_API_KEY on the Studio host and restart to enable.", disabled: !narrator },
             ]}
           />
           {voice === "narrator" && narrator && <NarratorVoice view={view} run={run} busy={busy} />}

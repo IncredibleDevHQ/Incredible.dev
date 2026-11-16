@@ -39,7 +39,7 @@ FRAME_KEYS = (
 )
 #: What a person may pick for the line that brings a picture in, kept beside the labels and
 #: never written over them: the plan's own reading stays, so taking a pick back restores it.
-PICKED_KEYS = ("picture", "transition")
+PICKED_KEYS = ("picture", "transition", "window_size", "window_shape")
 MATERIAL_KEYS = ("kind", "p")
 OBJECT_KEYS = ("type", "p")
 CUE_KEYS = ("move", "p")

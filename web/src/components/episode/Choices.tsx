@@ -6,6 +6,8 @@
 import { Blend, LayoutTemplate, ListOrdered, Shapes, type LucideIcon } from "lucide-react";
 import { api, type EpisodeChapter, type EpisodeChoices, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Presence } from "../../api";
 import { allLines, LAYOUTS, LEVEL_NAMES, linesIn, LOOKS, MOVES, PICTURES, pictureWords, TRANSITIONS } from "../../episode";
+import { Select } from "../Select";
+import { ComponentFields } from "./GenerationSettings";
 import { Tooltip } from "../Tooltip";
 import type { Run } from "./Ask";
 import { KindArt, MoveArt } from "./PictureArt";
@@ -99,6 +101,14 @@ function LayoutPanel({ view, chapter, line, unit, run, busy, onFilm }: Props) {
           </Tooltip>
         ))}
       </div>
+      {!presenterOff && line.presence !== "content" && <div className="ep-window-fields">
+        <Select size="sm" label="Video box size" value={line.picked?.window_size ?? ""} disabled={busy}
+          options={[{value:"",label:"Layout default"}, {value:"small",label:"Small"},{value:"large",label:"Large"}]}
+          onChange={(v) => void choose({frames:{[line.id]:{window_size:v || null}}})} />
+        <Select size="sm" label="Video box shape" value={line.picked?.window_shape ?? ""} disabled={busy}
+          options={[{value:"",label:"Layout default"},{value:"rectangle",label:"Rectangle"},{value:"rounded",label:"Rounded"},{value:"circle",label:"Circle"}]}
+          onChange={(v) => void choose({frames:{[line.id]:{window_shape:v || null}}})} />
+      </div>}
       {presenterOff && <small>Nobody is on screen in this film.</small>}
       {line.override && (
         <p className="ep-picked" data-rows>
@@ -175,6 +185,10 @@ function PicturePanel({ view, line, unit, run, busy, onAskPicture }: Props) {
       )}
       {drawn && unit && (
         <>
+          <ComponentFields unit={unit} view={view} disabled={busy}
+            component={unit.visual.automatic ? "" : unit.visual.component} variant={unit.visual.variant_pick || ""}
+            onComponent={(v) => void choose({units:{[unit.id]:{component:v || null,variant:null}}})}
+            onVariant={(v) => void choose({units:{[unit.id]:{variant:v || null}}})} />
           <h3>
             Kind <span>{PICTURES[unit.kind_of_picture] ?? "Picture"}</span>
           </h3>

@@ -80,7 +80,7 @@ Apply the supplied palette and font roles to every element, including captions a
 - **Fill the canvas.** The picture owns its whole canvas: lay it out to the edges with even
   margins, not as a small cluster in the middle. Text a viewer must read is at least 2.4% of
   the canvas height.
-- **Keep the person's window clear.** When the brief gives `keep_clear`, put nothing there
+- **Keep the person's window clear.** The person can change the window size and shape on each line. When the brief gives `keep_clear`, put nothing there
   that has to be read; the presenter sits over it.
 - **Nothing arrives before its word.** An object is not on screen until its cue. A held line
   adds to the picture; it never redraws it.

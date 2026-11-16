@@ -1279,14 +1279,14 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 /* The chapter's lines on its clock: a ruler of times over a bar of spans, each as long as its
    line, a picture's lines tinted together, the playhead on the open line or the moment playing. */
 .ep-timeline { display: flex; gap: 8px; flex: none; padding: 6px 10px 8px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--surface); }
-.ep-timeline-track { position: relative; flex: 1; min-width: 0; display: grid; gap: 3px; }
+.ep-timeline-track { position: relative; flex: 1; min-width: 0; display: grid; gap: 6px; }
 .ep-doc-foot .ep-timeline { margin-bottom: 10px; }
 .ep-timeline-ruler { position: relative; height: 14px; color: var(--faint); font: 600 10.5px/14px var(--mono); }
 .ep-timeline-ruler span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
 .ep-timeline-ruler span:first-child { transform: none; }
 /* after the Figma strip: each block a card holding a small screen with its kind (dark for the block
    open), a mark on the join where a picture comes in, and the film's own cards at the ends */
-.ep-timeline-cap { flex: none; display: grid; place-items: center; height: 40px; margin-top: 17px; padding: 0 12px; border: 1px solid var(--line-soft); border-radius: 7px; background: var(--raised); color: var(--muted); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.ep-timeline-cap { flex: none; display: grid; place-items: center; height: 40px; margin-top: 20px; padding: 0 12px; border: 1px solid var(--line-soft); border-radius: 7px; background: var(--raised); color: var(--muted); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 .ep-timeline-blocks { position: relative; height: 40px; }
 .ep-timeline-block { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; padding: 0 6px; border: 1px solid var(--line-soft); border-radius: 7px; background: var(--raised); color: var(--muted); font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap; }
 .ep-timeline-block[data-after-join] { padding-left: 15px; }
@@ -1547,7 +1547,7 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-sketch-chips { display: flex; flex-wrap: wrap; gap: 0.8cqw; }
 .ep-sketch-chips i { padding: 0.5cqw 1.1cqw; border: 1px dashed #d4d4d8; border-radius: 999px; font-size: max(11px, 1.25cqw); font-style: normal; color: #18181b; background: #ffffff; }
 .ep-count { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; background: rgba(6, 9, 7, 0.45); color: #fff; font-size: 96px; font-weight: 700; border-radius: 14px; }
-.ep-controls, .ep-recbar { display: flex; align-items: center; gap: 8px; min-height: 36px; flex-wrap: wrap; }
+.ep-recbar { display: flex; align-items: center; gap: 8px; min-height: 36px; flex-wrap: wrap; }
 .ep-pos { min-width: 86px; text-align: center; color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
 .ep-gap { flex: 1; }
 .ep-timer { font-size: 15px; font-variant-numeric: tabular-nums; }
@@ -1861,3 +1861,50 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-generation > button, .ep-generation-actions { display: inline-flex; align-items: center; gap: .4rem; }
 .ep-generation-form { display: grid; gap: .65rem; padding: .5rem 0; max-height: min(70vh, 38rem); overflow-y: auto; }
 .ep-generation-actions { justify-content: flex-end; }
+
+/* Chapter workspace and inline frame editor. */
+@media (min-width: 1101px) {
+  .ep-chapter { grid-template-columns: clamp(240px, 17vw, 290px) minmax(0, 1fr); }
+}
+.ep-doc-grid[data-expanded] { grid-template-columns: minmax(0, 1fr); }
+.ep-doc-actions { gap: 6px; }
+.ep-doc-actions .btn, .ep-preview-actions .btn { min-height: 28px; height: 28px; padding: 3px 8px; font-size: 12px; }
+.ep-doc-actions .btn svg, .ep-preview-actions .btn svg { width: 13px; height: 13px; }
+.ep-figure-meta .ep-block-head { width: 100%; }
+.ep-figure-meta .ep-block-head .ep-script-cut { margin-inline-start: 0; }
+.ep-figure-meta .ep-block-head .ep-figure-level { margin-inline-start: auto; }
+.ep-generation { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.ep-window-fields { display: grid; gap: 12px; padding-block: 6px; }
+.ep-inline-player { margin: 0 0 24px; scroll-margin: 8px; grid-template-columns: minmax(0,1fr) clamp(190px, 16vw, 250px) 66px; }
+.ep-inline-player .ep-pop-frame { display: block; min-height: 0; flex: none; container-type: normal; }
+.ep-inline-player .ep-pop-stage { width: 100%; position: relative; }
+.ep-inline-player .ep-pop-main { overflow: visible; padding: 10px; }
+.ep-inline-player .ep-pop-panel { max-height: 545px; }
+.ep-inline-player .ep-pop-head { flex-wrap: wrap; gap: 5px; }
+.ep-preview-actions { display: flex; align-items: center; gap: 4px; }
+.ep-line-player { position: relative; width: 100%; overflow: hidden; background: var(--sunk); aspect-ratio: 16/9; border-radius: 10px; }
+.ep-line-player > video:not([hidden]) { display: block; width: 100%; height: 100%; object-fit: contain; }
+.ep-line-player > video[hidden] { display: none; }
+.ep-line-player .ep-captions { bottom: 52px; pointer-events: none; }
+.ep-player-controls { position: absolute; z-index: 2; inset: auto 0 0; display: flex; align-items: center; gap: 6px; padding: 7px 10px; color: white; background: rgba(20,25,28,.92); }
+.ep-player-controls button { display: grid; place-items: center; background: none; border: 0; color: inherit; min-width: 28px; height: 28px; border-radius: 4px; }
+.ep-player-controls button:hover, .ep-player-controls button[aria-pressed="true"] { background: rgba(255,255,255,.17); }
+.ep-player-controls svg { width: 16px; height: 16px; }
+.ep-player-controls input { min-width: 0; accent-color: var(--green); }
+.ep-player-controls input[aria-label="Seek within line"] { flex: 1; }
+.ep-player-controls input[aria-label="Volume"] { width: min(9%, 60px); }
+.ep-player-controls small { white-space: nowrap; font: 11px var(--mono); }
+.ep-player-message { position: absolute; top: 8px; left: 8px; padding: 3px 6px; background: var(--surface); color: var(--ink); border-radius: 4px; }
+.ep-doc-foot .ep-timeline, .ep-inline-player .ep-timeline { padding: 8px; }
+.ep-voice audio { max-width: 100%; width: 100%; height: 32px; }
+@media (max-width: 1100px) {
+  .ep-inline-player { grid-template-columns: minmax(0,1fr); }
+  .ep-inline-player .ep-pop-frame { height: auto; }
+  .ep-inline-player .ep-pop-panel { max-height: 280px; }
+  .ep-inline-player .ep-pop-rail { grid-row: 2; }
+}
+
+@media (max-width: 700px) {
+  .ep-bar { overflow-x: auto; }
+  .ep-bar > :is(b, .ep-tools, .ep-now, .ep-appearance) { flex-shrink: 0; }
+}

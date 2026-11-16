@@ -235,6 +235,8 @@ class FramePickIn(BaseModel):
     #: The type of the picture a line brings in, and how it comes in (a line's picks only).
     picture: str | None = Field(default=None, max_length=40)
     transition: str | None = Field(default=None, max_length=40)
+    window_size: Literal["small", "large"] | None = None
+    window_shape: Literal["rectangle", "rounded", "circle"] | None = None
 
 
 class UnitPickIn(BaseModel):

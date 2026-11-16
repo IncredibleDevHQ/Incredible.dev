@@ -43,6 +43,7 @@ export function NarratorVoice({ view, run, busy }: { view: EpisodeView; run: Run
     ...listed.map((v) => ({ value: v.id, label: v.name, description: v.usual ? "The house's voice" : v.own ? "Yours" : undefined })),
   ];
   const current = picked?.id ?? listed.find((v) => v.usual)?.id ?? null;
+  const preview = listed.find((v) => v.id === current)?.preview;
   return (
     <span className="ep-voice">
       <Select
@@ -54,6 +55,7 @@ export function NarratorVoice({ view, run, busy }: { view: EpisodeView; run: Run
         disabled={busy || options.length === 0}
         onChange={(id, option) => id !== current && void run(() => api.chooseEpisode(view.id, { settings: { narrator: { id, name: option.label } } }))}
       />
+      {preview && <audio controls preload="none" aria-label="ElevenLabs voice sample" src={preview} />}
       <button ref={button} type="button" className="btn" aria-haspopup="dialog" aria-expanded={cloning} disabled={busy} onClick={() => setCloning((open) => !open)}>
         Clone your voice
       </button>

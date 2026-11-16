@@ -151,11 +151,11 @@ def project(
     runs: list[Row] = []
     for line in clock["lines"]:
         f = frames[line["frame"]]
-        spot = geometry.region(f.get("layout"))
+        spot = geometry.for_frame(f)
         source = line["source"]
         on_screen = f.get("presence") in ("person", "both") and spot.person is not None
         take_id = source.get("take") if source["kind"] == "take" else None
-        key = (take_id, f.get("layout") if on_screen else None)
+        key = (take_id, spot if on_screen else None)
         end = line["start"] + line["seconds"]
         previous = runs[-1] if runs else None
         if (
@@ -171,7 +171,7 @@ def project(
             {
                 "key": key,
                 "take": take_id,
-                "layout": f.get("layout"),
+                "spot": spot,
                 "on_screen": on_screen,
                 "start": line["start"],
                 "end": end,
@@ -183,7 +183,7 @@ def project(
         seconds = run["end"] - run["start"]
         take = takes.get(str(run["take"])) if run["take"] else None
         if run["on_screen"]:
-            spot = geometry.region(run["layout"])
+            spot = run["spot"]
             assert spot.person is not None  # noqa: S101 - on_screen means the layout has a window
             left, top, width, height = spot.person
             box = (

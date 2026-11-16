@@ -245,7 +245,7 @@ def brief(
                 ],
             }
         )
-    clear = geometry.keep_clear(unit.get("layout"))
+    clear = unit.get("keep_clear", geometry.keep_clear(unit.get("layout")))
     return {
         "file": f"pictures/{comp}.html",
         "composition_id": comp,

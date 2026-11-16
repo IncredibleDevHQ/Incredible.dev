@@ -2840,9 +2840,15 @@ async def test_local_voice_uses_cached_speech_and_does_not_need_elevenlabs(
     assert view["settings"]["voice"] == "local" and all(
         line["source"]["kind"] == "voice" for line in view["clock"]["lines"]
     )
+    assert all(line["audio_url"].startswith("/api/files/") for line in view["clock"]["lines"])
     count = len(said)
     await house.episodes._narrate(ep)
     assert count and len(said) == count
+    changed = house.episodes.edit(
+        ep, by="you", frame=view["clock"]["lines"][0]["frame"], text="Listen to this amended line."
+    )
+    assert "audio_url" not in changed["clock"]["lines"][0]
+    assert all("audio_url" in row for row in changed["clock"]["lines"][1:])
 
 
 async def test_demo_picture_retry_can_read_the_original_brief(
@@ -2865,3 +2871,44 @@ async def test_demo_picture_retry_can_read_the_original_brief(
     await settle(lambda: not desk._busy(episode))
     assert desk.view(episode)["units"][0]["picture"]["status"] == "made"
     assert len(calls) == 2
+
+
+async def test_presenter_window_is_saved_for_one_line_and_used_by_film(house: AgentHost) -> None:
+    from design_agent.episode import film, geometry
+
+    ep = await planned(house)
+    view = house.episodes.choose(
+        ep,
+        by="you",
+        change={"frames": {"c1.b2.f1": {"window_size": "small", "window_shape": "circle"}}},
+    )
+    frame = next(
+        f
+        for c in view["plan"]["chapters"]
+        for b in c["beats"]
+        for f in b["frames"]
+        if f["id"] == "c1.b2.f1"
+    )
+    region = geometry.for_frame(frame)
+    assert region.person and region.person[2] == region.person[3] < 346
+    assert region.person_radius == region.person[2] // 2
+    assert frame["window"]["box"] == list(region.person)
+    page = film.project(view["plan"], view["clock"], [], {})["index.html"]
+    x, y, width, height = region.person
+    assert (
+        f"left: {x}px; top: {y}px; width: {width}px; height: {height}px; border-radius: {region.person_radius}px"
+        in page
+    )
+    with pytest.raises(ValueError):
+        house.episodes.choose(
+            ep, by="you", change={"frames": {frame["id"]: {"window_size": "huge"}}}
+        )
+    cleared = house.episodes.choose(
+        ep, by="you", change={"frames": {frame["id"]: {"window_size": None, "window_shape": None}}}
+    )
+    assert not any(
+        f.get("window")
+        for c in cleared["plan"]["chapters"]
+        for b in c["beats"]
+        for f in b["frames"]
+    )

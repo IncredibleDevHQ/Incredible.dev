@@ -8,7 +8,8 @@ box whole, never cropped or stretched.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, replace
 from typing import Any
 
 FRAME_W, FRAME_H = 1920, 1080
@@ -63,6 +64,32 @@ def region(layout: str | None) -> Region:
     return REGIONS.get(layout or "", REGIONS[FALLBACK])
 
 
+WINDOW_SIZES = {"small": 0.72, "large": 1.25}
+WINDOW_SHAPES = ("rectangle", "rounded", "circle")
+
+
+def for_frame(frame: Row) -> Region:
+    spot = region(frame.get("layout"))
+    pick = frame.get("picked") or {}
+    if not spot.person or not (pick.get("window_size") or pick.get("window_shape")):
+        return spot
+    x, y, w, h = spot.person
+    scale = WINDOW_SIZES.get(str(pick.get("window_size") or ""), 1.0)
+    width, height = min(FRAME_W, round(w * scale)), min(FRAME_H, round(h * scale))
+    radius = spot.person_radius
+    shape = pick.get("window_shape")
+    if shape == "circle":
+        width = height = min(width, height)
+        radius = width // 2
+    elif shape == "rectangle":
+        radius = 0
+    elif shape == "rounded":
+        radius = round(min(width, height) * 0.1)
+    left = max(0, min(FRAME_W - width, x + (w - width) // 2))
+    top = max(0, min(FRAME_H - height, y + (h - height) // 2))
+    return replace(spot, person=(left, top, width, height), person_radius=radius)
+
+
 def canvas(layout: str | None) -> tuple[int, int]:
     """The size a picture is built at for this layout: the layout's picture box."""
     box = region(layout).picture or FULL
@@ -80,10 +107,10 @@ def fit(size: tuple[int, int], box: Box) -> tuple[float, float, float]:
     )
 
 
-def keep_clear(layout: str | None) -> Box | None:
+def keep_clear(layout: str | None, *, frame: Row | None = None) -> Box | None:
     """The part of the picture's own canvas the person's window covers, with a margin: where a
     picture must put nothing that has to be read. None when the two do not overlap."""
-    spot = region(layout)
+    spot = for_frame(frame) if frame else region(layout)
     if spot.person is None or spot.picture is None or spot.glass:
         return None
     px, py, pw, ph = spot.person
@@ -100,6 +127,31 @@ def keep_clear(layout: str | None) -> Box | None:
         min(cw, right - cx + margin) - x,
         min(ch, bottom - cy + margin) - y,
     )
+
+
+def picture_clearance(frames: list[Row], size: tuple[int, int]) -> Box | None:
+    """The union of presenter overlaps in the picture's own coordinates, including holds."""
+    boxes = []
+    for frame in frames:
+        spot = for_frame(frame)
+        clear = keep_clear(frame.get("layout"), frame=frame)
+        if not clear or not spot.picture:
+            continue
+        x, y, scale = fit(size, spot.picture)
+        left = (spot.picture[0] + clear[0] - x) / scale
+        top = (spot.picture[1] + clear[1] - y) / scale
+        box = (
+            max(0, math.floor(left)),
+            max(0, math.floor(top)),
+            min(size[0], math.ceil(left + clear[2] / scale)),
+            min(size[1], math.ceil(top + clear[3] / scale)),
+        )
+        if box[2] > box[0] and box[3] > box[1]:
+            boxes.append(box)
+    if not boxes:
+        return None
+    left, top = min(b[0] for b in boxes), min(b[1] for b in boxes)
+    return left, top, max(b[2] for b in boxes) - left, max(b[3] for b in boxes) - top
 
 
 def view() -> Row:

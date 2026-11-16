@@ -282,14 +282,26 @@ async def test_a_voice_is_cloned_from_recordings_and_the_accounts_own_are_listed
     pages: list[dict[str, Any]] = [
         {
             "voices": [
-                {"voice_id": "premade123456", "name": "Ada", "category": "premade"},
+                {
+                    "voice_id": "premade123456",
+                    "name": "Ada",
+                    "category": "premade",
+                    "preview_url": "https://storage.googleapis.com/eleven-public-prod/ada.mp3",
+                },
                 {"voice_id": "not an id", "name": "x"},
             ],
             "has_more": True,
             "next_page_token": "t2",
         },
         {
-            "voices": [{"voice_id": "clone1234567890", "name": "My voice", "category": "cloned"}],
+            "voices": [
+                {
+                    "voice_id": "clone1234567890",
+                    "name": "My voice",
+                    "category": "cloned",
+                    "preview_url": "http://untrusted.invalid/sample",
+                }
+            ],
             "has_more": False,
         },
     ]
@@ -303,7 +315,12 @@ async def test_a_voice_is_cloned_from_recordings_and_the_accounts_own_are_listed
     listed = await voices(keys)
     assert listed == [
         Voice("clone1234567890", "My voice", "cloned"),
-        Voice("premade123456", "Ada", "premade"),
+        Voice(
+            "premade123456",
+            "Ada",
+            "premade",
+            "https://storage.googleapis.com/eleven-public-prod/ada.mp3",
+        ),
     ]
     assert isinstance(listed, list) and listed[0].own and not listed[1].own
     assert asked[0]["url"] == "https://api.elevenlabs.io/v2/voices"
