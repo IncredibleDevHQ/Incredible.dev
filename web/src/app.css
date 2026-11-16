@@ -1007,15 +1007,66 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-runs small { color: var(--muted); }
 
 /* a chapter: script, stage, choices */
-.ep-chapter { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr) 296px; gap: 28px; padding: 24px 28px; min-height: 0; overflow: hidden; }
-.ep-script { display: flex; flex-direction: column; min-height: 0; }
-.ep-script header { display: flex; align-items: baseline; gap: 8px; padding: 0 10px 12px; }
-.ep-script header b { font-size: 14px; }
-.ep-script header span { color: var(--muted); font-size: 13px; }
-.ep-script ol { flex: 1; min-height: 0; display: grid; gap: 2px; align-content: start; margin: 0; padding: 0 2px 12px; list-style: none; overflow: auto; }
-.ep-unit { margin: 10px 10px 4px; color: var(--green); font-size: 12px; font-weight: 600; }
-.ep-unit[data-status="go"], .ep-unit[data-status="failed"] { color: var(--amber); }
-.ep-unit[data-status="queued"], .ep-unit[data-status="making"], .ep-unit[data-status="posing"], .ep-unit[data-status="none"] { color: var(--muted); }
+/* a chapter's page: the chapters as slides down the left, the chapter as a document in the middle,
+   and the frame for the picked line on the right, which opens full screen with its choices and
+   the recorder */
+.ep-chapter { display: grid; grid-template-columns: 208px minmax(0, 1fr) minmax(240px, 300px); min-height: 0; overflow: hidden; }
+.ep-slides { min-height: 0; overflow: auto; padding: 18px 14px 24px; border-right: 1px solid var(--line-soft); background: var(--surface); }
+.ep-slides ol { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.ep-slide { display: grid; gap: 8px; width: 100%; padding: 6px 6px 9px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--raised); color: var(--ink-2); text-align: left; transition: border-color 140ms ease, box-shadow 140ms ease; }
+.ep-slide:hover:not([aria-current]) { border-color: var(--line-strong); }
+.ep-slide[aria-current] { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); color: var(--ink); cursor: default; }
+.ep-slide:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.ep-slide-pic { border-radius: 7px; }
+.ep-slide-pic .pic { overflow: hidden; }
+.ep-slide-pic .pic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ep-slide-words { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px; padding: 0 3px; font-size: 12.5px; line-height: 1.38; }
+.ep-slide-words b { color: var(--muted); font-variant-numeric: tabular-nums; }
+.ep-slide[aria-current] .ep-slide-words b { color: var(--green); }
+.ep-slide-words span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ep-slide small { padding: 0 3px; color: var(--muted); font-size: 11.5px; }
+.ep-slide[data-state="recorded"] small { color: var(--green); }
+.ep-slide[data-state="go"] small, .ep-slide[data-state="failed"] small { color: var(--amber); }
+/* the chapter as a document: its question, then a block for each picture and each run said to camera */
+.ep-doc { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 0 28px 16px; }
+.ep-doc-body { flex: 1; min-height: 0; overflow: auto; padding: 36px 0 28px; }
+.ep-doc-body > *, .ep-doc > .ep-ask { width: min(100%, 700px); margin-inline: auto; }
+.ep-doc-head { display: grid; gap: 10px; padding: 0 10px 22px; }
+.ep-doc-head h1 { margin: 0; font-size: 27px; line-height: 1.25; letter-spacing: -0.015em; text-wrap: balance; }
+.ep-block { display: grid; gap: 2px; padding: 16px 0 10px; border-top: 1px solid var(--line-soft); }
+.ep-block-head { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 10px 4px; color: var(--green); font-size: 12.5px; }
+.ep-block-head svg { flex: none; width: 15px; height: 15px; }
+.ep-block-head b { font-weight: 650; }
+.ep-block-head span { color: var(--muted); }
+.ep-block-head[data-status="go"], .ep-block-head[data-status="failed"] { color: var(--amber); }
+.ep-block-head:is([data-status="queued"], [data-status="making"], [data-status="posing"], [data-status="none"], [data-status="planned"]) { color: var(--muted); }
+.ep-block-head[data-status="camera"] { color: var(--ink-2); }
+.ep-block-shows { margin: 0 10px 8px; padding-left: 23px; color: var(--muted); font-size: 13px; line-height: 1.5; font-style: italic; }
+.ep-block-lines { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.ep-doc .ep-line { font-size: 15.5px; line-height: 1.62; }
+.ep-doc .ep-line span { display: block; overflow: visible; -webkit-line-clamp: unset; }
+.ep-doc .ep-who { margin-top: 6px; }
+/* the frame for the picked line, small: one click opens it full screen */
+.ep-peek { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; overflow: auto; padding: 36px 24px 24px 0; }
+.ep-peek-drop { border-radius: 14px; }
+.ep-peek-stage { position: relative; display: block; width: 100%; padding: 0; border: 0; border-radius: 14px; background: none; cursor: zoom-in; }
+.ep-peek-stage .ep-stage { pointer-events: none; box-shadow: var(--card-shadow); }
+.ep-peek-blank { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 14px; background: var(--raised); }
+.ep-peek-open { position: absolute; right: 10px; bottom: 10px; z-index: 5; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; background: rgba(12, 16, 14, 0.78); color: #ffffff; font-size: 12px; font-weight: 600; opacity: 0; transform: translateY(2px); transition: opacity 140ms ease, transform 140ms ease; }
+.ep-peek-open svg { width: 13px; height: 13px; }
+.ep-peek-stage:is(:hover, :focus-visible) .ep-peek-open { opacity: 1; transform: none; }
+.ep-peek-stage:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+.ep-peek-line { margin: 0; color: var(--muted); font-size: 12.5px; }
+.ep-peek-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ep-peek-take { color: var(--muted); font-size: 12.5px; }
+/* the frame full screen: the stage, its controls and stills, beside its choices (the words to say
+   while recording) */
+.ep-full { position: fixed; inset: 0; z-index: 45; display: grid; grid-template-rows: 52px minmax(0, 1fr); background: var(--bg); outline: none; animation: ep-full-in 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+.ep-full-head { display: flex; align-items: center; gap: 10px; padding: 0 14px 0 24px; border-bottom: 1px solid var(--line-soft); background: var(--surface); font-size: 14px; }
+.ep-full-head span { color: var(--muted); }
+.ep-full-body { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; padding: 24px 28px; min-height: 0; overflow: hidden; }
+@keyframes ep-full-in { from { opacity: 0; transform: scale(0.985); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ep-full { animation: none; } }
 .ep-line-card { position: relative; border: 1px solid transparent; border-radius: 12px; }
 .ep-line-card[data-current] { background: var(--raised); border-color: var(--line); box-shadow: var(--card-shadow); }
 /* under the picked line's words: where it stands (recorded, to be said again), and its tools */
@@ -1040,7 +1091,6 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-line-edit textarea { display: block; width: 100%; padding: 0; border: 0; outline: 0; background: none; color: var(--ink); font: inherit; line-height: 1.5; resize: none; overflow: hidden; }
 .ep-line-edit p { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin: 0; color: var(--muted); font-size: 12px; }
 .ep-line-edit p span { display: inline-flex; align-items: center; gap: 5px; }
-.ep-unit[data-status="planned"] { color: var(--muted); }
 .ep-line { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: start; width: 100%; padding: 9px 10px; border: 1px solid transparent; border-radius: 12px; background: none; color: var(--ink-2); text-align: left; font-size: 13.5px; line-height: 1.5; }
 .ep-line span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .ep-line:hover:not(:disabled) { background: var(--wash); }
@@ -1179,6 +1229,78 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-picked[data-rows] { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; line-height: 1.5; }
 .ep-picked[data-rows] > span:last-child { grid-column: 1 / -1; }
 .ep-more .ep-looks, .ep-more .ep-picked { margin: 2px 0 12px 22px; }
+/* picking by how an option looks: a tile per option, its picture above its name, and one line
+   under them saying what the one pointed at is. The chosen tile's fill grows from its middle. */
+.ep-more .ep-tiles-wrap { margin: 4px 0 12px 22px; }
+.ep-tiles { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 8px; }
+.ep-tile { position: relative; isolation: isolate; display: grid; gap: 5px; min-width: 0; padding: 4px 4px 6px; border: 1px solid var(--line-soft); border-radius: 10px; background: none; color: var(--ink-2); font-size: 12px; line-height: 1.25; text-align: left; transition: border-color 140ms ease, color 200ms ease, transform 200ms ease; }
+.ep-tile::before { content: ""; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; background: var(--green-soft); opacity: 0; transform: scale(0.86); transition: opacity 160ms ease, transform 320ms cubic-bezier(0.16, 1, 0.3, 1); pointer-events: none; }
+.ep-tile:hover:not([aria-disabled]) { border-color: var(--line-strong); color: var(--ink); }
+.ep-tile:active:not([aria-disabled]) { transform: scale(0.97); }
+.ep-tile:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.ep-tile[aria-checked="true"] { border-color: var(--green); color: var(--green); font-weight: 600; }
+.ep-tile[aria-checked="true"]::before { opacity: 1; transform: none; }
+.ep-tile[aria-disabled] { opacity: 0.55; cursor: default; }
+.ep-tile-art { display: block; overflow: hidden; border-radius: 6px; border: 1px solid var(--line); }
+.ep-tile-art svg { display: block; width: 100%; height: auto; }
+.ep-tile-name { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; min-width: 0; padding: 0 2px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ep-tile-name small { color: var(--muted); font-size: 11px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.ep-tiles-means { display: block; margin-top: 8px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.ep-tiles-means b { color: var(--ink-2); font-weight: 600; }
+/* words that change in place: the old blur away as the new blur in */
+.ep-swap { position: relative; display: block; }
+.ep-swap[data-gliding] { overflow: hidden; }
+.ep-swap-in { display: block; transform-origin: 0 50%; animation: ep-swap-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.ep-swap-out { position: absolute; inset: 0 0 auto 0; transform-origin: 0 50%; pointer-events: none; animation: ep-swap-out 300ms cubic-bezier(0.55, 0, 1, 0.45) both; }
+@keyframes ep-swap-in { from { opacity: 0; filter: blur(6px); transform: scale(0.98); } to { opacity: 1; filter: none; transform: none; } }
+@keyframes ep-swap-out { from { opacity: 1; filter: none; transform: none; } to { opacity: 0; filter: blur(6px); transform: scale(1.02); } }
+/* a way in: the picture before and this one, shown half way through the move, and the move
+   itself while the tile is pointed at or focused, at the film's own distance, easing and time */
+.ep-move { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; background: #e9e4d8; }
+.ep-move-a, .ep-move-b { position: absolute; inset: 14% 13%; border-radius: 5px; }
+.ep-move-a { background: #fbf9f4; box-shadow: inset 0 0 0 1px #d6cfbf; }
+.ep-move-a i { position: absolute; left: 12%; height: 10%; border-radius: 99px; background: #8f9893; }
+.ep-move-a i:nth-child(1) { top: 20%; width: 52%; background: #2f3833; }
+.ep-move-a i:nth-child(2) { top: 44%; width: 70%; }
+.ep-move-a i:nth-child(3) { top: 66%; width: 58%; }
+.ep-move-b { background: #cfe3d6; }
+.ep-move-b i { position: absolute; border-radius: 4px; }
+.ep-move-b i:nth-child(1) { left: 12%; top: 20%; width: 34%; height: 60%; background: #3f9a66; }
+.ep-move-b i:nth-child(2) { left: 54%; top: 34%; width: 34%; height: 12%; border-radius: 99px; background: #2b6b48; }
+.ep-move-seam { position: absolute; left: 50%; top: 8%; bottom: 8%; width: 1.5px; margin-left: -0.75px; background: #2f3833; }
+.ep-move[data-move="cut"] .ep-move-a { clip-path: inset(0 50% 0 0); }
+.ep-move[data-move="cut"] .ep-move-b { clip-path: inset(0 0 0 50%); }
+.ep-move[data-move="push"] .ep-move-a { transform: translateX(-11%); opacity: 0.55; }
+.ep-move[data-move="push"] .ep-move-b { transform: translateX(11%); opacity: 0.55; }
+.ep-move[data-move="crossfade"] .ep-move-a, .ep-move[data-move="crossfade"] .ep-move-b { opacity: 0.5; }
+.ep-move[data-move="zoom-through"] .ep-move-a { transform: scale(1.09); opacity: 0.5; }
+.ep-move[data-move="zoom-through"] .ep-move-b { transform: scale(0.93); opacity: 0.5; }
+@media (prefers-reduced-motion: no-preference) {
+  .ep-tile:is(:hover, :focus-visible) .ep-move :is(.ep-move-a, .ep-move-b) { animation-duration: 1.6s; animation-fill-mode: both; }
+  .ep-tile:is(:hover, :focus-visible) .ep-move-seam { opacity: 0; }
+  .ep-tile:is(:hover, :focus-visible) .ep-move[data-move="cut"] .ep-move-a { animation-name: ep-cut-a; }
+  .ep-tile:is(:hover, :focus-visible) .ep-move[data-move="cut"] .ep-move-b { animation-name: ep-cut-b; }
+  .ep-tile:is(:hover, :focus-visible) .ep-move[data-move="push"] .ep-move-a { animation-name: ep-push-a; }
+  .ep-tile:is(:hover, :focus-visible) .ep-move[data-move="push"] .ep-move-b { animation-name: ep-push-b; }
+  .ep-tile:is(:hover, :focus-visible) .ep-move[data-move="crossfade"] .ep-move-a { animation-name: ep-fade-a; }
+  .ep-tile:is(:hover, :focus-visible) .ep-move[data-move="crossfade"] .ep-move-b { animation-name: ep-fade-b; }
+  .ep-tile:is(:hover, :focus-visible) .ep-move[data-move="zoom-through"] .ep-move-a { animation-name: ep-zoom-a; }
+  .ep-tile:is(:hover, :focus-visible) .ep-move[data-move="zoom-through"] .ep-move-b { animation-name: ep-zoom-b; }
+}
+/* half a second on the picture before, then the move in its own time (0.4 s, or 0.5 s for the zoom) */
+@keyframes ep-cut-a { 0%, 31% { opacity: 1; clip-path: inset(0); } 31.25%, 100% { opacity: 0; clip-path: inset(0); } }
+@keyframes ep-cut-b { 0%, 31% { opacity: 0; clip-path: inset(0); } 31.25%, 100% { opacity: 1; clip-path: inset(0); } }
+@keyframes ep-push-a { 0%, 31.25% { transform: none; opacity: 1; animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); } 56.25%, 100% { transform: translateX(-22%); opacity: 0; } }
+@keyframes ep-push-b { 0%, 31.25% { transform: translateX(22%); opacity: 0; animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); } 56.25%, 100% { transform: none; opacity: 1; } }
+@keyframes ep-fade-a { 0%, 31.25% { opacity: 1; animation-timing-function: cubic-bezier(0.11, 0, 0.5, 0); } 56.25%, 100% { opacity: 0; } }
+@keyframes ep-fade-b { 0%, 31.25% { opacity: 0; animation-timing-function: cubic-bezier(0.5, 1, 0.89, 1); } 56.25%, 100% { opacity: 1; } }
+@keyframes ep-zoom-a { 0%, 31.25% { transform: none; opacity: 1; animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); } 62.5%, 100% { transform: scale(1.18); opacity: 0; } }
+@keyframes ep-zoom-b { 0%, 31.25% { transform: scale(0.86); opacity: 0; animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); } 62.5%, 100% { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .ep-tile, .ep-tile::before { transition: none; }
+  .ep-swap-in, .ep-swap-out { animation: none; }
+  .ep-swap-out { display: none; }
+}
 .ep-choices .ep-confirm { padding: 10px; }
 .ep-choices .ep-confirm span { min-width: 100%; }
 .ep-layouts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -1239,6 +1361,13 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 @media (max-width: 1100px) {
   .ep-film, .ep-plan { grid-template-columns: minmax(0, 1fr); gap: 28px; }
   .ep-chapter { grid-template-columns: minmax(0, 1fr); overflow: auto; }
-  .ep-script ol, .ep-middle, .ep-choices { overflow: visible; }
+  .ep-slides { border-right: 0; border-bottom: 1px solid var(--line-soft); padding: 12px 16px; }
+  .ep-slides ol { grid-auto-flow: column; grid-auto-columns: 168px; overflow-x: auto; }
+  .ep-doc-body, .ep-middle, .ep-choices { overflow: visible; }
+  .ep-doc, .ep-doc-body, .ep-slides, .ep-peek { min-height: auto; }
+  .ep-slides, .ep-peek { overflow: visible; }
+  .ep-doc-body { flex: none; padding-top: 24px; }
+  .ep-peek { padding: 0 28px 24px; }
+  .ep-full-body { grid-template-columns: minmax(0, 1fr); overflow: auto; }
   .ep-new-grid { grid-template-columns: minmax(0, 1fr); }
 }

@@ -647,8 +647,10 @@ async def test_a_picture_type_redraws_one_picture_and_a_transition_only_the_film
     house.episodes.approve(episode_id, by="you")
     await settle(lambda: not house.episodes._busy(episode_id))
     before = house.episodes.view(episode_id)
-    assert before["options"]["pictures"][0] == "diagram"
-    assert before["options"]["transitions"] == ["cut", "push", "crossfade", "zoom-through"]
+    kinds, ways = before["options"]["pictures"], before["options"]["transitions"]
+    assert kinds[0]["id"] == "diagram" and all(k["means"] for k in kinds)
+    assert [w["id"] for w in ways] == ["cut", "push", "crossfade", "zoom-through"]
+    assert [w["seconds"] for w in ways] == [0.0, 0.4, 0.4, 0.5]
     unit = next(u for u in before["units"] if u["kind_of_picture"] == "diagram")
     view = house.episodes.choose(
         episode_id, by="you", change={"frames": {unit["id"]: {"picture": "list"}}}

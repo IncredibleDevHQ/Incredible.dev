@@ -36,9 +36,9 @@ that code's MIT notice is preserved in [licenses/managed-deepagents-sdk-MIT.txt]
 | FFmpeg | Debian package in the sandbox image | LGPL/GPL per the Debian build |
 
 Only affectUI's free (MIT) items are in this repository; none of its paid source is. The web
-app's other parts, among them the change bar, the word marks and the drop place
-(`web/src/components/episode/Ask.tsx`, `Diff.tsx`, `web/src/components/FileDrop.tsx`), are
-written here and carry this project's license.
+app's other parts, among them the change bar, the word marks, the drop place and the picture
+tiles (`web/src/components/episode/Ask.tsx`, `Diff.tsx`, `Tiles.tsx`,
+`web/src/components/FileDrop.tsx`), are written here and carry this project's license.
 
 The sample brand in [examples/brands/example-studio/](examples/brands/example-studio/) is original
 work released under CC0-1.0.

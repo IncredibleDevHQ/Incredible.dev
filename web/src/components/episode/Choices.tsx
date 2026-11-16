@@ -3,11 +3,13 @@
 // own until it is widened, in one click, to the picture's other lines, the chapter or the film.
 import { useEffect, useState } from "react";
 import { api, type EpisodeChapter, type EpisodeChoices, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Level, type Presence } from "../../api";
-import { allLines, LAYOUTS, linesIn, LOOKS, PICTURES, redrawnBy, TRANSITIONS } from "../../episode";
+import { allLines, LAYOUTS, linesIn, LOOKS, MOVES, PICTURES, redrawnBy, TRANSITIONS } from "../../episode";
 import { SegmentedControl } from "../SegmentedControl";
 import { Tooltip } from "../Tooltip";
 import type { Run } from "./Ask";
+import { KindArt, MoveArt } from "./PictureArt";
 import { LayoutThumb } from "./Stage";
+import { Tiles } from "./Tiles";
 
 const WHO: Record<Presence, string> = { person: "You", both: "You and the picture", content: "The picture alone" };
 const ORDER: Record<Presence, number> = { person: 0, both: 1, content: 2 };
@@ -206,6 +208,58 @@ export function Choices({
         )}
       </section>
 
+      {drawn && unit && (
+        <details className="ep-more">
+          <summary>
+            Kind <span>{PICTURES[unit.kind_of_picture] ?? "Picture"}</span>
+          </summary>
+          <Tiles
+            label="What kind of picture it is"
+            columns={3}
+            disabled={busy}
+            value={unit.kind_of_picture}
+            onPick={(id) => void choose({ frames: { [lead.id]: { picture: id === lead.picture ? null : id } } })}
+            options={view.options.pictures.map((k) => ({ value: k.id, label: PICTURES[k.id] ?? k.id, means: k.means, art: <KindArt kind={k.id} /> }))}
+          />
+          {lead.picked?.picture && (
+            <p className="ep-picked">
+              <span>Your pick</span>
+              <button type="button" className="linkish" disabled={busy} onClick={() => void choose({ frames: { [lead.id]: { picture: null } } })}>
+                Undo
+              </button>
+            </p>
+          )}
+        </details>
+      )}
+      {bringsIn && (
+        <details className="ep-more">
+          <summary>
+            Comes in by <span>{TRANSITIONS[move] ?? "Cut"}</span>
+          </summary>
+          <Tiles
+            label="How the picture comes in"
+            columns={2}
+            disabled={busy}
+            value={move}
+            onPick={(id) => void choose({ frames: { [line.id]: { transition: id === planMove ? null : id } } })}
+            options={view.options.transitions.map((t) => ({
+              value: t.id,
+              label: TRANSITIONS[t.id] ?? t.id,
+              note: t.seconds > 0 ? `${t.seconds} s` : undefined,
+              means: MOVES[t.id] ?? "",
+              art: <MoveArt move={t.id} />,
+            }))}
+          />
+          {line.picked?.transition && (
+            <p className="ep-picked">
+              <span>Your pick</span>
+              <button type="button" className="linkish" disabled={busy} onClick={() => void choose({ frames: { [line.id]: { transition: null } } })}>
+                Undo
+              </button>
+            </p>
+          )}
+        </details>
+      )}
       {line.cues && line.cues.length > 0 && (
         <details className="ep-more">
           <summary>
@@ -218,56 +272,6 @@ export function Choices({
               </li>
             ))}
           </ol>
-        </details>
-      )}
-      {bringsIn && (
-        <details className="ep-more">
-          <summary>
-            Comes in by <span>{TRANSITIONS[move] ?? "Cut"}</span>
-          </summary>
-          <span className="ep-looks" role="group" aria-label="How the picture comes in">
-            {view.options.transitions.map((id) => (
-              <button type="button" key={id} aria-pressed={move === id} disabled={busy} onClick={() => move !== id && void choose({ frames: { [line.id]: { transition: id === planMove ? null : id } } })}>
-                {TRANSITIONS[id] ?? id}
-              </button>
-            ))}
-          </span>
-          {line.picked?.transition && (
-            <p className="ep-picked">
-              <span>Your pick</span>
-              <button type="button" className="linkish" disabled={busy} onClick={() => void choose({ frames: { [line.id]: { transition: null } } })}>
-                Undo
-              </button>
-            </p>
-          )}
-        </details>
-      )}
-      {drawn && unit && (
-        <details className="ep-more">
-          <summary>
-            Kind <span>{PICTURES[unit.kind_of_picture] ?? "Picture"}</span>
-          </summary>
-          <span className="ep-looks" role="group" aria-label="What kind of picture it is">
-            {view.options.pictures.map((id) => (
-              <button
-                type="button"
-                key={id}
-                aria-pressed={unit.kind_of_picture === id}
-                disabled={busy}
-                onClick={() => unit.kind_of_picture !== id && void choose({ frames: { [lead.id]: { picture: id === lead.picture ? null : id } } })}
-              >
-                {PICTURES[id] ?? id}
-              </button>
-            ))}
-          </span>
-          {lead.picked?.picture && (
-            <p className="ep-picked">
-              <span>Your pick</span>
-              <button type="button" className="linkish" disabled={busy} onClick={() => void choose({ frames: { [lead.id]: { picture: null } } })}>
-                Undo
-              </button>
-            </p>
-          )}
         </details>
       )}
 

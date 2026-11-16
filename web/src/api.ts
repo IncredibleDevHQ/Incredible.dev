@@ -238,9 +238,9 @@ export type EpisodeOptions = {
   // Whether a narrator can speak here (ElevenLabs has a key), and whether the house has a voice of its own for one.
   narrator: { ready: boolean; usual: boolean };
   geometry: { frame: [number, number]; layouts: Record<string, LayoutSpot> };
-  // What a person may pick for the line that brings a picture in.
-  pictures: string[];
-  transitions: string[];
+  // What a person may pick for the line that brings a picture in: each kind with what it is, each way in with how long it takes.
+  pictures: { id: string; means: string }[];
+  transitions: { id: string; seconds: number }[];
 };
 // How long it may run: the least and the most, in seconds, or "auto" when the material decides.
 export type EpisodeLength = [number, number] | "auto";

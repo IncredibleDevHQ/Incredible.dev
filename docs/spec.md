@@ -719,13 +719,19 @@ app's canvas, from a channel's material or a research frame's notes.
 - **Asking ahead.** While the writer is on one change, the next can be typed: it waits, in
   order, and is asked when that one lands. If the turn stops, what waits is held until the
   person sends it or lets it go. What waits lives in the open studio, not in the house.
-- **The studio** is the plan and the recording in one place. Per chapter: the script, the frame
-  for the picked line, and that line's choices. One pick of a frame from the look's layouts
+- **The studio** is the plan and the recording in one place. A chapter's page has the chapters
+  down its left as slides (each one's first picture as it stands, its question and where it
+  stands), the chapter's script in the middle as a document (a block for each picture, with its
+  kind, level, state and what it shows over the lines it is shown on, and a block for each run
+  of lines said to camera), and the frame for the picked line on the right. The frame opens full
+  screen with that line's choices and the recorder; a take opens it. One pick of a frame from the look's layouts
   sets who has the frame and how; it is the line's own until it is widened, in one click, to
   the picture's other lines, the chapter or the film. A picture is simple, or rich and posed
   as stills for the person's go, and the line that brings it in may be given another kind of
-  picture and another way in (a cut, a push, a crossfade, a zoom). A person's pick is kept
-  beside the plan and applied every time it is read, and taking it back restores the plan's.
+  picture and another way in (a cut, a push, a crossfade, a zoom), picked from tiles that draw
+  each kind and play each move as the film makes it, with a line saying what each one is. A
+  person's pick is kept beside the plan and applied every time it is read, and taking it back
+  restores the plan's.
 - **Pictures** are HyperFrames sub-compositions built by the writer. Code sets every time in
   them, from the plan's clock while they are posed and from the take's once a chapter is
   recorded. A picture is drawn for its layout's box, so a new look for the film redraws every

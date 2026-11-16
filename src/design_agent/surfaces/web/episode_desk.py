@@ -110,6 +110,9 @@ GAP = 30
 #: Said for the length when a person leaves it to the material.
 AUTO = "auto"
 THEMES = Q.table("themes")
+#: What each kind of picture is, and how long each way in takes, as the plan's own table has them.
+KINDS = Q.table("picture_types")
+WAYS_IN = Q.table("transitions")
 LEVELS = units.LEVELS
 VOICES = ("live", "narrator")
 #: A clone of a person's voice is made from their takes: this much speech at least, and no
@@ -270,9 +273,12 @@ class EpisodeDesk:
                 "usual": bool(self.host.settings.narrator_voice_id),
             },
             "geometry": geometry.view(),
-            # what a person may pick for the line that brings a picture in
-            "pictures": list(override.PICTURES),
-            "transitions": list(override.TRANSITIONS),
+            # what a person may pick for the line that brings a picture in: each kind with what
+            # it is, and each way in with how long it takes, for the studio to show them
+            "pictures": [{"id": p, "means": KINDS[p]["reads_as"]} for p in override.PICTURES],
+            "transitions": [
+                {"id": t, "seconds": float(WAYS_IN[t]["seconds"])} for t in override.TRANSITIONS
+            ],
         }
 
     def _jev_key(self) -> str:

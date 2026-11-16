@@ -59,6 +59,13 @@ export const PICTURES: Record<string, string> = {
 };
 
 export const TRANSITIONS: Record<string, string> = { none: "Hold", cut: "Cut", push: "Push", crossfade: "Crossfade", "zoom-through": "Zoom in" };
+// What each way in does, as the film moves the picture (`episode.film`); how long it takes comes with the options.
+export const MOVES: Record<string, string> = {
+  cut: "There at once, on the word.",
+  push: "Slides in from the right as the picture before slides out to the left.",
+  crossfade: "The picture before fades out as this one fades in.",
+  "zoom-through": "The picture before grows as it fades, and this one grows into its place.",
+};
 
 // Whole seconds first, so 59.6 reads 1:00 and never 0:60.
 export const mmss = (seconds: number) => {

@@ -68,6 +68,11 @@
     a file; where each line starts in the take sets how long it runs in the film and when its
     picture's cues land. The film is one HyperFrames page written by code and rendered on the
     thread's computer; before anything is recorded it renders as a draft with a stand-in.
+  - A chapter's page reads like a document: the chapters as slides down the left, the script in
+    the middle as a block per picture and per run said to camera, and the frame for the picked
+    line on the right, which opens full screen with its choices and the recorder. A picture's
+    kind and its way in are picked from tiles that draw each kind and play each move as the film
+    makes it, with one line saying what the one pointed at is.
   - A take is recorded as the camera and the microphone give it: no echo cancelling, one
     channel, H.264 where the browser can at about 16 Mbit/s for 1080p, and room noise cleaned
     up only for a microphone that sits in the computer. The recording panel names the
