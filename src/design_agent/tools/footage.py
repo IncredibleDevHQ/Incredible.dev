@@ -39,17 +39,20 @@ class FootageError(Exception):
     """The bucket did not take a recording. The message is safe to show: it holds no key."""
 
 
-def _sdk() -> tuple[Any, type[Exception], tuple[type[Exception], ...]]:
-    """boto3, the error a refused request raises, and every error a transfer can end in."""
+def _sdk() -> tuple[Any, Any, type[Exception], tuple[type[Exception], ...]]:
+    """boto3, its client's configuration, the error a refused request raises, and every error a
+    transfer can end in. Every import of the SDK is here, so the rest of this module, and tests
+    that stand in for the SDK, never need it installed."""
     try:
         import boto3
         from boto3.exceptions import Boto3Error
+        from botocore.config import Config
         from botocore.exceptions import BotoCoreError, ClientError
     except ImportError:
         raise FootageError(
             "keeping footage needs boto3: install the s3 extra (uv sync --extra s3)"
         ) from None
-    return boto3, ClientError, (ClientError, BotoCoreError, Boto3Error, OSError)
+    return boto3, Config, ClientError, (ClientError, BotoCoreError, Boto3Error, OSError)
 
 
 @dataclass(frozen=True)
@@ -81,9 +84,7 @@ class Bucket:
             token=secret(settings.aws_session_token),
         )
 
-    def _client(self, boto3: Any) -> Any:
-        from botocore.config import Config
-
+    def _client(self, boto3: Any, config: Any) -> Any:
         # A person waits on the take while this runs: a store that does not answer is given
         # up on in seconds, not minutes.
         options: dict[str, Any] = {
@@ -102,14 +103,14 @@ class Bucket:
             aws_access_key_id=self.key_id,
             aws_secret_access_key=self.secret,
             aws_session_token=self.token,
-            config=Config(**options),
+            config=config(**options),
         )
 
     def put(self, key: str, source: IO[bytes], *, name: str = "") -> str:
         """Keep one recording, read from an open file from its start, and say where it is
         (`s3://bucket/key`). It is sent in parts, so its size is never held in memory. `name`
         is the file's own name, kept with it."""
-        boto3, refused, errors = _sdk()
+        boto3, config, refused, errors = _sdk()
         extra: dict[str, Any] = {
             "ContentType": TYPES.get(
                 posixpath.splitext(key)[1].lstrip(".").lower(), "application/octet-stream"
@@ -119,7 +120,7 @@ class Bucket:
         if label:
             extra["Metadata"] = {"name": label}
         try:
-            client = self._client(boto3)
+            client = self._client(boto3, config)
             if self.endpoint:
                 # A development store starts empty. On AWS a bucket is made on purpose, by
                 # whoever owns the account, and is never made here.

@@ -49,9 +49,17 @@ class Boto:
         return self.made
 
 
+class Config:
+    """botocore's client configuration, as far as these tests read it."""
+
+    def __init__(self, **options: Any) -> None:
+        self.options = options
+        self.s3 = options.get("s3")
+
+
 def sdk(monkeypatch: pytest.MonkeyPatch, client: Client) -> Boto:
     boto = Boto(client)
-    monkeypatch.setattr(footage, "_sdk", lambda: (boto, Refused, (Refused, OSError)))
+    monkeypatch.setattr(footage, "_sdk", lambda: (boto, Config, Refused, (Refused, OSError)))
     return boto
 
 
