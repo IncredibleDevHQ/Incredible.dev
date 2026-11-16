@@ -134,7 +134,7 @@ function LayoutPanel({ view, chapter, line, unit, run, busy, onFilm }: Props) {
       )}
       <footer>
         <span>
-          {LOOKS[theme?.id ?? ""] ?? "Look"} · {view.settings.voice === "narrator" ? "narrator" : "your voice"}
+          {LOOKS[theme?.id ?? ""] ?? "Look"} · {view.settings.voice === "local" ? "local narrator" : view.settings.voice === "narrator" ? "narrator" : "your voice"}
         </span>
         <button type="button" className="linkish" onClick={onFilm}>
           Change

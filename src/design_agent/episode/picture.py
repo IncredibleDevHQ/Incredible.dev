@@ -257,6 +257,7 @@ def brief(
             else None
         ),
         "level": unit.get("level", "simple"),
+        "connections": unit.get("visual", {}).get("connections", []),
         "visual": {
             **{
                 k: unit["visual"][k]

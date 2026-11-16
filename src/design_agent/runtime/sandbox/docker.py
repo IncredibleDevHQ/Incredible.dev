@@ -275,10 +275,14 @@ class DockerSandboxRunner:
         stopped: list[str] = []
         now = self._clock()
         with self._lock:
-            for container in self._containers.values():
+            for thread_id, container in list(self._containers.items()):
                 if now - container.last_used >= self.idle_ttl_seconds:
-                    self._run(["stop", "--time", "5", container.name], check=False, timeout=60)
-                    stopped.append(container.name)
+                    result = self._run(
+                        ["stop", "--time", "5", container.name], check=False, timeout=60
+                    )
+                    if result.returncode == 0:
+                        del self._containers[thread_id]
+                        stopped.append(container.name)
         return stopped
 
     def stop_all(self) -> None:

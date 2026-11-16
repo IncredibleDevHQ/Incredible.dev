@@ -6,6 +6,8 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
+from design_agent.episode import connections
+
 Row = dict[str, Any]
 CATALOG_VERSION = 1
 
@@ -98,7 +100,7 @@ def measured(obj: Row) -> bool:
     )
 
 
-def available(objects: list[Row]) -> dict[str, list[str]]:
+def available(objects: list[Row], edges: list[Row] | None = None) -> dict[str, list[str]]:
     quantities = [o for o in objects if measured(o)]
     has_series = len({str(o["series"]) for o in quantities if o.get("series")}) > 1
     options = {key: list(item.layouts) for key, item in COMPONENTS.items()}
@@ -108,7 +110,7 @@ def available(objects: list[Row]) -> dict[str, list[str]]:
     elif not has_series:
         options["bar-chart"].remove("grouped")
         options["line-chart"] = ["single"]
-    if not any(
+    if not edges and not any(
         isinstance(o.get("from"), str) and isinstance(o.get("to"), str) and o["from"] and o["to"]
         for o in objects
     ):
@@ -122,7 +124,14 @@ def available(objects: list[Row]) -> dict[str, list[str]]:
 
 def select(first: Row, frames: list[Row], pick: Row, kind: str, width: int) -> Row:
     objects = [o for frame in frames for o in frame.get("objects", [])]
-    options = available(objects)
+    edges = (
+        connections.resolve(frames)
+        if kind in ("diagram", "illustration")
+        or pick.get("component") in ("sequence-diagram", "relationship-diagram", "flowchart")
+        or first.get("component") in ("sequence-diagram", "relationship-diagram", "flowchart")
+        else []
+    )
+    options = available(objects, edges)
     suggested = first.get("component")
     if suggested not in options or first.get("picture") != kind:
         suggested = {
@@ -142,6 +151,14 @@ def select(first: Row, frames: list[Row], pick: Row, kind: str, width: int) -> R
                 "loop": "flowchart",
             }.get(first.get("arrangement", ""), "custom"),
         )
+        if edges and kind in ("diagram", "illustration"):
+            if (
+                any(o.get("type") == "lifeline" for o in objects)
+                and sum(bool(e["label"]) for e in edges) > 1
+            ):
+                suggested = "sequence-diagram"
+            elif suggested not in ("flowchart", "relationship-diagram"):
+                suggested = "flowchart"
     chosen = pick.get("component") or suggested
     if chosen not in options:
         chosen = suggested
@@ -154,6 +171,8 @@ def select(first: Row, frames: list[Row], pick: Row, kind: str, width: int) -> R
         and all(len(str(o.get("words", ""))) <= 22 for o in objects)
     ):
         default = "horizontal"
+    if chosen == "flowchart" and default not in layouts and width >= 1000:
+        default = "left-to-right"
     variant = pick.get("variant") or default
     return {
         "component": chosen,
@@ -162,5 +181,8 @@ def select(first: Row, frames: list[Row], pick: Row, kind: str, width: int) -> R
         "variant": variant if variant in layouts else layouts[0],
         "direction": pick.get("direction", ""),
         "options": options,
+        "connections": edges
+        if chosen in ("sequence-diagram", "relationship-diagram", "flowchart")
+        else [],
         "automatic": not pick.get("component"),
     }

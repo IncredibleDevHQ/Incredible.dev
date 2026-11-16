@@ -117,6 +117,7 @@ def component_scene(brief: Row) -> str:
     canvas = brief["canvas"]
     visual = brief["visual"]
     scene = {key: brief[key] for key in ("canvas", "keep_clear", "look")}
+    scene["connections"] = brief.get("connections", [])
     scene["subject"] = brief.get("picture", {}).get("shows", "")
     scene["visual"] = {key: visual[key] for key in ("component", "variant")}
     chart = visual["component"] in ("bar-chart", "line-chart")

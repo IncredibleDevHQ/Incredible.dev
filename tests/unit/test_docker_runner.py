@@ -148,4 +148,9 @@ def test_idle_containers_are_stopped_but_volumes_kept() -> None:
     runner.container_for("t")
     now[0] = 61
     assert runner.reap_idle() == [runner.names_for("t")[0]]
+    # A replacement Studio can adopt the same thread after this process has released it.
+    now[0] += 60
+    assert runner.reap_idle() == []
+    runner.stop_all()
+    assert sum(c[0] == "stop" for c in runner.calls) == 1
     assert not any(c[0] in {"rm", "volume"} for c in runner.calls)

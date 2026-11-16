@@ -95,6 +95,9 @@ Apply the supplied palette and font roles to every element, including captions a
   an illustration, a slide) and `picture.arrangement` how it is laid out. When the brief has
   `picture.kind_chosen_by`, a person picked that kind over the plan's: draw the same objects
   and cues as that kind, even where a line's `shows_when_finished` describes another.
+- For flow and sequence diagrams, use the brief's connections to identify the source,
+  destination and cue for each arrow. Use a crossed path for a blocked request. Keep the
+  arrow anchored to both participants as it appears, including across held lines.
 - **It does not come or go by itself.** The film brings the whole picture in and takes it out
   (a cut, a push, a crossfade or a zoom) and may hold its last moment for half a second after
   its last line. Never fade, slide or scale the whole picture in at its start or out at its end.

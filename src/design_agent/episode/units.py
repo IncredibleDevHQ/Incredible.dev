@@ -76,6 +76,8 @@ def units(full: Row, picks: Row | None = None, *, level: str = SIMPLE) -> list[R
         built_from: Row = {"theme": theme, "canvas": unit["canvas"], "layout": unit["layout"]}
         pick = chosen.get(unit["id"]) or {}
         unit["visual"] = catalog.select(first, frames, pick, unit["picture"], unit["canvas"][0])
+        if edges := unit["visual"]["connections"]:
+            built_from["connections"] = edges
         if first.get("component") or any(
             pick.get(k) for k in ("component", "variant", "direction", "model", "effort")
         ):

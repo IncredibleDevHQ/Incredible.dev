@@ -2062,8 +2062,9 @@ async def test_the_film_is_rendered_from_the_plan_the_pictures_and_the_takes(
     assert changed["film_state"]["stale"]
 
 
+@pytest.mark.parametrize("mode", ["narrator", "local"])
 async def test_a_narrated_film_keeps_its_narration_once_it_is_rendered(
-    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch, mode: str
 ) -> None:
     from pydantic import SecretStr
 
@@ -2073,7 +2074,10 @@ async def test_a_narrated_film_keeps_its_narration_once_it_is_rendered(
     house.settings = house.settings.model_copy(
         update={"elevenlabs_api_key": SecretStr("key"), "narrator_voice_id": "voice1234567890"}
     )
+    from design_agent.tools import local_speech
+
     said: list[str] = []
+    staged_voice = []
 
     async def speak(keys: Any, text: str, voice_id: str, **more: Any) -> media.Spoken:
         said.append(text)
@@ -2081,7 +2085,7 @@ async def test_a_narrated_film_keeps_its_narration_once_it_is_rendered(
 
     class Computer:
         def put(self, files: list[tuple[str, bytes]]) -> None:
-            pass
+            staged_voice.extend(path for path, _ in files if "/voice/" in path)
 
         def run(self, command: str, *, timeout: int = 600) -> Ran:
             return Ran("0\n" if "render.exit" in command and "cat" in command else "", 0)
@@ -2089,10 +2093,16 @@ async def test_a_narrated_film_keeps_its_narration_once_it_is_rendered(
         def get(self, path: str) -> bytes | None:
             return b"mp4" if path.endswith("episode.mp4") else None
 
+    def offline(words: str) -> media.Spoken:
+        said.append(words)
+        return media.Spoken(b"wave", 2.0, [])
+
+    monkeypatch.setattr(local_speech, "engine", lambda: "say")
+    monkeypatch.setattr(local_speech, "synthesize", offline)
     monkeypatch.setattr(media, "speak", speak)
     monkeypatch.setattr(house.episodes, "_computer", lambda episode: Computer())
     monkeypatch.setattr("design_agent.surfaces.web.episode_desk.time.sleep", lambda _s: None)
-    episode_id = await planned(house, presenter="off", voice="narrator")
+    episode_id = await planned(house, presenter="off", voice=mode)
     house.episodes.approve(episode_id, by="you")
     await settle(lambda: not house.episodes._busy(episode_id))
     house.episodes.render(episode_id, by="you")
@@ -2100,6 +2110,9 @@ async def test_a_narrated_film_keeps_its_narration_once_it_is_rendered(
     view = house.episodes.view(episode_id)
     lines = view["clock"]["lines"]
     assert view["film_state"]["status"] == "done" and len(said) == len(lines)
+    assert staged_voice and all(
+        p.endswith(".wav" if mode == "local" else ".mp3") for p in staged_voice
+    )
     # the film just rendered is the film as it stands: its lines are still the spoken ones
     assert {line["source"]["kind"] for line in lines} == {"voice"}
     assert not view["film_state"]["stale"]
@@ -2805,3 +2818,50 @@ def test_invalid_render_progress_does_not_replace_last_measurement(line: str) ->
     from design_agent.surfaces.web.episode_render import progress
 
     assert progress("running\n" + line) == {}
+
+
+async def test_local_voice_uses_cached_speech_and_does_not_need_elevenlabs(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from design_agent.tools import local_speech, media
+
+    said = []
+
+    def synthesize(words: str) -> Any:
+        said.append(words)
+        return media.Spoken(b"wave", 2.5, [])
+
+    monkeypatch.setattr(local_speech, "engine", lambda: "say")
+    monkeypatch.setattr(local_speech, "synthesize", synthesize)
+    ep = await planned(house)
+    house.episodes.choose(ep, by="you", change={"settings": {"voice": "local"}})
+    await house.episodes._narrate(ep)
+    view = house.episodes.view(ep)
+    assert view["settings"]["voice"] == "local" and all(
+        line["source"]["kind"] == "voice" for line in view["clock"]["lines"]
+    )
+    count = len(said)
+    await house.episodes._narrate(ep)
+    assert count and len(said) == count
+
+
+async def test_demo_picture_retry_can_read_the_original_brief(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    episode = await planned(house)
+    desk = house.episodes
+    original = desk._pose
+    calls = []
+
+    def transient(*args: Any) -> Any:
+        calls.append(True)
+        if len(calls) == 1:
+            return ["no still could be taken"], {}
+        return original(*args)
+
+    monkeypatch.setattr(desk, "_pose", transient)
+    unit = desk.view(episode)["units"][0]["id"]
+    desk.make(episode, by="you", only=[unit])
+    await settle(lambda: not desk._busy(episode))
+    assert desk.view(episode)["units"][0]["picture"]["status"] == "made"
+    assert len(calls) == 2

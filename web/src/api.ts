@@ -242,6 +242,7 @@ export type EpisodeOptions = {
   reader: "jev" | "writer" | "demo";
   // Whether a narrator can speak here (ElevenLabs has a key), and whether the house has a voice of its own for one.
   narrator: { ready: boolean; usual: boolean };
+  local_narrator: boolean;
   geometry: { frame: [number, number]; layouts: Record<string, LayoutSpot> };
   // What a person may pick for the line that brings a picture in: each kind with what it is, each way in with how long it takes.
   pictures: { id: string; means: string }[];
@@ -257,7 +258,7 @@ export type EpisodeSettings = {
   seconds: EpisodeLength;
   presenter: "on" | "off";
   theme: string;
-  voice: "live" | "narrator";
+  voice: "live" | "narrator" | "local";
   narrator?: Narrator;
   level: Level;
   writer: WriterId;

@@ -24,7 +24,7 @@ from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from design_agent.episode import catalog, layouts
+from design_agent.episode import catalog, connections, layouts
 from design_agent.episode import plan as planio
 from design_agent.episode import questions as Q
 from design_agent.episode.classifier import Ask, ClassifierError
@@ -473,7 +473,10 @@ def stage_design(plan: Row, out: list[str], fresh: bool, ask: Ask) -> None:
             ):
                 component_q["component"] = Q.choice(
                     "Which component best explains this scene?",
-                    {key: catalog.COMPONENTS[key].purpose for key in catalog.available(objects)},
+                    {
+                        key: catalog.COMPONENTS[key].purpose
+                        for key in catalog.available(objects, connections.resolve(scene))
+                    },
                 )
         if fresh or not f.get("_designed"):
             qs = {}

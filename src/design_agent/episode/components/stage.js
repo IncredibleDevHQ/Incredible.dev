@@ -25,7 +25,7 @@ for (const line of brief.lines) {
   for (const obj of line.objects) items.push({ ...obj, frame: line.frame });
 }
 function at(item) {
-  return clock.cues[cues.get(item.frame + "/" + item.id)] ?? clock.lines[item.frame]?.[0] ?? 0;
+  return clock.cues[item.cue] ?? clock.cues[cues.get(item.frame + "/" + item.id)] ?? clock.lines[item.frame]?.[0] ?? 0;
 }
 function node(tag, attrs = {}, parent = stage) {
   const el = document.createElementNS(svgNS, tag);

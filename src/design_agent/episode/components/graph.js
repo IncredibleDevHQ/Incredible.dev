@@ -10,14 +10,37 @@ const byName = new Map(
 function endpoint(value) {
   return byName.get(value)?.id || String(value);
 }
-const links = edges.map((o) => ({ a: endpoint(o.from), b: endpoint(o.to), item: o }));
-for (const item of nodes) if (item.parent) links.push({ a: endpoint(item.parent), b: item.id, item });
-const ids = [...new Set([...nodes.map((o) => o.id), ...links.flatMap((e) => [e.a, e.b])])];
+const links = brief.connections?.length
+  ? brief.connections.map((e) => ({
+      a: endpoint(e.from),
+      b: endpoint(e.to),
+      item: { id: e.object, frame: e.frame, cue: e.cue, words: e.label },
+      blocked: e.blocked
+    }))
+  : edges.map((o) => ({ a: endpoint(o.from), b: endpoint(o.to), item: o, blocked: false }));
+for (const item of nodes) if (item.parent) links.push({ a: endpoint(item.parent), b: item.id, item, blocked: false });
+const connected = new Set(links.flatMap((e) => [e.a, e.b]));
+const ids = [
+  ...new Set([...nodes.filter((o) => !connected.size || connected.has(o.id)).map((o) => o.id), ...connected])
+];
+const linkLabels = new Set(links.filter((e) => e.item.words).map((e) => e.item.id));
+if (variant === "left-to-right") {
+  const position = (id) => {
+    const text = byName.get(id)?.what || "";
+    if (/\b(?:left|right)\b/.test(text) && !/\b(?:line|arrow|callout)\b/.test(text))
+      return /\bleft\b/.test(text) ? -1 : 1;
+    return 0;
+  };
+  // Respect the plan's stated orientation when placing already-connected objects.
+  ids.sort((a, b) => position(a) - position(b));
+}
+const notes = nodes.filter((o) => !ids.includes(o.id) && !linkLabels.has(o.id));
+const graphHeight = notes.length ? h * 0.66 : h;
 const horizontal = variant === "left-to-right",
   swim = variant === "swimlanes";
 const owners = [...new Set(nodes.map((o) => String(o.owner || "")))];
-const bw = Math.min(w * 0.3, Math.max(75, w / Math.max(3, Math.sqrt(ids.length) * 2))),
-  bh = Math.min(size * 2, h / Math.max(4, ids.length + 1));
+const bw = Math.min(w * 0.33, horizontal ? (w / Math.max(1, ids.length)) * 0.7 : w * 0.27),
+  bh = Math.min(size * 2.4, graphHeight / (horizontal ? 3 : Math.max(4, ids.length * 1.55)));
 const coords = new Map();
 function depth(id) {
   const visited = new Set([id]);
@@ -50,60 +73,88 @@ ids.forEach((id, i) => {
     const hub = variant === "hub",
       angle = (2 * Math.PI * (i - (hub ? 1 : 0))) / Math.max(1, ids.length - (hub ? 1 : 0)) - Math.PI / 2;
     x = left + w * 0.5 + (hub && i === 0 ? 0 : Math.cos(angle) * (w - bw) * 0.46);
-    y = top + h * 0.5 + (hub && i === 0 ? 0 : Math.sin(angle) * (h - bh) * 0.43);
+    y = top + graphHeight * 0.5 + (hub && i === 0 ? 0 : Math.sin(angle) * (graphHeight - bh) * 0.43);
   } else if (variant === "tree") {
     const siblings = ids.filter((_, j) => depths[j] === depths[i]);
     x = left + (w * (siblings.indexOf(id) + 0.5)) / siblings.length;
-    y = top + (h * (depths[i] + 0.5)) / levels;
+    y = top + (graphHeight * (depths[i] + 0.5)) / levels;
   } else if (swim) {
     const owner = String(item?.owner || "");
     x = left + (w * (Math.max(0, owners.indexOf(owner)) + 0.5)) / owners.length;
-    y = top + h * (0.15 + (0.8 * (i + 0.5)) / ids.length);
+    y = top + graphHeight * (0.15 + (0.8 * (i + 0.5)) / ids.length);
   } else {
     const t = (i + 0.5) / ids.length;
     x = left + w * (horizontal ? t : 0.5);
-    y = top + h * (horizontal ? 0.5 : t);
+    y = top + graphHeight * (horizontal ? 0.5 : t);
   }
   coords.set(id, [x, y]);
 });
-links.forEach(({ a, b, item }) => {
+links.forEach(({ a, b, item, blocked }) => {
   const [sx, sy] = coords.get(a),
-    [ex, ey] = coords.get(b),
-    dx = ex - sx,
-    dy = ey - sy;
-  const mag = Math.hypot(dx, dy);
-  if (!mag) return;
-  const offset = Math.min(bw / 2 / Math.max(0.0001, Math.abs(dx / mag)), bh / 2 / Math.max(0.0001, Math.abs(dy / mag)));
-  const x = ex - (offset * dx) / mag,
-    y = ey - (offset * dy) / mag,
-    g = node("g");
-  path("M" + sx + " " + sy + "L" + x + " " + y, colors.accent, g);
-  if (kind === "flowchart")
-    path(
-      "M" +
-        (x - (12 * dx) / mag + (6 * dy) / mag) +
-        " " +
-        (y - (12 * dy) / mag - (6 * dx) / mag) +
-        "L" +
-        x +
-        " " +
-        y +
-        "L" +
-        (x - (12 * dx) / mag - (6 * dy) / mag) +
-        " " +
-        (y - (12 * dy) / mag + (6 * dx) / mag),
-      colors.accent,
-      g
+    [ex, ey] = coords.get(b);
+  const dx = ex - sx,
+    dy = ey - sy,
+    length = Math.hypot(dx, dy);
+  if (!length) return;
+  const ux = dx / length,
+    uy = dy / length;
+  const offset = Math.min(bw / 2 / Math.max(0.0001, Math.abs(ux)), bh / 2 / Math.max(0.0001, Math.abs(uy)));
+  const x0 = sx + ux * offset,
+    y0 = sy + uy * offset,
+    x1 = ex - ux * offset,
+    y1 = ey - uy * offset;
+  const g = node("g", { "data-from": a, "data-to": b, "data-blocked": !!blocked });
+  const bypass = horizontal && Math.abs(ids.indexOf(a) - ids.indexOf(b)) > 1;
+
+  const d = bypass
+    ? `M${sx} ${sy - bh / 2} C${sx} ${sy - bh * 1.65} ${ex} ${ey - bh * 1.65} ${ex} ${ey - bh / 2}`
+    : `M${x0} ${y0} L${x1} ${y1}`;
+  const stroke = blocked ? colors.muted : colors.accent;
+  const wire = path(d, stroke, g, 4),
+    len = wire.getTotalLength();
+  const tip = wire.getPointAtLength(len),
+    prior = wire.getPointAtLength(Math.max(0, len - 2));
+  const angle = Math.atan2(tip.y - prior.y, tip.x - prior.x);
+  const mid = wire.getPointAtLength(len / 2);
+  if (blocked) {
+    wire.setAttribute("stroke-dasharray", "9 7");
+    path(`M${mid.x - 8} ${mid.y - 8}l16 16m0 -16l-16 16`, colors.ink, g, 4);
+  } else {
+    wire.setAttribute("stroke-dasharray", len);
+    tl.fromTo(
+      wire,
+      { attr: { "stroke-dashoffset": len } },
+      { attr: { "stroke-dashoffset": 0 }, duration: 0.35 },
+      at(item)
     );
-  if (item.words && item.from)
-    label(words(item), (sx + ex) / 2, (sy + ey) / 2 - size * 0.55, w * 0.3, size * 0.6, g, "middle");
+    if (kind === "flowchart") {
+      const head = path("M-14 -7 L0 0 L-14 7", stroke, g, 4);
+      head.setAttribute("transform", `translate(${tip.x} ${tip.y}) rotate(${(angle * 180) / Math.PI})`);
+    }
+  }
+  if (item.words) label(item.words, mid.x, mid.y - size * 0.7, w * 0.3, size * 0.62, g, "middle");
   reveal(g, item);
 });
 for (const id of ids) {
   const [x, y] = coords.get(id),
-    g = node("g");
-  rect(x - bw / 2, y - bh / 2, bw, bh, colors.panel, g);
+    g = node("g", { "data-node": id });
+  const box = rect(x - bw / 2, y - bh / 2, bw, bh, colors.panel, g, 14);
+  box.setAttribute("stroke", colors.line);
+  box.setAttribute("stroke-width", 2);
   const item = byName.get(id);
-  label(item ? words(item) : id, x, y, bw * 0.92, Math.min(size, bh * 0.58), g, "middle");
-  if (item) reveal(g, item);
+  label(item ? words(item) : id, x, y, bw * 0.88, Math.min(size, bh * 0.55), g, "middle");
+  // Establish participants before their first exchange so the arrow always has two visible ends.
 }
+const cols = Math.min(4, notes.length),
+  rows = Math.ceil(notes.length / (cols || 1));
+notes.forEach((item, i) => {
+  const cw = w / cols,
+    rh = Math.min((h - graphHeight) / rows, size * 1.8);
+  const x = left + (i % cols) * cw,
+    y = top + graphHeight + Math.floor(i / cols) * rh;
+  const g = node("g");
+  rect(x + 4, y + 3, cw - 8, rh - 6, colors.panel, g, 6);
+  rect(x + 4, y + 3, 4, rh - 6, colors.accent, g, 2);
+  label(words(item), x + cw / 2, y + rh / 2, cw * 0.88, Math.min(size * 0.66, rh * 0.5), g, "middle");
+  reveal(g, item);
+});

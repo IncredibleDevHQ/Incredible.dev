@@ -208,7 +208,7 @@ class EpisodeSettingsIn(BaseModel):
     seconds: tuple[int, int] | Literal["auto"] | None = None
     presenter: str | None = Field(default=None, pattern=r"^(on|off)$")
     theme: str | None = Field(default=None, max_length=60)
-    voice: str | None = Field(default=None, pattern=r"^(live|narrator)$")
+    voice: str | None = Field(default=None, pattern=r"^(live|narrator|local)$")
     narrator: NarratorIn | None = None
     level: str | None = Field(default=None, pattern=r"^(simple|rich)$")
     writer: str | None = Field(default=None, pattern=r"^(claude|codex|kimi|builtin|demo)$")

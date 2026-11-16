@@ -66,6 +66,7 @@ from design_agent.surfaces.web.episode_workers import (
 )
 from design_agent.surfaces.web.hub import Hub
 from design_agent.surfaces.web.store import Row, Store, new_id
+from design_agent.tools import local_speech
 from design_agent.workspace.manifest import ManifestBook
 
 if TYPE_CHECKING:
@@ -122,7 +123,7 @@ LEVELS = units.LEVELS
 #: What a person adds to a chapter's script: a line that goes on in its block, a block said to
 #: camera, or a block whose line brings in a picture of one of the types they may pick.
 LINE_KINDS = ("more", "camera", *override.PICTURES)
-VOICES = ("live", "narrator")
+VOICES = ("live", "narrator", "local")
 #: A clone of a person's voice is made from their takes: this much speech at least, and no
 #: more than a clone uses. A take over the size ElevenLabs takes for one recording is left out.
 CLONE_LEAST = 30.0
@@ -294,6 +295,7 @@ class EpisodeDesk:
                 for t in Q.TYPES["themes"]
             ],
             "seconds": {"least": SECONDS[0], "most": SECONDS[1], "usual": list(USUAL), "gap": GAP},
+            "local_narrator": local_speech.engine() is not None,
             "reader": "demo" if self.demo else "jev" if self._jev_key() else "writer",
             # a narrator can speak (ElevenLabs has a key), and the house has a voice of its
             # own for one; without that, an episode picks a voice or clones the person's
@@ -553,6 +555,8 @@ class EpisodeDesk:
         ):
             out["presenter"], out["theme"] = "off", "voice-only"
         out.setdefault("theme", "corner-window")
+        if given.get("voice") == "local" and not local_speech.engine():
+            raise ValueError("Local narration needs macOS speech or espeak-ng.")
         if given.get("voice") in VOICES:
             out["voice"] = given["voice"]
         if given.get("narrator"):
@@ -1987,7 +1991,7 @@ class EpisodeDesk:
             listed = "\n".join(f"- {f}" for f in faults[:12])
             prompt = (
                 f"Stage: picture.\n\n{root}/{brief['file']} can't be used yet:\n\n{listed}\n\n"
-                "Change only what these name, and reply with what you changed."
+                f"Use the brief at {root}/{brief_file}. Change only what these name, and reply with what you changed."
             )
         if faults:
             self.store.set_picture(
@@ -2063,7 +2067,7 @@ class EpisodeDesk:
             listed = "\n".join(f"- {f}" for f in faults[:12])
             prompt = (
                 f"Stage: motion plan.\n\n{root}/{file} can't be used yet:\n\n{listed}\n\n"
-                "Change only what these name, and reply with what you changed."
+                f"Use the brief at {root}/pictures/{comp}.brief.json. Change only what these name, and reply with what you changed."
             )
         self.store.set_picture(
             episode_id,
@@ -2559,14 +2563,19 @@ class EpisodeDesk:
         it is spoken again only when its words change."""
         episode = self._episode(episode_id)
         full = self._full(episode)
-        if full is None or episode["settings"].get("voice") != "narrator":
+        mode = episode["settings"].get("voice")
+        if full is None or mode not in ("narrator", "local"):
             return
-        if not self._speaks():
+        if mode == "narrator" and not self._speaks():
             raise ValueError("Narration needs ELEVENLABS_API_KEY.")
-        voice_id = self._voice_id(episode)
+        voice_id = (
+            f"local:{local_speech.engine()}:en:165:v1"
+            if mode == "local"
+            else self._voice_id(episode)
+        )
         if not voice_id:
             raise ValueError("Narration needs a voice: pick one under Voice, or clone yours.")
-        from design_agent.tools.media import MediaKeys, speak
+        from design_agent.tools.media import MediaKeys, Spoken, speak
 
         keys = MediaKeys.from_settings(self.host.settings)
         clock = timeline.schedule(full, self._kept(episode_id))
@@ -2580,18 +2589,22 @@ class EpisodeDesk:
                 continue
             if (spoken.get(f["id"]) or {}).get("h") == mark:
                 continue
-            said = await speak(
-                keys,
-                words,
-                voice_id,
-                previous_text=str(lines[i - 1].get("vo") or "") if i else None,
-                next_text=str(lines[i + 1].get("vo") or "") if i + 1 < len(lines) else None,
-            )
+            said: Spoken | str
+            if mode == "local":
+                said = await asyncio.to_thread(local_speech.synthesize, words)
+            else:
+                said = await speak(
+                    keys,
+                    words,
+                    voice_id,
+                    previous_text=str(lines[i - 1].get("vo") or "") if i else None,
+                    next_text=str(lines[i + 1].get("vo") or "") if i + 1 < len(lines) else None,
+                )
             if isinstance(said, str):
                 raise ValueError(f"Narration stopped at line {f['id']}: {said}")
             row = self.host.save_file(
                 str(episode["thread_id"]),
-                f"voice-{f['id'].replace('.', '-')}.mp3",
+                f"voice-{f['id'].replace('.', '-')}.{'wav' if mode == 'local' else 'mp3'}",
                 said.audio,
                 origin="episode",
             )
@@ -2600,6 +2613,7 @@ class EpisodeDesk:
                 "seconds": said.seconds,
                 "words": said.words,
                 "h": mark,
+                "mode": mode,
             }
             episode = self._episode(episode_id)
             self.store.update_episode(episode_id, film={**(episode["film"] or {}), "voice": spoken})
@@ -2619,9 +2633,14 @@ class EpisodeDesk:
 
     def _voice(self, episode: Row) -> Row:
         """The narration there is, by line, when the film is narrated."""
-        if episode["settings"].get("voice") != "narrator":
+        mode = episode["settings"].get("voice")
+        if mode not in ("local", "narrator"):
             return {}
-        return dict((episode["film"] or {}).get("voice") or {})
+        return {
+            k: v
+            for k, v in ((episode["film"] or {}).get("voice") or {}).items()
+            if v.get("mode", "narrator") == mode
+        }
 
     # -- the narrator's voice --------------------------------------------------------------------
 
@@ -2757,7 +2776,8 @@ class EpisodeDesk:
         for frame_id, said in spoken.items():
             row = self.store.file(str(said.get("file")))
             if row is not None:
-                voice[frame_id] = f"voice/{frame_id.replace('.', '-')}.mp3"
+                suffix = "wav" if said.get("mode") == "local" else "mp3"
+                voice[frame_id] = f"voice/{frame_id.replace('.', '-')}.{suffix}"
                 media.append(
                     (
                         f"{folder}/{voice[frame_id]}",

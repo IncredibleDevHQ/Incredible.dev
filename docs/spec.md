@@ -884,10 +884,16 @@ app's canvas, from a channel's material or a research frame's notes.
   the clone is made only after the person says the voice is theirs or its speaker agreed, and
   the thread records that they did. Cloning is the person's action in the studio and never a
   tool the model can call. The clone then narrates the episode; another voice is another film.
+- **Local narration.** When the host has macOS speech or `espeak-ng`, Studio also offers a
+  local English narrator. Lines without a kept take use synthesized speech. The film uses
+  each recording's measured duration and estimates cue positions within that line.
 - A picture carries a catalog component and layout. The existing design reader selects a
   component on the opening frame. Studio can override it, supply custom direction and choose
   the provider, model and effort for the next build. The completed picture records its
-  generation settings. Demo pictures are scripted. Older builds can have unknown settings.
+  generation settings. Flow and sequence diagrams bind arrows to named scene objects.
+  Explicit endpoints take priority. Directional cues and ordered pipelines can supply missing
+  endpoints in older plans. A blocked connection retains its cross and narration cue.
+  Demo pictures are scripted. Older builds can have unknown settings.
 - Export waits for requested picture builds to finish and needs a built picture or a kept take.
   Studio shows the render stage, frame counts when available, and elapsed time. An interrupted
   renderer leaves a failed, retryable attempt. A finished attempt retains its duration.

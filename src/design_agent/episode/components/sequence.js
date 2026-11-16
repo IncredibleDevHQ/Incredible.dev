@@ -1,5 +1,15 @@
 function sequence() {
-  const messages = items.filter((o) => o.from && o.to);
+  const names = new Map(items.map((o) => [o.id, words(o)]));
+  const messages = brief.connections?.length
+    ? brief.connections.map((e) => ({
+        id: e.object,
+        frame: e.frame,
+        cue: e.cue,
+        words: e.label || "",
+        from: names.get(e.from) || e.from,
+        to: names.get(e.to) || e.to
+      }))
+    : items.filter((o) => o.from && o.to);
   const people = [...new Set(messages.flatMap((o) => [o.from, o.to]))];
   if (!messages.length) return false;
   const horizontal = variant === "horizontal-lanes";
@@ -21,7 +31,7 @@ function sequence() {
     const y = horizontal ? top + h * lane(item.from) : top + h * (0.15 + 0.8 * t);
     const ex = horizontal ? x : left + w * lane(item.to),
       ey = horizontal ? top + h * lane(item.to) : y;
-    const g = node("g"),
+    const g = node("g", { "data-from": item.from, "data-to": item.to }),
       dx = ex - x,
       dy = ey - y,
       mag = Math.hypot(dx, dy) || 1;
@@ -53,7 +63,7 @@ function sequence() {
       4
     );
     label(
-      words(item),
+      item.words || "",
       (x + ex) / 2,
       (y + ey) / 2 - size * 0.6,
       horizontal ? w * 0.2 : mag * 0.93,
