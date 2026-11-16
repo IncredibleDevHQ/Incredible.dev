@@ -768,7 +768,9 @@ async def test_a_narrators_voice_is_picked_for_an_episode_or_cloned_from_its_tak
     assert episode is not None
     full = house.episodes._full(episode)
     assert full is not None
-    before = house.episodes._film_sig(episode, full)
+    before = house.episodes._film_sig(
+        episode, full, house.store.pictures(episode_id), house.episodes._kept(episode_id)
+    )
     picked = house.episodes.choose(
         episode_id,
         by="you",
@@ -776,7 +778,13 @@ async def test_a_narrators_voice_is_picked_for_an_episode_or_cloned_from_its_tak
     )
     assert picked["settings"]["narrator"] == {"id": "premade123456", "name": "Ada"}
     episode = house.store.episode(episode_id)
-    assert episode is not None and house.episodes._film_sig(episode, full) != before
+    assert (
+        episode is not None
+        and house.episodes._film_sig(
+            episode, full, house.store.pictures(episode_id), house.episodes._kept(episode_id)
+        )
+        != before
+    )
     with pytest.raises(ValueError, match="ElevenLabs voice"):
         house.episodes.choose(
             episode_id, by="you", change={"settings": {"narrator": {"id": "no", "name": "x"}}}
@@ -1985,8 +1993,21 @@ async def test_a_recording_is_cut_for_what_is_in_it(
     assert "touch x" not in " ".join(sly.ran) and "rm -rf" not in " ".join(sly.ran)
 
 
+async def test_export_waits_for_picture_builds_and_rejects_empty_drafts(house: AgentHost) -> None:
+    episode_id = await planned(house)
+    house.episodes.approve(episode_id, by="you")
+    with pytest.raises(ValueError, match="Wait for pictures"):
+        house.episodes.render(episode_id, by="you")
+    await settle(lambda: not house.episodes._busy(episode_id))
+    for row in house.store.pictures(episode_id):
+        house.store.set_picture(episode_id, row["unit"], status="failed")
+    with pytest.raises(ValueError, match="Make a picture or record a chapter first"):
+        house.episodes.render(episode_id, by="you")
+
+
+@pytest.mark.parametrize("picture_changes_during_export", [False, True])
 async def test_the_film_is_rendered_from_the_plan_the_pictures_and_the_takes(
-    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch, picture_changes_during_export: bool
 ) -> None:
     episode_id = await planned(house)
     house.episodes.approve(episode_id, by="you")
@@ -1996,6 +2017,11 @@ async def test_the_film_is_rendered_from_the_plan_the_pictures_and_the_takes(
     class Computer:
         def put(self, files: list[tuple[str, bytes]]) -> None:
             projects.append(dict(files))
+            if picture_changes_during_export:
+                row = house.store.pictures(episode_id)[0]
+                house.store.set_picture(
+                    episode_id, row["unit"], html=row["html"] + "<!-- revised -->"
+                )
 
         def run(self, command: str, *, timeout: int = 600) -> Any:
             from design_agent.surfaces.web.computer import Ran
@@ -2013,7 +2039,11 @@ async def test_the_film_is_rendered_from_the_plan_the_pictures_and_the_takes(
     await settle(lambda: not house.episodes._busy(episode_id))
     view = house.episodes.view(episode_id)
     film = view["film_state"]
-    assert film["status"] == "done" and not film["stale"] and film["file"]["name"] == "one-idea.mp4"
+    assert (
+        film["status"] == "done"
+        and film["stale"] == picture_changes_during_export
+        and film["file"]["name"] == "one-idea.mp4"
+    )
     page = next(v for k, v in projects[0].items() if k.endswith("/film/index.html")).decode()
     assert f'data-duration="{view["clock"]["total"]:.3f}"' in page
     assert sum(1 for k in projects[0] if "/film/compositions/" in k) == len(view["units"])

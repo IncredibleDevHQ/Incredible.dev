@@ -382,7 +382,7 @@ export type EpisodeView = EpisodeCard & {
   clock: EpisodeClock | null;
   units: EpisodeUnit[];
   takes: EpisodeTake[];
-  film_state: { status?: "rendering" | "done" | "failed"; fraction?: number; failure?: string; file?: FileView | null; stale?: boolean; seconds?: number };
+  film_state: { blocked?: string; status?: "rendering" | "done" | "failed"; fraction?: number; failure?: string; file?: FileView | null; stale?: boolean; seconds?: number };
   checks: EpisodeCheck[];
   // Who builds each chapter's pictures: the agent picked for the chapter, else the film's writer.
   builders: Record<string, WriterId>;

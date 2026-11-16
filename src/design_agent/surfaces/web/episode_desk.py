@@ -2337,11 +2337,21 @@ class EpisodeDesk:
 
     # -- the film --------------------------------------------------------------------------------
 
-    def _film_sig(self, episode: Row, full: Row) -> str:
-        takes = [(t["id"], t["marks"]) for t in self.store.takes(str(episode["id"])) if t["kept"]]
+    @staticmethod
+    def _render_blocked(pictures: Sequence[Row], kept: Sequence[Row]) -> str:
+        if any(p["status"] in ("queued", "making", "posing") for p in pictures):
+            return "Wait for pictures to finish before rendering."
+        if not kept and not any(p["html"] and p["status"] in ("made", "go") for p in pictures):
+            return "Make a picture or record a chapter first."
+        return ""
+
+    def _film_sig(
+        self, episode: Row, full: Row, pictures: Sequence[Row], kept: Sequence[Row]
+    ) -> str:
+        takes = [(t["id"], t["marks"]) for t in kept]
         made = sorted(
             (p["unit"], p["sig"], plans.digest(p["html"]))
-            for p in self.store.pictures(str(episode["id"]))
+            for p in pictures
             if p["status"] in ("made", "go") and p["html"]
         )
         spoken = sorted((k, v.get("h")) for k, v in self._voice(episode).items())
@@ -2360,6 +2370,9 @@ class EpisodeDesk:
             raise ValueError("Make a picture or record a chapter first.")
         if (episode["film"] or {}).get("status") == "rendering":
             raise ValueError("The film is already rendering.")
+        blocked = self._render_blocked(self.store.pictures(episode_id), self._kept(episode_id))
+        if blocked:
+            raise ValueError(blocked)
         self.store.update_episode(
             episode_id,
             film={**(episode["film"] or {}), "status": "rendering", "fraction": 0.0, "failure": ""},
@@ -2566,7 +2579,7 @@ class EpisodeDesk:
         folder = f"{PROJECTS}/{episode_id}/film"
         kept = [t for t in self.store.takes(episode_id) if t["kept"]]
         spoken = self._voice(episode)
-        clock = timeline.schedule(full, self._kept(episode_id), spoken)
+        clock = timeline.schedule(full, kept, spoken)
         media: list[tuple[str, bytes]] = []
         voice: dict[str, str] = {}
         for frame_id, said in spoken.items():
@@ -2593,10 +2606,13 @@ class EpisodeDesk:
                 entry[kind] = path
             takes[str(take["id"])] = entry
         found = self._units(episode, full)
+        rows = self.store.pictures(episode_id)
+        blocked = self._render_blocked(rows, kept)
+        if blocked:
+            raise ValueError(blocked)
+        signature = self._film_sig(episode, full, rows, kept)
         pictures = {
-            p["unit"]: p["html"]
-            for p in self.store.pictures(episode_id)
-            if p["html"] and p["status"] in ("made", "go")
+            p["unit"]: p["html"] for p in rows if p["html"] and p["status"] in ("made", "go")
         }
         files = film.project(
             full, clock, found, pictures, takes=takes, voice=voice, look=self._look(episode)
@@ -2656,7 +2672,7 @@ class EpisodeDesk:
                 "status": "done",
                 "fraction": 1.0,
                 "file": row["id"],
-                "sig": self._film_sig(episode, full),
+                "sig": signature,
                 "seconds": clock["total"],
                 "failure": "",
                 "at": time.time(),
@@ -2848,14 +2864,15 @@ class EpisodeDesk:
         found = self._units(episode, full) if full is not None else []
         pictures = {p["unit"]: p for p in self.store.pictures(episode_id)}
         said_now = {str(f["id"]): f for _, _, f in plans.frames_of(full or {})}
-        clock = (
-            timeline.schedule(full, self._kept(episode_id), self._voice(episode))
-            if full is not None
-            else None
-        )
+        kept = self._kept(episode_id)
+        clock = timeline.schedule(full, kept, self._voice(episode)) if full is not None else None
         film_state = {k: v for k, v in (episode["film"] or {}).items() if k != "voice"}
+        picture_rows = list(pictures.values())
+        film_state["blocked"] = self._render_blocked(picture_rows, kept)
         if full is not None and film_state.get("status") == "done":
-            film_state["stale"] = film_state.get("sig") != self._film_sig(episode, full)
+            film_state["stale"] = film_state.get("sig") != self._film_sig(
+                episode, full, picture_rows, kept
+            )
         film_state["file"] = self._file(film_state.get("file"))
         report = episode["report"] or {}
         changed = self.store.snapshot_note(episode_id)

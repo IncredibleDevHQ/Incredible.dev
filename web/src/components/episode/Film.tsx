@@ -150,7 +150,7 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
                       </span>
                     )}
                   </b>
-                  {note && <span data-tone={film.status === "failed" ? "red" : film.stale ? "amber" : undefined}>{note}</span>}
+                  {(film.blocked || note) && <span data-tone={film.status === "failed" ? "red" : film.stale ? "amber" : undefined}>{film.blocked || note}</span>}
                 </div>
                 <div className="ep-peek-actions">
                   {next && (
@@ -165,7 +165,7 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
                     <button
                       type="button"
                       className={`btn ${!next && (film.status !== "done" || film.stale) ? "primary" : ""}`}
-                      disabled={busy || film.status === "rendering"}
+                      disabled={busy || !!film.blocked || film.status === "rendering"}
                       onClick={() => void run(() => api.renderEpisode(view.id))}
                     >
                       <Clapperboard />

@@ -884,6 +884,8 @@ app's canvas, from a channel's material or a research frame's notes.
   the clone is made only after the person says the voice is theirs or its speaker agreed, and
   the thread records that they did. Cloning is the person's action in the studio and never a
   tool the model can call. The clone then narrates the episode; another voice is another film.
+- Export waits for requested picture builds to finish and needs a built picture or a kept take.
+  A film is marked outdated if its inputs change during export.
 - **The film** is one HyperFrames page written by code and rendered on the thread's computer.
   Layouts change at a cut. A picture that comes in by a move is moved as a whole box, by
   transform and opacity, and the picture before it stays that much longer to leave the same way.

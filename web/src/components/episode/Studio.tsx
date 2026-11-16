@@ -686,7 +686,7 @@ function Chapter({
                 {view.film_state.status === "done" && view.film_state.stale && (
                   <p className="ep-notice" data-tone="amber">
                     The film was rendered before your changes.{" "}
-                    <button type="button" className="linkish" disabled={busy || working} onClick={() => void run(() => api.renderEpisode(view.id))}>
+                    <button type="button" className="linkish" title={view.film_state.blocked || undefined} disabled={busy || working || !!view.film_state.blocked} onClick={() => void run(() => api.renderEpisode(view.id))}>
                       Render again
                     </button>
                   </p>

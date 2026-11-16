@@ -98,6 +98,9 @@ follow `briefs/motion.md`. No HTML in that turn.
 **picture.** Build one picture of the plan as a file. The turn names it; follow
 `briefs/picture.md`. A rich picture's brief carries the motion plan it is built to.
 
+A film export waits for requested picture builds and needs a built picture or a kept take.
+If the studio marks a render outdated, render again to include the changed material.
+
 ## Reference
 
 - `references/types.md`: the closed lists (parts, chapter types, beat types, layouts, pictures,
