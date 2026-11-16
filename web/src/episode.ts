@@ -75,36 +75,35 @@ export const mmss = (seconds: number) => {
 export const linesOf = (chapter: EpisodeChapter): EpisodeFrame[] => chapter.beats.flatMap((b) => b.frames);
 export const chapterName = (chapter: EpisodeChapter) => CHAPTERS[chapter.type ?? ""] ?? "Chapter";
 export const unitOf = (view: EpisodeView, frame: string): EpisodeUnit | undefined => view.units.find((u) => u.frames.includes(frame));
-export const allLines = (view: EpisodeView): { chapter: string; line: EpisodeFrame }[] =>
-  (view.plan?.chapters ?? []).flatMap((c) => linesOf(c).map((line) => ({ chapter: c.id, line })));
+export const allLines = (view: EpisodeView): { chapter: string; line: EpisodeFrame }[] => (view.plan?.chapters ?? []).flatMap((c) => linesOf(c).map((line) => ({ chapter: c.id, line })));
 // The lines a layout set for a chapter (or the whole film) reaches: the ones of that presence.
-export const linesIn = (view: EpisodeView, presence: Presence, chapter?: string) =>
-  allLines(view).filter((x) => x.line.presence === presence && (!chapter || x.chapter === chapter));
+export const linesIn = (view: EpisodeView, presence: Presence, chapter?: string) => allLines(view).filter((x) => x.line.presence === presence && (!chapter || x.chapter === chapter));
 export const takeOf = (view: EpisodeView, chapter: string): EpisodeTake | undefined => view.takes.find((t) => t.kept && t.chapter === chapter && !t.frame);
 export const clockLine = (view: EpisodeView, frame: string): EpisodeLine | undefined => view.clock?.lines.find((l) => l.frame === frame);
-export const spotOf = (view: EpisodeView, layout: string): LayoutSpot =>
-  view.options.geometry.layouts[layout] ?? view.options.geometry.layouts["graphic-on-ground"];
+export const spotOf = (view: EpisodeView, layout: string): LayoutSpot => view.options.geometry.layouts[layout] ?? view.options.geometry.layouts["graphic-on-ground"];
 
 // Where one picture stands: not asked for yet, on its way, its stills waiting for a go, made,
 // out of date, or stopped until someone asks again. Out of date is a picture made for the plan as
 // it was (another frame, kind or level), or a line given a picture that waits for the writer:
 // both wait for the person to apply their changes, since nothing is drawn while they try picks.
-export type PictureState = "planned" | "making" | "go" | "made" | "changed" | "failed";
+// "changed": drawn from the plan as it was (out of date); "reworded": current, but made for
+// words its lines no longer say.
+export type PictureState = "planned" | "making" | "go" | "made" | "changed" | "reworded" | "failed";
 export function pictureState(unit: EpisodeUnit, view?: EpisodeView): PictureState {
   const p = unit.picture;
   if (unit.kind === "undesigned") return view?.waiting.some((w) => unit.frames.includes(w.line)) ? "changed" : "making";
   if (p.status === "none") return "planned";
   if (p.status === "failed") return "failed";
-  if (p.status === "made" || p.status === "go") return p.stale ? "changed" : p.status;
+  if (p.status === "made" || p.status === "go") return p.stale ? "changed" : p.reworded ? "reworded" : p.status;
   return "making";
 }
 
 // Where a chapter stands, as its slide and its row read.
-export type ChapterState = "planned" | "making" | "go" | "changed" | "failed" | "ready" | "recorded";
+export type ChapterState = "planned" | "making" | "go" | "changed" | "reworded" | "failed" | "ready" | "recorded";
 export function chapterState(view: EpisodeView, chapter: EpisodeChapter): ChapterState {
   if (takeOf(view, chapter.id)) return "recorded";
   const states = new Set(view.units.filter((u) => u.chapter === chapter.id).map((u) => pictureState(u, view)));
-  for (const state of ["go", "making", "changed", "failed", "planned"] as const) if (states.has(state)) return state;
+  for (const state of ["go", "making", "changed", "reworded", "failed", "planned"] as const) if (states.has(state)) return state;
   return "ready";
 }
 export const STATE_WORDS: Record<ChapterState, string> = {
@@ -112,6 +111,7 @@ export const STATE_WORDS: Record<ChapterState, string> = {
   making: "Pictures being made",
   go: "Stills need your go",
   changed: "Pictures out of date",
+  reworded: "Words changed since its pictures",
   failed: "A picture was not made",
   ready: "Ready to record",
   recorded: "Recorded",
@@ -120,7 +120,7 @@ export const STATE_WORDS: Record<ChapterState, string> = {
 // How many pictures stand where: of the film, or of one chapter.
 export function pictureCount(view: EpisodeView, chapter?: string) {
   const all = view.units.filter((u) => u.kind === "picture" && (!chapter || u.chapter === chapter));
-  const count: Record<PictureState, number> = { planned: 0, making: 0, go: 0, made: 0, changed: 0, failed: 0 };
+  const count: Record<PictureState, number> = { planned: 0, making: 0, go: 0, made: 0, changed: 0, reworded: 0, failed: 0 };
   for (const u of all) count[pictureState(u, view)] += 1;
   return { all: all.length, ...count };
 }
@@ -132,6 +132,7 @@ export function pictureWords(unit: EpisodeUnit, view?: EpisodeView): string {
   if (p.status === "none") return "Not made yet";
   if (p.status === "failed") return "Not made";
   if ((p.status === "made" || p.status === "go") && p.stale) return "Out of date";
+  if ((p.status === "made" || p.status === "go") && p.reworded) return "Made for other words";
   if (p.status === "go") return "Needs your go";
   if (p.status === "made") return "Made";
   if (p.status === "queued") return "Waiting its turn";

@@ -38,10 +38,11 @@ that code's MIT notice is preserved in [licenses/managed-deepagents-sdk-MIT.txt]
 
 Only affectUI's free (MIT) items are in this repository; none of its paid source is. The web
 app's other parts, among them the change bar, the word marks, the drop place, the picture
-tiles, the planning trail, the pictures pill, the script's blocks and lines and the slash menu
+tiles, the planning trail, the pictures pill, the script's blocks and lines, the slash menu, the
+prompt at the caret, the frame drawn on a canvas and the chapter's timeline
 (`web/src/components/episode/Ask.tsx`, `Diff.tsx`, `Tiles.tsx`, `Work.tsx`, `Script.tsx`,
-`Slash.tsx`, `web/src/components/FileDrop.tsx`), are written here and carry this project's
-license.
+`Slash.tsx`, `AskHere.tsx`, `FrameCanvas.tsx`, `Timeline.tsx`, `web/src/components/FileDrop.tsx`),
+are written here and carry this project's license.
 
 The sample brand in [examples/brands/example-studio/](examples/brands/example-studio/) is original
 work released under CC0-1.0.

@@ -70,7 +70,14 @@ approved, for pictures with no row). What a pick leaves the writer is kept in `p
 until `apply` turns it into a `redo` turn, after which the pictures follow. A rich picture
 takes two turns before it is posed: a `motion plan` turn that writes
 `pictures/<id>.motion.json`, which `picture.motion_plan` holds to its shape and the row keeps,
-then the `picture` turn, whose brief carries that plan.
+then the `picture` turn, whose brief carries that plan. A picture keeps what each of its lines
+said when it was made (`pictures.words`, one run of spaces; a picture made before that is
+judged by when a person last changed one of its lines), and the view calls it `reworded` when
+they say something else, with `made_for` holding each changed line's words then. `make` draws
+such a picture again when it is named; `keep` (`POST /api/episodes/{id}/pictures/{unit}/keep`)
+keeps it for the words they say now; and `replan` (`POST /api/episodes/{id}/replan`) gives the
+writer a `redo` turn naming those pictures, after which they are drawn again whatever the
+writer changed (`_redraw`).
 
 A plan that stands is changed by one of two turns, and the studio stays open through each.
 What a person's own changes leave the writer waits in `picks.writer` until `apply`, which makes

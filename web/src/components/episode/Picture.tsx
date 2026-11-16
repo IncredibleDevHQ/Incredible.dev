@@ -16,6 +16,7 @@ import { Select } from "../Select";
 import type { Run } from "./Ask";
 import { AgentMark } from "../../ui";
 import { blockName, KindIcon, type Block } from "./Blocks";
+import { Changed } from "./Diff";
 import { WRITERS } from "./Film";
 import { KindArt } from "./PictureArt";
 
@@ -27,6 +28,13 @@ const LEVELS: Record<Level, string> = {
   rich: "Its motion is planned shot by shot, then it is drawn and posed as stills for your go.",
   simple: "Drawn at once from the plan.",
 };
+
+// What planning a picture again costs: the writer's turn, then its builder's full run.
+export function planCost(unit: EpisodeUnit, writer: string): string {
+  const builder = WRITERS[unit.builder] ?? unit.builder;
+  const by = WRITERS[writer] ?? writer;
+  return `${by.slice(0, 1).toUpperCase() + by.slice(1)} fits it to your words, then ${builder} draws it again: two runs, so the tokens are spent again.`;
+}
 
 // What drawing a made picture again costs, said before it is done: another full run of its
 // agent, so its tokens are spent again.
@@ -68,8 +76,10 @@ export function PictureCard({
   const name = blockName(block);
   // the picture as it ends: its last line's still
   const still = p.stills[unit.frames[unit.frames.length - 1]] ?? Object.values(p.stills).pop();
-  // Drawing a made picture again waits for a yes that knows what it costs.
-  const [again, setAgain] = useState(false);
+  // Drawing a made picture again, or planning it again, waits for a yes that knows what it costs.
+  const [asking, setAsking] = useState<"draw" | "plan" | null>(null);
+  const again = asking === "draw";
+  const setAgain = (on: boolean) => setAsking(on ? "draw" : null);
   const choose = (pick: { level?: Level; builder?: WriterId | null }) => run(() => api.chooseEpisode(view.id, { units: { [unit.id]: pick } }));
   const make = () => void run(() => api.makePictures(view.id, { units: [unit.id] }));
   const level = (next: Level) => next !== unit.level && void choose({ level: next });
@@ -92,7 +102,14 @@ export function PictureCard({
   return (
     <>
       <div className="ep-figure-top">
-        <button type="button" className="ep-figure-pic" data-empty={!still || undefined} data-working={(designed && state === "making") || undefined} aria-label={`Open the ${name.toLowerCase()} with its choices`} onClick={onOpen}>
+        <button
+          type="button"
+          className="ep-figure-pic"
+          data-empty={!still || undefined}
+          data-working={(designed && state === "making") || undefined}
+          aria-label={`Open the ${name.toLowerCase()} with its choices`}
+          onClick={onOpen}
+        >
           {still ? <img src={still.url} alt="" loading="lazy" /> : <KindArt kind={unit.kind_of_picture} />}
         </button>
         <div className="ep-figure-meta">
@@ -170,6 +187,55 @@ export function PictureCard({
                 <small>or apply all your changes from the bar.</small>
               </div>
             )
+          ) : state === "reworded" ? (
+            asking ? (
+              <p
+                className="ep-confirm"
+                role="alertdialog"
+                aria-label={asking === "plan" ? "Plan it again" : "Draw it again"}
+                onKeyDown={(e) => {
+                  if (e.key !== "Escape") return;
+                  e.stopPropagation();
+                  setAsking(null);
+                }}
+              >
+                <span>{asking === "plan" ? planCost(unit, view.settings.writer) : againCost([unit])}</span>
+                <button
+                  type="button"
+                  className="btn primary"
+                  autoFocus
+                  disabled={busy}
+                  onClick={() => {
+                    const plan = asking === "plan";
+                    setAsking(null);
+                    if (plan) void run(() => api.replanPictures(view.id, [unit.id]));
+                    else make();
+                  }}
+                >
+                  {asking === "plan" ? "Plan it again" : "Draw it again"}
+                </button>
+                <button type="button" className="btn" onClick={() => setAsking(null)}>
+                  Cancel
+                </button>
+              </p>
+            ) : (
+              <>
+                <div className="ep-figure-act" data-tone="amber">
+                  <button type="button" className="btn" disabled={busy} onClick={() => setAsking("plan")}>
+                    <Sparkles />
+                    Plan it again
+                  </button>
+                  <button type="button" className="btn" disabled={busy} onClick={() => setAsking("draw")}>
+                    <RotateCcw />
+                    Draw it again
+                  </button>
+                  <button type="button" className="linkish" disabled={busy} onClick={() => void run(() => api.keepPicture(view.id, unit.id))}>
+                    Keep it
+                  </button>
+                </div>
+                <WhatChanged madeFor={p.made_for} lines={lines} />
+              </>
+            )
           ) : state === "making" ? (
             <div className="ep-figure-act" role="status">
               <span className="spin" />
@@ -197,6 +263,26 @@ export function PictureCard({
   );
 }
 
+// What a picture made for other words was made for, a click away: each line that says something
+// else now, its words then against its words now, read-only (the words are the person's own).
+function WhatChanged({ madeFor, lines }: { madeFor: Record<string, string>; lines: EpisodeFrame[] }) {
+  const changed = lines.filter((l) => madeFor[l.id] !== undefined);
+  if (!changed.length) return <small className="ep-figure-note">Made for the words before. It still plays, timed to the new ones.</small>;
+  return (
+    <details className="ep-what-changed">
+      <summary>Made for the words before · what changed in {changed.length === 1 ? "1 line" : `${changed.length} lines`}</summary>
+      <ol>
+        {changed.map((l) => (
+          <li key={l.id}>
+            <small>Line {lines.indexOf(l) + 1}</small>
+            <Changed was={madeFor[l.id]} now={l.vo} />
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
 // A rich picture's motion plan, a click away from its block: how the picture carries its idea
 // and where it happens, then each line's shot as its builder planned it (what it opens on, the
 // move the line is about, what lands around it, what it ends on).
@@ -209,7 +295,18 @@ function MotionPlan({ motion, lines }: { motion: Motion; lines: EpisodeFrame[] }
         Motion plan
         <ChevronDown aria-hidden="true" />
       </button>
-      <Popover open={open} onClose={() => setOpen(false)} anchor={button} side="bottom" align="start" offset={8} width={540} className="ep-plan-pop" title={motion.device.slice(0, 1).toUpperCase() + motion.device.slice(1)} description={motion.world}>
+      <Popover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchor={button}
+        side="bottom"
+        align="start"
+        offset={8}
+        width={540}
+        className="ep-plan-pop"
+        title={motion.device.slice(0, 1).toUpperCase() + motion.device.slice(1)}
+        description={motion.world}
+      >
         <ol className="ep-plan-shots">
           {motion.shots.map((shot) => (
             <li key={shot.frame}>

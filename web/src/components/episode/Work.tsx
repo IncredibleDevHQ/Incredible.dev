@@ -23,7 +23,13 @@ export function WorkTrail({ view }: { view: EpisodeView }) {
   const stage = view.stage;
   const failed = view.status === "failed";
   const current = stage.name === "done" ? "done" : stage.name === "redo" || stage.name === "fix" ? "frames" : (stage.name ?? "brief");
-  const at = current === "done" ? view.steps.length : Math.max(0, view.steps.findIndex((s) => s.id === current));
+  const at =
+    current === "done"
+      ? view.steps.length
+      : Math.max(
+          0,
+          view.steps.findIndex((s) => s.id === current),
+        );
   const events = view.working?.events ?? [];
   const [all, setAll] = useState(false);
   const folded = all ? 0 : Math.max(0, events.length - SHOWN);
@@ -104,13 +110,21 @@ function TrailEvent({ event, latest }: { event: WorkEvent; latest: boolean }) {
   );
 }
 
-const STATE_WORDS: Record<PictureState, string> = { made: "Made", making: "Being made", go: "Needs your go", changed: "Out of date", failed: "Not made", planned: "Not asked for yet" };
+const STATE_WORDS: Record<PictureState, string> = {
+  made: "Made",
+  making: "Being made",
+  go: "Needs your go",
+  changed: "Out of date",
+  reworded: "Made for other words",
+  failed: "Not made",
+  planned: "Not asked for yet",
+};
 const stateOf = pictureState;
 
 // One pill for the pictures, beside what can be done about them now.
 export function WorkPill({ view, run, busy, onAt }: { view: EpisodeView; run: Run; busy: boolean; onAt: (chapter: string) => void }) {
   const units = useMemo(() => view.units.filter((u) => u.kind === "picture"), [view.units]);
-  const count: Record<PictureState, number> = { made: 0, making: 0, go: 0, changed: 0, failed: 0, planned: 0 };
+  const count: Record<PictureState, number> = { made: 0, making: 0, go: 0, changed: 0, reworded: 0, failed: 0, planned: 0 };
   for (const u of units) count[stateOf(u)] += 1;
   const [open, setOpen] = useState(false);
   const pill = useRef<HTMLButtonElement>(null);
@@ -129,8 +143,8 @@ export function WorkPill({ view, run, busy, onAt }: { view: EpisodeView; run: Ru
           : count.changed > 0
             ? `${count.changed} out of date`
             : count.planned > 0
-            ? `${ready} of ${units.length} pictures made`
-            : `${units.length} pictures made`;
+              ? `${ready} of ${units.length} pictures made`
+              : `${units.length} pictures made`;
   const tone = count.making > 0 ? "making" : count.failed > 0 ? "failed" : count.go > 0 || count.changed > 0 ? "go" : "made";
   const stop = () => void api.stopEpisode(view.id).catch((e: Error) => useHouse.getState().say(e.message));
   return (
@@ -154,7 +168,18 @@ export function WorkPill({ view, run, busy, onAt }: { view: EpisodeView; run: Ru
           {count.failed === 1 ? "Make it" : "Make them"}
         </button>
       )}
-      <Popover open={open} onClose={() => setOpen(false)} anchor={pill} side="bottom" align="end" offset={8} width={440} className="ep-work-pop" title="Pictures" description={`${ready} of ${units.length} made`}>
+      <Popover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchor={pill}
+        side="bottom"
+        align="end"
+        offset={8}
+        width={440}
+        className="ep-work-pop"
+        title="Pictures"
+        description={`${ready} of ${units.length} made`}
+      >
         <PictureGrid
           view={view}
           units={units}
@@ -281,7 +306,7 @@ function PictureGrid({ view, units, count, onOpen }: { view: EpisodeView; units:
         )}
       </Swap>
       <div className="ep-pics-counts" role="group" aria-label="Show only">
-        {(["made", "making", "go", "changed", "failed", "planned"] as PictureState[])
+        {(["made", "making", "go", "changed", "reworded", "failed", "planned"] as PictureState[])
           .filter((s) => s === "made" || count[s] > 0)
           .map((s) => (
             <button key={s} type="button" aria-pressed={only === s} data-state={s} data-quiet={(only && only !== s) || undefined} onClick={() => setOnly(only === s ? null : s)}>

@@ -34,6 +34,9 @@ runtime), the store of channels, messages and boards, and this API:
   picture), `POST /api/episodes/{id}/lines/{frame}` (a person's own words for a line),
   `POST /api/episodes/{id}/lines` (a line they add: going on in its block, to camera, or with a
   picture) and `/cut` (lines they cut, or one joined to the line before it),
+  `POST /api/episodes/{id}/replan` (pictures planned again for the words their lines say now,
+  then drawn again), `POST /api/episodes/{id}/pictures/{unit}/keep` (a picture made for other
+  words kept for the new ones, with nothing run),
   `POST /api/episodes/{id}/undo` (the last change, taken back; the one before it is next) and
   `/redo` (put back),
   `POST /api/episodes/{id}/again` (its planning), `/stop` (the plan and the pictures under
@@ -272,6 +275,12 @@ class CutIn(BaseModel):
     join: bool = False
     #: What the line before says once joined, when the person changed its words too.
     words: str | None = Field(default=None, max_length=2000)
+
+
+class ReplanIn(BaseModel):
+    """Pictures to have planned again for the words their lines say now."""
+
+    units: list[str] = Field(min_length=1, max_length=200)
 
 
 class StopIn(BaseModel):
@@ -748,6 +757,18 @@ def create_app(
                 episode_id, by=me, after=body.after, text=body.text, kind=body.kind, keep=body.keep
             )
         )
+
+    @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/keep")
+    async def keep_picture(
+        episode_id: str, unit_id: str, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.keep_picture(episode_id, unit_id, by=me))
+
+    @app.post("/api/episodes/{episode_id}/replan")
+    async def replan_pictures(
+        episode_id: str, body: ReplanIn, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.replan(episode_id, by=me, pictures=body.units))
 
     @app.post("/api/episodes/{episode_id}/cut")
     async def cut_lines(episode_id: str, body: CutIn, me: str = Depends(person)) -> dict[str, Any]:

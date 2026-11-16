@@ -323,6 +323,10 @@ export type EpisodeUnit = {
     stills: Record<string, FileView>;
     clip: FileView | null;
     stale: boolean;
+    // made for words its lines no longer say (it may still fit), and what each changed line
+    // said when it was made
+    reworded: boolean;
+    made_for: Record<string, string>;
     failure: string;
     note: string;
     doing: string;
@@ -528,16 +532,12 @@ export const api = {
   channels: () => call<Channel[]>("GET", "/api/channels"),
   addChannel: (name: string, topic = "") => call<Channel>("POST", "/api/channels", { name, topic }),
   channelMessages: (id: string) => call<ChannelMessages>("GET", `/api/channels/${id}/messages`),
-  startThread: (channelId: string, body: { text: string; to_agent: boolean; files: string[]; kind?: string }) =>
-    call<Message>("POST", `/api/channels/${channelId}/messages`, body),
+  startThread: (channelId: string, body: { text: string; to_agent: boolean; files: string[]; kind?: string }) => call<Message>("POST", `/api/channels/${channelId}/messages`, body),
   thread: (id: string) => call<ThreadDetail>("GET", `/api/threads/${id}`),
-  reply: (threadId: string, body: { text: string; to_agent: boolean; files: string[]; answers?: string }) =>
-    call<Message>("POST", `/api/threads/${threadId}/messages`, body),
-  pickLook: (boardId: string, frameId: string, reason: string) =>
-    call<Message>("POST", `/api/boards/${boardId}/pick`, { frame_id: frameId, reason }),
+  reply: (threadId: string, body: { text: string; to_agent: boolean; files: string[]; answers?: string }) => call<Message>("POST", `/api/threads/${threadId}/messages`, body),
+  pickLook: (boardId: string, frameId: string, reason: string) => call<Message>("POST", `/api/boards/${boardId}/pick`, { frame_id: frameId, reason }),
   stop: (threadId: string) => call<{ ok: boolean }>("POST", `/api/threads/${threadId}/stop`),
-  cancelWork: (threadId: string, workId: string) =>
-    call<{ said: string }>("POST", `/api/threads/${threadId}/work/${workId}/cancel`),
+  cancelWork: (threadId: string, workId: string) => call<{ said: string }>("POST", `/api/threads/${threadId}/work/${workId}/cancel`),
   upload: (files: File[]) => {
     const form = new FormData();
     for (const file of files) form.append("files", file);
@@ -547,8 +547,7 @@ export const api = {
   catalog: () => call<Catalog>("GET", "/api/catalog"),
   renderFilm: (assetId: string) => call<Message>("POST", `/api/assets/${assetId}/render`),
   approveDraft: (assetId: string) => call<Message>("POST", `/api/assets/${assetId}/approve`),
-  addAsset: (threadId: string, body: { kind: string; sources: string[]; note: string }) =>
-    call<Asset>("POST", `/api/threads/${threadId}/assets`, body),
+  addAsset: (threadId: string, body: { kind: string; sources: string[]; note: string }) => call<Asset>("POST", `/api/threads/${threadId}/assets`, body),
   placeTemplate: (channelId: string, body: { template: string; text: string; files: string[]; from_asset: string; from_frame?: string }) =>
     call<Message>("POST", `/api/channels/${channelId}/templates`, body),
   episodeOptions: () => call<EpisodeOptions>("GET", "/api/episodes/options"),
@@ -567,6 +566,11 @@ export const api = {
   // Lines a person cuts; with `join`, the one line's words go on at the end of the line before it
   // (as `words`, when the person changed that line's words too).
   cutLines: (id: string, frames: string[], join = false, words?: string) => call<EpisodeView>("POST", `/api/episodes/${id}/cut`, { frames, join, words }),
+  // Pictures made for words their lines no longer say: the writer fits them to the new words,
+  // then they are drawn again.
+  replanPictures: (id: string, units: string[]) => call<EpisodeView>("POST", `/api/episodes/${id}/replan`, { units }),
+  // A picture made for other words, kept as it is for the words its lines say now.
+  keepPicture: (id: string, unit: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/keep`),
   undoEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/undo`),
   redoEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/redo`),
   planAgain: (id: string, writer: WriterId | "" = "") => call<EpisodeView>("POST", `/api/episodes/${id}/again`, { writer }),
@@ -577,8 +581,7 @@ export const api = {
   // Asks for pictures: the ones named, a chapter's, or with neither the ones that stopped.
   makePictures: (id: string, which: { units?: string[]; chapter?: string } = {}) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures`, which),
   pictureGo: (id: string, unit: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/go`),
-  pictureNote: (id: string, unit: string, text: string) =>
-    call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/note`, { text }),
+  pictureNote: (id: string, unit: string, text: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/note`, { text }),
   addTake: (id: string, take: { chapter: string; frame?: string; marks: { frame: string; t: number }[]; file: Blob; name: string }) => {
     const form = new FormData();
     form.append("file", take.file, take.name);
@@ -604,20 +607,15 @@ export const api = {
     call<{ thread: Thread; conversation: ConversationRow }>("POST", `/api/channels/${channelId}/research`, body),
   ask: (frameId: string, body: { question: string; harness?: HarnessId | ""; parent?: string; quote?: string; answer?: string }) =>
     call<ConversationRow>("POST", `/api/research/${frameId}/conversations`, body),
-  keepNote: (frameId: string, body: { text: string; conversation_id?: string; message_id?: string }) =>
-    call<Note>("POST", `/api/research/${frameId}/notes`, body),
+  keepNote: (frameId: string, body: { text: string; conversation_id?: string; message_id?: string }) => call<Note>("POST", `/api/research/${frameId}/notes`, body),
   editNote: (noteId: string, text: string) => call<Note>("PATCH", `/api/notes/${noteId}`, { text }),
   dropNote: (noteId: string) => call<{ ok: boolean }>("DELETE", `/api/notes/${noteId}`),
   folder: (threadId: string) => call<FolderFile[]>("GET", `/api/threads/${threadId}/folder`),
   folderUrl: (threadId: string, path: string) => `/api/threads/${threadId}/folder/file?path=${encodeURIComponent(path)}`,
-  comment: (frameId: string, body: { text: string; x?: number | null; y?: number | null; parent_id?: string }) =>
-    call<Comment>("POST", `/api/frames/${frameId}/comments`, body),
-  resolve: (commentId: string, resolved: boolean) =>
-    call<{ ok: boolean }>("POST", `/api/comments/${commentId}/resolve`, { resolved }),
-  verdict: (frameId: string, verdict: "" | "approved" | "changes") =>
-    call<{ ok: boolean }>("POST", `/api/frames/${frameId}/verdict`, { verdict }),
-  sendBoard: (boardId: string, approve: boolean) =>
-    call<Message>("POST", `/api/boards/${boardId}/send`, { approve }),
+  comment: (frameId: string, body: { text: string; x?: number | null; y?: number | null; parent_id?: string }) => call<Comment>("POST", `/api/frames/${frameId}/comments`, body),
+  resolve: (commentId: string, resolved: boolean) => call<{ ok: boolean }>("POST", `/api/comments/${commentId}/resolve`, { resolved }),
+  verdict: (frameId: string, verdict: "" | "approved" | "changes") => call<{ ok: boolean }>("POST", `/api/frames/${frameId}/verdict`, { verdict }),
+  sendBoard: (boardId: string, approve: boolean) => call<Message>("POST", `/api/boards/${boardId}/send`, { approve }),
   brand: () => call<BrandView>("GET", "/api/brand"),
   brands: () => call<{ brands: BrandSummary[]; reading: BrandRead[] }>("GET", "/api/brands"),
   brandPack: (slug: string) => call<BrandPackView>("GET", `/api/brands/${slug}`),

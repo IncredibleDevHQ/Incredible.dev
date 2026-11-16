@@ -50,7 +50,17 @@
     writer designs), with "- " and three backticks as markdown keys for a list and code, and
     asks for a change from there too. Nothing typed or added runs an agent: a new picture, and
     a step whose word was typed away, wait for Apply changes like a pick does. Cmd/Ctrl+Z in a
-    line puts its words back before they are kept. Anything else is asked for in words in a change bar under the script, of the line,
+    line puts its words back before they are kept. Placing the caret in a line shows an "Ask
+    AI" pill at its end (or at the end of the selected words); it, or Cmd/Ctrl+J, opens a
+    prompt under the line with three changes to pick, and the line shows the writer at work on
+    it, with Stop. A picture made for words its lines no longer say is marked so, with its
+    changed lines and what changed in each against the words it was made for, and can be kept
+    as it is, planned again (the writer fits it to the new words, then it is drawn again) or
+    drawn again; a line changed after its take, and a film rendered before the change, say so
+    in the frame's panel. The words a change brings in are written in as it lands. From
+    affectUI's agent items (Writing Assistant, Agent Cursors, Run Controls, Inline Diff, read
+    for their behaviour; none of their source is here) came the caret prompt's shape, the
+    writer shown at work where it works, Stop beside it, a read-only diff and Keep it. Anything else is asked for in words in a change bar under the script, of the line,
     its picture, the chapter or the film; the writer makes it while the studio stays open, and
     a note on how a picture is drawn goes to its builder. While the writer works the bar shows
     what was asked and for how long, and takes the next change, which waits its turn. What a
@@ -98,9 +108,15 @@
     a file; where each line starts in the take sets how long it runs in the film and when its
     picture's cues land. The film is one HyperFrames page written by code and rendered on the
     thread's computer; before anything is recorded it renders as a draft with a stand-in.
-  - Every page of the studio is three columns: the film and its chapters as slides down the
-    left (the film first, as its title card), a document in the middle and the frame on the
-    right. The film's page has the whole script as one document, chapter by chapter, with the
+  - Every page of the studio is the film and its chapters as slides down the left (the film
+    first, as its title card) and an editor: the document with the frame floating beside it,
+    level with the line the caret is on, drawn on a canvas from the same table the film is
+    rendered from (after the Figma editor's live preview); Record sits at the editor's top
+    right. The frame opens in a pop-up as the Figma editor's preview does: the frame with the
+    chapters either side as a carousel, the chapter's lines under it as a timeline, and a dark
+    rail at the right edge opening one panel at a time (Layout, Picture, Transition, Steps).
+    Play plays a line's take, else its picture's draft, else its words at the plan's pace, and
+    a Script switch (C) shows the line's words over the frame in time with what plays. The film's page has the whole script as one document, chapter by chapter, with the
     film beside it: pointing at a line shows its frame, and a chapter opens at the line picked.
     A chapter's page has its script as a block per picture and per run said to camera, and the
     frame for the picked line, which opens full screen with its choices and the recorder. The

@@ -143,6 +143,9 @@ ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # What a picture was built as and by whom: its level (simple or rich), the agent that built
     # it, and for a rich one the motion plan its builder wrote before drawing it.
     ("pictures", "level", "TEXT NOT NULL DEFAULT ''"),
+    # The words its lines said when it was made (a digest), so a picture made for other words
+    # can say so.
+    ("pictures", "words", "TEXT NOT NULL DEFAULT ''"),
     ("pictures", "builder", "TEXT NOT NULL DEFAULT ''"),
     ("pictures", "motion", "TEXT NOT NULL DEFAULT '{}'"),
 )

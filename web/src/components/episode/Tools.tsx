@@ -65,7 +65,14 @@ function LookTool({ view, run, busy }: Props) {
             {looks.map((t) => {
               const [usual, ...more] = t.kit;
               return (
-                <button key={t.id} type="button" className="ep-look-card" aria-pressed={view.settings.theme === t.id} disabled={busy} onClick={() => t.id !== view.settings.theme && void choose(view, run, { theme: t.id })}>
+                <button
+                  key={t.id}
+                  type="button"
+                  className="ep-look-card"
+                  aria-pressed={view.settings.theme === t.id}
+                  disabled={busy}
+                  onClick={() => t.id !== view.settings.theme && void choose(view, run, { theme: t.id })}
+                >
                   {usual && <LayoutThumb view={view} layout={usual.layout} />}
                   {more.length > 0 && (
                     <span className="ep-look-kit">
@@ -181,7 +188,18 @@ export function ApplyChanges({ view, run, busy }: Props) {
         Apply changes
         <b>{count}</b>
       </button>
-      <Popover open={open} onClose={() => setOpen(false)} anchor={button} side="bottom" align="end" offset={8} width={420} className="ep-apply-pop" title="Apply your changes" description="Nothing has been planned or drawn for them yet.">
+      <Popover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchor={button}
+        side="bottom"
+        align="end"
+        offset={8}
+        width={420}
+        className="ep-apply-pop"
+        title="Apply your changes"
+        description="Nothing has been planned or drawn for them yet."
+      >
         <ul className="ep-apply-list">
           {writes.map(
             ([n, one, many]) =>
@@ -279,7 +297,19 @@ function AgentTool({ view, run, busy }: Props) {
 }
 
 // One of a few, each said in a line: the arrow keys move between them, as radio buttons do.
-function Options<T extends string>({ label, value, options, disabled, onChange }: { label: string; value: T; options: { value: T; label: string; note: string; disabled?: boolean }[]; disabled: boolean; onChange: (value: T) => void }) {
+function Options<T extends string>({
+  label,
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string; note: string; disabled?: boolean }[];
+  disabled: boolean;
+  onChange: (value: T) => void;
+}) {
   const name = useId();
   return (
     <fieldset className="ep-options">

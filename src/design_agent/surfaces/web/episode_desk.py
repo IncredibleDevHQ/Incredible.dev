@@ -220,6 +220,8 @@ class EpisodeDesk:
         self._builds: dict[tuple[str, str], asyncio.Task[None]] = {}
         #: Episodes whose applied picks are with the writer: their pictures follow its turn.
         self._then_draw: set[str] = set()
+        # pictures a person asked to have planned again: drawn again once the writer has
+        self._redraw: dict[str, set[str]] = {}
         self._gates: dict[str, asyncio.Semaphore] = {}
         self._said_at: dict[str, float] = {}
         self._closing = False
@@ -577,6 +579,7 @@ class EpisodeDesk:
         chosen = (episode["picks"] or {}).get("units", {})
         by_chapter = self._chapter_builders(episode)
         writer = str(episode["settings"].get("writer") or "")
+        said = {str(f["id"]): f for _, _, f in plans.frames_of(full)}
         for unit in found:
             # who builds it: the agent picked for this picture, else its chapter's, else the
             # film's writer
@@ -584,6 +587,17 @@ class EpisodeDesk:
                 (chosen.get(unit["id"]) or {}).get("builder")
                 or by_chapter.get(str(unit["chapter"]))
                 or writer
+            )
+            # what its lines say now, and when a person last made one say something else
+            lines = [said.get(str(frame)) or {} for frame in unit["frames"]]
+            unit["words_now"] = _said(lines)
+            unit["reworded_at"] = max(
+                (
+                    float(mark.get("at") or 0.0)
+                    for f in lines
+                    if (mark := f.get("by_person") or {}) and f.get("vo") != mark.get("was")
+                ),
+                default=0.0,
             )
         return found
 
@@ -668,6 +682,7 @@ class EpisodeDesk:
         """A turn on a standing plan did not finish: the plan goes back to how it stood, and
         the studio stays open. A person's own words stay; only their picture's steps wait."""
         self._then_draw.discard(episode_id)
+        self._redraw.pop(episode_id, None)
         kept = self.store.snapshot(episode_id)
         if kept is not None and kept["data"].get("plan") and not kept["summary"]:
             self.store.update_episode(
@@ -693,6 +708,7 @@ class EpisodeDesk:
             "level",
             "builder",
             "motion",
+            "words",
         )
         return {
             "plan": episode["plan"],
@@ -757,7 +773,8 @@ class EpisodeDesk:
                 and not units.same(str(row["sig"]), unit)
             ):
                 continue  # the one made since is the one these lines now ask for
-            values = {k: v for k, v in row.items() if k != "unit"}
+            # a row kept before pictures kept their words is judged by when its lines changed
+            values = {"words": "", **{k: v for k, v in row.items() if k != "unit"}}
             if values.get("status") in ("queued", "making", "posing"):
                 values["sig"] = ""  # it was on its way then: it is asked for again
             self.store.set_picture(episode_id, str(row["unit"]), **values)
@@ -915,6 +932,14 @@ class EpisodeDesk:
             picks.pop("writer", None)
             self.store.update_episode(episode_id, picks=picks)
             self._refresh(episode_id)
+        again = self._redraw.pop(episode_id, set())
+        if start == "redo" and again:
+            # planned again for their words: drawn again, whatever the writer changed
+            planned = {u["id"] for u in self._units(episode, full) if u["kind"] == "picture"}
+            for unit_id in again & planned:
+                self.store.set_picture(episode_id, unit_id, status="queued", sig="", failure="")
+            self._set(episode_id, status=self._status(episode_id))
+            self._queue_pictures(episode_id)
 
     def _note_kind(self, worker: Worker, unit: Row, note: str) -> str:
         """Whether a note on a picture is about how it is drawn or about what it shows. A
@@ -1485,6 +1510,53 @@ class EpisodeDesk:
         self._settle(episode_id)
         return self.view(episode_id)
 
+    def keep_picture(self, episode_id: str, unit_id: str, *, by: str) -> Row:
+        """A person says a picture made for other words still fits: it is kept for the words
+        its lines say now, and nothing runs."""
+        episode = self._episode(episode_id)
+        full = self._full(episode)
+        unit = next(
+            (u for u in self._units(episode, full or {}) if u["id"] == unit_id and full), None
+        )
+        have = self.store.picture(episode_id, unit_id)
+        if unit is None or have is None or have["status"] not in ("made", "go"):
+            raise ValueError("There is no made picture there.")
+        self.store.set_picture(episode_id, unit_id, words=unit["words_now"])
+        self._say(episode, "Kept a picture for the new words.", by=by, quiet=True)
+        self._changed(episode_id)
+        return self.view(episode_id)
+
+    def replan(self, episode_id: str, *, by: str, pictures: Sequence[str]) -> Row:
+        """Have the writer fit pictures to what their lines say now: a person changed the
+        words after the pictures were made. What each shows, its objects and its cues are
+        planned again for the new words (the words stay as they are), and each is then drawn
+        again. Asked for by name, so it runs at once."""
+        episode = self._episode(episode_id)
+        full = self._full(episode)
+        if full is None or self.planning(episode_id):
+            raise ValueError("The writer is still working. Ask again when that has landed.")
+        found = {u["id"]: u for u in self._units(episode, full) if u["kind"] == "picture"}
+        named = list(dict.fromkeys(str(p) for p in pictures))
+        if not named or any(p not in found for p in named):
+            raise ValueError("There is no picture there to plan again.")
+        for unit_id in named:
+            running = self._builds.get((episode_id, unit_id))
+            if running is not None and not running.done():
+                raise ValueError("It's being made. Stop it first, or wait for it.")
+        told = "\n".join(
+            f"- {unit_id} (its lines {', '.join(found[unit_id]['frames'])}): a person changed "
+            "the words of this picture's lines, and they are marked `by_person`. Fit what the "
+            "picture shows, its objects and its cues to what the lines say now, as at the "
+            "frames stage, and keep every word as it is."
+            for unit_id in named
+        )
+        self._snapshot(episode_id, why="Planned pictures for your words")
+        self._redraw.setdefault(episode_id, set()).update(named)
+        self._start_plan(episode_id, stage="redo", redo=told)
+        self._say(episode, "Asked for pictures to be planned again.", by=by, quiet=True)
+        self._settle(episode_id)
+        return self.view(episode_id)
+
     def _report(self, episode_id: str) -> list[Row]:
         """The plan checked as it stands after a person's change, kept as its report."""
         merged = self._merged(self._episode(episode_id))
@@ -1790,6 +1862,7 @@ class EpisodeDesk:
             stills=stills,
             note="",
             failure="",
+            words=unit["words_now"],
         )
         self._changed(episode_id)
         clip = await asyncio.to_thread(self._clip, episode, unit)
@@ -2008,7 +2081,7 @@ class EpisodeDesk:
             if (
                 have is None
                 or (have["status"] == "failed" and (named or not chapter))
-                or (named and _outdated(have, unit))
+                or (named and (_outdated(have, unit) or _reworded(have, unit)))
             ):
                 self.store.set_picture(
                     episode_id, unit_id, status="queued", sig="", failure="", level=unit["level"]
@@ -2753,6 +2826,7 @@ class EpisodeDesk:
         full = self._full(episode)
         found = self._units(episode, full) if full is not None else []
         pictures = {p["unit"]: p for p in self.store.pictures(episode_id)}
+        said_now = {str(f["id"]): f for _, _, f in plans.frames_of(full or {})}
         clock = (
             timeline.schedule(full, self._kept(episode_id), self._voice(episode))
             if full is not None
@@ -2822,7 +2896,7 @@ class EpisodeDesk:
                 {
                     **unit,
                     "picture": {
-                        **self._picture_view(pictures.get(unit["id"]), unit),
+                        **self._picture_view(pictures.get(unit["id"]), unit, said_now),
                         "doing": doing.get(unit["id"], ""),
                     },
                     "kind_of_picture": unit["picture"],
@@ -2891,7 +2965,9 @@ class EpisodeDesk:
         row = self.store.file(str(file_id)) if file_id else None
         return self.host.file_view(row) if row is not None else None
 
-    def _picture_view(self, have: Row | None, unit: Row) -> dict[str, Any]:
+    def _picture_view(
+        self, have: Row | None, unit: Row, lines: Mapping[str, Row] | None = None
+    ) -> dict[str, Any]:
         if have is None:
             return {
                 "status": "none",
@@ -2901,6 +2977,8 @@ class EpisodeDesk:
                 "stills": {},
                 "clip": None,
                 "stale": False,
+                "reworded": False,
+                "made_for": {},
                 "failure": "",
                 "note": "",
             }
@@ -2918,6 +2996,11 @@ class EpisodeDesk:
             },
             "clip": self._file(have["clip"]),
             "stale": _outdated(have, unit),
+            # made for words its lines no longer say: it may still fit, which is for the
+            # person to say; they can keep it, have it planned again or drawn again. `made_for`
+            # is what each changed line said when it was made.
+            "reworded": (reworded := _reworded(have, unit)),
+            "made_for": _made_for(have, unit, lines or {}) if reworded else {},
             "failure": have["failure"],
             "note": have["note"],
         }
@@ -2944,6 +3027,43 @@ def _outdated(have: Row, unit: Row) -> bool:
         return False
     built_as = str(have["level"] or "")
     return not units.same(str(have["sig"]), unit) or (bool(built_as) and built_as != unit["level"])
+
+
+def _said(lines: Sequence[Row]) -> str:
+    """What a picture's lines say, line by line, as it is kept beside the picture: one run of
+    spaces, so spacing alone is never a change."""
+    return json.dumps(
+        {str(f.get("id")): " ".join(str(f.get("vo") or "").split()) for f in lines if f},
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+
+
+def _reworded(have: Row, unit: Row) -> bool:
+    """Whether a made picture was made for words its lines no longer say; words put back as
+    they were make it current again. One made before its words were kept is judged by when a
+    person last changed one of its lines."""
+    if have["status"] not in ("made", "go"):
+        return False
+    if str(have["words"] or "").startswith("{"):
+        return str(have["words"]) != str(unit["words_now"])
+    return float(unit.get("reworded_at") or 0.0) > float(have["updated_at"] or 0.0)
+
+
+def _made_for(have: Row, unit: Row, lines: Mapping[str, Row]) -> dict[str, str]:
+    """The words a picture was made for, for each of its lines that says something else now.
+    One made before its words were kept is shown against the words its lines had before a
+    person changed them."""
+    now = json.loads(unit["words_now"])
+    if str(have["words"] or "").startswith("{"):
+        then = json.loads(have["words"])
+        return {k: str(v) for k, v in then.items() if k in now and now[k] != v}
+    out: dict[str, str] = {}
+    for frame in unit["frames"]:
+        mark = (lines.get(str(frame)) or {}).get("by_person") or {}
+        if mark and " ".join(str(mark.get("was") or "").split()) != now.get(str(frame)):
+            out[str(frame)] = str(mark.get("was") or "")
+    return out
 
 
 def _findings(report: str) -> tuple[list[str], list[str]]:

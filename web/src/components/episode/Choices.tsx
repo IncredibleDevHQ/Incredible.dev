@@ -1,6 +1,9 @@
-// What a person can choose for the picked line, in the order they would think of it: the frame
-// (one pick sets who has it and the layout), then the picture it shows. A pick is the line's
-// own until it is widened, in one click, to the picture's other lines, the chapter or the film.
+// What a person can choose for the line open in the frame, one panel at a time, picked from the
+// rail at the frame's right edge the way the Figma editor's pop-up has it: the layout (one pick
+// sets who has the frame and how), the picture the line shows, how that picture comes in, and
+// the steps it takes on the line. A pick is the line's own until it is widened, in one click, to
+// the picture's other lines, the chapter or the film; like every pick it draws nothing.
+import { Blend, LayoutTemplate, ListOrdered, Shapes, type LucideIcon } from "lucide-react";
 import { api, type EpisodeChapter, type EpisodeChoices, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Presence } from "../../api";
 import { allLines, LAYOUTS, linesIn, LOOKS, MOVES, PICTURES, pictureWords, TRANSITIONS } from "../../episode";
 import { Tooltip } from "../Tooltip";
@@ -12,16 +15,15 @@ import { Tiles } from "./Tiles";
 const WHO: Record<Presence, string> = { person: "You", both: "You and the picture", content: "The picture alone" };
 const ORDER: Record<Presence, number> = { person: 0, both: 1, content: 2 };
 
-export function Choices({
-  view,
-  chapter,
-  line,
-  unit,
-  run,
-  busy,
-  onFilm,
-  onAskPicture,
-}: {
+export type Panel = "layout" | "picture" | "transition" | "steps";
+export const PANELS: { id: Panel; label: string; icon: LucideIcon }[] = [
+  { id: "layout", label: "Layout", icon: LayoutTemplate },
+  { id: "picture", label: "Picture", icon: Shapes },
+  { id: "transition", label: "Transition", icon: Blend },
+  { id: "steps", label: "Steps", icon: ListOrdered },
+];
+
+type Props = {
   view: EpisodeView;
   chapter: EpisodeChapter;
   line: EpisodeFrame;
@@ -30,13 +32,25 @@ export function Choices({
   busy: boolean;
   onFilm: () => void;
   onAskPicture: () => void;
-}) {
+};
+
+export function ChoicePanel({ panel, ...props }: Props & { panel: Panel }) {
+  return (
+    <div className="ep-choices" aria-label={`${PANELS.find((p) => p.id === panel)?.label ?? ""} for this line`}>
+      {panel === "layout" ? <LayoutPanel {...props} /> : panel === "picture" ? <PicturePanel {...props} /> : panel === "transition" ? <TransitionPanel {...props} /> : <StepsPanel {...props} />}
+    </div>
+  );
+}
+
+const choosing = (view: EpisodeView, run: Run) => (body: EpisodeChoices) => run(() => api.chooseEpisode(view.id, body));
+
+// The look's layouts, you first, then you with a picture, then the picture alone; one pick sets
+// who has the frame and how. The line's own layout is always among them, even one the look no
+// longer has.
+function LayoutPanel({ view, chapter, line, unit, run, busy, onFilm }: Props) {
   const presenterOff = view.settings.presenter === "off";
   const theme = view.options.themes.find((t) => t.id === view.settings.theme);
-  const choose = (body: EpisodeChoices) => run(() => api.chooseEpisode(view.id, body));
-
-  // The look's layouts, you first, then you with a picture, then the picture alone. The line's
-  // own layout is always among them, even one the look no longer has.
+  const choose = choosing(view, run);
   const kit = [...(theme?.kit ?? [])].sort((a, b) => ORDER[a.presence] - ORDER[b.presence]);
   const frames = kit.some((k) => k.layout === line.layout) ? kit : [{ layout: line.layout, presence: line.presence }, ...kit];
   const setFrame = (presence: Presence, layout: string) => choose({ frames: { [line.id]: { presence, layout } } });
@@ -54,7 +68,6 @@ export function Choices({
       ...(film ? { all: set } : {}),
     });
   };
-  const askFor = (film: boolean) => void applyFor(film);
   const undo = () =>
     scope === "film"
       ? choose({ all: { layouts: { [line.presence]: null } } })
@@ -62,109 +75,112 @@ export function Choices({
         ? choose({ chapters: { [chapter.id]: { layouts: { [line.presence]: null } } } })
         : choose({ frames: { [line.id]: { presence: null, layout: null } } });
   const reach = scope ? linesIn(view, line.presence, scope === "chapter" ? chapter.id : undefined).filter((x) => x.line.layout === line.layout).length : 0;
-
-  // The picture this line shows is drawn once, on the line that brings it in: its kind and how
-  // it comes in are picked there, whichever of its lines is open.
-  const lead = unit ? allLines(view).find((x) => x.line.id === unit.frames[0])?.line : undefined;
-  const drawn = unit?.kind === "picture" && lead;
   const others = unit ? unit.frames.filter((id) => id !== line.id) : [];
   const forPicture = () => unit && choose({ frames: Object.fromEntries(unit.frames.map((id) => [id, { presence: line.presence, layout: line.layout }])) });
-  const planMove = line.transition && line.transition !== "none" ? line.transition : "cut";
-  const move = line.picked?.transition ?? planMove;
-  const bringsIn = drawn && lead.id === line.id && line.presence !== "person";
-  const shows = line.shows || lead?.shows;
 
   return (
-    <aside className="ep-choices" aria-label="Choices for this line">
-      <section>
-        <h3>
-          Frame <span>{LAYOUTS[line.layout] ?? line.layout}</span>
-        </h3>
-        <div className="ep-layouts" role="radiogroup" aria-label="The frame for this line">
-          {frames.map((k) => (
-            <Tooltip key={k.layout} content={`${LAYOUTS[k.layout] ?? k.layout} · ${WHO[k.presence]}`} side="top">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={line.layout === k.layout}
-                aria-label={`${LAYOUTS[k.layout] ?? k.layout}: ${WHO[k.presence]}`}
-                disabled={busy || (presenterOff && k.presence !== "content")}
-                onClick={() => line.layout !== k.layout && void setFrame(k.presence, k.layout)}
-              >
-                <LayoutThumb view={view} layout={k.layout} />
-              </button>
-            </Tooltip>
-          ))}
-        </div>
-        {presenterOff && <small>Nobody is on screen in this film.</small>}
-        {line.override && (
-          <p className="ep-picked" data-rows>
-            <span>{scope ? `Set for the ${scope} · ${reach} ${reach === 1 ? "line" : "lines"}` : "Your pick"}</span>
-            <button type="button" className="linkish" disabled={busy} onClick={() => void undo()}>
-              Undo
+    <>
+      <h3>
+        Layout <span>{LAYOUTS[line.layout] ?? line.layout}</span>
+      </h3>
+      <div className="ep-layouts" role="radiogroup" aria-label="The frame for this line">
+        {frames.map((k) => (
+          <Tooltip key={k.layout} content={`${LAYOUTS[k.layout] ?? k.layout} · ${WHO[k.presence]}`} side="left">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={line.layout === k.layout}
+              aria-label={`${LAYOUTS[k.layout] ?? k.layout}: ${WHO[k.presence]}`}
+              disabled={busy || (presenterOff && k.presence !== "content")}
+              onClick={() => line.layout !== k.layout && void setFrame(k.presence, k.layout)}
+            >
+              <LayoutThumb view={view} layout={k.layout} />
             </button>
-            {scope !== "film" && (
-              <span>
-                Use it for{" "}
-                {!scope && others.length > 0 && (
-                  <>
-                    <button type="button" className="linkish" disabled={busy} onClick={() => void forPicture()}>
-                      the picture
-                    </button>
-                    {", "}
-                  </>
-                )}
-                {!scope && (
-                  <>
-                    <button type="button" className="linkish" disabled={busy} onClick={() => askFor(false)}>
-                      the chapter
-                    </button>
-                    {" or "}
-                  </>
-                )}
-                <button type="button" className="linkish" disabled={busy} onClick={() => askFor(true)}>
-                  the film
-                </button>
-              </span>
-            )}
-          </p>
-        )}
-      </section>
+          </Tooltip>
+        ))}
+      </div>
+      {presenterOff && <small>Nobody is on screen in this film.</small>}
+      {line.override && (
+        <p className="ep-picked" data-rows>
+          <span>{scope ? `Set for the ${scope} · ${reach} ${reach === 1 ? "line" : "lines"}` : "Your pick"}</span>
+          <button type="button" className="linkish" disabled={busy} onClick={() => void undo()}>
+            Undo
+          </button>
+          {scope !== "film" && (
+            <span>
+              Use it for{" "}
+              {!scope && others.length > 0 && (
+                <>
+                  <button type="button" className="linkish" disabled={busy} onClick={() => void forPicture()}>
+                    the picture
+                  </button>
+                  {", "}
+                </>
+              )}
+              {!scope && (
+                <>
+                  <button type="button" className="linkish" disabled={busy} onClick={() => void applyFor(false)}>
+                    the chapter
+                  </button>
+                  {" or "}
+                </>
+              )}
+              <button type="button" className="linkish" disabled={busy} onClick={() => void applyFor(true)}>
+                the film
+              </button>
+            </span>
+          )}
+        </p>
+      )}
+      <footer>
+        <span>
+          {LOOKS[theme?.id ?? ""] ?? "Look"} · {view.settings.voice === "narrator" ? "narrator" : "your voice"}
+        </span>
+        <button type="button" className="linkish" onClick={onFilm}>
+          Change
+        </button>
+      </footer>
+    </>
+  );
+}
 
-      <section>
-        <h3>
-          Picture {unit && <span>{unit.kind === "undesigned" ? "Being planned" : (PICTURES[unit.kind_of_picture] ?? "")}</span>}
-        </h3>
-        {unit ? (
-          <>
-            {shows && <p className="ep-shows">{shows}</p>}
-            {/* how it is made (simple or rich, and by whom) is set on its block in the script */}
-            {unit.kind === "undesigned" ? (
-              <small>The writer is planning a picture for this line.</small>
-            ) : (
-              <div className="ep-picture-row">
-                <small>
-                  {unit.level === "rich" ? "Rich" : "Simple"} · {pictureWords(unit, view)}
-                </small>
-                <button type="button" className="linkish" onClick={onAskPicture}>
-                  Ask for a change
-                </button>
-              </div>
-            )}
-          </>
-        ) : (
-          <small>{line.presence === "person" ? "None: this line is said to camera. Pick a frame with a picture to give it one." : "None for this line."}</small>
-        )}
-      </section>
-
+// The picture this line shows: what it shows and where it stands, and its kind, picked on the line
+// that brings it in (whichever of its lines is open).
+function PicturePanel({ view, line, unit, run, busy, onAskPicture }: Props) {
+  const choose = choosing(view, run);
+  const lead = unit ? allLines(view).find((x) => x.line.id === unit.frames[0])?.line : undefined;
+  const drawn = unit?.kind === "picture" && lead;
+  const shows = line.shows || lead?.shows;
+  return (
+    <>
+      <h3>Picture {unit && <span>{unit.kind === "undesigned" ? "Being planned" : (PICTURES[unit.kind_of_picture] ?? "")}</span>}</h3>
+      {!unit ? (
+        <small>{line.presence === "person" ? "None: this line is said to camera. Pick a layout with a picture to give it one." : "None for this line."}</small>
+      ) : (
+        <>
+          {shows && <p className="ep-shows">{shows}</p>}
+          {unit.kind === "undesigned" ? (
+            <small>The writer plans a picture for this line when you apply your changes.</small>
+          ) : (
+            <div className="ep-picture-row">
+              <small>
+                {unit.level === "rich" ? "Rich" : "Simple"} · {pictureWords(unit, view)}
+              </small>
+              <button type="button" className="linkish" onClick={onAskPicture}>
+                Ask for a change
+              </button>
+            </div>
+          )}
+        </>
+      )}
       {drawn && unit && (
-        <details className="ep-more">
-          <summary>
+        <>
+          <h3>
             Kind <span>{PICTURES[unit.kind_of_picture] ?? "Picture"}</span>
-          </summary>
+          </h3>
           <Tiles
             label="What kind of picture it is"
-            columns={3}
+            columns={2}
             disabled={busy}
             value={unit.kind_of_picture}
             onPick={(id) => void choose({ frames: { [lead.id]: { picture: id === lead.picture ? null : id } } })}
@@ -178,13 +194,27 @@ export function Choices({
               </button>
             </p>
           )}
-        </details>
+        </>
       )}
-      {bringsIn && (
-        <details className="ep-more">
-          <summary>
-            Comes in by <span>{TRANSITIONS[move] ?? "Cut"}</span>
-          </summary>
+    </>
+  );
+}
+
+// How the picture comes in, on the line that brings it in. A line said to camera, or one that
+// holds the picture before, has nothing coming in.
+function TransitionPanel({ view, line, unit, run, busy }: Props) {
+  const choose = choosing(view, run);
+  const lead = unit ? allLines(view).find((x) => x.line.id === unit.frames[0])?.line : undefined;
+  const bringsIn = unit?.kind === "picture" && lead?.id === line.id && line.presence !== "person";
+  const planMove = line.transition && line.transition !== "none" ? line.transition : "cut";
+  const move = line.picked?.transition ?? planMove;
+  return (
+    <>
+      <h3>Transition {bringsIn && <span>{TRANSITIONS[move] ?? "Cut"}</span>}</h3>
+      {!bringsIn ? (
+        <small>{line.presence === "person" ? "This line is said to camera: no picture comes in on it." : "Its picture came in on an earlier line: it stays on this one."}</small>
+      ) : (
+        <>
           <Tiles
             label="How the picture comes in"
             columns={2}
@@ -207,31 +237,29 @@ export function Choices({
               </button>
             </p>
           )}
-        </details>
+        </>
       )}
-      {line.cues && line.cues.length > 0 && (
-        <details className="ep-more">
-          <summary>
-            Steps <span>{line.cues.length}</span>
-          </summary>
-          <ol className="ep-cues">
-            {line.cues.map((c, i) => (
-              <li key={i}>
-                <b>“{c.at}”</b> {c.does}
-              </li>
-            ))}
-          </ol>
-        </details>
-      )}
+    </>
+  );
+}
 
-      <footer>
-        <span>
-          {LOOKS[theme?.id ?? ""] ?? "Look"} · {view.settings.voice === "narrator" ? "narrator" : "your voice"}
-        </span>
-        <button type="button" className="linkish" onClick={onFilm}>
-          Change
-        </button>
-      </footer>
-    </aside>
+// What the picture does on this line, step by step, each on the word it lands on.
+function StepsPanel({ line }: Props) {
+  const cues = line.cues ?? [];
+  return (
+    <>
+      <h3>Steps {cues.length > 0 && <span>{cues.length}</span>}</h3>
+      {cues.length === 0 ? (
+        <small>Nothing moves on this line.</small>
+      ) : (
+        <ol className="ep-cues">
+          {cues.map((c, i) => (
+            <li key={i}>
+              <b>“{c.at}”</b> {c.does}
+            </li>
+          ))}
+        </ol>
+      )}
+    </>
   );
 }

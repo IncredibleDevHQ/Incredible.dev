@@ -6,7 +6,9 @@ import { useEffect, useRef } from "react";
 import type { EpisodeFrame, EpisodeTake, EpisodeUnit, EpisodeView } from "../../api";
 import { boxStyle, clockLine, spotOf } from "../../episode";
 
-export type Playing = { from: number; to: number; of: "take" | "clip" } | null;
+// What plays for a line: its take, its picture's draft, or (with neither) its words alone, read
+// at the plan's own pace.
+export type Playing = { from: number; to: number; of: "take" | "clip" | "words" } | null;
 
 export function Stage({
   view,
@@ -16,6 +18,7 @@ export function Stage({
   stream,
   playing,
   onEnded,
+  onTime,
   small,
 }: {
   view: EpisodeView;
@@ -25,6 +28,8 @@ export function Stage({
   stream?: MediaStream | null;
   playing?: Playing;
   onEnded?: () => void;
+  // where what plays has got to, in its file's seconds, so the words can keep pace with it
+  onTime?: (t: number) => void;
   small?: boolean;
 }) {
   const spot = spotOf(view, frame.layout);
@@ -41,7 +46,7 @@ export function Stage({
       {picture && (
         <div className="ep-stage-pic" data-glass={spot.glass || undefined} style={boxStyle(picture, size, spot.picture_radius)}>
           {showsClip ? (
-            <Reel src={clip.url} from={playing.from} to={playing.to} onEnded={onEnded} />
+            <Reel src={clip.url} from={playing.from} to={playing.to} onEnded={onEnded} onTime={onTime} />
           ) : still ? (
             <img src={still.url} alt={frame.shows ?? "The picture for this line"} />
           ) : (
@@ -63,6 +68,7 @@ export function Stage({
               sound
               zoom={spot.zoom}
               onEnded={onEnded}
+              onTime={playing?.of === "take" ? onTime : undefined}
             />
           ) : (
             <span className="ep-stand-in" aria-label="Where you will be">
@@ -74,7 +80,7 @@ export function Stage({
       )}
       {/* A take with no picture of you (a voice-only film) still has to be heard when played. */}
       {!person && playing?.of === "take" && take && (take.audio ?? take.video) && (
-        <Reel src={(take.audio ?? take.video)!.url} from={playing.from} to={playing.to} sound hidden onEnded={onEnded} />
+        <Reel src={(take.audio ?? take.video)!.url} from={playing.from} to={playing.to} sound hidden onEnded={onEnded} onTime={onTime} />
       )}
     </div>
   );
@@ -99,6 +105,7 @@ function Reel({
   zoom,
   hidden,
   onEnded,
+  onTime,
 }: {
   src: string;
   from: number;
@@ -108,8 +115,21 @@ function Reel({
   zoom?: number;
   hidden?: boolean;
   onEnded?: () => void;
+  onTime?: (t: number) => void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
+  // while it plays, where it is, every frame (the time updates come only a few times a second)
+  useEffect(() => {
+    const el = video.current;
+    if (!el || paused || !onTime) return;
+    let frame = 0;
+    const tick = () => {
+      onTime(el.currentTime);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [paused, onTime]);
   useEffect(() => {
     const el = video.current;
     if (!el) return;
@@ -132,6 +152,7 @@ function Reel({
       hidden={hidden}
       style={zoom && zoom !== 1 ? { transform: `scale(${zoom})` } : undefined}
       onTimeUpdate={(e) => {
+        if (!paused) onTime?.(e.currentTarget.currentTime);
         if (paused || to === undefined || e.currentTarget.currentTime < to) return;
         e.currentTarget.pause();
         onEnded?.();
@@ -143,7 +164,10 @@ function Reel({
 
 // Before a picture is built: what the plan says it shows, and the things it will hold.
 function Sketch({ frame, unit }: { frame: EpisodeFrame; unit?: EpisodeUnit }) {
-  const words = (frame.objects ?? []).map((o) => o.words || o.what).filter(Boolean).slice(0, 6);
+  const words = (frame.objects ?? [])
+    .map((o) => o.words || o.what)
+    .filter(Boolean)
+    .slice(0, 6);
   return (
     <span className="ep-sketch">
       <span className="ep-sketch-text">{frame.shows || unit?.shows || "A picture for this line"}</span>

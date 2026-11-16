@@ -26,6 +26,9 @@ import { Tooltip } from "../Tooltip";
 import type { Run } from "./Ask";
 import { BlockHead, blocksOf, KIND_ICONS, type Block } from "./Blocks";
 import { wordDiff } from "./Diff";
+import { AgentMark } from "../../ui";
+import { AskHere } from "./AskHere";
+import { WRITERS } from "./Film";
 import { PictureCard } from "./Picture";
 import { SHORTCUTS, SlashMenu, slashItems, type SlashItem, type SlashState } from "./Slash";
 
@@ -70,10 +73,7 @@ function lineAt(state: EditorState): Here | undefined {
 }
 
 // A shape for comparing two documents: what is in them, not how it is held.
-const shapeOf = (doc: JSONContent) =>
-  JSON.stringify(
-    (doc.content ?? []).map((b) => [b.attrs, (b.content ?? []).map((l) => [l.attrs, (l.content ?? []).map((t) => t.text ?? "").join("")])]),
-  );
+const shapeOf = (doc: JSONContent) => JSON.stringify((doc.content ?? []).map((b) => [b.attrs, (b.content ?? []).map((l) => [l.attrs, (l.content ?? []).map((t) => t.text ?? "").join("")])]));
 
 const attrsOf = (l: LineAttrs): LineAttrs => ({ uid: l.uid, id: l.id, base: l.base, kind: l.kind, split: l.split });
 const lineNode = (attrs: LineAttrs, text: string): JSONContent => ({ type: "scriptLine", attrs, content: text ? [{ type: "text", text }] : [] });
@@ -103,7 +103,12 @@ function layout(blocks: Block[], doc: PMNode | null): JSONContent {
     }
     for (const g of groups) {
       g.forEach((p) => used.add(p.uid));
-      content.push(blockNode(g[0].block, g.map((p) => lineNode(attrsOf(p), p.text))));
+      content.push(
+        blockNode(
+          g[0].block,
+          g.map((p) => lineNode(attrsOf(p), p.text)),
+        ),
+      );
     }
   };
   own((after.get("") ?? []).filter((p) => p.block.kind));
@@ -161,6 +166,17 @@ type Ctx = {
   onReword: (frame: string, text: string) => void;
   onRecordLine: (frame: string) => void;
   onCutBlock: (uid: string) => void;
+  // the line asked about at the caret (and the words selected in it), and how to ask
+  asking: { line: string; words: string } | null;
+  onAskHere: (text: string) => void;
+  onCloseAsk: () => void;
+  // the writer, by name and logo, and the line its turn is on while it works
+  writer: string;
+  mark?: string;
+  working: boolean;
+  onLine: string;
+  onPicture: string;
+  onStop: () => void;
 };
 const ScriptCtx = createContext<Ctx | null>(null);
 const useScript = () => useContext(ScriptCtx)!;
@@ -192,7 +208,13 @@ function BlockView({ node }: ReactNodeViewProps) {
   const unit = attrs.unit ? c.view.units.find((u) => u.id === attrs.unit) : undefined;
   const cut = (
     <Tooltip content={attrs.kind ? "Take this block out" : "Cut this block"} side="bottom" align="end">
-      <button type="button" className="icon-btn ep-script-cut" aria-label={attrs.kind ? "Take this block out" : "Cut this block"} disabled={c.busy || c.recording} onClick={() => c.onCutBlock(attrs.key)}>
+      <button
+        type="button"
+        className="icon-btn ep-script-cut"
+        aria-label={attrs.kind ? "Take this block out" : "Cut this block"}
+        disabled={c.busy || c.recording}
+        onClick={() => c.onCutBlock(attrs.key)}
+      >
         <Trash2 />
       </button>
     </Tooltip>
@@ -218,7 +240,26 @@ function BlockView({ node }: ReactNodeViewProps) {
     return (
       <NodeViewWrapper className="ep-block ep-figure" data-state={pictureState(unit, c.view)}>
         <div contentEditable={false} className="ep-figure-wrap">
-          <PictureCard view={c.view} block={block as Block & { unit: EpisodeUnit }} lines={c.lines} picked={c.current} onPick={c.onPick} onOpen={() => c.onOpen(unit)} run={c.run} busy={c.busy || c.recording} tools={cut} />
+          <PictureCard
+            view={c.view}
+            block={block as Block & { unit: EpisodeUnit }}
+            lines={c.lines}
+            picked={c.current}
+            onPick={c.onPick}
+            onOpen={() => c.onOpen(unit)}
+            run={c.run}
+            busy={c.busy || c.recording}
+            tools={cut}
+          />
+          {c.working && c.onPicture && unit.frames.includes(c.onPicture) && (
+            <span className="ep-ai-at" role="status">
+              <AgentMark mark={c.mark} size="sm" />
+              {c.writer.slice(0, 1).toUpperCase() + c.writer.slice(1)} is changing this picture
+              <button type="button" className="ep-ai-stop" onClick={c.onStop}>
+                Stop
+              </button>
+            </span>
+          )}
         </div>
         <NodeViewContent className="ep-block-lines" role="list" />
       </NodeViewWrapper>
@@ -250,15 +291,36 @@ function LineView({ node }: ReactNodeViewProps) {
   const shot = mine?.picture.motion?.shots.find((s) => s.frame === line?.id);
   const reviewing = mine ? ["making", "go"].includes(pictureState(mine)) : false;
   const presence = line?.presence ?? (attrs.kind === "camera" ? "person" : attrs.kind === "more" ? "" : "both");
+  // what was made from this line before its words changed: its picture, or the take
+  const theirs = Boolean(line?.by_person) && line?.vo !== line?.by_person?.was;
+  const behind = again ? "take" : theirs && mine && pictureState(mine, c.view) === "reworded" ? "picture" : undefined;
   const status = c.recording ? (i >= 0 && i < c.said && !c.solo ? "✓" : "") : current ? "" : again ? "Say again" : c.take && line ? "✓" : "";
   return (
-    <NodeViewWrapper className="ep-line-card" role="listitem" data-current={current || undefined} data-new={!attrs.id || undefined} data-recording-at={(c.recording && i === c.said) || undefined}>
+    <NodeViewWrapper
+      className="ep-line-card"
+      role="listitem"
+      data-current={current || undefined}
+      data-new={!attrs.id || undefined}
+      data-behind={behind}
+      data-ai={(c.working && c.onLine === attrs.id) || undefined}
+      data-recording-at={(c.recording && i === c.said) || undefined}
+    >
       <i className="ep-who" data-presence={presence || undefined} aria-label={presence ? PRESENCE[presence] : "A new line"} contentEditable={false} />
       <div className="ep-line-body">
         <NodeViewContent<"p"> as="p" className="ep-line-text" />
         {empty && (
           <span className="ep-line-hint" contentEditable={false} aria-hidden="true">
             {hintOf(attrs.kind)}
+          </span>
+        )}
+        {c.working && c.onLine === attrs.id && (
+          // the writer at work on this line, as a teammate's cursor would be
+          <span className="ep-ai-at" contentEditable={false} role="status">
+            <AgentMark mark={c.mark} size="sm" />
+            {c.writer.slice(0, 1).toUpperCase() + c.writer.slice(1)} is changing this line
+            <button type="button" className="ep-ai-stop" onClick={c.onStop}>
+              Stop
+            </button>
           </span>
         )}
         {status && (
@@ -274,8 +336,8 @@ function LineView({ node }: ReactNodeViewProps) {
         )}
         {current && !c.recording && (
           <div className="ep-line-foot" contentEditable={false}>
-            <small data-tone={again ? "amber" : undefined}>
-              {again ? "Say again · " : c.take ? "Recorded · " : ""}
+            <small data-tone={behind ? "amber" : undefined}>
+              {again ? "Say again · " : behind === "picture" ? "Its picture was made for the words before · " : c.take ? "Recorded · " : ""}
               {length(node.textContent, line)}
             </small>
             {before !== undefined && (
@@ -295,6 +357,7 @@ function LineView({ node }: ReactNodeViewProps) {
           </div>
         )}
       </div>
+      {c.asking?.line === attrs.id && attrs.id && <AskHere words={c.asking.words} writer={c.writer} mark={c.mark} waits={c.working} onAsk={c.onAskHere} onClose={c.onCloseAsk} />}
       {c.marked &&
         c.cuts.get(attrs.id)?.map((says, n) => (
           <div key={n} className="ep-line-cut" contentEditable={false}>
@@ -332,7 +395,10 @@ const ScriptLine = Node.create({
 });
 
 // The shape of the document: which lines, in which blocks.
-const bones = (doc: PMNode) => linesIn(doc).map((l) => `${l.blockIndex}:${l.uid}`).join(" ");
+const bones = (doc: PMNode) =>
+  linesIn(doc)
+    .map((l) => `${l.blockIndex}:${l.uid}`)
+    .join(" ");
 
 // Refuses a change of shape nobody here made, and puts what the last change did into the words:
 // what went struck through, what came in marked.
@@ -389,6 +455,49 @@ function marks(): Plugin<Record<string, string>> {
   });
 }
 
+// The pill that offers the writer's help where the caret is placed: at the end of the line, or
+// of the words selected in it. It shows only when it is turned on (the caret is placed and no
+// words are being typed), and a press opens the prompt without moving the caret.
+const HINT = new PluginKey<{ show: boolean }>("episode-script-hint");
+function hint(open: () => void): Plugin<{ show: boolean }> {
+  return new Plugin<{ show: boolean }>({
+    key: HINT,
+    state: { init: () => ({ show: false }), apply: (tr, value) => (tr.getMeta(HINT) as { show: boolean } | undefined) ?? value },
+    props: {
+      decorations(state) {
+        if (!HINT.getState(state)?.show) return DecorationSet.empty;
+        const here = lineAt(state);
+        if (!here?.id) return DecorationSet.empty;
+        const sel = state.selection;
+        const some = !sel.empty && sel.$from.parent === sel.$to.parent;
+        const at = some ? sel.to : here.pos + 1 + here.text.length;
+        const label = some ? "Ask AI about these words" : "Ask AI";
+        const pill = () => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "ep-ai-hint";
+          button.contentEditable = "false";
+          button.setAttribute("aria-label", `${label} (Cmd J)`);
+          const star = document.createElement("i");
+          star.textContent = "✦";
+          star.setAttribute("aria-hidden", "true");
+          const words = document.createElement("span");
+          words.textContent = some ? "Ask AI" : "Ask AI";
+          const key = document.createElement("kbd");
+          key.textContent = navigator.platform.includes("Mac") ? "⌘J" : "Ctrl J";
+          button.append(star, words, key);
+          button.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            open();
+          });
+          return button;
+        };
+        return DecorationSet.create(state.doc, [Decoration.widget(at, pill, { side: 1, key: `hint-${here.uid}-${at}-${some}`, ignoreSelection: true, stopEvent: () => true })]);
+      },
+    },
+  });
+}
+
 // -- the editor --------------------------------------------------------------------------------
 
 export type ScriptHandle = { focusLine: (frame: string, slash?: boolean) => void };
@@ -411,6 +520,7 @@ export function Script({
   onReword,
   onRecordLine,
   onAsk,
+  onAskLine,
   onUndo,
   onRedo,
 }: {
@@ -432,6 +542,8 @@ export function Script({
   onReword: (frame: string, text: string) => void;
   onRecordLine: (frame: string) => void;
   onAsk: (frame: string) => void;
+  // the writer asked, at the caret, to change a line or the words selected in it
+  onAskLine: (frame: string, words: string, text: string) => void;
   // the studio's own undo and redo, of the last change kept
   onUndo: () => void;
   onRedo: () => void;
@@ -446,6 +558,21 @@ export function Script({
   on.current = { onPick, onAsk, onUndo, onRedo, chapter: chapter.id, view: view.id, pictures: view.options.pictures };
   const caret = useRef("");
   const editorRef = useRef<Editor | null>(null);
+  const [asking, setAsking] = useState<{ line: string; words: string } | null>(null);
+  const [focused, setFocused] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const quietTimer = useRef(0);
+  const openRef = useRef(() => {});
+  openRef.current = () => {
+    const ed = editorRef.current;
+    if (!ed || recording || working) return;
+    const here = lineAt(ed.state);
+    if (!here?.id) return;
+    const sel = ed.state.selection;
+    const words = !sel.empty && sel.$from.parent === sel.$to.parent ? ed.state.doc.textBetween(sel.from, sel.to).trim() : "";
+    onPick(here.id);
+    setAsking({ line: here.id, words });
+  };
 
   // Every call the document makes goes one after another, so a line is kept before the line
   // after it is sent. A refusal is said, and the plan as it stands is read again.
@@ -504,7 +631,10 @@ export function Script({
       const k = now.findIndex((x) => x.uid === uid);
       if (k < 0 || now[k].id || !kept(now[k].text)) return;
       const me = now[k];
-      const prev = now.slice(0, k).reverse().find((x) => x.id);
+      const prev = now
+        .slice(0, k)
+        .reverse()
+        .find((x) => x.id);
       const from = me.split ? now.find((x) => x.uid === me.split) : undefined;
       const keep = from?.id && kept(from.text) !== words(from.base) ? kept(from.text) : undefined;
       const kind: LineKind = !prev && me.kind === "more" ? "camera" : me.kind;
@@ -523,7 +653,9 @@ export function Script({
     shape(editor, (tr) => {
       const gone = linesIn(tr.doc).filter((l) => uids.includes(l.uid));
       if (!gone.length) return;
-      const before = linesIn(tr.doc).filter((l) => l.pos < gone[0].pos && !uids.includes(l.uid)).pop();
+      const before = linesIn(tr.doc)
+        .filter((l) => l.pos < gone[0].pos && !uids.includes(l.uid))
+        .pop();
       for (const l of [...gone].reverse()) {
         const block = tr.doc.nodeAt(l.blockPos)!;
         const left = linesIn(tr.doc).filter((x) => x.blockPos === l.blockPos && !uids.includes(x.uid)).length;
@@ -573,7 +705,11 @@ export function Script({
     const here = lineAt(editor.state);
     if (!here) return;
     if (item.kind === "ask") {
-      const about = here.id || linesIn(editor.state.doc).filter((l) => l.pos < here.pos && l.id).pop()?.id;
+      const about =
+        here.id ||
+        linesIn(editor.state.doc)
+          .filter((l) => l.pos < here.pos && l.id)
+          .pop()?.id;
       return about ? on.current.onAsk(about) : undefined;
     }
     place(editor, item.kind);
@@ -603,7 +739,11 @@ export function Script({
     const now = lineAt(editor.state) ?? here;
     // inside a picture's block the new one goes after its last line; in a run said to camera,
     // after the line the slash was typed on
-    const anchor = toCamera ? now : linesIn(editor.state.doc).filter((l) => l.blockPos === now.blockPos).pop()!;
+    const anchor = toCamera
+      ? now
+      : linesIn(editor.state.doc)
+          .filter((l) => l.blockPos === now.blockPos)
+          .pop()!;
     insert(editor, anchor, { uid: fresh(), id: "", base: "", kind, split: "" }, "", { key: fresh(), unit: "", kind });
   };
 
@@ -623,6 +763,7 @@ export function Script({
             return [
               guard(),
               marks(),
+              hint(() => openRef.current()),
               Suggestion<SlashItem, SlashItem>({
                 editor,
                 char: "/",
@@ -631,7 +772,8 @@ export function Script({
                 command: ({ editor, range, props }) => pick(editor, range, props),
                 render: () => ({
                   onStart: (p: SuggestionProps<SlashItem, SlashItem>) => setMenu({ items: p.items, at: 0, rect: p.clientRect?.() ?? null, choose: p.command }),
-                  onUpdate: (p: SuggestionProps<SlashItem, SlashItem>) => setMenu((m) => ({ items: p.items, at: Math.min(m?.at ?? 0, Math.max(0, p.items.length - 1)), rect: p.clientRect?.() ?? null, choose: p.command })),
+                  onUpdate: (p: SuggestionProps<SlashItem, SlashItem>) =>
+                    setMenu((m) => ({ items: p.items, at: Math.min(m?.at ?? 0, Math.max(0, p.items.length - 1)), rect: p.clientRect?.() ?? null, choose: p.command })),
                   onExit: () => setMenu(null),
                   onKeyDown: ({ event }: SuggestionKeyDownProps) => {
                     const m = menuRef.current;
@@ -662,6 +804,7 @@ export function Script({
               Backspace: () => backspace(this.editor),
               Delete: () => forward(this.editor),
               "Shift-Enter": () => true,
+              "Mod-j": () => (openRef.current(), true),
               "Mod-z": () => revert(this.editor) || (on.current.onUndo(), true),
               "Mod-Shift-z": () => (on.current.onRedo(), true),
               "Mod-y": () => (on.current.onRedo(), true),
@@ -702,7 +845,15 @@ export function Script({
         if (was && was !== into) window.setTimeout(() => !editor.isDestroyed && leave(editor, was, into), 0);
         if (here?.id) on.current.onPick(here.id);
       },
+      onFocus: () => setFocused(true),
+      onUpdate: () => {
+        // words are being typed: the pill steps aside until the typing stops
+        setTyping(true);
+        window.clearTimeout(quietTimer.current);
+        quietTimer.current = window.setTimeout(() => setTyping(false), 900);
+      },
       onBlur: ({ editor, event }) => {
+        setFocused(false);
         // a click on the slash menu, or inside the editor's own chrome, is not leaving it
         if ((event.relatedTarget as HTMLElement | null)?.closest(".ep-slash")) return;
         const was = caret.current;
@@ -819,8 +970,25 @@ export function Script({
     editor?.setEditable(!recording && !working);
   }, [editor, recording, working]);
 
-  // What the last change did is drawn into the words while its marks are on.
+  // the pill is there when the caret is placed in a line, and not while words are typed or a
+  // menu or the prompt is open
+  const show = focused && !typing && !menu && !asking && !recording && !working;
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    editor.view.dispatch(editor.state.tr.setMeta(HINT, { show }));
+  }, [editor, show]);
+
+  // What the last change did is drawn into the words while its marks are on; the words it
+  // brought in are written in once, as it lands.
   const was = view.last_change?.was;
+  const landedAt = view.last_change?.at;
+  const [landed, setLanded] = useState(false);
+  useEffect(() => {
+    if (!landedAt) return;
+    setLanded(true);
+    const t = window.setTimeout(() => setLanded(false), 1200);
+    return () => window.clearTimeout(t);
+  }, [landedAt]);
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     editor.view.dispatch(editor.state.tr.setMeta(MARKS, marked ? (was ?? {}) : {}));
@@ -840,7 +1008,11 @@ export function Script({
       if (!editor) return;
       const l = linesIn(editor.state.doc).find((x) => x.id === frame);
       if (!l) return;
-      editor.chain().focus().setTextSelection(l.pos + 1 + l.text.length).run();
+      editor
+        .chain()
+        .focus()
+        .setTextSelection(l.pos + 1 + l.text.length)
+        .run();
       if (slash) editor.view.dispatch(editor.state.tr.insertText(l.text && !l.text.endsWith(" ") ? " /" : "/"));
     },
   }));
@@ -877,6 +1049,22 @@ export function Script({
     onOpen,
     onReword,
     onRecordLine,
+    asking,
+    onAskHere: (text) => {
+      if (!asking) return;
+      onAskLine(asking.line, asking.words, text);
+      setAsking(null);
+    },
+    onCloseAsk: () => {
+      setAsking(null);
+      editor?.commands.focus();
+    },
+    writer: WRITERS[view.settings.writer] ?? "the writer",
+    mark: view.options.writers.find((w) => w.id === view.settings.writer && w.local) ? view.settings.writer : undefined,
+    working,
+    onLine: view.stage.asked?.scope === "line" ? (view.stage.asked.target ?? "") : "",
+    onPicture: view.stage.asked?.scope === "picture" ? (view.stage.asked.target ?? "") : "",
+    onStop: () => void api.stopEpisode(view.id).catch(() => undefined),
     onCutBlock: (key) => {
       if (!editor) return;
       const mine = linesIn(editor.state.doc).filter((l) => l.block.key === key);
@@ -901,9 +1089,8 @@ export function Script({
           ))}
         </div>
       )}
-      <EditorContent editor={editor} className="ep-script-wrap" />
+      <EditorContent editor={editor} className={landed ? "ep-script-wrap ep-landed" : "ep-script-wrap"} />
       {menu && <SlashMenu state={menu} onAt={(at) => setMenu({ ...menu, at })} />}
     </ScriptCtx.Provider>
   );
 }
-

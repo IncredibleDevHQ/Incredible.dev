@@ -712,7 +712,10 @@ app's canvas, from a channel's material or a research frame's notes.
   and nothing typed or added runs an agent: a line said to camera is ready at once, a line
   added with a picture waits for the writer to design it, a picture that gained or lost a line
   is out of date, and a step of a picture whose word is gone waits for the writer to fit it,
-  all until the person applies their changes. Anything else is asked for in words, of
+  all until the person applies their changes. Placing the caret in a line shows a small
+  "Ask AI" pill at its end (or at the end of the words selected in it); the pill, or Cmd/Ctrl+J,
+  opens a prompt under the line, with three changes to pick, that asks the writer about the line
+  or those words, and while the writer works the line shows it at work there. Anything else is asked for in words, of
   the film, a chapter, a line or a picture: the writer makes the change (a note on how a
   picture is drawn goes to its builder), the studio stays open while it does, and the plan as
   it stood is kept so the change can be taken back. A change that stops leaves the plan as it
@@ -729,21 +732,34 @@ app's canvas, from a channel's material or a research frame's notes.
 - **Asking ahead.** While the writer is on one change, the next can be typed: it waits, in
   order, and is asked when that one lands. If the turn stops, what waits is held until the
   person sends it or lets it go. What waits lives in the open studio, not in the house.
-- **The studio** is the plan and the recording in one place, and every page of it has the same
-  three columns. The bar and the slides sit on a ground, and the script and the frame are each
-  a sheet laid on it, with a hairline edge, in light and in dark alike (the look is light,
-  dark or the system's). Down the left are the film and its chapters as slides: the film first, as its
+- **The studio** is the plan and the recording in one place, and every page of it is laid out
+  the same way: the slides down the left, and the editor, one sheet holding the script with the
+  frame beside it, as the Figma editor floats its live preview at the document's right edge.
+  The bar and the slides sit on a ground, and the editor is a sheet laid on it, with a hairline
+  edge, in light and in dark alike (the look is light, dark or the system's). The frame is drawn
+  on a canvas from the same table the film is rendered from: the picture's still in its box
+  (the plan's words for it before it is made) and the person's take at that line (a stand-in
+  before there is one). Down the left are the film and its chapters as slides: the film first, as its
   title card, then each chapter's first picture as it stands, its question and where it
   stands. The film's page has the whole script in the middle as one document (the plan's idea
   and who wrote it, then each chapter's question over its lines, run on as text in its blocks)
-  and the film on the right: pointing at a line shows its frame there, a click keeps it, and
+  and the film beside it: pointing at a line shows its frame there, a click keeps it, and
   the frame, a double click or Enter opens the chapter at that line; under it stand the film's
   length, its render and the next chapter to record. A chapter's page has the chapter's script
   in the middle as a document: a block for each run of lines said to camera, and for each
   picture a card that holds the picture itself (a placeholder until it is made), its kind,
   where it stands, how it is made and what it shows, over the lines it is shown on. The frame
-  for the picked line is on the right. The frame opens full screen with that line's
-  choices and the recorder; a take opens it. The bar over every page holds the film's own
+  for the line the caret is on floats beside it, level with it while it is in sight, and Record
+  sits at the editor's top right with the take. The frame opens in a pop-up over the studio, as
+  the Figma editor's preview does: the frame large, with the chapters either side as a
+  carousel that keeps the pop-up open; its controls and the recorder under it; under those the
+  chapter's lines as a timeline of small frames in the blocks of the script; and a dark rail at
+  the right edge whose buttons (Layout, Picture, Transition, Steps) each open one panel of
+  the line's choices beside the frame. A take opens it, and while one is recorded the panel
+  holds the words to say. Play plays the line: its take once there is one, else its picture's
+  draft, else its words alone at the plan's pace. The Script switch (C) shows the line's words
+  over the frame, in time with what plays (the words said, the one being said, the ones to
+  come); it is kept on that computer. The bar over every page holds the film's own
   choices, each a button that says what is chosen: its look (each drawn as the frames it is
   made of), its voice, its pictures' level and its agent; beside them stand where the pictures
   are, once the film is rendered its file, and light or dark (the same switch as the
@@ -755,6 +771,16 @@ app's canvas, from a channel's material or a research frame's notes.
   each kind and play each move as the film makes it, with a line saying what each one is. A
   person's pick is kept beside the plan and applied every time it is read, and taking it back
   restores the plan's.
+- **What was made before the words changed** says so where it is read. A picture made for words
+  its lines no longer say is marked made for other words on its block, its slide and the
+  pictures pill, with its changed lines marked: it still plays, timed to the new words. Its
+  block shows what changed in each line against the words it was made for, and it can be kept
+  as it is (nothing runs), planned again (the writer fits what it shows to the new words, then
+  it is drawn again) or drawn again, the last two saying first that they are another run. Words
+  put back as they were make it current again, and spacing alone is no change. A line changed
+  after its take says to say it again, and a film rendered before the change offers Render
+  again. While the writer works on a line or a picture asked about at the caret, it shows
+  there, with Stop.
 - **Pictures** are HyperFrames sub-compositions built by an agent. Code sets every time in
   them, from the plan's clock while they are posed and from the take's once a chapter is
   recorded. A picture is made when a person asks for it: one from its block, a chapter's

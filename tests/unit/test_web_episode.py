@@ -1205,6 +1205,71 @@ async def test_a_line_added_with_a_picture_is_designed_by_the_writer_once_applie
     assert after["waiting"] == []
 
 
+async def test_a_picture_made_for_other_words_says_so_and_is_planned_or_drawn_again(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    episode_id = await made(house)
+    before = house.episodes.view(episode_id)
+    unit = next(u for u in before["units"] if lines_of(before)[u["id"]].get("cues"))
+    line = lines_of(before)[unit["id"]]
+    assert not unit["picture"]["reworded"]
+    # words that keep every step's word: the picture is current, but made for other words
+    words = "Said my way: " + " and ".join(c["at"] for c in line["cues"]) + "."
+    view = house.episodes.edit(episode_id, by="you", frame=line["id"], text=words)
+    now = next(u for u in view["units"] if u["id"] == unit["id"])
+    assert now["picture"]["reworded"] and not now["picture"]["stale"]
+    assert now["picture"]["made_for"] == {line["id"]: line["vo"]}, "what it was made for"
+    assert not house.episodes._busy(episode_id), "nothing runs for it"
+    assert all(not u["picture"]["reworded"] for u in view["units"] if u["id"] != unit["id"])
+    # kept as it is: it stands for the new words, and nothing runs
+    kept = house.episodes.keep_picture(episode_id, unit["id"], by="you")
+    assert not next(u for u in kept["units"] if u["id"] == unit["id"])["picture"]["reworded"]
+    assert not house.episodes._busy(episode_id)
+    with pytest.raises(ValueError, match="no made picture"):
+        house.episodes.keep_picture(episode_id, "c9.b9.f9", by="you")
+    # spacing alone is no change, and words put back make it current again
+    spaced = house.episodes.edit(episode_id, by="you", frame=line["id"], text=words + " Again.")
+    assert next(u for u in spaced["units"] if u["id"] == unit["id"])["picture"]["reworded"]
+    back = house.episodes.edit(episode_id, by="you", frame=line["id"], text=words)
+    assert not next(u for u in back["units"] if u["id"] == unit["id"])["picture"]["reworded"]
+    # drawn again by name, it is made for the words its lines say now
+    house.episodes.make(episode_id, by="you", only=[unit["id"]])
+    await settle(lambda: not house.episodes._busy(episode_id))
+    drawn = next(u for u in house.episodes.view(episode_id)["units"] if u["id"] == unit["id"])
+    assert drawn["picture"]["status"] == "made" and not drawn["picture"]["reworded"]
+    # or planned again: the writer fits it to the words, then it is drawn again
+    worker = heard_by(house, tmp_path)
+    house.episodes.edit(episode_id, by="you", frame=line["id"], text="Nothing it landed on.")
+    with pytest.raises(ValueError, match="no picture there"):
+        house.episodes.replan(episode_id, by="you", pictures=["c9.b9.f9"])
+    house.episodes.replan(episode_id, by="you", pictures=[unit["id"]])
+    await settle(lambda: not house.episodes._busy(episode_id))
+    told = [prompt for lane, prompt in worker.turns if lane == "plan"]
+    assert len(told) == 1 and "Fit what the picture shows" in told[0] and unit["id"] in told[0]
+    after = house.episodes.view(episode_id)
+    fitted = lines_of(after)[line["id"]]
+    assert {c["at"] for c in fitted["cues"]} == {"Nothing"}
+    again = next(u for u in after["units"] if u["id"] == unit["id"])
+    assert again["picture"]["status"] == "made" and not again["picture"]["reworded"]
+    assert after["last_change"]["why"] == "Planned pictures for your words"
+    # taken back, the picture is the one that stood before: made for the words before those
+    back = house.episodes.undo(episode_id, by="you")
+    kept = next(u for u in back["units"] if u["id"] == unit["id"])
+    assert lines_of(back)[line["id"]]["vo"] == "Nothing it landed on."
+    assert kept["picture"]["reworded"]
+    # and taking back the words too, it is made for what its lines say
+    first = house.episodes.undo(episode_id, by="you")
+    assert not next(u for u in first["units"] if u["id"] == unit["id"])["picture"]["reworded"]
+    # a picture made before its words were kept is judged by when a line was last changed
+    house.episodes.store.set_picture(episode_id, unit["id"], words="")
+    assert not next(u for u in house.episodes.view(episode_id)["units"] if u["id"] == unit["id"])[
+        "picture"
+    ]["reworded"]
+    house.episodes.edit(episode_id, by="you", frame=line["id"], text="Nothing, said again.")
+    late = next(u for u in house.episodes.view(episode_id)["units"] if u["id"] == unit["id"])
+    assert late["picture"]["reworded"]
+
+
 async def test_lines_are_cut_one_at_a_time_or_as_a_block_and_joined_within_a_block(
     house: AgentHost,
 ) -> None:

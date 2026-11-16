@@ -398,6 +398,30 @@ class BuiltinWorker:
 ADDED = re.compile(r"^- (\S+): a new line .*? with a picture: ([^(]+?) \(", re.M)
 
 
+#: What a redo turn says when it asks for a picture to be fitted to a person's words.
+FIT = "Fit what the picture shows"
+FRAME_ID = re.compile(r"\bc\d+\.b\d+\.f\d+\b")
+
+
+def _fit(plan: dict[str, Any], frame_id: str) -> bool:
+    """The demo writer's fit: a cue whose word the line no longer says lands on its first
+    word. Says whether anything moved."""
+    found = plans.beat_of(plan, frame_id)
+    if found is None:
+        return False
+    _ch, b, f = found
+    if f is None:
+        return False
+    said = str(f.get("vo") or b.get("says") or "")
+    first = (re.findall(r"[A-Za-z0-9][A-Za-z0-9'’-]*", said) or [""])[0]
+    moved = False
+    for cue in f.get("cues", []):
+        if str(cue.get("at", "")).lower() not in said.lower() and first:
+            cue["at"] = first
+            moved = True
+    return moved
+
+
 def _design_added(plan: dict[str, Any], frame_id: str, kind: str) -> None:
     """The demo writer's design for a line a person added with a picture: one thing, named by
     the line's own first words, drawn in on its first word."""
@@ -607,6 +631,13 @@ class DemoWorker:
         plan = json.loads(target.read_text("utf8"))
         heard("step", "Reading the plan")
         await asyncio.sleep(self.pause)
+        if FIT in prompt:
+            # a picture planned again for a person's words: each cue lands on a word they say
+            fitted = [f for f in dict.fromkeys(FRAME_ID.findall(prompt)) if _fit(plan, f)]
+            heard("step", "Writing plan.json")
+            target.write_text(json.dumps(plan, indent=1), encoding="utf8")
+            await asyncio.sleep(self.pause)
+            return Told(answer=f"Fitted {', '.join(fitted) or 'nothing'} to the new words.")
         added = ADDED.findall(prompt)
         if added:
             for frame_id, kind in added:

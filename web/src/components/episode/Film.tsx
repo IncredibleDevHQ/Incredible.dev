@@ -14,11 +14,12 @@ import { Tooltip } from "../Tooltip";
 import { Ask, type AskTarget, type Run, type Waiting } from "./Ask";
 import { BlockHead, blockName, blocksOf } from "./Blocks";
 import { FILM, Slides } from "./Slides";
-import { Stage } from "./Stage";
+import { FrameCanvas } from "./FrameCanvas";
 
 export const WRITERS: Record<string, string> = { claude: "Claude Code", codex: "Codex", kimi: "Kimi Code", builtin: "the built-in agent", demo: "the demo's writer" };
 
-export type Open = (to: string, record?: boolean, line?: string) => void;
+// Opens the film or a chapter: to be recorded at once, at a line, or with the frame's pop-up open.
+export type Open = (to: string, record?: boolean, line?: string, pop?: boolean) => void;
 type Spot = { chapter: string; line: string };
 
 export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView; run: Run; busy: boolean; onAt: Open; waiting: Waiting }) {
@@ -43,7 +44,9 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
   const recorded = plan.chapters.filter((c) => takeOf(view, c.id)).length;
   // The length asked for is said only while the script is outside it: the checks decide that.
   const outside = Array.isArray(view.settings.seconds) && view.checks.some((c) => c.rule === "length") ? view.settings.seconds : null;
-  const targets: AskTarget[] = [{ scope: "film", label: "The whole film", name: "The film", hint: "Ask for a change to the film", presets: ["Make it shorter", "A stronger opening", "Plainer words"] }];
+  const targets: AskTarget[] = [
+    { scope: "film", label: "The whole film", name: "The film", hint: "Ask for a change to the film", presets: ["Make it shorter", "A stronger opening", "Plainer words"] },
+  ];
   // Where the last change reached: its chapters are marked, so it is found without reading them all.
   const touched = useMemo(() => {
     const change = view.last_change;
@@ -70,96 +73,117 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
 
       <section className="ep-doc" aria-label="The script">
         <div className="ep-doc-body">
-          <header className="ep-doc-head">
-            <p className="ep-kicker">{started ? `${recorded} of ${plan.chapters.length} chapters recorded` : "Read it and change what you like, then make the pictures"}</p>
-            <h1>{plan.brief.idea || view.title}</h1>
-            <Byline view={view} />
-            {view.checks.length > 0 && (
-              <details className="ep-more ep-flags">
-                <summary>
-                  {view.checks.length} {view.checks.length === 1 ? "thing" : "things"} the checks flag
-                </summary>
-                <ul className="ep-checks">
-                  {view.checks.map((c, i) => (
-                    <li key={i} data-level={c.level}>
-                      <b>{c.where}</b> {c.text}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </header>
-          {plan.chapters.map((c, i) => (
-            <ChapterText
-              key={c.id}
-              view={view}
-              chapter={c}
-              number={i + 1}
-              kept={kept.line}
-              touched={touched.has(c.id)}
-              onPoint={(to) => setPointed(to)}
-              onKeep={(to) => setKept(to)}
-              onOpen={(line) => onAt(c.id, false, line)}
-            />
-          ))}
+          <div className="ep-doc-grid">
+            <div className="ep-doc-main">
+              <header className="ep-doc-head">
+                <p className="ep-kicker">{started ? `${recorded} of ${plan.chapters.length} chapters recorded` : "Read it and change what you like, then make the pictures"}</p>
+                <h1>{plan.brief.idea || view.title}</h1>
+                <Byline view={view} />
+                {view.checks.length > 0 && (
+                  <details className="ep-more ep-flags">
+                    <summary>
+                      {view.checks.length} {view.checks.length === 1 ? "thing" : "things"} the checks flag
+                    </summary>
+                    <ul className="ep-checks">
+                      {view.checks.map((c, i) => (
+                        <li key={i} data-level={c.level}>
+                          <b>{c.where}</b> {c.text}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </header>
+              {plan.chapters.map((c, i) => (
+                <ChapterText
+                  key={c.id}
+                  view={view}
+                  chapter={c}
+                  number={i + 1}
+                  kept={kept.line}
+                  touched={touched.has(c.id)}
+                  onPoint={(to) => setPointed(to)}
+                  onKeep={(to) => setKept(to)}
+                  onOpen={(line) => onAt(c.id, false, line)}
+                />
+              ))}
+            </div>
+            {/* the film, or the frame for the line pointed at, beside the script in the editor */}
+            <aside className="ep-doc-aside" aria-label="The film">
+              <div className="ep-float" style={{ top: 16 }}>
+                <p className="ep-float-line">
+                  <b>{rendered ? "The film" : "Preview"}</b>
+                  {!rendered && (
+                    <>
+                      {" "}
+                      · chapter {number}, line {lines.indexOf(line) + 1} of {lines.length} · {LAYOUTS[line.layout] ?? line.layout}
+                    </>
+                  )}
+                </p>
+                {rendered ? (
+                  <video className="ep-film-video" src={film.file!.url} controls preload="metadata" />
+                ) : (
+                  <>
+                    <Tooltip content={`Opens chapter ${number} at this line`} side="bottom">
+                      <button
+                        type="button"
+                        className="ep-peek-stage ep-float-frame"
+                        aria-label={`Open chapter ${number} at line ${lines.indexOf(line) + 1}`}
+                        onClick={() => onAt(chapter.id, false, line.id)}
+                      >
+                        <FrameCanvas view={view} frame={line} unit={unitOf(view, line.id)} take={takeOf(view, chapter.id)} label={`The frame for chapter ${number}, line ${lines.indexOf(line) + 1}`} />
+                        <span className="ep-peek-open" aria-hidden="true">
+                          <ArrowRight />
+                          Open
+                        </span>
+                      </button>
+                    </Tooltip>
+                  </>
+                )}
+                <div className="ep-film-sum">
+                  <b>
+                    {plan.chapters.length} chapters · {mmss(view.clock?.total ?? plan.totals.seconds)}
+                    {outside && (
+                      <span className="ep-film-asked">
+                        {" "}
+                        · asked for {mmss(outside[0])} to {mmss(outside[1])}
+                      </span>
+                    )}
+                  </b>
+                  {note && <span data-tone={film.status === "failed" ? "red" : film.stale ? "amber" : undefined}>{note}</span>}
+                </div>
+                <div className="ep-peek-actions">
+                  {next && (
+                    <Tooltip content={waits ? "Its pictures are made first" : "Opens it with the camera on, ready for Space"} side="bottom">
+                      <button type="button" className={`btn ${started ? "primary" : ""}`} onClick={() => onAt(next.id, true)}>
+                        <Circle />
+                        Record chapter {plan.chapters.indexOf(next) + 1}
+                      </button>
+                    </Tooltip>
+                  )}
+                  {started && (
+                    <button
+                      type="button"
+                      className={`btn ${!next && (film.status !== "done" || film.stale) ? "primary" : ""}`}
+                      disabled={busy || film.status === "rendering"}
+                      onClick={() => void run(() => api.renderEpisode(view.id))}
+                    >
+                      <Clapperboard />
+                      {film.status === "rendering" ? "Rendering" : film.status === "done" ? "Render again" : next ? "Render a draft" : "Render the film"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </aside>
+          </div>
         </div>
-        <Ask view={view} targets={targets} run={run} busy={busy} waiting={waiting} />
+        <div className="ep-doc-grid ep-doc-foot">
+          <div className="ep-doc-main">
+            <Ask view={view} targets={targets} run={run} busy={busy} waiting={waiting} />
+          </div>
+          <span />
+        </div>
       </section>
-
-      <aside className="ep-peek" aria-label="The film">
-        <header className="ep-panel-head">
-          <b>{rendered ? "The film" : "Preview"}</b>
-          {!rendered && (
-            <span>
-              Chapter {number} · line {lines.indexOf(line) + 1} of {lines.length}
-            </span>
-          )}
-        </header>
-        {rendered ? (
-          <video className="ep-film-video" src={film.file!.url} controls preload="metadata" />
-        ) : (
-          <>
-            <Tooltip content={`Opens chapter ${number} at this line`} side="bottom">
-              <button type="button" className="ep-peek-stage" aria-label={`Open chapter ${number} at line ${lines.indexOf(line) + 1}`} onClick={() => onAt(chapter.id, false, line.id)}>
-                <Stage view={view} frame={line} unit={unitOf(view, line.id)} take={takeOf(view, chapter.id)} small />
-                <span className="ep-peek-open" aria-hidden="true">
-                  <ArrowRight />
-                  Open
-                </span>
-              </button>
-            </Tooltip>
-            <p className="ep-peek-line">{LAYOUTS[line.layout] ?? line.layout}</p>
-          </>
-        )}
-        <div className="ep-film-sum">
-          <b>
-            {plan.chapters.length} chapters · {mmss(view.clock?.total ?? plan.totals.seconds)}
-            {outside && (
-              <span className="ep-film-asked">
-                {" "}
-                · asked for {mmss(outside[0])} to {mmss(outside[1])}
-              </span>
-            )}
-          </b>
-          {note && <span data-tone={film.status === "failed" ? "red" : film.stale ? "amber" : undefined}>{note}</span>}
-        </div>
-        <div className="ep-peek-actions">
-          {next && (
-            <Tooltip content={waits ? "Its pictures are made first" : "Opens it with the camera on, ready for Space"} side="bottom">
-              <button type="button" className={`btn ${started ? "primary" : ""}`} onClick={() => onAt(next.id, true)}>
-                <Circle />
-                Record chapter {plan.chapters.indexOf(next) + 1}
-              </button>
-            </Tooltip>
-          )}
-          {started && (
-            <button type="button" className={`btn ${!next && (film.status !== "done" || film.stale) ? "primary" : ""}`} disabled={busy || film.status === "rendering"} onClick={() => void run(() => api.renderEpisode(view.id))}>
-              <Clapperboard />
-              {film.status === "rendering" ? "Rendering" : film.status === "done" ? "Render again" : next ? "Render a draft" : "Render the film"}
-            </button>
-          )}
-        </div>
-      </aside>
     </main>
   );
 }
