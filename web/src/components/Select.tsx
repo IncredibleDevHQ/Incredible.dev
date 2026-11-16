@@ -152,7 +152,10 @@ export function Select({
     // The top layer, so no overflow cuts it and no z-index fights it
     if (el && "showPopover" in el && !el.matches(":popover-open")) el.showPopover();
     measure();
-    const update = () => measure();
+    const update = (event: Event) => {
+      if (event.target instanceof Node && el?.contains(event.target)) return;
+      measure();
+    };
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
     return () => {
@@ -174,14 +177,31 @@ export function Select({
     return () => document.removeEventListener("pointerdown", down, true);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The highlight glides to the active option, and the list scrolls it into view
+  // Opening or navigating with keys reveals the option inside the list. Hover and
+  // manual scrolling may update the highlight without moving the user's viewport.
+  const reveal = (i: number) => {
+    const el = list.current;
+    const row = el?.querySelector<HTMLElement>(`[data-index="${i}"]`);
+    if (!el || !row) return;
+    const top = row.offsetTop;
+    const bottom = top + row.offsetHeight;
+    if (top < el.scrollTop) el.scrollTop = top;
+    else if (bottom > el.scrollTop + el.clientHeight) el.scrollTop = bottom - el.clientHeight;
+  };
+  const navigate = (i: number) => {
+    setActive(i);
+    reveal(i);
+  };
+  const positioned = place !== null;
   useLayoutEffect(() => {
-    if (!open || active < 0) return;
+    if (open && positioned) reveal(active);
+  }, [open, positioned]); // Only the initial placement should reveal the opening option.
+
+  useLayoutEffect(() => {
+    if (!open || active < 0 || !positioned) return;
     const row = list.current?.querySelector<HTMLElement>(`[data-index="${active}"]`);
-    if (!row) return;
-    setGlow({ top: row.offsetTop, height: row.offsetHeight });
-    row.scrollIntoView({ block: "nearest" });
-  }, [active, open, place]);
+    if (row) setGlow({ top: row.offsetTop, height: row.offsetHeight });
+  }, [active, open, positioned]);
 
   // Typing letters jumps to the next option that starts with them, like a native select
   const typeahead = (key: string) => {
@@ -193,7 +213,7 @@ export function Select({
     const order = [...options.keys()].map((k) => (k + start + (q.length === 1 ? 1 : 0) + options.length) % options.length);
     const hit = order.find((i) => enabled(i) && options[i].label.toLowerCase().startsWith(q));
     if (hit === undefined) return;
-    if (open) setActive(hit);
+    if (open) navigate(hit);
     else pick(hit);
   };
 
@@ -209,21 +229,21 @@ export function Select({
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
-        setActive((a) => step(a, 1));
+        navigate(step(active, 1));
         break;
       case "ArrowUp":
         e.preventDefault();
-        setActive((a) => step(a, -1));
+        navigate(step(active, -1));
         break;
       case "Home":
       case "PageUp":
         e.preventDefault();
-        setActive(first());
+        navigate(first());
         break;
       case "End":
       case "PageDown":
         e.preventDefault();
-        setActive(last());
+        navigate(last());
         break;
       case "Enter":
       case " ":
