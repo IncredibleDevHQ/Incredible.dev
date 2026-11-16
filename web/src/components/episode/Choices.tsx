@@ -45,8 +45,7 @@ export function ChoicePanel({ panel, ...props }: Props & { panel: Panel }) {
   const panels = { layout: LayoutPanel, picture: PicturePanel, transition: TransitionPanel, steps: StepsPanel, background: BackgroundSettings, others: OtherSettings };
   const Selected = panels[panel];
   return (
-    <div className="ep-choices" aria-label={`${PANELS.find((p) => p.id === panel)?.label} for this line`}>
-      {panel === "background" && <small>Applies to the whole video</small>}
+    <div className="ep-choices" data-panel={panel} aria-label={`${PANELS.find((p) => p.id === panel)?.label} for this line`}>
       <Selected key={panel === "background" ? JSON.stringify([props.view.settings.background_color, props.view.settings.background_texture]) : panel} {...props} />
     </div>
   );
@@ -190,52 +189,49 @@ function PicturePanel({ view, line, unit, run, busy, onAskPicture }: Props) {
   const shows = line.shows || lead?.shows;
   return (
     <>
-      <h3>Picture {unit && <span>{unit.kind === "undesigned" ? "Being planned" : (PICTURES[unit.kind_of_picture] ?? "")}</span>}</h3>
-      {!unit ? (
-        <small>{line.presence === "person" ? "None: this line is said to camera. Pick a layout with a picture to give it one." : "None for this line."}</small>
-      ) : (
-        <>
-          {shows && <p className="ep-shows">{shows}</p>}
-          {unit.kind === "undesigned" ? (
-            <small>The writer plans a picture for this line when you apply your changes.</small>
-          ) : (
-            <div className="ep-picture-row">
-              <small>
-                {LEVEL_NAMES[unit.level]} · {pictureWords(unit, view)}
-              </small>
-              <button type="button" className="linkish" onClick={onAskPicture}>
-                Ask for a change
-              </button>
-            </div>
-          )}
-        </>
-      )}
-      {drawn && unit && (
-        <>
-          <ComponentFields unit={unit} view={view} disabled={busy}
-            component={unit.visual.automatic ? "" : unit.visual.component} variant={unit.visual.variant_pick || ""}
-            onComponent={(v) => void choose({units:{[unit.id]:{component:v || null,variant:null}}})}
-            onVariant={(v) => void choose({units:{[unit.id]:{variant:v || null}}})} />
-          <h3>
-            Kind <span>{PICTURES[unit.kind_of_picture] ?? "Picture"}</span>
-          </h3>
-          <Tiles
-            label="What kind of picture it is"
-            columns={2}
-            disabled={busy}
-            value={unit.kind_of_picture}
-            onPick={(id) => void choose({ frames: { [lead.id]: { picture: id === lead.picture ? null : id } } })}
-            options={view.options.pictures.map((k) => ({ value: k.id, label: PICTURES[k.id] ?? k.id, means: k.means, art: <KindArt kind={k.id} /> }))}
-          />
-          {lead.picked?.picture && (
-            <p className="ep-picked">
-              <span>Your pick</span>
-              <button type="button" className="linkish" disabled={busy} onClick={() => void choose({ frames: { [lead.id]: { picture: null } } })}>
-                Undo
-              </button>
-            </p>
-          )}
-        </>
+      <div className="ep-picture-options">
+        <h3>Picture {unit && <span>{unit.kind === "undesigned" ? "Being planned" : (PICTURES[unit.kind_of_picture] ?? "")}</span>}</h3>
+        {!unit ? (
+          <small>{line.presence === "person" ? "None: this line is said to camera. Pick a layout with a picture to give it one." : "None for this line."}</small>
+        ) : (
+          <>
+            {shows && <p className="ep-shows">{shows}</p>}
+            {unit.kind === "undesigned" && <small>The writer plans a picture for this line when you apply your changes.</small>}
+          </>
+        )}
+        {drawn && unit && (
+          <>
+            <ComponentFields unit={unit} view={view} disabled={busy}
+              component={unit.visual.automatic ? "" : unit.visual.component} variant={unit.visual.variant_pick || ""}
+              onComponent={(v) => void choose({units:{[unit.id]:{component:v || null,variant:null}}})}
+              onVariant={(v) => void choose({units:{[unit.id]:{variant:v || null}}})} />
+            <h3>
+              Kind <span>{PICTURES[unit.kind_of_picture] ?? "Picture"}</span>
+            </h3>
+            <Tiles
+              label="What kind of picture it is"
+              columns={2}
+              disabled={busy}
+              value={unit.kind_of_picture}
+              onPick={(id) => void choose({ frames: { [lead.id]: { picture: id === lead.picture ? null : id } } })}
+              options={view.options.pictures.map((k) => ({ value: k.id, label: PICTURES[k.id] ?? k.id, means: k.means, art: <KindArt kind={k.id} /> }))}
+            />
+            {lead.picked?.picture && (
+              <p className="ep-picked">
+                <span>Your pick</span>
+                <button type="button" className="linkish" disabled={busy} onClick={() => void choose({ frames: { [lead.id]: { picture: null } } })}>
+                  Undo
+                </button>
+              </p>
+            )}
+          </>
+        )}
+      </div>
+      {unit && unit.kind !== "undesigned" && (
+        <footer className="ep-picture-status">
+          <small>{LEVEL_NAMES[unit.level]} · {pictureWords(unit, view)}</small>
+          <button type="button" className="linkish" onClick={onAskPicture}>Ask for a change</button>
+        </footer>
       )}
     </>
   );

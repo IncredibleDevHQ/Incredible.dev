@@ -900,7 +900,9 @@ app's canvas, from a channel's material or a research frame's notes.
   applies to future script edits on that beat’s lines and to picture and motion graphics builds.
   The picker also shows which provider made the existing picture.
   A picture’s Motion graphics switch opens a confirmation beneath the switch.
-  The expanded editor’s Others tab also accepts custom direction.
+  The Picture panel keeps its generation status and change request below the choices. The Others
+  tab accepts custom direction. Open Studio menus retain their position when focus moves to a
+  browser annotation overlay. Clicking elsewhere in Studio dismisses them.
 - The delivered episode card on the canvas opens playback from a thumbnail and provides an
   Edit episode action. Each render captures a poster from a picture scene when available.
   Older exports use existing picture artwork when available.

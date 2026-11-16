@@ -5,6 +5,7 @@
 // and the frame on the right. Words are changed where they are read; anything else is asked for
 // at the caret, about the line, its picture, the chapter or the film (the film's page keeps a
 // change bar of its own). Recording happens in the same screen.
+import { isWorkspaceTarget } from "../workspaceTarget";
 import {
   ArrowLeft,
   ArrowRight,
@@ -89,7 +90,7 @@ export function EpisodeStudio() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // the frame open full screen closes first; a menu or a question in it closes before that
-      if (e.key !== "Escape" || e.defaultPrevented || document.querySelector(".ep-full")) return;
+      if (e.key !== "Escape" || (e.target !== document.body && !isWorkspaceTarget(e.target)) || e.defaultPrevented || document.querySelector(".ep-full")) return;
       if (!(e.target as HTMLElement).closest("textarea, input, [data-recording]")) void openEpisode(null);
     };
     window.addEventListener("keydown", onKey);
@@ -471,7 +472,7 @@ function Chapter({
   useEffect(() => {
     if (!full || recording) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented || (e.target as HTMLElement).closest("textarea, input")) return;
+      if (e.key !== "Escape" || (e.target !== document.body && !isWorkspaceTarget(e.target)) || e.defaultPrevented || (e.target as HTMLElement).closest("textarea, input")) return;
       e.preventDefault();
       toggleEditor(false);
     };

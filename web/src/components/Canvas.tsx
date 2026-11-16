@@ -4,6 +4,7 @@
 // approved), add an asset made from any card, or place a template that sets several up at once;
 // all of it reaches the agent in the task's thread. A research frame starts further back: questions
 // about a repository, the conversations they grow into, and the notes its assets are made from.
+import { isWorkspaceTarget } from "./workspaceTarget";
 import { ArrowLeft, ArrowRight, Check, LayoutTemplate, Maximize, MessageSquare, Minus, Paperclip, Play, Plus, Podcast, Send, Telescope } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -687,8 +688,9 @@ function MakeMenu({ task, from, anchor, onClose }: { task: CanvasTask; from?: As
   }, [anchor, from, chosen]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && isWorkspaceTarget(e.target) && onClose();
     const onDown = (e: PointerEvent) => {
+      if (e.defaultPrevented || !isWorkspaceTarget(e.target)) return;
       const target = e.target as Node;
       if (!box.current?.contains(target) && !anchor.contains(target)) onClose();
     };
@@ -716,6 +718,7 @@ function MakeMenu({ task, from, anchor, onClose }: { task: CanvasTask; from?: As
   const title = from ? `Make from “${from.title}”` : notes ? "Make from the notes" : "Add to this task";
   return createPortal(
     <div
+      data-house-portal=""
       className="pop"
       ref={box}
       role="dialog"

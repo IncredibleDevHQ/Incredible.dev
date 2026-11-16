@@ -1521,8 +1521,6 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-ask-presets { display: flex; flex-wrap: wrap; gap: 6px; }
 .ep-ask-presets button { height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--ink-2); font-size: 12.5px; }
 .ep-ask-presets button:hover { border-color: var(--line-strong); color: var(--ink); }
-.ep-picture-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.ep-picture-row small { color: var(--muted); font-size: 12.5px; }
 .ep-choices .ep-shows { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .ep-stage-wrap { position: relative; border-radius: 14px; }
 /* a place a file can be dropped on: it shows itself while a file is over the window, and says
@@ -2023,3 +2021,29 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-choices .ep-background > button { align-self: flex-start; }
 .finals + .ep-face { margin-top: 12px; }
 .ep-face .btn { flex: none; gap: 5px; padding: 5px 9px; }
+
+.ep-background-scope { grid-column: 1 / -1; color: var(--muted); }
+.ep-background-texture-group { display: grid; gap: 7px; font-size: 13px; }
+.ep-background-textures i { display: none; }
+.ep-editor-tools .ep-choices { min-height: min-content; gap: 14px; }
+.ep-choices .ep-background { border: 0; padding: 0; gap: 14px; }
+.ep-choices .ep-background legend { color: var(--ink); font-size: 15px; padding: 0; }
+.ep-choices .ep-background-scope { margin-top: 4px; }
+.ep-choices .ep-background-sample { height: auto; aspect-ratio: 2.8; }
+.ep-choices .ep-background-color { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: end; }
+.ep-choices .ep-background-color label { display: grid; gap: 6px; font-size: 13px; }
+.ep-choices .ep-background-color input { width: 36px; height: 32px; box-sizing: border-box; }
+.ep-choices .ep-background-color input[type=text] { width: 100%; padding-inline: 9px; }
+.ep-choices .ep-background > .linkish { margin-top: -7px; font-size: 12px; }
+.ep-choices .ep-background-textures { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
+.ep-choices .ep-background-textures .btn { justify-content: flex-start; gap: 6px; min-height: 32px; }
+.ep-choices .ep-background-textures i { display: block; width: 21px; height: 18px; border: 1px solid var(--line); border-radius: 3px; background-position: center; }
+.ep-choices .ep-background > .primary { align-self: stretch; margin-top: 2px; }
+.ep-choices .ep-generation-form { gap: 16px; padding: 0; }
+.ep-choices .ep-generation-actions { border-top: 1px solid var(--line-soft); padding-top: 14px; gap: 8px; }
+.ep-choices .ep-generation-actions .primary { flex: 1; }
+.ep-editor-tools .ep-choices[data-panel="picture"] { min-height: 0; }
+.ep-picture-options { display: flex; flex: 1 1 auto; flex-direction: column; gap: 14px; min-height: 0; overflow: auto; }
+.ep-picture-options > * { flex-shrink: 0; }
+.ep-choices .ep-picture-status { flex: none; flex-wrap: wrap; justify-content: space-between; gap: 6px 10px; }
+.ep-picture-status .linkish { white-space: nowrap; }

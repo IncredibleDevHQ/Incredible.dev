@@ -1,5 +1,6 @@
 // The brand a channel's work wears: the chip in its header and the menu that changes it, and the
 // picker an empty channel's start shows.
+import { isWorkspaceTarget } from "./workspaceTarget";
 import { Check, Globe, Palette } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -81,8 +82,9 @@ export function BrandMenu({ channel, anchor, onClose }: { channel: Channel; anch
     setPlace({ top: r.bottom + 6, left: Math.max(12, Math.min(window.innerWidth - 300, r.left)) });
   }, [anchor]);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && isWorkspaceTarget(e.target) && onClose();
     const onDown = (e: PointerEvent) => {
+      if (e.defaultPrevented || !isWorkspaceTarget(e.target)) return;
       if (!box.current?.contains(e.target as Node) && !anchor.contains(e.target as Node)) onClose();
     };
     window.addEventListener("keydown", onKey);
@@ -97,7 +99,7 @@ export function BrandMenu({ channel, anchor, onClose }: { channel: Channel; anch
     onClose();
   };
   return createPortal(
-    <div className="pop brand-menu" ref={box} role="dialog" aria-label={`The brand #${channel.name} wears`} style={place ? place : { visibility: "hidden", top: 0, left: 0 }}>
+    <div data-house-portal="" className="pop brand-menu" ref={box} role="dialog" aria-label={`The brand #${channel.name} wears`} style={place ? place : { visibility: "hidden", top: 0, left: 0 }}>
       <h3>#{channel.name} wears</h3>
       <div className="pop-list" role="radiogroup">
         {brands.map((b) => (

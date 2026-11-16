@@ -23,6 +23,7 @@ export function BackgroundSettings({ view, run, busy }: Props) {
   return (
     <fieldset className="ep-background">
       <legend>Video background</legend>
+      <small className="ep-background-scope">Applies to the whole video</small>
       <div
         className="ep-background-sample"
         role="img"
@@ -52,12 +53,16 @@ export function BackgroundSettings({ view, run, busy }: Props) {
       <button type="button" className="linkish" disabled={!color} onClick={() => setColor("")}>
         Use brand color
       </button>
-      <div className="ep-background-textures" role="group" aria-label="Background texture">
-        {(Object.keys(names) as BackgroundTexture[]).map((t) => (
-          <button type="button" key={t} aria-pressed={t === texture} className="btn" onClick={() => setTexture(t)}>
-            {names[t]}
-          </button>
-        ))}
+      <div className="ep-background-texture-group">
+        <span>Texture</span>
+        <div className="ep-background-textures" role="group" aria-label="Background texture">
+          {(Object.keys(names) as BackgroundTexture[]).map((t) => (
+            <button type="button" key={t} aria-pressed={t === texture} className="btn" onClick={() => setTexture(t)}>
+              <i aria-hidden="true" style={{ backgroundColor: ground, color: light ? "#111" : "#fff", backgroundImage: view.background.textures[t][0], backgroundSize: view.background.textures[t][1] }} />
+              {names[t]}
+            </button>
+          ))}
+        </div>
       </div>
       <button
         type="button"

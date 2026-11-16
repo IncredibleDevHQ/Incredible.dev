@@ -1,5 +1,6 @@
 // affectUI's Popover (https://www.affectui.com), a free item under the MIT licence
 // (licenses/affectui-MIT.txt), as it comes; app.css gives it the house's colours through `--aui-*`.
+import { isWorkspaceTarget } from "./workspaceTarget";
 import { useEffect, useId, useLayoutEffect, useRef, type ComponentPropsWithoutRef, type ReactNode, type Ref, type RefObject } from "react";
 
 /*
@@ -112,12 +113,14 @@ export function Popover({
   useEffect(() => {
     if (!open) return;
     const down = (e: PointerEvent) => {
+      if (e.defaultPrevented || !isWorkspaceTarget(e.target)) return;
       if (!inside(e.target as Node)) close.current();
     };
     // Caught first (window, capture), so a page's own Escape – e.g. closing a detail view – doesn't fire as well
     const key = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (e.key !== "Escape" || e.defaultPrevented || !isWorkspaceTarget(e.target)) return;
       // A menu or another popover opened from inside this one closes first
+      if (e.target.closest('[role="combobox"][aria-expanded="true"]')) return;
       const layer = (e.target as Element | null)?.closest?.("[popover]");
       if (layer && layer !== panel.current && panel.current?.contains(layer)) return;
       e.preventDefault();
@@ -130,13 +133,13 @@ export function Popover({
     // Tabbing out of the trigger and the popover closes it
     const out = (e: FocusEvent) => {
       const to = e.relatedTarget as Node | null;
-      if (inside(e.target as Node) && to && !inside(to)) close.current();
+      if (inside(e.target as Node) && isWorkspaceTarget(to) && !inside(to)) close.current();
     };
-    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("pointerdown", down);
     window.addEventListener("keydown", key, true);
     document.addEventListener("focusout", out);
     return () => {
-      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("pointerdown", down);
       window.removeEventListener("keydown", key, true);
       document.removeEventListener("focusout", out);
     };

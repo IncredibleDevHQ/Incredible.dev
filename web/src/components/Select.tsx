@@ -1,6 +1,7 @@
 // Adapted from affectUI's Select (https://www.affectui.com), a free item under the MIT
 // licence (licenses/affectui-MIT.txt). Changed for the house: it can open on hover (`openOnHover`),
 // and app.css gives it the house's colours through its `--aui-*` variables.
+import { isWorkspaceTarget } from "./workspaceTarget";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent as HoverEvent, type ReactNode, type Ref } from "react";
 
 /*
@@ -93,7 +94,7 @@ export function Select({
   // Hover: a short wait before it opens or closes, so passing over it or crossing to the list is
   // forgiven; a click just after a hover opened it keeps it open.
   const linger = useRef<number | undefined>(undefined);
-  const hovered = useRef(0);
+  const hoverOnly = useRef(false);
 
   const invalid = Boolean(error);
   const message = shows(error) ? error : shows(hint) ? hint : null;
@@ -117,6 +118,8 @@ export function Select({
     setOpen(true);
   };
   const hide = (focusBack = true) => {
+    window.clearTimeout(linger.current);
+    hoverOnly.current = false;
     setOpen(false);
     setGlow(null);
     setPlace(null);
@@ -169,12 +172,13 @@ export function Select({
   useEffect(() => {
     if (!open) return;
     const down = (e: PointerEvent) => {
+      if (e.defaultPrevented || !isWorkspaceTarget(e.target)) return;
       const target = e.target as Node;
       if (trigger.current?.contains(target) || list.current?.contains(target)) return;
       hide(false);
     };
-    document.addEventListener("pointerdown", down, true);
-    return () => document.removeEventListener("pointerdown", down, true);
+    document.addEventListener("pointerdown", down);
+    return () => document.removeEventListener("pointerdown", down);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Opening or navigating with keys reveals the option inside the list. Hover and
@@ -219,6 +223,8 @@ export function Select({
 
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
     if (disabled) return;
+    window.clearTimeout(linger.current);
+    hoverOnly.current = false;
     if (!open) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ") {
         e.preventDefault();
@@ -269,14 +275,14 @@ export function Select({
     window.clearTimeout(linger.current);
     if (!open)
       linger.current = window.setTimeout(() => {
-        hovered.current = Date.now();
+        hoverOnly.current = true;
         show();
       }, 120);
   };
   const leave = (e: HoverEvent) => {
     if (!openOnHover || e.pointerType !== "mouse") return;
     window.clearTimeout(linger.current);
-    linger.current = window.setTimeout(() => hide(false), 260);
+    if (hoverOnly.current) linger.current = window.setTimeout(() => hide(false), 260);
   };
 
   return (
@@ -322,7 +328,11 @@ export function Select({
         aria-required={required || undefined}
         disabled={disabled}
         onClick={() => {
-          if (open && Date.now() - hovered.current < 800) return;
+          window.clearTimeout(linger.current);
+          if (open && hoverOnly.current) {
+            hoverOnly.current = false;
+            return;
+          }
           if (open) hide();
           else show();
         }}

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8">
+  <title>Studio menus and browser annotations</title>
+  <button id="annotation">Annotation toolbar</button>
+  <div id="root"></div>
+  <script type="module">
+    import React, { useState, useRef } from "react";
+    import { createRoot } from "react-dom/client";
+    import { Select } from "/src/components/Select.tsx";
+    import { Popover } from "/src/components/Popover.tsx";
+    const h = React.createElement;
+    function Panel() {
+      const [open, setOpen] = useState(false);
+      const anchor = useRef(null);
+      return h(React.Fragment, null,
+        h("button", {ref: anchor, onClick: () => setOpen(!open)}, "Settings"),
+        h(Popover, {open, anchor, onClose: () => setOpen(false), title: "Picture settings"},
+          h(Select, {label: "Component", options: Array.from({length: 24}, (_, i) => ({value: String(i), label: "Option " + i})), defaultValue: "0"})),
+        h("button", null, "Outside in Studio"));
+    }
+    createRoot(document.getElementById("root")).render(h(Panel));
+  </script>
+</html>
