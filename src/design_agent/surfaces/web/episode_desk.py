@@ -9,13 +9,18 @@ writes it (a coding agent on this computer or the built-in agent), and then:
 - **each chapter** is worked in one place: who has the frame for every line, the layout, and
   whether a picture is made at once (simple) or posed as stills for the person's go (rich).
   The pictures are built meanwhile, by the same agent, and posed on the thread's computer;
-- **a take** per chapter is recorded in the browser (or brought as a file) and cut to the
-  film's format; where a line was started in the take sets when its picture's cues land;
+- **a take** per chapter is recorded in the browser (or brought as a file, a camera's own
+  included) and cut to the film's format; where a line was started in the take sets when its
+  picture's cues land;
+- **the narrator** says the lines no take covers, when the person chooses one: in a voice of
+  the ElevenLabs account, or in a clone of the person's own made from their takes;
 - **the film** is one HyperFrames project written by code (`episode.film`) and rendered on the
   thread's computer.
 
 A person's picks are never undone by a later stage: they are kept beside the plan and applied
-every time it is read. Nothing here is sent anywhere: the film is a file on the canvas.
+every time it is read. The film is a file on the canvas and is sent nowhere. Two things leave
+this computer, both for ElevenLabs and both only on a person's say: a narrated line's words
+when the film is rendered, and recordings of their voice when they ask for a clone of it.
 """
 
 from __future__ import annotations
@@ -29,7 +34,7 @@ import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import IO, TYPE_CHECKING, Any
 
 from design_agent.episode import (
     check,
@@ -63,6 +68,7 @@ from design_agent.workspace.manifest import ManifestBook
 
 if TYPE_CHECKING:
     from design_agent.surfaces.web.agent import AgentHost
+    from design_agent.tools.media import Voice
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -106,6 +112,27 @@ AUTO = "auto"
 THEMES = Q.table("themes")
 LEVELS = units.LEVELS
 VOICES = ("live", "narrator")
+#: A clone of a person's voice is made from their takes: this much speech at least, and no
+#: more than a clone uses. A take over the size ElevenLabs takes for one recording is left out.
+CLONE_LEAST = 30.0
+CLONE_ENOUGH = 180.0
+CLONE_TAKE_BYTES = 10 * 1024 * 1024
+#: How long the account's list of voices is believed before it is read again.
+VOICES_KEPT = 60.0
+#: Every take's sound is set to one loudness (EBU R 128, in LUFS), so chapters recorded on
+#: different days, a camera's own file and a narrator's lines sit at one level, and its peaks
+#: are held short of full scale (dBFS). Below `SILENT` there is no voice to bring up.
+LOUDNESS = -16.0
+PEAK = -1.5
+SILENT = -50.0
+MOST_GAIN = 24.0
+#: A picture coded for a brighter screen than the film's (an iPhone's, by default), as ffprobe
+#: names its transfer, and the filters that bring it down to the film's range.
+HDR = ("arib-std-b67", "smpte2084")
+TONEMAP = (
+    "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,"
+    "zscale=t=bt709:m=bt709:r=tv,format=yuv420p"
+)
 #: The stages a plan is written in, as the studio names them while it waits.
 STEPS: tuple[tuple[str, str], ...] = (
     ("brief", "Read the material"),
@@ -134,6 +161,30 @@ def _length(asked: Any) -> list[int] | str:
 
 def _clean(text: str, limit: int = 300) -> str:
     return " ".join(str(text).split())[:limit]
+
+
+def _ending(name: str) -> str:
+    """A recording's kind, from its file's name. The name is the person's file's, so only its
+    letters and digits are kept: it becomes part of a command and of an address in a bucket."""
+    return re.sub(r"[^a-z0-9]", "", Path(name).suffix.lower())[:5] or "webm"
+
+
+def _levelled(measured: str) -> str:
+    """The ffmpeg filters that set a take's sound to the film's loudness, from ffmpeg's own
+    loudness summary of it: one gain for the whole take, and its peaks held only where that
+    gain would push them past the ceiling. Empty when the sound is already there, when it is
+    silence, or when the summary can't be read: then the take keeps the sound it has."""
+    loud = re.search(r"\bI:\s+(-?\d+(?:\.\d+)?) LUFS", measured)
+    if loud is None or float(loud[1]) <= SILENT:
+        return ""
+    gain = max(-MOST_GAIN, min(MOST_GAIN, LOUDNESS - float(loud[1])))
+    gain = 0.0 if abs(gain) < 0.5 else round(gain, 1)
+    peak = re.search(r"\bPeak:\s+(-?\d+(?:\.\d+)?) dBFS", measured)
+    held = peak is None or float(peak[1]) + gain > PEAK
+    filters = [f"volume={gain}dB"] if gain else []
+    if held:
+        filters.append(f"alimiter=limit={10 ** (PEAK / 20):.3f}:level=false:latency=true")
+    return ",".join(filters)
 
 
 class EpisodeDesk:
@@ -165,6 +216,8 @@ class EpisodeDesk:
         #: configured one.
         self.brand_for: Callable[[str], Path | None] | None = None
         self._book: ManifestBook | None = None
+        #: The ElevenLabs account's voices as last listed, and when (a monotonic time).
+        self._listed: tuple[float, list[Voice]] | None = None
 
     # -- what an episode can be made with -------------------------------------------------------
 
@@ -210,7 +263,12 @@ class EpisodeDesk:
             ],
             "seconds": {"least": SECONDS[0], "most": SECONDS[1], "usual": list(USUAL), "gap": GAP},
             "reader": "demo" if self.demo else "jev" if self._jev_key() else "writer",
-            "narrator": self._narrator_ready(),
+            # a narrator can speak (ElevenLabs has a key), and the house has a voice of its
+            # own for one; without that, an episode picks a voice or clones the person's
+            "narrator": {
+                "ready": self._speaks(),
+                "usual": bool(self.host.settings.narrator_voice_id),
+            },
             "geometry": geometry.view(),
             # what a person may pick for the line that brings a picture in
             "pictures": list(override.PICTURES),
@@ -221,9 +279,14 @@ class EpisodeDesk:
         key = self.host.settings.typesafe_api_key
         return key.get_secret_value() if key is not None else ""
 
-    def _narrator_ready(self) -> bool:
-        settings = self.host.settings
-        return bool(settings.elevenlabs_api_key and settings.narrator_voice_id)
+    def _speaks(self) -> bool:
+        """Whether a narrator can speak at all: ElevenLabs has a key here."""
+        return bool(self.host.settings.elevenlabs_api_key)
+
+    def _voice_id(self, episode: Row) -> str:
+        """The voice that narrates an episode: the one picked for it, else the house's own."""
+        picked = episode["settings"].get("narrator") or {}
+        return str(picked.get("id") or self.host.settings.narrator_voice_id or "")
 
     def _worker(self, episode: Row) -> Worker:
         writer = str(episode["settings"].get("writer") or "")
@@ -422,6 +485,16 @@ class EpisodeDesk:
         out.setdefault("theme", "corner-window")
         if given.get("voice") in VOICES:
             out["voice"] = given["voice"]
+        if given.get("narrator"):
+            from design_agent.tools.media import VOICE_ID
+
+            picked = given["narrator"]
+            if not VOICE_ID.fullmatch(str(picked.get("id") or "")):
+                raise ValueError("That isn't an ElevenLabs voice.")
+            out["narrator"] = {
+                "id": str(picked["id"]),
+                "name": _clean(str(picked.get("name") or ""), 80) or "A voice",
+            }
         if given.get("level") in LEVELS:
             out["level"] = given["level"]
         if "writer" in given:
@@ -1465,10 +1538,11 @@ class EpisodeDesk:
         frame: str = "",
         marks: Sequence[Mapping[str, Any]] = (),
         name: str,
-        content: bytes,
+        source: IO[bytes],
     ) -> Row:
         """A recording of a chapter (or of one line of it): cut to the film's format on the
-        thread's computer and kept as this chapter's take."""
+        thread's computer and kept as this chapter's take. `source` is the recording as an
+        open file; it is read from there and never held in memory."""
         episode = self._episode(episode_id)
         full = self._full(episode)
         if full is None:
@@ -1479,9 +1553,10 @@ class EpisodeDesk:
         lines = [f for b in found["beats"] for f in b["frames"]]
         if frame and frame not in {f["id"] for f in lines}:
             raise KeyError(frame)
-        if not content:
+        source.seek(0, 2)
+        if source.tell() == 0:
             raise ValueError("The recording is empty.")
-        made = await asyncio.to_thread(self._cut, episode, name, content)
+        made = await asyncio.to_thread(self._cut, episode, name, source)
         seconds = float(made["seconds"])
         given = [
             {"frame": str(m["frame"]), "t": round(max(0.0, float(m["t"])), 3)}
@@ -1499,7 +1574,7 @@ class EpisodeDesk:
         for other in self.store.takes(episode_id):
             if other["chapter"] == chapter and other["frame"] == frame and other["kept"]:
                 self.store.update_take(str(other["id"]), kept=False)
-        self.store.add_take(
+        take = self.store.add_take(
             {
                 "episode_id": episode_id,
                 "chapter": chapter,
@@ -1518,29 +1593,93 @@ class EpisodeDesk:
             by=by,
             quiet=True,
         )
+        await self._keep_footage(episode, take, name, source, by=by)
         self._settle(episode_id)
         return self.view(episode_id)
 
-    def _cut(self, episode: Row, name: str, content: bytes) -> Row:
-        """A recording as the film uses it: constant 30 frames a second with a key frame every
-        half second (so any line can be played from where it starts), and its sound beside it."""
+    async def _keep_footage(
+        self, episode: Row, take: Row, name: str, source: IO[bytes], *, by: str
+    ) -> None:
+        """The recording as it arrived, kept in the house's bucket (S3, or MinIO in
+        development) under its take's name, when there is a bucket. It is kept once the cut
+        has shown it is a recording. The take stands whether or not the bucket took it: a
+        take is not lost to a store that is down, and the thread says when it was not kept."""
+        from design_agent.tools.footage import Bucket, FootageError
+
+        bucket = Bucket.from_settings(self.host.settings)
+        if bucket is None:
+            return
+        key = f"episodes/{episode['id']}/takes/{take['id']}.{_ending(name)}"
+        try:
+            kept = await asyncio.to_thread(bucket.put, key, source, name=name)
+        except FootageError as error:
+            _LOGGER.warning("footage of take %s was not kept: %s", take["id"], error)
+            self._say(
+                episode,
+                f"The recording itself was not kept in the bucket: {_clean(str(error), 240)}",
+                by=by,
+                quiet=True,
+            )
+            return
+        self.store.update_take(str(take["id"]), raw=kept)
+
+    def _cut(self, episode: Row, name: str, source: IO[bytes]) -> Row:
+        """A recording as the film uses it: no taller than the film's frame, a constant 30
+        frames a second with a key frame every half second (so any line can be played from
+        where it starts), in the film's range of light, its sound at the film's loudness, and
+        that sound beside it. The recording is copied across as a file, never held in memory:
+        a camera's own runs to gigabytes."""
         computer = self._computer(episode)
         folder = f"{PROJECTS}/{episode['id']}/takes"
         stem = f"take-{int(time.time() * 1000)}"
-        source = f"{folder}/{stem}.src{Path(name).suffix.lower()[:6] or '.webm'}"
-        computer.put([(source, content)])
+        src = f"{folder}/{stem}.src.{_ending(name)}"
+        computer.put_stream(src, source)
+        # What is in it, how loud its sound is, and whether this computer can bring a bright
+        # picture down to the film's range.
+        looked = computer.run(
+            f'cd {folder} && echo "streams: $(ffprobe -v error -show_entries '
+            f"stream=codec_type,color_transfer,channels -of json {src} 2>/dev/null "
+            "| tr -d ' \\n')\"; "
+            f"ffmpeg -hide_banner -nostats -i {src} -vn -af ebur128=peak=true:framelog=verbose "
+            "-f null - 2>&1 | tail -n 20; "
+            "echo \"zscale: $(ffmpeg -hide_banner -filters 2>/dev/null | grep -c ' zscale ')\"",
+            timeout=1800,
+        ).output
+        listed = re.search(r"^streams: (\{.*\})$", looked, re.M)
+        try:
+            streams = json.loads(listed[1]).get("streams", []) if listed else []
+        except ValueError:
+            streams = []
+        video = [s for s in streams if s.get("codec_type") == "video"]
+        sound = [s for s in streams if s.get("codec_type") == "audio"]
+        bright = any(s.get("color_transfer") in HDR for s in video) and bool(
+            re.search(r"^zscale: [1-9]", looked, re.M)
+        )
+        level = _levelled(looked) if sound else ""
+        audio = (
+            (f'-af "{level}" ' if level else "")
+            # more channels than a film's two (a camera with four inputs) are mixed down
+            + ("-ac 2 " if any(int(s.get("channels") or 0) > 2 for s in sound) else "")
+            + "-c:a aac -b:a 160k -ar 48000"
+        )
+        if video:
+            picture = "fps=30,scale=-2:'min(1080,ih)':flags=lanczos" + (
+                f",{TONEMAP}" if bright else ""
+            )
+            colour = "-colorspace bt709 -color_primaries bt709 -color_trc bt709 " if bright else ""
+            cut = (
+                f'ffmpeg -v error -y -i {src} -vf "{picture}" -c:v libx264 -preset veryfast '
+                f"-crf 18 -g 15 -pix_fmt yuv420p {colour}{audio} -movflags +faststart {stem}.mp4 "
+                f"&& (ffmpeg -v error -y -i {stem}.mp4 -vn -c:a copy {stem}.m4a || true)"
+            )
+        else:
+            cut = f"ffmpeg -v error -y -i {src} -vn {audio} {stem}.m4a"
         ran = computer.run(
-            f"cd {folder} && kinds=$(ffprobe -v error -show_entries stream=codec_type -of csv=p=0 "
-            f"{source} | tr '\\n' ' '); echo \"kinds: $kinds\"; "
-            f'case "$kinds" in *video*) ffmpeg -v error -y -i {source} '
-            "-vf \"scale=-2:'min(1080,ih)',fps=30\" -c:v libx264 -preset veryfast -crf 20 -g 15 "
-            f"-pix_fmt yuv420p -c:a aac -b:a 160k -ar 48000 -movflags +faststart {stem}.mp4 && "
-            f"(ffmpeg -v error -y -i {stem}.mp4 -vn -c:a copy {stem}.m4a || true);; "
-            f"*) ffmpeg -v error -y -i {source} -vn -c:a aac -b:a 160k -ar 48000 {stem}.m4a;; esac; "
+            f"cd {folder} && {cut}; "
             f'for f in {stem}.mp4 {stem}.m4a; do [ -s $f ] && echo "$f $(ffprobe -v error '
             '-show_entries format=duration -of csv=p=0 $f)"; done; '
-            f"rm -f {source}",
-            timeout=1800,
+            f"rm -f {src}",
+            timeout=3600,
         )
         lengths = dict(re.findall(rf"({stem}\.(?:mp4|m4a)) ([0-9.]+)", ran.output))
         if not lengths:
@@ -1580,11 +1719,13 @@ class EpisodeDesk:
             if p["status"] in ("made", "go") and p["html"]
         )
         spoken = sorted((k, v.get("h")) for k, v in self._voice(episode).items())
-        return plans.digest(
-            json.dumps(
-                [full.get("chapters"), full.get("brief"), takes, made, spoken], sort_keys=True
-            )
-        )
+        parts: list[Any] = [full.get("chapters"), full.get("brief"), takes, made, spoken]
+        picked = (episode["settings"].get("narrator") or {}).get("id")
+        if picked and episode["settings"].get("voice") == "narrator":
+            # a voice picked for this film: another one is another film. A film narrated in
+            # the house's voice keeps the signature it was rendered with.
+            parts.append(picked)
+        return plans.digest(json.dumps(parts, sort_keys=True))
 
     def render(self, episode_id: str, *, by: str) -> Row:
         episode = self._episode(episode_id)
@@ -1610,12 +1751,14 @@ class EpisodeDesk:
         full = self._full(episode)
         if full is None or episode["settings"].get("voice") != "narrator":
             return
-        if not self._narrator_ready():
-            raise ValueError("Narration needs ELEVENLABS_API_KEY and a narrator voice.")
+        if not self._speaks():
+            raise ValueError("Narration needs ELEVENLABS_API_KEY.")
+        voice_id = self._voice_id(episode)
+        if not voice_id:
+            raise ValueError("Narration needs a voice: pick one under Voice, or clone yours.")
         from design_agent.tools.media import MediaKeys, speak
 
         keys = MediaKeys.from_settings(self.host.settings)
-        voice_id = str(self.host.settings.narrator_voice_id)
         clock = timeline.schedule(full, self._kept(episode_id))
         lines = [f for _, _, f in plans.frames_of(full)]
         spoken: Row = dict((episode["film"] or {}).get("voice") or {})
@@ -1669,6 +1812,104 @@ class EpisodeDesk:
         if episode["settings"].get("voice") != "narrator":
             return {}
         return dict((episode["film"] or {}).get("voice") or {})
+
+    # -- the narrator's voice --------------------------------------------------------------------
+
+    async def voices(self) -> dict[str, Any]:
+        """The voices a narrator can speak in: the ElevenLabs account's, the ones made in it
+        first, with the house's own marked. The account is asked again after a minute."""
+        if not self._speaks():
+            raise ValueError("Narration needs ELEVENLABS_API_KEY.")
+        from design_agent.tools.media import MediaKeys, voices
+
+        heard = self._listed
+        if heard is None or time.monotonic() - heard[0] > VOICES_KEPT:
+            found = await voices(MediaKeys.from_settings(self.host.settings))
+            if isinstance(found, str):
+                raise ValueError(found)
+            heard = self._listed = (time.monotonic(), found)
+        usual = str(self.host.settings.narrator_voice_id or "")
+        rows = [
+            {"id": v.id, "name": v.name, "own": v.own, "usual": v.id == usual} for v in heard[1]
+        ]
+        if usual and not any(row["usual"] for row in rows):
+            # a voice from ElevenLabs' library, used by its id without being kept in the account
+            rows.insert(0, {"id": usual, "name": "The house's voice", "own": False, "usual": True})
+        return {"voices": rows}
+
+    def _samples(self, episode_id: str) -> tuple[list[tuple[str, bytes]], float]:
+        """The sound of the takes a person kept, oldest first, until there is as much speech
+        as a clone uses, and how many seconds of it that is."""
+        from design_agent.tools.media import CLONE_SAMPLES
+
+        samples: list[tuple[str, bytes]] = []
+        seconds = 0.0
+        for take in self.store.takes(episode_id):
+            if seconds >= CLONE_ENOUGH or len(samples) >= CLONE_SAMPLES:
+                break
+            row = self.store.file(str(take["audio"])) if take["kept"] and take["audio"] else None
+            if row is None or int(row["size"]) > CLONE_TAKE_BYTES:
+                continue
+            samples.append((str(row["name"]), (self.host.files_dir / row["rel_path"]).read_bytes()))
+            seconds += float(take["seconds"])
+        return samples, seconds
+
+    async def clone(
+        self,
+        episode_id: str,
+        *,
+        by: str,
+        name: str,
+        consent: bool,
+        noisy: bool = False,
+        sample: tuple[str, bytes] | None = None,
+    ) -> Row:
+        """A voice made by ElevenLabs from recordings of a person, which then narrates this
+        episode: from the takes they kept, or from one recording they bring (`sample`, a file
+        name and its bytes). The recordings leave this computer and a voice is a person's own,
+        so each time the person says it is theirs to clone, and the thread keeps that they did."""
+        episode = self._episode(episode_id)
+        if not self._speaks():
+            raise ValueError("Cloning a voice needs ELEVENLABS_API_KEY.")
+        if not consent:
+            raise ValueError("Say that the voice is yours, or that its speaker agreed.")
+        title = _clean(name, 60)
+        if not title:
+            raise ValueError("Give the voice a name.")
+        if sample is not None:
+            samples, source = [sample], "a recording brought as a file"
+        else:
+            samples, seconds = self._samples(episode_id)
+            if seconds < CLONE_LEAST:
+                raise ValueError(
+                    f"A clone needs {int(CLONE_LEAST)} seconds of your takes or more. "
+                    "Record a chapter first, or bring a recording."
+                )
+            source = f"{len(samples)} take{'s' if len(samples) != 1 else ''} of this episode"
+        from design_agent.tools.media import MediaKeys, clone_voice
+
+        made = await clone_voice(
+            MediaKeys.from_settings(self.host.settings), title, samples, noisy=noisy
+        )
+        if isinstance(made, str):
+            raise ValueError(made)
+        self._listed = None
+        picked: Row = {"id": made.voice_id, "name": title}
+        if made.verify:
+            # ElevenLabs wants the speaker verified on its own site before the voice speaks
+            picked["verify"] = True
+        episode = self._episode(episode_id)
+        self.store.update_episode(
+            episode_id, settings={**episode["settings"], "voice": "narrator", "narrator": picked}
+        )
+        self._say(
+            episode,
+            f"Cloned a voice with ElevenLabs, “{title}”, from {source}, having confirmed the "
+            "voice is theirs to clone. It narrates the lines nobody recorded.",
+            by=by,
+        )
+        self._settle(episode_id)
+        return self.view(episode_id)
 
     async def _rendered(self, episode_id: str) -> None:
         try:
@@ -1778,9 +2019,13 @@ class EpisodeDesk:
             str(episode["thread_id"]), f"{slug}.mp4", content, origin="episode"
         )
         episode = self._episode(episode_id)
+        # The narration stays with the film: it is what the film's clock and signature were
+        # made from, and a line already spoken is not paid for again at the next render.
+        narration = (episode["film"] or {}).get("voice")
         self.store.update_episode(
             episode_id,
             film={
+                **({"voice": narration} if narration else {}),
                 "status": "done",
                 "fraction": 1.0,
                 "file": row["id"],

@@ -46,6 +46,11 @@ Confirm each URL still resolves when you move a pin forward; the docs site renam
 ## Media services (optional)
 
 - ElevenLabs text to speech and music: <https://elevenlabs.io/docs>
+- ElevenLabs voices: instant voice clone <https://elevenlabs.io/docs/api-reference/voices/ivc/create>,
+  listing an account's voices <https://elevenlabs.io/docs/api-reference/voices/search>, what a clone
+  is made from <https://elevenlabs.io/docs/product-guides/voices/voice-cloning/instant-voice-cloning>
+- Amazon S3 through boto3 (uploads in parts): <https://boto3.amazonaws.com/v1/documentation/api/latest/guide/s3-uploading-files.html>
+- MinIO, the S3-compatible store used in development: <https://min.io/docs/minio/container/index.html>
 - FFmpeg: <https://ffmpeg.org/documentation.html>
 - Chrome Headless Shell: <https://developer.chrome.com/blog/chrome-headless-shell>
 - sharp: <https://sharp.pixelplumbing.com>

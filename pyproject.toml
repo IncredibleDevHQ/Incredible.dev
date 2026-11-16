@@ -62,6 +62,8 @@ self-host = [
 google = ["langchain-google-genai>=4,<5"]
 groq = ["langchain-groq>=1,<2"]
 mistral = ["langchain-mistralai>=1,<2"]
+# Raw footage in a bucket: S3 in production, MinIO or another S3-compatible store in development.
+s3 = ["boto3>=1.35,<2"]
 
 [dependency-groups]
 dev = [

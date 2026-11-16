@@ -68,8 +68,22 @@
     a file; where each line starts in the take sets how long it runs in the film and when its
     picture's cues land. The film is one HyperFrames page written by code and rendered on the
     thread's computer; before anything is recorded it renders as a draft with a stand-in.
-  - `DESIGN_AGENT_NARRATOR_VOICE_ID` (with `ELEVENLABS_API_KEY`) narrates the lines no take
-    covers when a film's voice is the narrator.
+  - A take is recorded as the camera and the microphone give it: no echo cancelling, one
+    channel, H.264 where the browser can at about 16 Mbit/s for 1080p, and room noise cleaned
+    up only for a microphone that sits in the computer (a switch where the microphone is
+    chosen, beside the picture the camera is giving). A recording brought as a file may be a
+    camera's own, up to 8 GiB: it goes to disk and to the thread's computer as a file. The cut
+    brings a high-dynamic-range picture down to the film's range and sets every take's sound
+    to −16 LUFS by one gain.
+  - With `DESIGN_AGENT_FOOTAGE_BUCKET`, every take's recording is also kept as it arrived in
+    a bucket (`tools/footage.py`, the `s3` extra): S3 in production, MinIO or another
+    S3-compatible store in development (`DESIGN_AGENT_S3_ENDPOINT`, `deploy/dev/compose.yaml`).
+    The host sends it; a take stands when the bucket is down, and the thread says so.
+  - With `ELEVENLABS_API_KEY`, the lines no take covers are narrated when a film's voice is
+    the narrator: in a voice picked for the episode from the account's voices, in a clone of
+    the person's own voice (made by ElevenLabs from the takes they kept or a recording they
+    bring, after they say the voice is theirs to clone), or in the house's
+    `DESIGN_AGENT_NARRATOR_VOICE_ID`.
 - Every run of an agent is a row in the house's own store (`runs`): what it was told, each step
   and note on the way, what it said, and the session it ran under. A local agent's own session
   is a shortcut to that record: when one can no longer be resumed, research and episodes start

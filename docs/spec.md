@@ -738,6 +738,35 @@ app's canvas, from a channel's material or a research frame's notes.
   camera can be chosen; the choice is kept on that computer and falls back to the browser's
   own when the device is not there. During the take the time planned for the chapter stands
   beside the time run, and the words to say can be drawn larger.
+- **A take's quality.** The browser records a take as the camera and the microphone give it,
+  not as a call would: no echo is cancelled (nothing plays during a take), the sound is one
+  channel, and the picture is up to 1080p at 30 frames a second, encoded as H.264 where the
+  browser can, at a quarter of a bit for each pixel of each frame. A microphone that sits in
+  the computer has its room noise cleaned up by the browser; any other is recorded as it is.
+  The person can switch that either way where the microphone is chosen, and the same place
+  shows the picture the camera is giving. A recording brought as a file may be a camera's own,
+  up to 8 GiB: it is written to disk as it arrives and copied to the thread's computer as a
+  file, never held in memory. Every recording is cut there to the film's format: no taller
+  than 1080 lines, 30 frames a second, a picture coded for a brighter screen (an iPhone's)
+  brought down to the film's range, and its sound set by one gain to the film's loudness
+  (−16 LUFS, peaks held at −1.5 dBFS) so chapters and narration sit at one level.
+- **The footage.** With a bucket set (`DESIGN_AGENT_FOOTAGE_BUCKET`), every take's recording
+  is also kept as it arrived, picture and sound or sound alone, at
+  `episodes/<episode>/takes/<take>.<kind>`: in S3 in production, and in MinIO or another
+  S3-compatible store in development (`DESIGN_AGENT_S3_ENDPOINT`; `deploy/dev/compose.yaml`
+  runs one). The host sends it, in parts, once the cut has shown it is a recording; the
+  sandbox holds no key and never reaches the bucket. A take stands when the bucket does not
+  take its recording, and the thread says so. Nothing is deleted from the bucket: how long
+  footage is kept is the bucket's own rule. With no bucket a recording is cut for the film
+  and not kept.
+- **The narrator's voice.** When the film's voice is the narrator, the lines no take covers are
+  spoken by ElevenLabs (`ELEVENLABS_API_KEY`) in a voice picked for the episode from the
+  account's voices, or else in the house's own (`DESIGN_AGENT_NARRATOR_VOICE_ID`). A person
+  can clone their voice from the takes they kept (30 seconds or more; about three minutes are
+  sent) or from a recording they bring. The recordings go to ElevenLabs, so the form says so,
+  the clone is made only after the person says the voice is theirs or its speaker agreed, and
+  the thread records that they did. Cloning is the person's action in the studio and never a
+  tool the model can call. The clone then narrates the episode; another voice is another film.
 - **The film** is one HyperFrames page written by code and rendered on the thread's computer.
   Layouts change at a cut. A picture that comes in by a move is moved as a whole box, by
   transform and opacity, and the picture before it stays that much longer to leave the same way.

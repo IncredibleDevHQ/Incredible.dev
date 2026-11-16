@@ -21,6 +21,7 @@ import { Devices, Level } from "./Devices";
 import { Changed } from "./Diff";
 import { useRecorder, type Recording } from "./recorder";
 import { LayoutThumb, Stage, type Playing } from "./Stage";
+import { NarratorVoice } from "./Voice";
 
 const FILM = "film";
 const WRITERS: Record<string, string> = { claude: "Claude Code", codex: "Codex", kimi: "Kimi Code", builtin: "the built-in agent", demo: "the demo's writer" };
@@ -463,7 +464,7 @@ function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView; run: 
           </div>
           <div>
             <dt>Voice</dt>
-            <dd title={view.options.narrator ? undefined : "Narration needs ELEVENLABS_API_KEY and DESIGN_AGENT_NARRATOR_VOICE_ID"}>
+            <dd title={view.options.narrator.ready ? undefined : "Narration needs ELEVENLABS_API_KEY"}>
               <SegmentedControl
                 size="sm"
                 value={view.settings.voice}
@@ -471,9 +472,10 @@ function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView; run: 
                 onChange={(voice) => voice !== view.settings.voice && void set({ voice })}
                 options={[
                   { value: "live", label: presenterOff ? "Recorded" : "Your voice" },
-                  { value: "narrator", label: "Narrator", disabled: !view.options.narrator },
+                  { value: "narrator", label: "Narrator", disabled: !view.options.narrator.ready },
                 ]}
               />
+              {view.settings.voice === "narrator" && view.options.narrator.ready && <NarratorVoice view={view} run={run} busy={busy} />}
             </dd>
           </div>
           <div>

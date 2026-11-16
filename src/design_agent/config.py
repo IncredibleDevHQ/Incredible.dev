@@ -137,6 +137,28 @@ class Settings(BaseSettings):
         default=None, validation_alias=_alias("TYPESAFE_API_KEY")
     )
 
+    # Raw footage (host only): each take's recording as it arrived, kept in a bucket. S3 in
+    # production; MinIO or another S3-compatible store in development. With no bucket a
+    # recording is cut for the film and not kept.
+    footage_bucket: str = ""
+    s3_endpoint: str | None = None
+    """An S3-compatible store's address (MinIO in development: http://127.0.0.1:9400). Unset
+    is AWS S3. A bucket missing from such a store is made; on AWS it must exist."""
+    s3_region: str | None = Field(
+        default=None,
+        validation_alias=_alias("DESIGN_AGENT_S3_REGION", "AWS_REGION", "AWS_DEFAULT_REGION"),
+    )
+    #: The bucket's credentials. Unset on AWS, the machine's own are used (its role).
+    aws_access_key_id: SecretStr | None = Field(
+        default=None, validation_alias=_alias("AWS_ACCESS_KEY_ID")
+    )
+    aws_secret_access_key: SecretStr | None = Field(
+        default=None, validation_alias=_alias("AWS_SECRET_ACCESS_KEY")
+    )
+    aws_session_token: SecretStr | None = Field(
+        default=None, validation_alias=_alias("AWS_SESSION_TOKEN")
+    )
+
     # Behavior switches (the runtime's presenter reads progress, footer and steering)
     enable_progress: bool = True
     enable_footer: bool = True
@@ -186,6 +208,11 @@ class Settings(BaseSettings):
         "groq_api_key",
         "exa_api_key",
         "typesafe_api_key",
+        "s3_endpoint",
+        "s3_region",
+        "aws_access_key_id",
+        "aws_secret_access_key",
+        "aws_session_token",
         "database_url",
         "api_tokens",
         mode="before",

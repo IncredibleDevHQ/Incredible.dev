@@ -48,6 +48,12 @@ agent chose to wait); use a generous client timeout and poll `updates` for backg
   thread's next turn and can be resumed from their saved transcripts) and re-arms check-ins; one
   that came due while it was down fires at once. The sweep repeats every 15 minutes.
 - Sandbox containers and their per-thread volumes persist between turns; idle ones are stopped.
+- An episode's raw footage (each take's recording as it arrived) is kept in a bucket when
+  `DESIGN_AGENT_FOOTAGE_BUCKET` is set: on AWS, an S3 bucket you made, opened by the machine's
+  role (or `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`), in `DESIGN_AGENT_S3_REGION`. Any
+  S3-compatible store works with `DESIGN_AGENT_S3_ENDPOINT`; `deploy/dev/compose.yaml` runs
+  MinIO for development. The API's image carries the `s3` extra. Nothing is deleted from the
+  bucket: set a lifecycle rule for how long footage is kept.
 
 ## Security
 

@@ -15,6 +15,7 @@ import re
 import shlex
 import struct
 import zlib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -36,9 +37,25 @@ from design_agent.tools.files import (
 
 OPENAI_BASE_URL = "https://api.openai.com/v1"
 ELEVENLABS = "https://api.elevenlabs.io/v1"
+ELEVENLABS_VOICES = "https://api.elevenlabs.io/v2/voices"
 GROQ_TRANSCRIPTIONS = "https://api.groq.com/openai/v1/audio/transcriptions"
 ELEVENLABS_CAP_MB = 25  # five minutes of 320 kbps mp3 is about 12 MB
 VOICE_ID = re.compile(r"[A-Za-z0-9]{10,40}")
+#: The kinds of voice an account's own people made, as ElevenLabs names them.
+OWN_VOICES = ("cloned", "professional", "generated")
+#: What a clone is made from: a few minutes of one speaker. ElevenLabs takes 25 recordings.
+CLONE_SAMPLES = 25
+CLONE_CAP_MB = 50
+SAMPLE_TYPES = {
+    ".m4a": "audio/mp4",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+    ".flac": "audio/flac",
+    ".webm": "audio/webm",
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+}
 
 
 @dataclass(frozen=True)
@@ -380,6 +397,127 @@ async def speak(
         return "voiceover request failed."
     except (ValueError, TypeError, KeyError, AttributeError, binascii.Error):
         return "voiceover unavailable: invalid configuration or provider response."
+
+
+@dataclass(frozen=True)
+class Voice:
+    """A voice the ElevenLabs account can speak in. `kind` is ElevenLabs' own category: cloned,
+    professional, generated, premade and so on."""
+
+    id: str
+    name: str
+    kind: str
+
+    @property
+    def own(self) -> bool:
+        """Made in this account (a clone or a designed voice), not one of ElevenLabs' own."""
+        return self.kind in OWN_VOICES
+
+
+async def voices(keys: MediaKeys) -> list[Voice] | str:
+    """The voices the account can speak in, the ones made in it first, or the reason they
+    cannot be listed. It only reads: no credits are spent."""
+    if not keys.elevenlabs:
+        return "ElevenLabs unavailable: no ELEVENLABS_API_KEY configured."
+    found: dict[str, Voice] = {}
+    params: dict[str, str | int] = {"page_size": 100, "include_total_count": "false"}
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
+            for _ in range(3):  # three hundred voices is more than a picker can show
+                response = await client.get(
+                    ELEVENLABS_VOICES, params=params, headers={"xi-api-key": keys.elevenlabs}
+                )
+                if response.status_code != 200:
+                    return f"voices unavailable: {_elevenlabs_error(response)}"
+                page = response.json()
+                for row in page.get("voices") or []:
+                    voice_id = str(row.get("voice_id") or "")
+                    if VOICE_ID.fullmatch(voice_id):
+                        found[voice_id] = Voice(
+                            voice_id,
+                            " ".join(str(row.get("name") or "").split())[:80] or "A voice",
+                            str(row.get("category") or ""),
+                        )
+                token = page.get("next_page_token")
+                if not page.get("has_more") or not token:
+                    break
+                params["next_page_token"] = str(token)
+    except httpx.HTTPError:
+        return "voices request failed."
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return "voices unavailable: invalid provider response."
+    return sorted(found.values(), key=lambda v: (not v.own, v.name.lower()))
+
+
+@dataclass(frozen=True)
+class Cloned:
+    """A voice ElevenLabs made from recordings: its id, and whether ElevenLabs wants the
+    speaker verified on its own site before the voice may speak."""
+
+    voice_id: str
+    verify: bool
+
+
+async def clone_voice(
+    keys: MediaKeys,
+    name: str,
+    samples: Sequence[tuple[str, bytes]],
+    *,
+    noisy: bool = False,
+    description: str = "",
+) -> Cloned | str:
+    """A voice made by ElevenLabs from recordings of one speaker (an instant voice clone), kept
+    among the account's voices. Returns the reason when no voice was made.
+
+    The recordings leave this computer, and a voice is a person's own, so this is for host
+    code a person drives after saying the voice is theirs to clone. It is never a tool the
+    model can call. `samples` are `(file name, bytes)`; a minute or two of clean speech is
+    what a clone uses, and `noisy` asks ElevenLabs to take the room out of them first (which
+    makes clean recordings worse). Needs a paid ElevenLabs plan."""
+    if not keys.elevenlabs:
+        return "ElevenLabs unavailable: no ELEVENLABS_API_KEY configured."
+    title = " ".join(name.split())[:100]
+    if not title:
+        return "rejected: the voice needs a name."
+    if not 1 <= len(samples) <= CLONE_SAMPLES:
+        return f"rejected: a clone is made from 1 to {CLONE_SAMPLES} recordings."
+    if any(not content for _, content in samples):
+        return "rejected: a recording is empty."
+    if sum(len(content) for _, content in samples) > CLONE_CAP_MB * 1024 * 1024:
+        return f"rejected: the recordings are over {CLONE_CAP_MB} MB together."
+    fields = {"name": title, "remove_background_noise": "true" if noisy else "false"}
+    if description.strip():
+        fields["description"] = description.strip()[:500]
+    files = [
+        (
+            "files",
+            (
+                posixpath.basename(sample) or "sample",
+                content,
+                SAMPLE_TYPES.get(posixpath.splitext(sample)[1].lower(), "application/octet-stream"),
+            ),
+        )
+        for sample, content in samples
+    ]
+    try:
+        async with httpx.AsyncClient(timeout=300, follow_redirects=False) as client:
+            response = await client.post(
+                f"{ELEVENLABS}/voices/add",
+                headers={"xi-api-key": keys.elevenlabs},
+                data=fields,
+                files=files,
+            )
+        if response.status_code != 200:
+            return f"cloning failed: {_elevenlabs_error(response)}"
+        payload = response.json()
+        voice_id = str(payload.get("voice_id") or "")
+        if not VOICE_ID.fullmatch(voice_id):
+            return "cloning returned no voice."
+        return Cloned(voice_id, bool(payload.get("requires_verification")))
+    except httpx.HTTPError:
+        return "cloning request failed."
+    except (ValueError, TypeError, AttributeError):
+        return "cloning unavailable: invalid provider response."
 
 
 def build_media_tools(settings: Settings, backend_for: BackendFor) -> list[BaseTool]:

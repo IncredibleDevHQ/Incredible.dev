@@ -25,6 +25,7 @@ import threading
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
+from typing import IO
 
 from deepagents.backends.protocol import (
     ExecuteResponse,
@@ -127,6 +128,7 @@ class DockerSandboxRunner:
         args: Sequence[str],
         *,
         input_bytes: bytes | None = None,
+        stdin: IO[bytes] | None = None,
         timeout: float | None = 120,
         check: bool = True,
     ) -> subprocess.CompletedProcess[bytes]:
@@ -134,13 +136,23 @@ class DockerSandboxRunner:
             raise SandboxUnavailableError(
                 "Docker is not installed or not on PATH; install Docker or choose another sandbox"
             )
-        result = subprocess.run(  # noqa: S603 - fixed docker argv, never a shell
-            [self._docker, *args],
-            input=input_bytes,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
+        if stdin is not None:
+            # An open file is read by Docker itself, so its size is never held in this process.
+            result = subprocess.run(  # noqa: S603 - fixed docker argv, never a shell
+                [self._docker, *args],
+                stdin=stdin,
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+            )
+        else:
+            result = subprocess.run(  # noqa: S603 - fixed docker argv, never a shell
+                [self._docker, *args],
+                input=input_bytes,
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+            )
         if check and result.returncode != 0:
             # The CLI ends with "Run 'docker run --help' …"; the daemon's reason is above it.
             lines = [
@@ -312,6 +324,18 @@ class DockerSandboxRunner:
             ["exec", "-i", *user, name, "tar", "-x", "-C", "/", "--no-same-owner", "-f", "-"],
             input_bytes=archive,
             timeout=300,
+        )
+
+    def put_file(
+        self, thread_id: str, path: str, source: IO[bytes], *, timeout: float = 3600
+    ) -> None:
+        """Write one file in the thread's container from an open file on this computer, read
+        from where it stands. For files too large to hold in memory (a camera's recording)."""
+        name = self.container_for(thread_id)
+        self._run(
+            ["exec", "-i", "--user", AGENT_USER, name, "sh", "-c", 'cat > "$1"', "sh", path],
+            stdin=source,
+            timeout=timeout,
         )
 
     def get_file(self, thread_id: str, path: str) -> bytes | None:

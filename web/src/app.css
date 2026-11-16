@@ -961,6 +961,20 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-settings dt { color: var(--muted); font-size: 13px; }
 .ep-settings dd { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0; min-width: 0; }
 .ep-settings small { color: var(--muted); font-size: 12.5px; }
+/* the narrator's voice, under the Voice choice: which voice says it, and a clone of the person's own */
+.ep-voice { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-basis: 100%; min-width: 0; }
+.ep-voice > .ui-sel { flex: none; width: 220px; }
+.ep-voice > .btn { height: 28px; padding: 0 11px; font-size: 13px; white-space: nowrap; }
+.ep-voice > small { flex-basis: 100%; }
+.ep-voice > small[data-tone="red"] { color: var(--red); }
+.ep-voice > small[data-tone="amber"] { color: var(--amber); }
+.ep-clone { display: grid; gap: 12px; }
+.ep-clone .btn { height: 32px; min-width: 0; }
+.ep-clone .btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ep-clone small { color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.ep-check { display: grid; grid-template-columns: auto 1fr; align-items: start; gap: 8px; color: var(--ink-2); font-size: 13px; line-height: 1.45; }
+.ep-check input { width: 15px; height: 15px; margin: 2px 0 0; accent-color: var(--green); }
+.ep-clone-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .ep-looks { display: flex; flex-wrap: wrap; gap: 6px; }
 .ep-looks button { height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--ink-2); font-size: 13px; }
 .ep-looks button:hover:not(:disabled) { border-color: var(--line-strong); }
@@ -1085,6 +1099,12 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-menu [role="menuitemradio"] { min-height: 32px; padding: 6px 10px; border: 0; border-radius: 8px; background: none; color: var(--ink-2); font-size: 13px; line-height: 1.35; text-align: left; }
 .ep-menu [role="menuitemradio"]:hover { background: var(--wash); }
 .ep-menu [role="menuitemradio"][aria-checked="true"] { color: var(--green); font-weight: 600; }
+.ep-menu [role="menu"] p small { font-size: inherit; font-weight: 400; font-variant-numeric: tabular-nums; }
+/* a setting of the microphone above it, on or off: set apart from the list by a rule */
+.ep-menu [role="menuitemcheckbox"] { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; margin-top: 4px; padding: 6px 10px; border: 0; border-top: 1px solid var(--line-soft); border-radius: 0 0 8px 8px; background: none; color: var(--ink-2); font-size: 13px; line-height: 1.35; text-align: left; }
+.ep-menu [role="menuitemcheckbox"]:hover { background: var(--wash); }
+.ep-menu [role="menuitemcheckbox"][aria-checked="true"] { color: var(--green); font-weight: 600; }
+.ep-menu [role="menuitemcheckbox"] svg { flex: none; width: 14px; height: 14px; }
 .ep-ask-menu [role="menu"] { display: grid; gap: 1px; margin: -6px; }
 .ep-ask-menu [role="menuitemradio"] { height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: var(--ink-2); font-size: 13px; text-align: left; }
 .ep-ask-menu [role="menuitemradio"]:hover { background: var(--wash); }

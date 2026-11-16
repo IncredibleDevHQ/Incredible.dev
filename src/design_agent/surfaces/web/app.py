@@ -36,8 +36,12 @@ runtime), the store of channels, messages and boards, and this API:
   `POST /api/episodes/{id}/again` (its planning), `/stop` (the plan and the pictures under
   way), `POST /api/episodes/{id}/pictures` (make the ones that stopped),
   `POST /api/episodes/{id}/pictures/{unit}/go` and `/note` (a picture's stills),
-  `POST /api/episodes/{id}/takes` (a recording), `POST /api/episodes/{id}/takes/{take}/keep`,
-  `DELETE /api/episodes/{id}/takes/{take}`, `POST /api/episodes/{id}/film` (render it)
+  `POST /api/episodes/{id}/takes` (a recording, of any size up to 8 GiB: it goes to disk,
+  and as it arrived to the footage bucket when one is set),
+  `POST /api/episodes/{id}/takes/{take}/keep`, `DELETE /api/episodes/{id}/takes/{take}`,
+  `GET /api/voices` (the voices a narrator can speak in), `POST /api/episodes/{id}/voice` (a
+  clone of the person's voice, from their takes or a recording, after they say it is theirs),
+  `POST /api/episodes/{id}/film` (render it)
 - what the agent works with: `GET /api/brand` (a channel's with `?channel=`), `GET /api/skills`,
   `GET /api/computer`
 - brands (`brands.py`): `GET /api/brands`, `POST /api/brands` (read one from a website),
@@ -62,7 +66,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -72,6 +76,7 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.datastructures import UploadFile as FormFile
 
 from design_agent.config import SAMPLE_BRAND, Settings
 from design_agent.runtime import maintenance
@@ -89,6 +94,11 @@ from design_agent.tools.mcp import load_mcp_tools, servers_for_runtime
 
 MAX_UPLOADS = 10
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
+#: A take may be a camera's own recording: ten minutes of 4K at 100 Mbit/s is 7.5 GB. It is
+#: written to disk as it arrives and read from there, so its size is never held in memory.
+MAX_TAKE_BYTES = 8 * 1024**3
+#: A recording brought for a voice clone: a few minutes of speech.
+MAX_SAMPLE_BYTES = 25 * 1024 * 1024
 PING_SECONDS = 15.0
 
 
@@ -177,6 +187,13 @@ class NoteEditIn(BaseModel):
     text: str = Field(min_length=1, max_length=8_000)
 
 
+class NarratorIn(BaseModel):
+    """The ElevenLabs voice an episode is narrated in, by its id, with the name it is shown by."""
+
+    id: str = Field(pattern=r"^[A-Za-z0-9]{10,40}$")
+    name: str = Field(default="", max_length=80)
+
+
 class EpisodeSettingsIn(BaseModel):
     #: How long it may run: the least and the most, in seconds, or "auto" when the material
     #: decides. The desk keeps the two inside its limits and apart.
@@ -184,6 +201,7 @@ class EpisodeSettingsIn(BaseModel):
     presenter: str | None = Field(default=None, pattern=r"^(on|off)$")
     theme: str | None = Field(default=None, max_length=60)
     voice: str | None = Field(default=None, pattern=r"^(live|narrator)$")
+    narrator: NarratorIn | None = None
     level: str | None = Field(default=None, pattern=r"^(simple|rich)$")
     writer: str | None = Field(default=None, pattern=r"^(claude|codex|kimi|builtin|demo)$")
 
@@ -717,31 +735,66 @@ def create_app(
 
     @app.post("/api/episodes/{episode_id}/takes")
     async def add_take(
+        episode_id: str, request: Request, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        # The form is read here, not declared, so a recording too large is refused by its
+        # stated size before any of it is read. What is read goes to a file on disk.
+        stated = request.headers.get("content-length", "")
+        if not stated.isdigit():
+            raise HTTPException(status_code=411, detail="the recording's size must be stated")
+        if int(stated) > MAX_TAKE_BYTES:
+            raise HTTPException(status_code=413, detail="the recording is over 8 GiB")
+        async with request.form(max_files=1, max_fields=8) as form:
+            upload, chapter = form.get("file"), form.get("chapter")
+            if not isinstance(upload, FormFile) or not isinstance(chapter, str) or not chapter:
+                raise HTTPException(status_code=422, detail="a recording and its chapter")
+            frame, marks = form.get("frame") or "", form.get("marks") or "[]"
+            try:
+                given = json.loads(marks) if isinstance(marks, str) else None
+                if not isinstance(given, list) or not all(isinstance(m, dict) for m in given):
+                    raise ValueError("marks must be a list")
+                return await host.episodes.add_take(
+                    episode_id,
+                    by=me,
+                    chapter=chapter,
+                    frame=frame if isinstance(frame, str) else "",
+                    marks=given,
+                    name=upload.filename or "take.webm",
+                    source=upload.file,
+                )
+            except KeyError:
+                raise HTTPException(status_code=404, detail="no such episode or chapter") from None
+            except ValueError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.get("/api/voices")
+    async def narrator_voices(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        try:
+            return await host.episodes.voices()
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.post("/api/episodes/{episode_id}/voice")
+    async def clone_voice(
         episode_id: str,
-        file: UploadFile = File(...),  # noqa: B008 - FastAPI's declaration style
-        chapter: str = Form(...),
-        frame: str = Form(default=""),
-        marks: str = Form(default="[]"),
+        name: str = Form(..., max_length=80),
+        consent: bool = Form(default=False),
+        noisy: bool = Form(default=False),
+        file: UploadFile | None = File(default=None),  # noqa: B008 - FastAPI's declaration style
         me: str = Depends(person),
     ) -> dict[str, Any]:
-        content = await file.read(MAX_UPLOAD_BYTES + 1)
-        if len(content) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail="the recording is over 200 MiB")
+        sample: tuple[str, bytes] | None = None
+        if file is not None:
+            content = await file.read(MAX_SAMPLE_BYTES + 1)
+            if len(content) > MAX_SAMPLE_BYTES:
+                raise HTTPException(status_code=413, detail="the recording is over 25 MiB")
+            sample = (file.filename or "sample", content)
         try:
-            given = json.loads(marks)
-            if not isinstance(given, list) or not all(isinstance(m, dict) for m in given):
-                raise ValueError("marks must be a list")
-            return await host.episodes.add_take(
-                episode_id,
-                by=me,
-                chapter=chapter,
-                frame=frame,
-                marks=given,
-                name=file.filename or "take.webm",
-                content=content,
+            return await host.episodes.clone(
+                episode_id, by=me, name=name, consent=consent, noisy=noisy, sample=sample
             )
         except KeyError:
-            raise HTTPException(status_code=404, detail="no such episode or chapter") from None
+            raise HTTPException(status_code=404, detail="no such episode") from None
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from None
 

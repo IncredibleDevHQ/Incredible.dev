@@ -77,7 +77,8 @@ the studio lays that into the script.
 
 What no model does runs through `Computer`, the thread's sandbox for the desk's own use: staging
 the channel's brand pack as an engine run would, checking and posing a picture (`hyperframes
-check`, then a still at the end of each line), cutting a take to the film's format, rendering
+check`, then a still at the end of each line), cutting a take to the film's format (the recording
+is copied across as a file, `put_stream`, since a camera's own runs to gigabytes), rendering
 the film. A picture sits in the project's `compositions/` folder, which is where the renderer's
 checks read sub-compositions from. The film's page is
 written by `episode.film` from the plan, the person's picks, the takes and the built pictures;

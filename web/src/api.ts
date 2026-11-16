@@ -235,7 +235,8 @@ export type EpisodeOptions = {
   seconds: { least: number; most: number; usual: [number, number]; gap: number };
   // Who reads the plan's words: Jev, or the writer's own model.
   reader: "jev" | "writer" | "demo";
-  narrator: boolean;
+  // Whether a narrator can speak here (ElevenLabs has a key), and whether the house has a voice of its own for one.
+  narrator: { ready: boolean; usual: boolean };
   geometry: { frame: [number, number]; layouts: Record<string, LayoutSpot> };
   // What a person may pick for the line that brings a picture in.
   pictures: string[];
@@ -243,7 +244,19 @@ export type EpisodeOptions = {
 };
 // How long it may run: the least and the most, in seconds, or "auto" when the material decides.
 export type EpisodeLength = [number, number] | "auto";
-export type EpisodeSettings = { seconds: EpisodeLength; presenter: "on" | "off"; theme: string; voice: "live" | "narrator"; level: Level; writer: WriterId };
+// The voice picked to narrate an episode. `verify`: ElevenLabs wants its speaker verified on its site before it speaks.
+export type Narrator = { id: string; name: string; verify?: boolean };
+// A voice the ElevenLabs account can speak in: one made in it (a clone), and the house's own.
+export type Voice = { id: string; name: string; own: boolean; usual: boolean };
+export type EpisodeSettings = {
+  seconds: EpisodeLength;
+  presenter: "on" | "off";
+  theme: string;
+  voice: "live" | "narrator";
+  narrator?: Narrator;
+  level: Level;
+  writer: WriterId;
+};
 export type EpisodeCue = { at: string; object: string; does: string; move?: string; t?: number };
 export type EpisodeObject = { id: string; what: string; words?: string; state?: string; type?: string };
 export type EpisodeFrame = {
@@ -522,6 +535,15 @@ export const api = {
     form.append("frame", take.frame ?? "");
     form.append("marks", JSON.stringify(take.marks));
     return call<EpisodeView>("POST", `/api/episodes/${id}/takes`, form);
+  },
+  voices: () => call<{ voices: Voice[] }>("GET", "/api/voices"),
+  // A clone of the person's voice, from this episode's takes or from a recording they bring. `consent` is theirs to give.
+  cloneVoice: (id: string, clone: { name: string; consent: boolean; file?: File }) => {
+    const form = new FormData();
+    form.append("name", clone.name);
+    form.append("consent", String(clone.consent));
+    if (clone.file) form.append("file", clone.file, clone.file.name);
+    return call<EpisodeView>("POST", `/api/episodes/${id}/voice`, form);
   },
   keepTake: (id: string, take: string) => call<EpisodeView>("POST", `/api/episodes/${id}/takes/${take}/keep`, { keep: true }),
   dropTake: (id: string, take: string) => call<EpisodeView>("DELETE", `/api/episodes/${id}/takes/${take}`),

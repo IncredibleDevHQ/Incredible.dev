@@ -137,6 +137,9 @@ ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # The brand pack a channel's work wears (a folder under workspace/brands); empty for the
     # configured one.
     ("channels", "brand", "TEXT NOT NULL DEFAULT ''"),
+    # Where a take's recording, as it arrived, is kept (`s3://bucket/key`); empty when there
+    # is no bucket for footage.
+    ("takes", "raw", "TEXT NOT NULL DEFAULT ''"),
 )
 
 #: Columns that hold JSON, decoded on the way out.

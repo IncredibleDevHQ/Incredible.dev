@@ -3,6 +3,11 @@
 // the next line. The marks are what let the film cut the take by line and land each picture's
 // cues on the words as they were actually said. Which camera and microphone are used is the
 // person's pick, kept on this computer; without one the browser's own choice is used.
+//
+// A take is the film's source, not a call, so it is recorded as the camera and the microphone
+// give it: nothing plays while it is recorded, so no echo is cancelled; a microphone a person
+// set up for their voice is left as it is (the film sets every take's loudness when it cuts
+// it); and the picture is encoded well above a call's rate, since it is encoded again.
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type Mark = { frame: string; t: number };
@@ -10,7 +15,11 @@ export type RecorderState = "off" | "asking" | "ready" | "count" | "recording" |
 export type Recording = { blob: Blob; name: string; marks: Mark[] };
 
 export type Devices = { cameras: MediaDeviceInfo[]; mics: MediaDeviceInfo[] };
-export type DevicePick = { camera?: string; mic?: string };
+// `clean`: the browser takes the room's noise out of the sound and evens its level. Unsaid, it
+// goes by the microphone's kind.
+export type DevicePick = { camera?: string; mic?: string; clean?: boolean };
+// What is open now: the devices, whether the sound is cleaned up, and the picture as the camera gives it.
+export type Using = { camera?: string; mic?: string; clean: boolean; picture?: { width: number; height: number; rate: number } };
 
 const PICKED = "episode-devices";
 function pickedBefore(): DevicePick {
@@ -21,7 +30,34 @@ function pickedBefore(): DevicePick {
   }
 }
 
-const TYPES = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+// H.264 first: the computer's own chip encodes it, so a full frame at a high rate drops no
+// frames, where VP9 is worked out in software as the take runs. The sound is Opus wherever the
+// browser offers it.
+const TYPES = [
+  "video/webm;codecs=avc1.640028,opus",
+  "video/webm;codecs=h264,opus",
+  "video/mp4;codecs=avc1.640028,mp4a.40.2",
+  "video/webm;codecs=vp9,opus",
+  "video/webm;codecs=vp8,opus",
+  "video/webm",
+  "video/mp4",
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/mp4",
+];
+const SOUND_BITS = 256_000;
+// A quarter of a bit for each pixel of each frame: 15.6 Mbit/s for 1080p at 30 a second, about
+// 115 MB a minute. A call or a stream uses a third of that, and it shows once the take is
+// encoded a second time.
+function pictureBits(stream: MediaStream): number {
+  const { width = 1280, height = 720, frameRate = 30 } = stream.getVideoTracks()[0]?.getSettings() ?? {};
+  return Math.round(Math.min(24_000_000, Math.max(4_000_000, width * height * Math.min(frameRate, 30) * 0.25)));
+}
+
+// A microphone that sits in the computer, its screen or its webcam hears the room and the fan
+// with the voice, so its sound is cleaned up unless the person says otherwise. One they set up
+// for their voice is recorded as it is.
+const inTheComputer = (label: string) => /built-?in|internal|macbook|imac|display|array|webcam|facetime/i.test(label);
 
 export function useRecorder({ frames, camera, onDone }: { frames: string[]; camera: boolean; onDone: (recording: Recording) => Promise<void> }) {
   const [state, setState] = useState<RecorderState>("off");
@@ -60,11 +96,24 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
   }, [state, list]);
 
   const open = useCallback(
-    (want: DevicePick) =>
-      navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, ...(want.mic ? { deviceId: { exact: want.mic } } : {}) },
-        video: camera ? { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 }, ...(want.camera ? { deviceId: { exact: want.camera } } : {}) } : false,
-      }),
+    async (want: DevicePick) => {
+      const ask = (clean: boolean) =>
+        navigator.mediaDevices.getUserMedia({
+          // one channel: a voice is one, and a microphone on one input of two would otherwise be heard on one side
+          audio: { echoCancellation: false, noiseSuppression: clean, autoGainControl: clean, channelCount: { ideal: 1 }, ...(want.mic ? { deviceId: { exact: want.mic } } : {}) },
+          video: camera ? { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 }, ...(want.camera ? { deviceId: { exact: want.camera } } : {}) } : false,
+        });
+      if (want.clean !== undefined) return ask(want.clean);
+      // Not said: by the microphone's kind. Its name is certain only once it is open, so it is
+      // opened on a guess from the list and opened again only when the guess was wrong.
+      const mics = (await navigator.mediaDevices.enumerateDevices().catch(() => [])).filter((d) => d.kind === "audioinput");
+      const guess = inTheComputer((want.mic ? mics.find((d) => d.deviceId === want.mic) : mics[0])?.label ?? "");
+      const got = await ask(guess);
+      const right = inTheComputer(got.getAudioTracks()[0]?.label ?? "");
+      if (right === guess) return got;
+      got.getTracks().forEach((t) => t.stop());
+      return ask(right);
+    },
     [camera],
   );
 
@@ -81,10 +130,11 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
         } catch (error) {
           // the one picked before is not plugged in today: the browser's own choice, then
           if (!["OverconstrainedError", "NotFoundError"].includes((error as Error).name) || !(want.camera || want.mic)) throw error;
-          got = await open({});
-          setPicked({});
+          const rest: DevicePick = want.clean === undefined ? {} : { clean: want.clean };
+          got = await open(rest);
+          setPicked(rest);
           try {
-            localStorage.removeItem(PICKED);
+            localStorage.setItem(PICKED, JSON.stringify(rest));
           } catch {
             // nothing was kept
           }
@@ -111,10 +161,12 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
     [open, picked, list, release],
   );
 
-  // Another camera or microphone: kept for next time, and opened at once while getting ready.
+  // Another camera or microphone, or the sound cleaned up or left as it is: kept for next
+  // time, and opened at once while getting ready. Another microphone goes back to what suits it.
   const choose = useCallback(
     (change: DevicePick) => {
       const want = { ...picked, ...change };
+      if (change.mic && change.mic !== picked.mic && change.clean === undefined) delete want.clean;
       setPicked(want);
       try {
         localStorage.setItem(PICKED, JSON.stringify(want));
@@ -130,7 +182,7 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
     const source = live.current;
     if (!source) return;
     const type = TYPES.filter((t) => camera || t.startsWith("audio")).find((t) => MediaRecorder.isTypeSupported(t));
-    const made = new MediaRecorder(source, type ? { mimeType: type, videoBitsPerSecond: 6_000_000 } : undefined);
+    const made = new MediaRecorder(source, { ...(type ? { mimeType: type } : {}), audioBitsPerSecond: SOUND_BITS, ...(camera ? { videoBitsPerSecond: pictureBits(source) } : {}) });
     chunks.current = [];
     marks.current = [{ frame: frames[0], t: 0 }];
     kept.current = true;
@@ -140,7 +192,8 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
       release();
       if (!kept.current || blob.size === 0) return setState("off");
       setState("saving");
-      const ext = blob.type.includes("mp4") ? "mp4" : "webm";
+      // H.264 in a WebM container is Matroska, and the browser says so
+      const ext = blob.type.includes("mp4") ? "mp4" : blob.type.includes("matroska") ? "mkv" : "webm";
       void onDone({ blob, name: `take.${ext}`, marks: marks.current })
         .catch((error: Error) => setProblem(error.message))
         .finally(() => setState("off"));
@@ -196,10 +249,14 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
   useEffect(() => () => live.current?.getTracks().forEach((t) => t.stop()), []);
 
   const armNow = useCallback(() => arm(), [arm]);
-  // The devices in use: the picked ones, or whichever the browser opened.
-  const using: DevicePick = {
-    camera: stream?.getVideoTracks()[0]?.getSettings().deviceId,
-    mic: stream?.getAudioTracks()[0]?.getSettings().deviceId,
+  // What is in use: the picked devices, or whichever the browser opened, and what they give.
+  const heard = stream?.getAudioTracks()[0]?.getSettings();
+  const seen = stream?.getVideoTracks()[0]?.getSettings();
+  const using: Using = {
+    camera: seen?.deviceId,
+    mic: heard?.deviceId,
+    clean: heard?.noiseSuppression === true,
+    picture: seen?.width && seen.height ? { width: seen.width, height: seen.height, rate: Math.round(seen.frameRate ?? 0) } : undefined,
   };
   return { state, stream, index, count, elapsed, problem, devices, using, choose, arm: armNow, start, next, stop, clearProblem: () => setProblem("") };
 }

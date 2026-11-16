@@ -10,9 +10,11 @@ sandbox (development) it is a folder under `.host-sandbox/` and this machine's o
 from __future__ import annotations
 
 import shlex
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import IO
 
 from design_agent.middleware.workspace import stage
 from design_agent.runtime.sandbox import SandboxBinding
@@ -69,6 +71,25 @@ class Computer:
         parents = sorted({str(Path(path).parent) for path, _ in files})
         self._runner.exec(self._thread_id, "mkdir -p " + " ".join(shlex.quote(p) for p in parents))
         self._runner.put_archive(self._thread_id, tar_of(files), root=False)
+
+    def put_stream(self, path: str, source: IO[bytes]) -> None:
+        """One file from an open file on this computer, from its start, copied across without
+        being held in memory: a camera's own recording runs to gigabytes."""
+        source.seek(0)
+        if self._runner is None:
+            target = self._local(path)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("wb") as out:
+                shutil.copyfileobj(source, out, 1024 * 1024)
+            return
+        try:
+            source.fileno()
+        except (AttributeError, OSError):
+            # no file behind it (bytes already in memory): sent the way small files are
+            self.put([(path, source.read())])
+            return
+        self._runner.exec(self._thread_id, f"mkdir -p {shlex.quote(str(Path(path).parent))}")
+        self._runner.put_file(self._thread_id, path, source)
 
     def get(self, path: str) -> bytes | None:
         if self._runner is None:

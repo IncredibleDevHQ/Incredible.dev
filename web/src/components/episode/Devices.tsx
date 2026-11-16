@@ -1,12 +1,13 @@
 // The microphone's level while getting ready and during the take, and which microphone and
 // camera are used. The level moves with the voice, so a microphone that is dead, or the wrong
-// one, is seen before the take and not after it. A click opens the choice when there is one;
-// the pick is kept on this computer.
-import { ChevronDown, Mic } from "lucide-react";
+// one, is seen before the take and not after it. A click opens the choice: the microphone,
+// whether the browser cleans its sound up, and the camera with the picture it gives (so a
+// camera sending less than it can is seen before the take). The picks are kept on this computer.
+import { Check, ChevronDown, Mic } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Popover } from "../Popover";
 import { Tooltip } from "../Tooltip";
-import type { DevicePick, Devices as Found } from "./recorder";
+import type { DevicePick, Devices as Found, Using } from "./recorder";
 
 // How loud the microphone is right now, drawn without a render: it rises at once and falls
 // slowly, so the eye can follow it.
@@ -40,11 +41,10 @@ export function Level({ stream }: { stream: MediaStream | null }) {
   return <span ref={bar} className="ep-level" aria-hidden="true" />;
 }
 
-export function Devices({ stream, devices, using, camera, onChoose }: { stream: MediaStream | null; devices: Found; using: DevicePick; camera: boolean; onChoose: (pick: DevicePick) => void }) {
+export function Devices({ stream, devices, using, camera, onChoose }: { stream: MediaStream | null; devices: Found; using: Using; camera: boolean; onChoose: (pick: DevicePick) => void }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const cameras = camera ? devices.cameras : [];
-  const choice = devices.mics.length > 1 || cameras.length > 1;
   const mic = devices.mics.find((d) => d.deviceId === using.mic)?.label ?? "the microphone";
   const pick = (change: DevicePick) => {
     setOpen(false);
@@ -52,30 +52,38 @@ export function Devices({ stream, devices, using, camera, onChoose }: { stream: 
   };
   return (
     <span className="ep-devices">
-      <Tooltip content={choice ? "Choose the microphone and camera" : `Listening to ${mic}`} side="top">
-        <button
-          ref={button}
-          type="button"
-          className="btn"
-          aria-label={choice ? `Microphone and camera. Listening to ${mic}` : `Listening to ${mic}`}
-          aria-haspopup={choice ? "menu" : undefined}
-          aria-expanded={choice ? open : undefined}
-          onClick={() => choice && setOpen((o) => !o)}
-        >
+      <Tooltip content="Choose the microphone and camera" side="top">
+        <button ref={button} type="button" className="btn" aria-label={`Microphone and camera. Listening to ${mic}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
           <Mic />
           <Level stream={stream} />
-          {choice && <ChevronDown />}
+          <ChevronDown />
         </button>
       </Tooltip>
       <Popover open={open} onClose={() => setOpen(false)} anchor={button} side="top" align="start" offset={6} width={300} className="ep-menu">
         <div role="menu" aria-label="Microphone and camera">
-          {devices.mics.length > 0 && <p>Microphone</p>}
+          <p>Microphone</p>
           {devices.mics.map((d) => (
             <button type="button" role="menuitemradio" aria-checked={d.deviceId === using.mic} key={d.deviceId} onClick={() => pick({ mic: d.deviceId })}>
               {d.label}
             </button>
           ))}
-          {cameras.length > 0 && <p>Camera</p>}
+          {/* off for a microphone set up for the voice; on for one in the computer, which hears the room */}
+          <button type="button" role="menuitemcheckbox" aria-checked={using.clean} onClick={() => pick({ clean: !using.clean })}>
+            Clean up room noise
+            {using.clean && <Check />}
+          </button>
+          {cameras.length > 0 && (
+            <p>
+              Camera
+              {using.picture && (
+                <small>
+                  {" "}
+                  · {using.picture.width} × {using.picture.height}
+                  {using.picture.rate > 0 && `, ${using.picture.rate} a second`}
+                </small>
+              )}
+            </p>
+          )}
           {cameras.map((d) => (
             <button type="button" role="menuitemradio" aria-checked={d.deviceId === using.camera} key={d.deviceId} onClick={() => pick({ camera: d.deviceId })}>
               {d.label}
