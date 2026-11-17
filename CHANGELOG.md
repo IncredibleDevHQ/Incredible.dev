@@ -39,8 +39,9 @@
     the film renders by moving the picture's whole box. While pictures are being made a pill
     in the bar fills as they land, with a Stop, and opens onto every picture with its state and
     what its builder is doing. The ones that stopped are made again on request. While the plan
-    is written its stages stand as a trail, the one under way opening onto the writer's latest
-    steps and notes (the demo's writer keeps its turns in the record as an agent does).
+    is written it fills the screen: its stages as a trail, every turn of the writer on one strip
+    of time, the turn under way with its steps and notes as they come, and the idea and the
+    chapters as they land (the demo's writer keeps its turns in the record as an agent does).
   - The plan is read, and changed, before anything is drawn. A chapter's script is a document
     edited as text (TipTap): words are typed in place and kept when the caret leaves the line,
     Enter starts the next line of the block (splitting a line in one change), Backspace at a

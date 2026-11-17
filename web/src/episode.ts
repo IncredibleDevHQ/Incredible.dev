@@ -1,6 +1,6 @@
 // What the studio reads off an episode: its lines, each line's picture and take, and where a
 // chapter stands. The server derives every number (episode_desk.py); nothing here recounts one.
-import type { EpisodeChapter, EpisodeFrame, EpisodeLine, EpisodeTake, EpisodeUnit, EpisodeView, LayoutSpot, Level, Presence } from "./api";
+import type { EpisodeChapter, EpisodeFrame, EpisodeLine, EpisodeSettings, EpisodeTake, EpisodeUnit, EpisodeView, LayoutSpot, Level, Presence } from "./api";
 
 export const PRESENCE: Record<Presence, string> = { person: "You", both: "Both", content: "Picture" };
 export const LAYOUTS: Record<string, string> = {
@@ -159,6 +159,9 @@ export function pictureCount(view: EpisodeView, chapter?: string) {
 // What each way of making a picture is called where a person meets it: drawn at once from the
 // plan, or as motion graphics, each line planned as a shot first.
 export const LEVEL_NAMES: Record<Level, string> = { simple: "Simple", rich: "Motion graphics" };
+// The voice that reads the film, in the words the studio uses for it.
+export const voiceName = (settings: EpisodeSettings) =>
+  settings.voice === "local" ? "Local narrator" : settings.voice === "narrator" ? (settings.narrator?.name ?? "ElevenLabs") : settings.presenter === "off" ? "Recorded" : "Your voice";
 
 export function pictureWords(unit: EpisodeUnit, view?: EpisodeView): string {
   if (unit.kind === "undesigned") return pictureState(unit, view) === "changed" ? "Waits for the writer" : "Being planned";

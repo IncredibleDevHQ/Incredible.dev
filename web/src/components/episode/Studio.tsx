@@ -18,19 +18,16 @@ import {
   Monitor,
   Moon,
   Play,
-  RotateCcw,
   Sparkles,
-  Square,
   Sun,
   Upload,
 } from "lucide-react";
 import { flushSync } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type EpisodeAsk, type EpisodeChapter, type EpisodeView, type WriterId } from "../../api";
+import { api, type EpisodeAsk, type EpisodeChapter, type EpisodeView } from "../../api";
 import { chapterName, clockLine, resizePresenter, LAYOUTS, linesOf, mmss, pictureCount, takeOf, unitOf } from "../../episode";
 import { useHouse } from "../../store";
 import { useTheme } from "../../theme";
-import { AgentMark } from "../../ui";
 import { FileDrop } from "../FileDrop";
 import { Kbd } from "../Kbd";
 import { Tooltip } from "../Tooltip";
@@ -38,7 +35,7 @@ import { Ask, turning, useWaiting, type Marks, type Run, type Waiting } from "./
 import { ChoicePanel, PANELS, type Panel } from "./Choices";
 import { Devices, Level } from "./Devices";
 import { useRecorder, type Recording } from "./recorder";
-import { FilmPage, WRITERS, type Open } from "./Film";
+import { FilmPage, type Open } from "./Film";
 import { Script, type ScriptHandle } from "./Script";
 import { Stills } from "./Picture";
 import { FILM, Slides } from "./Slides";
@@ -48,7 +45,8 @@ import { spanAt } from "./chapterSeek";
 import { spansOf, Timeline } from "./Timeline";
 import { Stage } from "./Stage";
 import { ApplyChanges, FilmDownload, FilmTools } from "./Tools";
-import { WorkPill, WorkTrail } from "./Work";
+import { WorkPill } from "./Work";
+import { PlanRun } from "./PlanRun";
 
 export function EpisodeStudio() {
   const view = useHouse((s) => s.episode);
@@ -132,7 +130,7 @@ export function EpisodeStudio() {
     <div className="ep" role="dialog" aria-modal="true" aria-label={`Episode: ${view.title}`}>
       <Bar view={view} ready={ready} onAt={go} onClose={() => void openEpisode(null)} run={run} busy={busy} />
       {!ready || !plan ? (
-        <Planning view={view} run={run} busy={busy} />
+        <PlanRun view={view} run={run} busy={busy} />
       ) : (
         <main className={chapter ? "ep-chapter" : "ep-chapter ep-film-page"}>
           <Slides view={view} at={chapter?.id ?? FILM} onAt={go} />
@@ -203,69 +201,6 @@ function Now({ view, run, busy, onAt }: { view: EpisodeView; run: Run; busy: boo
           </button>
         </Tooltip>
       )}
-    </div>
-  );
-}
-
-// While the plan is being written: where the writer is, and what it has put down so far.
-function Planning({ view, run, busy }: { view: EpisodeView; run: Run; busy: boolean }) {
-  const stage = view.stage;
-  const failed = view.status === "failed";
-  const writers = view.options.writers.filter((w) => w.ready);
-  const [writer, setWriter] = useState<WriterId>(view.writer);
-  return (
-    <main className="ep-plan">
-      <section className="ep-plan-main">
-        <p className="ep-kicker">{failed ? "The plan stopped" : `Planning with ${WRITERS[view.writer] ?? "an agent"}`}</p>
-        <h1>{view.written.idea || view.title}</h1>
-        <WorkTrail view={view} />
-        {failed ? (
-          <div className="ep-plan-fail">
-            <p>{stage.said || "The writer stopped before the plan was done."}</p>
-            <div className="ep-row">
-              <WriterPick writers={writers} value={writer} onChange={setWriter} />
-              <button type="button" className="btn primary" disabled={busy} onClick={() => void run(() => api.planAgain(view.id, writer === view.writer ? "" : writer))}>
-                <RotateCcw />
-                Pick it up
-              </button>
-            </div>
-            <p className="faint">It carries on from the stage it stopped at. Another agent picks up the same files and the record of what was said.</p>
-          </div>
-        ) : (
-          <div className="ep-row">
-            <button type="button" className="btn" onClick={() => void api.stopEpisode(view.id).catch((e: Error) => useHouse.getState().say(e.message))}>
-              <Square />
-              Stop
-            </button>
-          </div>
-        )}
-      </section>
-      {view.written.chapters.length > 0 && (
-        <section className="ep-plan-so-far" aria-label="Written so far">
-          <h3>Chapters so far</h3>
-          <ol>
-            {view.written.chapters.map((c) => (
-              <li key={c.id}>
-                <span>{c.question}</span>
-                <small>{c.beats} lines</small>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-    </main>
-  );
-}
-
-function WriterPick({ writers, value, onChange }: { writers: EpisodeView["options"]["writers"]; value: WriterId; onChange: (id: WriterId) => void }) {
-  return (
-    <div className="agents named" role="radiogroup" aria-label="Who writes it">
-      {writers.map((w) => (
-        <button type="button" role="radio" key={w.id} aria-checked={value === w.id} onClick={() => onChange(w.id)}>
-          <AgentMark mark={w.local ? w.id : undefined} size="sm" />
-          <span>{w.title}</span>
-        </button>
-      ))}
     </div>
   );
 }

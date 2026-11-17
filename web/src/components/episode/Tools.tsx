@@ -7,7 +7,7 @@
 import { AudioLines, Bot, ChevronDown, Download, LayoutTemplate, Shapes, Sparkles, TriangleAlert, type LucideIcon } from "lucide-react";
 import { useId, useRef, useState, type ReactNode } from "react";
 import { api, type EpisodeChoices, type EpisodeUnit, type EpisodeView } from "../../api";
-import { keepWriter, LEVEL_NAMES, linesOf, LOOKS, pictureCount, PICTURES, pictureState } from "../../episode";
+import { keepWriter, LEVEL_NAMES, linesOf, LOOKS, pictureCount, PICTURES, pictureState, voiceName } from "../../episode";
 import { Popover } from "../Popover";
 import { Tooltip } from "../Tooltip";
 import { turning, type Run } from "./Ask";
@@ -107,8 +107,7 @@ function VoiceTool({ view, run, busy }: Props) {
   const clone = view.settings.cloned_voice;
   const usingClone = voice === "narrator" && !!clone && clone.id === view.settings.narrator?.id;
   const [upload, setUpload] = useState(false);
-  const value =
-    voice === "local" ? "Local narrator" : voice === "narrator" ? (view.settings.narrator?.name ?? "ElevenLabs") : presenterOff ? "Recorded" : "Your voice";
+  const value = voiceName(view.settings);
   return (
     <>
       <Tool icon={AudioLines} label="Voice" value={value} width={380}>

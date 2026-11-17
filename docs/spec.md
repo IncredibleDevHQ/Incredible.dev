@@ -699,8 +699,12 @@ app's canvas, from a channel's material or a research frame's notes.
   drawn until a person asks for its pictures. Its length is asked for as a least and a
   most, at least 30 seconds apart, and the script must land between the two (a plan that ends
   outside them says what was asked for beside its length); on Auto no length is asked for and
-  none is checked, so the material decides how long it runs. While it is written, the stages
-  stand as a trail, the one under way opening onto the writer's latest steps and notes.
+  none is checked, so the material decides how long it runs. While it is written, it fills the
+  screen: the stages as a trail that turns green as each one finishes and says what it left
+  (the passages read, the chapters and beats); every turn the writer took on one strip of time,
+  the house's checks between them; each finished turn with the first words of its answer, and
+  the turn under way with its steps and notes as they come, the newest in the present tense;
+  and beside them the film's idea, its chapters as they land and what it is made from.
 - **Changing it** takes two forms and no others. The chapter's script is edited as a text:
   words are typed where they are read and kept when the caret leaves the line; Enter starts
   the next line of its block (in the middle of a line it splits it, as one change), Backspace

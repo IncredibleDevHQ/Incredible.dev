@@ -1,10 +1,9 @@
 // The work the agents do for an episode, as it happens. Written for this house from notes on how
 // agent-progress components behave; no other component's source is in it.
 //
-// - `WorkTrail`: the plan's stages as a trail. The stage under way opens onto what the writer is
-//   doing in it: its steps and its own notes, newest last, the older ones folded away.
-// - `PictureTrail`: one picture's build as the same trail, its builder's steps and notes under
-//   the stage it is on.
+// - `PictureTrail`: one picture's build as a trail, its builder's steps and notes under the
+//   stage it is on, newest last, the older ones folded away. (The plan's own stages are drawn
+//   across the whole screen by `PlanRun`.)
 // - `WorkPill`: the pictures in the bar, as one pill with a ring that fills as they are made. It
 //   opens onto every picture as a cell, filtered by state, each saying what its builder is on or
 //   why it stopped; a cell opens its chapter.
@@ -20,84 +19,6 @@ import { Swap } from "./Tiles";
 
 // How many of the writer's latest steps and notes show before the older ones fold away.
 const SHOWN = 5;
-
-export function WorkTrail({ view }: { view: EpisodeView }) {
-  const stage = view.stage;
-  const failed = view.status === "failed";
-  const current = stage.name === "done" ? "done" : stage.name === "redo" || stage.name === "fix" ? "frames" : (stage.name ?? "brief");
-  const at =
-    current === "done"
-      ? view.steps.length
-      : Math.max(
-          0,
-          view.steps.findIndex((s) => s.id === current),
-        );
-  const events = view.working?.events ?? [];
-  const [all, setAll] = useState(false);
-  const folded = all ? 0 : Math.max(0, events.length - SHOWN);
-  const shown = events.slice(folded);
-  const checking = stage.state === "reading";
-
-  // What a screen reader hears: a stage that finishes or stops, said once.
-  const [heard, setHeard] = useState("");
-  const was = useRef(at);
-  useEffect(() => {
-    if (at > was.current) setHeard(`${view.steps[at - 1]?.label ?? "A stage"}: done`);
-    was.current = at;
-  }, [at, view.steps]);
-  useEffect(() => {
-    if (failed) setHeard(`${view.steps[at]?.label ?? "The plan"}: stopped`);
-  }, [failed, at, view.steps]);
-
-  return (
-    <div className="ep-trail">
-      <ol aria-label="The plan, stage by stage">
-        {view.steps.map((s, i) => {
-          const state = i < at ? "done" : i === at ? (failed ? "failed" : "running") : "next";
-          const open = state === "running" && !checking && shown.length > 0;
-          return (
-            <li key={s.id} className="ep-trail-step" data-state={state} data-open={open || undefined} aria-current={state === "running" ? "step" : undefined}>
-              <span className="ep-trail-row">
-                <span className="ep-trail-mark" aria-hidden="true">
-                  {state === "done" ? <Check /> : state === "failed" ? <X /> : null}
-                </span>
-                <span className="ep-trail-title">{s.label}</span>
-                <span className="ep-trail-meta">
-                  {state === "running" && (
-                    <>
-                      <Swap swapKey={checking ? "checking" : (stage.round ?? 0) > 0 ? `fix-${stage.round}` : "writing"} className="ep-trail-doing">
-                        {checking ? "Checking" : (stage.round ?? 0) > 0 ? `Fixing · round ${stage.round}` : "Writing"}
-                      </Swap>
-                      {stage.at && <Elapsed since={stage.at} />}
-                    </>
-                  )}
-                  {state === "failed" && "Stopped"}
-                </span>
-              </span>
-              {open && (
-                <div className="ep-trail-branch" aria-label={`What ${view.working?.harness ? "the writer" : "it"} is doing`}>
-                  {events.length > SHOWN && (
-                    <button type="button" className="ep-trail-fold" aria-expanded={all} onClick={() => setAll((a) => !a)}>
-                      {all ? "Show fewer" : `+${folded} earlier`}
-                    </button>
-                  )}
-                  <ol>
-                    {shown.map((e, n) => (
-                      <TrailEvent key={`${e.at}-${n + folded}`} event={e} latest={n === shown.length - 1} />
-                    ))}
-                  </ol>
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-      <span className="sr-only" role="status" aria-live="polite">
-        {heard}
-      </span>
-    </div>
-  );
-}
 
 // How a picture is made, stage by stage, as the yes to making it lists them before it starts:
 // motion graphics have each line planned as a shot first and wait for the person's go on a still

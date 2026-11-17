@@ -966,16 +966,159 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-notice[data-tone="amber"] { color: var(--amber); }
 
 /* while the plan is being written */
-.ep-plan { display: grid; grid-template-columns: minmax(0, 620px) minmax(0, 420px); justify-content: center; align-content: start; gap: 56px; padding: 56px 32px; overflow: auto; }
-.ep-plan-main { display: grid; gap: 22px; align-content: start; }
-.ep-plan-main h1 { margin: 0; font-size: 26px; line-height: 1.25; letter-spacing: -0.015em; text-wrap: balance; }
-.ep-plan-fail { display: grid; gap: 12px; padding: 16px; border-radius: 14px; background: var(--raised); border: 1px solid var(--line); }
-.ep-plan-fail p { margin: 0; }
-.ep-plan-so-far h3 { margin: 0 0 10px; color: var(--muted); font-size: 12.5px; font-weight: 600; }
-.ep-plan-so-far ol { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; counter-reset: ch; }
-.ep-plan-so-far li { counter-increment: ch; display: grid; grid-template-columns: 22px 1fr; column-gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line-soft); font-size: 13.5px; line-height: 1.4; }
-.ep-plan-so-far li::before { content: counter(ch); grid-row: span 2; color: var(--muted); font-weight: 650; }
-.ep-plan-so-far small { color: var(--muted); }
+/* The plan being written, across the whole screen (PlanRun): the head and its strip of time, then
+   the plan, what the writer does now and what it has put down so far, side by side. */
+.ep-run { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 14px; min-height: 0; padding: 10px clamp(16px, 2.4vw, 36px) 18px; overflow: hidden; }
+.ep-run > * { width: 100%; max-width: 1640px; margin-inline: auto; }
+.ep-run-head { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.ep-run-head > .mark { width: 40px; height: 40px; border-radius: 11px; }
+.ep-run-name { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.ep-run-name h1 { margin: 0; overflow: hidden; font-size: clamp(19px, 1.6vw, 25px); line-height: 1.25; letter-spacing: -0.015em; white-space: nowrap; text-overflow: ellipsis; }
+.ep-run-clock { display: grid; justify-items: end; gap: 1px; margin: 0; color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.ep-run-clock time { color: var(--ink); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+
+/* Every turn, as wide as it ran; the house's checks between turns as quieter gaps */
+.ep-run-strip { display: flex; gap: 3px; height: 8px; margin: 0; padding: 0; list-style: none; }
+.ep-run-strip[data-empty] { border-radius: 4px; background: linear-gradient(90deg, var(--wash) 0%, var(--line) 50%, var(--wash) 100%); background-size: 200% 100%; animation: ep-run-sheen 1.8s linear infinite; }
+.ep-run-strip > li { display: flex; flex-basis: 0; min-width: 6px; transition: opacity 220ms ease; }
+.ep-run-strip[data-lighting] > li:not([data-lit]) { opacity: 0.35; }
+.ep-run-strip button { position: relative; flex: 1; min-width: 0; height: 100%; padding: 0; overflow: hidden; border: 0; border-radius: 4px; background: color-mix(in srgb, var(--green) 42%, var(--ep-sheet)); cursor: pointer; transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1); }
+.ep-run-strip button:hover, .ep-run-strip [data-lit] button { transform: scaleY(1.5); }
+.ep-run-strip button:focus-visible { outline: 2px solid var(--focus-line); outline-offset: 2px; }
+.ep-run-strip [data-state="working"] button { background: var(--green); }
+.ep-run-strip [data-state="working"] button::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent); animation: ep-run-sweep 1.6s ease-in-out infinite; }
+.ep-run-strip [data-state="failed"] button { background: repeating-linear-gradient(135deg, var(--red) 0 3px, var(--red-soft) 3px 6px); }
+.ep-run-strip [data-state="stopped"] button { background: var(--line-strong); }
+.ep-run-gap { border-radius: 4px; background: repeating-linear-gradient(90deg, var(--line-strong) 0 2px, transparent 2px 5px); }
+.ep-run-gap[data-live] { animation: ep-run-breathe 1.6s ease-in-out infinite; }
+
+/* The three panels */
+.ep-run-body { display: grid; grid-template-columns: clamp(236px, 17vw, 296px) minmax(0, 1fr) clamp(300px, 25vw, 410px); gap: 14px; min-height: 0; }
+.ep-run-panel { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; overflow: hidden; border-radius: 14px; background: var(--ep-sheet); box-shadow: 0 0 0 1px var(--ep-edge), var(--ep-lift); }
+.ep-run-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; padding: 14px 18px 8px; }
+.ep-run-panel-head h2, .ep-run-so-far h2 { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 0; color: var(--muted); font-size: 12.5px; font-weight: 600; letter-spacing: 0.02em; }
+.ep-run-count { overflow: hidden; color: var(--faint); font-size: 12.5px; white-space: nowrap; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+
+/* The plan as a trail: green where the writer has been, a light running into the stage under way */
+.ep-run-trail { min-height: 0; margin: 0; padding: 8px 18px 20px; overflow: auto; list-style: none; }
+.ep-run-trail > li { position: relative; display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 12px; padding-bottom: 26px; }
+.ep-run-trail > li:last-child { padding-bottom: 4px; }
+.ep-run-trail > li:not(:last-child)::after { content: ""; position: absolute; left: 10.25px; top: 27px; bottom: 5px; width: 1.5px; border-radius: 1px; background: var(--line); transition: background 400ms ease; }
+.ep-run-trail > li[data-state="done"]::after { background: var(--green); }
+.ep-run-mark { position: relative; z-index: 1; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 999px; border: 1.5px solid var(--line-strong); background: var(--ep-sheet); color: var(--green-ink); }
+.ep-run-mark svg { width: 12px; height: 12px; stroke-width: 3; }
+.ep-run-trail > li[data-state="done"] .ep-run-mark { border-color: var(--green); background: var(--green); animation: ep-trail-pop 380ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.ep-run-trail > li[data-state="running"] .ep-run-mark { border-color: color-mix(in srgb, var(--green) 28%, transparent); }
+.ep-run-trail > li[data-state="running"] .ep-run-mark::after { content: ""; position: absolute; inset: -1.5px; border-radius: inherit; border: 1.5px solid transparent; border-top-color: var(--green); animation: ep-trail-spin 900ms linear infinite; }
+.ep-run-trail > li[data-state="running"] .ep-run-mark::before { content: ""; position: absolute; inset: -1.5px; border-radius: inherit; animation: ep-run-ring 2.4s ease-out infinite; }
+.ep-run-trail > li[data-state="failed"] .ep-run-mark { border-color: var(--red); background: var(--red); color: #ffffff; }
+.ep-run-stage { display: grid; gap: 4px; min-width: 0; padding-top: 1px; }
+.ep-run-stage b { color: var(--faint); font-size: 14.5px; font-weight: 550; line-height: 1.35; transition: color 300ms ease; }
+.ep-run-trail > li[data-state="done"] .ep-run-stage b { color: var(--ink-2); }
+.ep-run-trail > li:is([data-state="running"], [data-state="failed"]) .ep-run-stage b { color: var(--ink); }
+.ep-run-stage small { color: var(--faint); font-size: 12.5px; line-height: 1.45; }
+.ep-run-trail > li[data-state="failed"] .ep-run-stage small { color: var(--red); }
+.ep-run-doing { display: flex; align-items: baseline; gap: 8px; }
+.ep-run-doing .ep-elapsed { color: var(--muted); font-variant-numeric: tabular-nums; }
+.ep-run-light { position: absolute; left: 9.5px; top: 27px; bottom: 5px; width: 3px; overflow: hidden; pointer-events: none; }
+.ep-run-light::before { content: ""; position: absolute; left: 0; right: 0; top: -40px; height: 34px; border-radius: 3px; background: linear-gradient(to bottom, transparent, var(--green)); animation: ep-run-light 2.4s cubic-bezier(0.45, 0, 0.25, 1) infinite; }
+
+/* Words that shimmer while they are what is happening */
+.ep-run-shine { --shine-base: var(--ink-2); --shine-peak: var(--green); background: linear-gradient(90deg, var(--shine-base) 0%, var(--shine-base) 40%, var(--shine-peak) 50%, var(--shine-base) 60%, var(--shine-base) 100%); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: ep-ai-shine 2.2s linear infinite; }
+.ep-run-doing .ep-run-shine { --shine-base: var(--green); --shine-peak: var(--ink); font-weight: 600; }
+
+/* Now: each turn, the one under way open onto its steps and notes */
+.ep-run-scroll { min-height: 0; padding: 4px 18px 26px; overflow: auto; overscroll-behavior: contain; }
+.ep-run-turns { display: grid; margin: 0; padding: 0; list-style: none; }
+.ep-run-turn { display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 12px; margin: 0 -8px; padding: 12px 8px; border-radius: 10px; border-top: 1px solid var(--line-soft); transition: background 200ms ease; animation: ep-run-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.ep-run-turn:first-child { border-top-color: transparent; }
+.ep-run-turn[data-lit] { background: var(--ep-pick); }
+.ep-run-turn-mark { position: relative; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 999px; background: var(--green-soft); color: var(--green); }
+.ep-run-turn-mark svg { width: 12px; height: 12px; stroke-width: 3; }
+.ep-run-turn[data-state="failed"] .ep-run-turn-mark { background: var(--red-soft); color: var(--red); }
+.ep-run-turn[data-state="stopped"] .ep-run-turn-mark { background: var(--wash); color: var(--muted); }
+.ep-run-turn[data-state="stopped"] .ep-run-turn-mark svg { width: 9px; height: 9px; }
+.ep-run-turn[data-state="working"] .ep-run-turn-mark { background: none; border: 1.5px solid color-mix(in srgb, var(--green) 28%, transparent); }
+.ep-run-turn[data-state="working"] .ep-run-turn-mark::after { content: ""; position: absolute; inset: -1.5px; border-radius: inherit; border: 1.5px solid transparent; border-top-color: var(--green); animation: ep-trail-spin 900ms linear infinite; }
+.ep-run-turn-body { display: grid; gap: 6px; min-width: 0; }
+.ep-run-turn-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0; padding-top: 2px; }
+.ep-run-turn-head b { color: var(--ink); font-size: 13.5px; font-weight: 600; }
+.ep-run-turn-head > span { color: var(--faint); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ep-run-said { display: -webkit-box; margin: 0; overflow: hidden; color: var(--ink-2); font-size: 13.5px; line-height: 1.55; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.ep-run-log { display: grid; gap: 1px; margin: 2px 0 0; padding: 0; list-style: none; }
+.ep-run-step { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 32px; color: var(--muted); font-size: 13.5px; animation: ep-run-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.ep-run-tile { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--wash); box-shadow: inset 0 0 0 1px var(--line-soft); color: var(--muted); transition: color 300ms ease, background 300ms ease, box-shadow 300ms ease; }
+.ep-run-tile svg { width: 13px; height: 13px; stroke-width: 1.8; }
+.ep-run-verb { display: flex; align-items: baseline; gap: 7px; min-width: 0; overflow: hidden; white-space: nowrap; }
+.ep-run-verb > span { flex: none; }
+.ep-run-verb code { min-width: 0; overflow: hidden; color: var(--ink-2); font-family: var(--mono); font-size: 12.5px; text-overflow: ellipsis; }
+.ep-run-step time { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ep-run-step[data-newest] { color: var(--ink); }
+.ep-run-step[data-newest] .ep-run-tile { background: color-mix(in srgb, var(--green) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--green) 45%, transparent); color: var(--green); }
+.ep-run-step[data-newest] code { color: var(--ink); }
+.ep-run-note { margin: 8px 0 8px 34px; padding: 1px 0 1px 12px; border-left: 2px solid var(--line-strong); color: var(--ink-2); font-size: 14px; line-height: 1.55; animation: ep-run-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.ep-run-note q { quotes: none; }
+.ep-run-note[data-newest] { border-left-color: var(--green); color: var(--ink); }
+.ep-run-between { display: flex; align-items: center; gap: 10px; padding: 14px 0 4px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 13.5px; }
+.ep-run-turns > .ep-run-between:first-child { border-top: 0; }
+.ep-run-spin { flex: none; width: 14px; height: 14px; border-radius: 999px; border: 1.5px solid color-mix(in srgb, var(--green) 25%, transparent); border-top-color: var(--green); animation: ep-trail-spin 900ms linear infinite; }
+.ep-run-latest { position: absolute; left: 50%; bottom: 14px; translate: -50% 0; padding: 6px 14px; border: 0; border-radius: 999px; background: var(--ink); color: var(--bg); font: 600 12.5px var(--font); box-shadow: var(--shadow); cursor: pointer; animation: ep-run-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.ep-run-latest:focus-visible { outline: 2px solid var(--focus-line); outline-offset: 2px; }
+.ep-run-fail { display: grid; gap: 12px; margin-top: 14px; padding: 16px; border-radius: 12px; background: color-mix(in srgb, var(--red) 6%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--red) 28%, transparent); }
+.ep-run-fail p { margin: 0; }
+.ep-run-fail > p:first-child { color: var(--ink); line-height: 1.5; }
+
+/* So far: the idea, the chapters as they land, and what the film is made from */
+.ep-run-so-far { display: block; overflow: auto; }
+.ep-run-so-far > section { display: grid; gap: 10px; padding: 16px 18px; }
+.ep-run-so-far > section + section { border-top: 1px solid var(--line-soft); }
+.ep-run-so-far h2 small { color: var(--faint); font-size: 12.5px; font-weight: 500; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.ep-run-idea { margin: 0; color: var(--ink); font-size: clamp(15px, 1.15vw, 17.5px); line-height: 1.5; letter-spacing: -0.005em; text-wrap: pretty; animation: ep-run-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.ep-run-chapters { display: grid; margin: 0; padding: 0; list-style: none; counter-reset: ch; }
+.ep-run-chapters li { counter-increment: ch; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; padding: 9px 0; border-top: 1px solid var(--line-soft); color: var(--ink-2); font-size: 13.5px; line-height: 1.45; animation: ep-run-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.ep-run-chapters li:first-child { padding-top: 2px; border-top: 0; }
+.ep-run-chapters li::before { content: counter(ch); color: var(--faint); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ep-run-chapters small { color: var(--faint); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ep-run-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 18px; margin: 0; font-size: 13px; line-height: 1.4; }
+.ep-run-facts dt { color: var(--muted); }
+.ep-run-facts dd { margin: 0; color: var(--ink-2); }
+.ep-run-pending { display: grid; gap: 8px; }
+.ep-run-pending i { display: block; height: 9px; border-radius: 5px; background: linear-gradient(90deg, var(--wash) 0%, var(--line) 50%, var(--wash) 100%); background-size: 200% 100%; animation: ep-run-sheen 1.8s linear infinite; }
+.ep-run-pending i:nth-of-type(2) { width: 82%; }
+.ep-run-pending i:nth-of-type(3) { width: 64%; }
+.ep-run-pending small { color: var(--faint); font-size: 12.5px; }
+
+@keyframes ep-run-in { from { opacity: 0; transform: translateY(6px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes ep-run-sheen { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@keyframes ep-run-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@keyframes ep-run-breathe { 50% { opacity: 0.4; } }
+@keyframes ep-run-light { 0% { top: -40px; opacity: 0; } 10% { opacity: 1; } 58% { top: calc(100% - 30px); opacity: 1; } 72%, 100% { top: 100%; opacity: 0; } }
+@keyframes ep-run-ring { 0%, 56% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 50%, transparent); } 84%, 100% { box-shadow: 0 0 0 7px transparent; } }
+
+/* Narrower: the plan beside the log, what is written under it; a phone: one column */
+@media (max-width: 1180px) {
+  .ep-run-body { grid-template-columns: clamp(216px, 26vw, 264px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 0.75fr); }
+  .ep-run-plan { grid-row: 1 / span 2; }
+  .ep-run-so-far { grid-column: 2; }
+}
+@media (max-width: 760px) {
+  /* one column in the page's own flow, each panel as tall as what it holds; the log keeps its own scroll */
+  .ep-run, .ep-run-body { display: flex; flex-direction: column; gap: 14px; }
+  .ep-run { overflow: auto; padding: 10px 16px 24px; }
+  .ep-run > *, .ep-run-body > * { flex: none; }
+  .ep-run-head { flex-wrap: wrap; }
+  .ep-run-name { flex-basis: calc(100% - 60px); }
+  .ep-run-clock { justify-items: start; }
+  .ep-run-panel { display: block; overflow: visible; }
+  .ep-run-trail { overflow: visible; }
+  .ep-run-scroll { max-height: 62vh; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ep-run *, .ep-run *::before, .ep-run *::after { animation: none !important; transition: none !important; }
+  .ep-run-light { display: none; }
+  .ep-run-shine { background: none; color: inherit; }
+  .ep-run-doing .ep-run-shine { color: var(--green); }
+}
 
 /* the film: its chapters, and the film so far */
 .ep-touched { align-self: center; padding: 2px 8px; border-radius: 999px; background: var(--green-soft); color: var(--green); font-size: 11.5px; font-style: normal; font-weight: 600; }
