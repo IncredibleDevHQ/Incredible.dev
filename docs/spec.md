@@ -724,7 +724,9 @@ app's canvas, from a channel's material or a research frame's notes.
   was and can be asked again in the same words; one the writer made nothing of says so. A
   change keeps who has the frame for every line it does not redesign, and a picture is
   drawn again only when what it shows changed: its lines' words only move its clock.
-- **Beat history.** Open History directly on any saved beat to see its transcript, visual direction,
+  Transcript edits preserve the encoded animation's original beat spans during preview.
+  A cue whose word was removed keeps its original proportional timing on the revised line.
+- **Beat history.** History appears on beats with retained changes. Open it to see transcript, visual direction,
   objects and cue changes, newest first. Each comparison comes from the retained history of
   the last 12 applied episode edits. An undone edit disappears until it is redone.
 - **Seeing and undoing a change.** What the last change did is laid into the script: the words

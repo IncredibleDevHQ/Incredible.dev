@@ -1474,36 +1474,12 @@ class EpisodeDesk:
         return self.view(episode_id)
 
     def line_history(self, episode_id: str, frame: str) -> Row:
-        def fields(plan: Row) -> dict[str, str]:
-            for _, _, line in plans.frames_of(plans.merged(plan, {})):
-                if line["id"] != frame:
-                    continue
-                values = {
-                    "Transcript": str(line.get("vo") or ""),
-                    "Visual direction": str(line.get("shows") or ""),
-                }
-                if line.get("hold"):
-                    values["Layout"] = "Continue the preceding picture"
-                if line.get("focal"):
-                    values["Focus"] = str(line["focal"])
-                for i, obj in enumerate(line.get("objects") or []):
-                    label = str(obj.get("id") or i + 1).replace("_", " ")
-                    values[f"Object · {label}"] = " · ".join(
-                        f"{key}: {value}" for key, value in obj.items() if key != "id"
-                    )
-                for i, cue in enumerate(line.get("cues") or []):
-                    values[f"Cue {i + 1}"] = " · ".join(
-                        f"{key}: {value}" for key, value in cue.items()
-                    )
-                return values
-            return {}
-
-        current = fields(self._episode(episode_id)["plan"] or {})
-        if not current:
+        current = _history_fields(self._episode(episode_id)["plan"] or {}, frame).get(frame)
+        if current is None:
             raise KeyError(frame)
         entries = []
         for record in self.store.previous_plans(episode_id):
-            previous = fields(record["plan"])
+            previous = _history_fields(record["plan"], frame).get(frame, {})
             changes = [
                 {"label": key, "before": previous.get(key, ""), "after": current.get(key, "")}
                 for key in dict.fromkeys([*previous, *current])
@@ -3490,6 +3466,17 @@ class EpisodeDesk:
         film_state["file"] = self._file(film_state.get("file"))
         report = episode["report"] or {}
         changed = self.store.snapshot_note(episode_id)
+        if changed and said_now:
+            # A line has an entry iff one retained version differs from its current fields.
+            remaining = _history_fields(episode["plan"] or {})
+            for record in self.store.previous_plans(episode_id):
+                previous = _history_fields(record["plan"])
+                for fid in list(remaining):
+                    if remaining[fid] != previous.get(fid, {}):
+                        said_now[fid]["has_history"] = True
+                        del remaining[fid]
+                if not remaining:
+                    break
         undone = self.store.snapshot_note(episode_id, "undone")
         said: dict[str, float] = {}
         for t in self.store.takes(episode_id):
@@ -3802,6 +3789,31 @@ def _live(run: Row) -> Row:
             for e in [e for e in (run["steps"] or []) if e.get("text")][-14:]
         ],
     }
+
+
+def _history_fields(plan: Row, frame: str | None = None) -> dict[str, dict[str, str]]:
+    """The displayed fields, keyed by stable line ID, for both the picker and its detail view."""
+    lines = {}
+    for _, _, line in plans.frames_of(plans.merged(plan, {})):
+        if frame is not None and line["id"] != frame:
+            continue
+        values = {
+            "Transcript": str(line.get("vo") or ""),
+            "Visual direction": str(line.get("shows") or ""),
+        }
+        if line.get("hold"):
+            values["Layout"] = "Continue the preceding picture"
+        if line.get("focal"):
+            values["Focus"] = str(line["focal"])
+        for i, obj in enumerate(line.get("objects") or []):
+            label = str(obj.get("id") or i + 1).replace("_", " ")
+            values[f"Object · {label}"] = " · ".join(
+                f"{key}: {value}" for key, value in obj.items() if key != "id"
+            )
+        for i, cue in enumerate(line.get("cues") or []):
+            values[f"Cue {i + 1}"] = " · ".join(f"{key}: {value}" for key, value in cue.items())
+        lines[line["id"]] = {key: value for key, value in values.items() if value}
+    return lines
 
 
 def _changed(before: Row, after: Row) -> Row:

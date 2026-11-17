@@ -73,6 +73,30 @@ def derive(plan: Row) -> Row:
                     )
                     if p is not None:
                         c["t"] = round(max(t, t + p / WPS - LEAD), 1)
+                    else:
+                        # Keep the original reveal's share of the line when its spoken anchor
+                        # was edited away. Every pass recomputes it on this frame's new clock.
+                        original = [
+                            x.lower() for x in toks((f.get("by_person") or {}).get("was", ""))
+                        ]
+                        position = (
+                            next(
+                                (
+                                    i
+                                    for i in range(len(original) - len(at) + 1)
+                                    if original[i : i + len(at)] == at
+                                ),
+                                None,
+                            )
+                            if at
+                            else None
+                        )
+                        share = (
+                            max(0, position / WPS - LEAD) / (len(original) / WPS)
+                            if position is not None
+                            else 0
+                        )
+                        c["t"] = round(t + share * w / WPS, 3)
                     cues_total += 1
                 if f.get("presence") in presence_words:
                     presence_words[f["presence"]] += w

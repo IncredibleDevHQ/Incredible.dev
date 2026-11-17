@@ -57,3 +57,26 @@ test("the last beat can replay when the stored chapter duration rounds past its 
   await page.getByRole("slider", {name: "Seek within chapter"}).press("End");
   assert.equal(await page.getByRole("button", {name: "Replay chapter"}).count(), 1);
 });
+
+
+test("an edited beat samples the original animation span in the stage", async t => {
+  const server = await createServer({server:{host:"127.0.0.1",port:0},logLevel:"error"});
+  t.after(() => server.close());
+  await server.listen();
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLMediaElement.prototype, "readyState", {get:()=>2});
+    Object.defineProperty(HTMLMediaElement.prototype, "duration", {get:()=>30});
+    Object.defineProperty(HTMLMediaElement.prototype, "seeking", {get:()=>false});
+    Object.defineProperty(HTMLMediaElement.prototype, "currentTime", {
+      get(){return this.sampled ?? 0}, set(time){this.sampled = time},
+    });
+  });
+  await page.goto(new URL("tests/browser/line-player.html?animation",server.resolvedUrls.local[0]).href);
+  const video = page.locator(".ep-stage-pic video");
+  await video.waitFor();
+  await video.dispatchEvent("loadedmetadata");
+  assert.equal(await video.evaluate(el=>el.currentTime),10);
+});

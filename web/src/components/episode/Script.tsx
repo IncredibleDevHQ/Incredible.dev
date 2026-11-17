@@ -284,6 +284,7 @@ function LineView({ node, editor, getPos }: ReactNodeViewProps) {
   const i = line ? c.lines.indexOf(line) : -1;
   const current = Boolean(attrs.id) && attrs.id === c.current;
   const beat = c.chapter.beats.findIndex(b => b.frames.some(f => f.id === attrs.id));
+  const hasHistory = beat >= 0 && line?.has_history;
   const empty = node.content.size === 0;
   const again = attrs.id ? c.view.rerecord.includes(attrs.id) : false;
   const before = c.marked && attrs.id ? c.was[attrs.id] : undefined;
@@ -343,13 +344,13 @@ function LineView({ node, editor, getPos }: ReactNodeViewProps) {
             {shot.shot || shot.hero}
           </p>
         )}
-        {!c.recording && (current || (attrs.id && beat >= 0)) && (
+        {!c.recording && (current || hasHistory) && (
           <div className="ep-line-foot" contentEditable={false}>
             {current && <small data-tone={behind ? "amber" : undefined}>
               {again ? "Say again · " : behind === "picture" ? "Its picture was made for the words before · " : c.take ? "Recorded · " : ""}
               {length(node.textContent, line)}
             </small>}
-            {attrs.id && beat >= 0 && <BeatHistory episode={c.view.id} frame={attrs.id} beat={beat + 1} />}
+            {hasHistory && <BeatHistory episode={c.view.id} frame={attrs.id} beat={beat + 1} />}
             {current && before !== undefined && (
               <Tooltip content="Put the old words back" side="bottom">
                 <button type="button" className="icon-btn" aria-label="Put the old words back" disabled={c.busy} onClick={() => c.onReword(attrs.id, before)}>

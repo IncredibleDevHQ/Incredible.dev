@@ -3212,6 +3212,8 @@ async def test_beat_history_keeps_saved_wording_and_visual_changes(house: AgentH
         {"label": "Visual direction", "before": old_direction, "after": target["shows"]}
     ]
     assert len(desk.line_history(eid, fid)["entries"]) == 1
+    visible = {f["id"] for f in order_of(desk.view(eid)) if f.get("has_history")}
+    assert visible == {fid, target["id"]}
     with pytest.raises(KeyError):
         desk.line_history(eid, "unknown")
 
@@ -3259,3 +3261,50 @@ async def test_planned_layout_reaches_the_saved_episode_and_picture_builder(
     assert brief["layout"]["id"] == line["layout"]
     assert brief["keep_clear"]["top"] == 0
     assert view["options"]["geometry"]["layouts"][line["layout"]]["person"] == [1432, 28, 460, 258]
+
+
+async def test_history_control_follows_saved_changes_undo_and_redo(house: AgentHost) -> None:
+    eid = await made(house)
+    desk = house.episodes
+    original = order_of(desk.view(eid))[0]
+
+    def visible(view: dict[str, Any]) -> set[str]:
+        return {f["id"] for f in order_of(view) if f.get("has_history")}
+
+    assert not visible(desk.edit(eid, by="you", frame=original["id"], text=original["vo"]))
+    assert visible(desk.edit(eid, by="you", frame=original["id"], text="Edited.")) == {
+        original["id"]
+    }
+    assert not visible(desk.undo(eid, by="you"))
+    assert visible(desk.redo(eid, by="you")) == {original["id"]}
+    # Returning to the original words by editing again retains both actual changes.
+    assert visible(desk.edit(eid, by="you", frame=original["id"], text=original["vo"])) == {
+        original["id"]
+    }
+
+
+async def test_transcript_edits_preserve_rich_artwork_and_original_animation_spans(
+    house: AgentHost,
+) -> None:
+    eid = await made(house)
+    desk = house.episodes
+    view = desk.view(eid)
+    unit = next(u for u in view["units"] if lines_of(view)[u["id"]].get("cues"))
+    saved = house.store.picture(eid, unit["id"])
+    clip = house.save_file(view["thread_id"], "animation.mp4", b"clip", origin="episode")
+    generation = {**saved["generation"], "clip_lines": {unit["id"]: [0, 12]}}
+    motion = {"device": "one diagram that grows", "shots": []}
+    house.store.set_picture(
+        eid, unit["id"], clip=clip["id"], generation=generation, motion=motion, level="rich"
+    )
+    for words in (
+        "New words for this animation.",
+        "A substantially longer rewrite that still uses the existing animated diagram.",
+    ):
+        after = desk.edit(eid, by="you", frame=unit["id"], text=words)
+        current = next(u for u in after["units"] if u["id"] == unit["id"])
+        assert current["picture"]["clip"]["id"] == clip["id"]
+        assert current["picture"]["generation"]["clip_lines"] == generation["clip_lines"]
+        assert current["picture"]["motion"] == motion
+        assert house.store.picture(eid, unit["id"])["html"] == saved["html"]
+        assert not desk._busy(eid)

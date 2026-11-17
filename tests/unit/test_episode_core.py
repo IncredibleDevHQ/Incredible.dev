@@ -996,3 +996,39 @@ def test_voice_only_manual_layout_takes_precedence_without_enabling_a_camera() -
     assert frame["layout"] == "chapter-banner"
     override.apply(plan, {"frames": {"one": {"layout": "full-frame"}}})
     assert frame["layout"] == "number-spotlight" and frame["presence"] == "content"
+
+
+def test_reworded_animation_keeps_order_when_its_cue_words_are_removed() -> None:
+    raw: Row = {
+        "chapters": [
+            {
+                "id": "c",
+                "beats": [
+                    {
+                        "id": "b",
+                        "says": "First the source then the receiver finally the answer",
+                        "frames": [
+                            {
+                                "id": "f",
+                                "cues": [
+                                    {"at": "source", "object": "a", "does": "draw"},
+                                    {"at": "receiver", "object": "b", "does": "draw"},
+                                    {"at": "answer", "object": "c", "does": "draw"},
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+    original = derive.full(plans.merged(raw))
+    positions = list(timeline.schedule(original)["cues"].values())
+    plans.reword(raw, "f", "A shorter replacement explanation.", at=1)
+    revised = derive.full(plans.merged(raw))
+    cues = list(timeline.schedule(revised)["cues"].values())
+    assert 0 < cues[0] < cues[1] < cues[2] < revised["chapters"][0]["seconds"]
+    old_seconds = original["chapters"][0]["seconds"]
+    new_seconds = revised["chapters"][0]["seconds"]
+    assert cues == pytest.approx([p / old_seconds * new_seconds for p in positions], abs=0.08)
+    assert all("t" not in c for c in raw["chapters"][0]["beats"][0]["frames"][0]["cues"])

@@ -6,6 +6,7 @@
   <script type="module">
     import React from "react";
     import { createRoot } from "react-dom/client";
+    import { Stage } from "/src/components/episode/Stage.tsx";
     import { LinePlayer } from "/src/components/episode/LinePlayer.tsx";
 
     const full = [0, 0, 1920, 1080];
@@ -15,7 +16,13 @@
         full: { person: full, person_radius: 0, picture: null, zoom: 1 }
       } } }
     };
-    createRoot(document.getElementById("root")).render(React.createElement(LinePlayer, {
+    if (location.search.includes("animation")) {
+      const frame = {id:"held", start:40, seconds:2, presence:"content", layout:"picture"};
+      view.options.geometry.layouts.picture = {picture:full, person:null, picture_radius:0};
+      view.clock = {lines:[{frame:"held",seconds:2,source:{kind:"plan"}}]};
+      const unit = {start:20,picture:{stills:{},clip:{url:"/saved-animation.mp4"},generation:{clip_lines:{held:[5,15]}}}};
+      createRoot(document.getElementById("root")).render(React.createElement(Stage, {view,frame,unit,previewAt:1}));
+    } else createRoot(document.getElementById("root")).render(React.createElement(LinePlayer, {
       view, frame: { id: "opening", start: 0, seconds: location.search ? 10.024 : 10, presence: "person", layout: "full", vo: "Welcome" },
       cameraPoster: React.createElement("span", null, "Chapter artwork"),
       ...(location.search ? { chapter: { start: 10, total: location.search.includes("rounded") ? 20.026 : 20.024, seek: (time, play) => {

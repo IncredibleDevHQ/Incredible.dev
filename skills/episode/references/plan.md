@@ -146,3 +146,7 @@ about the whole film, one chapter, one line, or the picture a line brings in.
 
 Reply with what you changed, one line each. The person sees which lines changed and can take
 the whole change back.
+
+Transcript edits keep the existing drawing and animation. Preview maps the revised spoken
+line onto its saved clip span. Code preserves proportional cue timing when a spoken anchor
+is removed, while a cue with an available anchor follows that word.

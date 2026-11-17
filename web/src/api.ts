@@ -227,7 +227,7 @@ export type Level = "simple" | "rich";
 export type WriterId = HarnessId | "builtin" | "demo";
 export type Box = [number, number, number, number];
 export type LayoutSpot = { person: Box | null; picture: Box | null; person_radius: number; picture_radius: number; glass: boolean; zoom: number };
-export type PictureGeneration = {provider: string; model: string; effort: string};
+export type PictureGeneration = {provider: string; model: string; effort: string; clip_lines?: Record<string, [number, number]>};
 export type PicturePick = { level?: Level; builder?: WriterId | null; component?: string | null; variant?: string | null; direction?: string; model?: string; effort?: string };
 export type EpisodeOptions = {
   components: Record<string,{purpose:string; layouts:string[]}>;
@@ -271,6 +271,7 @@ export type EpisodeSettings = {
 export type EpisodeCue = { at: string; object: string; does: string; move?: string; t?: number };
 export type EpisodeObject = { id: string; what: string; words?: string; state?: string; type?: string };
 export type EpisodeFrame = {
+  has_history?: boolean;
   id: string;
   vo: string;
   presence: Presence;

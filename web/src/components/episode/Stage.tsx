@@ -2,6 +2,7 @@
 // placed by the same table the film is rendered from. The person is the live camera while
 // recording, the take once there is one, and a stand-in before that. The picture is its posed
 // still, its draft clip while playing, or a sketch of what the plan says it shows.
+import { animationTime } from "./animationTime";
 import { portraitUrl } from "./portraits";
 import { useEffect, useRef } from "react";
 import type { LayoutSpot, EpisodeFrame, EpisodeTake, EpisodeUnit, EpisodeView } from "../../api";
@@ -50,7 +51,7 @@ export function Stage({
       {picture && (
         <div className="ep-stage-pic" data-glass={spot.glass || undefined} style={boxStyle(picture, size, spot.picture_radius)}>
           {previewAt !== undefined && clip ? (
-            <ScrubVideo src={clip.url} time={Math.max(0, frame.start - (unit?.start ?? frame.start)) + previewAt * frame.seconds / (line?.seconds || frame.seconds || 1)} />
+            <ScrubVideo src={clip.url} time={animationTime(frame, unit, previewAt, line?.seconds || frame.seconds || 1)} />
           ) : still ? (
             <img src={still.url} alt={frame.shows ?? "The picture for this line"} />
           ) : (
