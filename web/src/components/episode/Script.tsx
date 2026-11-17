@@ -25,6 +25,7 @@ import { useHouse } from "../../store";
 import { Tooltip } from "../Tooltip";
 import type { Run } from "./Ask";
 import { BlockHead, blocksOf, KIND_ICONS, type Block } from "./Blocks";
+import { BeatHistory } from "./BeatHistory";
 import { wordDiff } from "./Diff";
 import { AgentMark } from "../../ui";
 import { AskHere, type HereScope } from "./AskHere";
@@ -342,20 +343,21 @@ function LineView({ node, editor, getPos }: ReactNodeViewProps) {
             {shot.shot || shot.hero}
           </p>
         )}
-        {current && !c.recording && (
+        {!c.recording && (current || (attrs.id && beat >= 0)) && (
           <div className="ep-line-foot" contentEditable={false}>
-            <small data-tone={behind ? "amber" : undefined}>
+            {current && <small data-tone={behind ? "amber" : undefined}>
               {again ? "Say again · " : behind === "picture" ? "Its picture was made for the words before · " : c.take ? "Recorded · " : ""}
               {length(node.textContent, line)}
-            </small>
-            {before !== undefined && (
+            </small>}
+            {attrs.id && beat >= 0 && <BeatHistory episode={c.view.id} frame={attrs.id} beat={beat + 1} />}
+            {current && before !== undefined && (
               <Tooltip content="Put the old words back" side="bottom">
                 <button type="button" className="icon-btn" aria-label="Put the old words back" disabled={c.busy} onClick={() => c.onReword(attrs.id, before)}>
                   <Undo2 />
                 </button>
               </Tooltip>
             )}
-            {c.take && (
+            {current && c.take && (
               <Tooltip content="Record this line again" side="bottom">
                 <button type="button" className="icon-btn" aria-label="Record this line again" disabled={c.busy} onClick={() => c.onRecordLine(attrs.id)}>
                   <Mic />

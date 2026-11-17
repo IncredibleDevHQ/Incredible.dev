@@ -91,9 +91,24 @@ export function PictureCard({
   // The picture moving, in its card: its draft clip, once one is rendered for it as made. What
   // plays is held by the clip's address, so a clip rendered for a later make never starts alone.
   const clip = p.status === "made" || p.status === "go" ? p.clip : null;
-  const [playing, setPlaying] = useState<string | null>(null);
-  const moving = Boolean(clip && playing === clip.url);
-  const play = () => setPlaying(moving || !clip ? null : clip.url);
+  const [preview, setPreview] = useState<{source: string; url: string} | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [playError, setPlayError] = useState("");
+  const moving = Boolean(preview && clip && preview.source === clip.id);
+  const play = async () => {
+    if (moving) { setPreview(null); return; }
+    if (!clip || preparing) return;
+    setPreparing(true);
+    setPlayError("");
+    try {
+      const ready = await api.previewPicture(view.id, unit.id);
+      setPreview({source: clip.id, url: ready.url});
+    } catch (error) {
+      setPlayError((error as Error).message);
+    } finally {
+      setPreparing(false);
+    }
+  };
   // Drawing a made picture again, or planning it again, waits for a yes that knows what it costs.
   const [asking, setAsking] = useState<"draw" | "plan" | null>(null);
   // The way the person switched a made picture to, while they say yes to making it so; and the
@@ -123,7 +138,10 @@ export function PictureCard({
     <>
       <div className="ep-figure-top">
         <div className="ep-figure-shot">
-          <button
+          {moving && preview ? (
+            <video className="ep-figure-pic" src={preview.url} autoPlay controls playsInline
+              onEnded={() => setPreview(null)} onError={() => {setPreview(null); setPlayError("This preview could not be played.");}} />
+          ) : <button
             type="button"
             className="ep-figure-pic"
             data-empty={!still || undefined}
@@ -131,16 +149,16 @@ export function PictureCard({
             aria-label={`Open the ${name.toLowerCase()} with its choices`}
             onClick={onOpen}
           >
-            {moving && clip ? (
-              <video src={clip.url} autoPlay muted playsInline onEnded={() => setPlaying(null)} />
-            ) : still ? (
+            {still ? (
               <img src={still.url} alt="" loading="lazy" />
             ) : (
               <KindArt kind={unit.kind_of_picture} />
             )}
-          </button>
-          {clip && (
-            <button type="button" className="ep-figure-play" aria-label={`${moving ? "Stop" : "Play"} the ${name.toLowerCase()}`} aria-pressed={moving} onClick={play}>
+          </button>}
+          {playError && <small role="alert">{playError}</small>}
+          {preparing && <small role="status">Preparing playback…</small>}
+          {clip && !moving && (
+            <button type="button" className="ep-figure-play" disabled={preparing} aria-label={`${moving ? "Stop" : "Play"} the ${name.toLowerCase()}`} aria-pressed={moving} onClick={play}>
               {moving ? <Square /> : <Play />}
             </button>
           )}

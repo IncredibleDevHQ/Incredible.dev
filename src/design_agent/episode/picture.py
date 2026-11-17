@@ -138,6 +138,7 @@ CLOCK = re.compile(
 )
 MOTION = Q.table("motion_styles")
 THEMES = Q.table("themes")
+LAYOUTS = Q.table("layouts")
 #: What a file may not do: anything that makes two renders of one second differ, or leaves the
 #: computer it renders on.
 BANNED: tuple[tuple[str, str], ...] = (
@@ -294,8 +295,10 @@ def brief(
                 ],
             }
         )
+    layout = LAYOUTS.get(str(unit.get("layout")), LAYOUTS[geometry.FALLBACK])
     clear = unit.get("keep_clear", geometry.keep_clear(unit.get("layout")))
     return {
+        "layout": {"id": layout["id"], "presence": layout["presence"], "use": layout["reads_as"]},
         "file": f"pictures/{comp}.html",
         "composition_id": comp,
         "clock_id": f"{comp}-clock",
@@ -346,6 +349,51 @@ def motion_file(unit_id: str) -> str:
     return f"pictures/{composition_id(unit_id)}.motion.json"
 
 
+def brief_motion(brief: Row) -> Row:
+    """A complete editable shot sheet built only from this picture's approved lines and cues."""
+    shots: list[Row] = []
+    for line in brief["lines"]:
+        names = {
+            obj["id"]: obj.get("words") or obj.get("what") or obj["id"] for obj in line["objects"]
+        }
+        moves = [
+            f"{names.get(c['object'], c['object'])} {c['does']}".strip()
+            for c in line["cues"]
+            if c["does"]
+        ]
+        still = line["shows_when_finished"]
+        if not still or still.startswith("("):
+            still = (
+                ", ".join(str(n) for n in names.values())
+                or brief["picture"]["shows"]
+                or "Hold the preceding frame."
+            )
+        hero = moves[0] if moves else still
+        shots.append(
+            {
+                "frame": line["frame"],
+                "shot": " ".join(hero.split()[:20]),
+                "opens_on": shots[-1]["still"] if shots else "",
+                "hero": hero,
+                "others": "; ".join(moves[1:]),
+                "still": still,
+            }
+        )
+    device = {
+        "timeline": "steps in order",
+        "stepper": "steps in order",
+        "comparison": "two sides",
+        "bar-chart": "a number that lands",
+        "line-chart": "a number that lands",
+        "detail-card": "the object is the explanation",
+    }.get(brief["visual"].get("component"), "one diagram that grows")
+    return {
+        "device": device,
+        "world": brief["picture"]["shows"] or shots[0]["still"],
+        "shots": shots,
+    }
+
+
 def motion_plan(text: str, unit: Row) -> tuple[Row, list[str]]:
     """A motion plan as its builder wrote it, read and held to its shape: one shot per line of
     the picture, in order, each with the move the line is about and what its still shows.
@@ -359,6 +407,8 @@ def motion_plan(text: str, unit: Row) -> tuple[Row, list[str]]:
     faults: list[str] = []
     shots: list[Row] = []
     by_frame = {str(shot.get("frame")): shot for shot in given["shots"] if isinstance(shot, dict)}
+    if len(by_frame) != len(given["shots"]):
+        faults.append("Each shot must be an object with a unique frame; remove duplicate shots.")
     for frame in unit["frames"]:
         shot = by_frame.get(frame)
         if shot is None:
@@ -436,6 +486,35 @@ def faults(html: str, unit: Row, full: Row, look: Look | None = None) -> list[st
                 f"the font {first!r} is not on the rendering computer: use {', '.join(allowed)}"
             )
     return list(dict.fromkeys(out))
+
+
+def label_probe(html: str, unit: Row, own: Row) -> str:
+    """Mount the same dressed template at its native canvas size in sandbox Chromium."""
+    comp = composition_id(unit["id"])
+    width, height = unit["canvas"]
+    content = re.search(r"<template\b[^>]*>(.*)</template>", html, re.S)
+    if content is None:
+        raise ValueError("Missing picture template.")
+    times = sorted(
+        {*still_times(own).values(), *(min(t + 0.45, own["seconds"]) for t in own["cues"].values())}
+    )
+    return f"""<!doctype html><meta charset="utf-8"><style>
+    html,body {{margin:0;position:relative;width:{width}px;height:{height}px}}
+    [data-composition-id="{comp}"] {{position:absolute;inset:0}}</style>
+    <script src="gsap.min.js"></script><script>window.__timelines={{}};</script>
+    {content[1]}
+    <script src="check-labels.js"></script><script>
+    document.fonts.ready.then(() => {{
+      const scene = document.querySelector('[data-composition-id="{comp}"]');
+      const tl = window.__timelines["{comp}"];
+      const issues = new Set();
+      for (const t of {json.dumps(times)}) {{
+        tl.time(t, false);
+        for (const problem of checkLabels(scene)) issues.add(problem);
+      }}
+      document.body.textContent = 'LABEL_REPORT=' + encodeURIComponent(JSON.stringify([...issues]));
+    }});
+    </script>"""
 
 
 def stage(unit: Row, own: Row, *, ground: str = PALETTE["ground"]) -> str:

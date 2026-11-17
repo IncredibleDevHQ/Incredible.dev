@@ -12,7 +12,7 @@ A frame has three parts, chosen separately:
 | Part | What it says | Who decides |
 | --- | --- | --- |
 | Presence | Who has the frame: the `person`, the person with content (`both`), or `content` alone. | The classifier, from the line and from `shows`. A person can override. |
-| Layout | How the frame is laid out, picked from the theme's kit for that presence. | Code, from the presence and the theme. A person can override. |
+| Layout | How the frame is laid out, picked from the theme's kit for that presence. | The writer suggests a layout. Code checks the presence and theme. A person can override. |
 | Picture | What fills the content area: a list, a diagram, code, a recording. | The classifier, from `shows`. |
 
 The three-way presence is the studio's recording switch (person, person with content,
@@ -43,7 +43,12 @@ picks from the kit; it does not invent. Published films use three layouts in the
 and the top two carry 87% of the running time. Three of the six concept explainers hold one
 layout (a panel beside a portrait) for nine tenths of their length.
 
-So do not chase variety in layout. The picture inside the layout is what changes.
+Set `layout_intent` on a new shot when a layout in the kit fits the line. Keep the lower
+edge of a timeline clear with an upper corner window. Give a compact fact its own floating
+card. A short viewer question can sit below the presenter as they answer. Keep the same
+layout across a held diagram. With narration alone, center a key measurement in a number
+spotlight or introduce the next section with a chapter banner. An omitted or incompatible suggestion uses the theme default,
+and the person's studio picks take precedence.
 
 ## One beat, one to three frames
 

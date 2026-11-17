@@ -926,3 +926,73 @@ def test_automatic_chart_requires_comparable_measurements() -> None:
     assert catalog.select(first, [first], {}, "diagram", 1000)["component"] == "bar-chart"
     first["objects"][1]["unit"] = "days"
     assert catalog.select(first, [first], {}, "diagram", 1000)["component"] != "bar-chart"
+
+
+@pytest.mark.parametrize(
+    ("intent", "expected"),
+    [
+        ("corner-top-right", "corner-top-right"),
+        ("split-presenter-left", "split-presenter-left"),
+        ("floating-card", "floating-card"),
+        ("question-caption", "question-caption"),
+        ("title-card", "corner-window"),
+        ("unknown", "corner-window"),
+        (["split"], "corner-window"),
+    ],
+)
+def test_writer_layout_intent_survives_the_frame_decision(intent: Any, expected: str) -> None:
+    frame = {
+        "id": "one",
+        "shows": "A short example",
+        "layout_intent": intent,
+        "presence_p": {"person": 0.05, "both": 0.9},
+    }
+    plan: Row = {"brief": {}, "chapters": [{"id": "ch", "beats": [{"frames": [frame]}]}]}
+    layouts.settle_frames(plan)
+    assert frame["layout"] == expected
+    assert frame["options"][0]["layout"] == expected
+    assert geometry.region(expected).person and geometry.region(expected).picture
+    plan["_overrides"] = {"chapters": {"ch": {"layouts": {"both": "split"}}}}
+    layouts.settle_frames(plan)
+    assert frame["layout"] == "split"
+    plan["brief"]["presenter"] = "off"
+    layouts.settle_frames(plan)
+    assert frame["layout"] == ("title-card" if intent == "title-card" else "graphic-on-ground")
+
+
+def test_new_layouts_keep_the_subject_and_key_visual_clear() -> None:
+    top = geometry.keep_clear("corner-top-right")
+    assert top and top[0] > 960 and top[1] == 0 and top[3] < 540
+    for layout in ("split-presenter-left", "floating-card"):
+        spot = geometry.region(layout)
+        assert spot.person and spot.picture
+        assert spot.person[0] + spot.person[2] <= spot.picture[0]
+    caption = geometry.region("question-caption")
+    assert caption.glass and caption.picture and caption.picture[1] >= 1080 * 0.7
+
+
+@pytest.mark.parametrize("layout", ["number-spotlight", "chapter-banner"])
+def test_narrated_content_layouts_work_without_a_camera(layout: str) -> None:
+    frame: Row = {"id": "one", "layout_intent": layout}
+    plan: Row = {
+        "brief": {"presenter": "off"},
+        "chapters": [{"id": "ch", "beats": [{"frames": [frame]}]}],
+    }
+    layouts.settle_frames(plan)
+    assert (frame["presence"], frame["layout"]) == ("content", layout)
+    spot = geometry.REGIONS[layout]
+    assert spot.person is None and spot.picture is not None
+    assert geometry.canvas(layout) != geometry.FULL[2:]
+
+
+def test_voice_only_manual_layout_takes_precedence_without_enabling_a_camera() -> None:
+    frame: Row = {"id": "one", "layout_intent": "number-spotlight"}
+    plan: Row = {
+        "brief": {"presenter": "off"},
+        "chapters": [{"id": "ch", "beats": [{"frames": [frame]}]}],
+    }
+    layouts.settle_frames(plan)
+    override.apply(plan, {"frames": {"one": {"layout": "chapter-banner"}}})
+    assert frame["layout"] == "chapter-banner"
+    override.apply(plan, {"frames": {"one": {"layout": "full-frame"}}})
+    assert frame["layout"] == "number-spotlight" and frame["presence"] == "content"

@@ -590,6 +590,7 @@ export const api = {
   chooseEpisode: (id: string, body: EpisodeChoices) => call<EpisodeView>("POST", `/api/episodes/${id}/choices`, body),
   // A change asked for in words; the writer makes it (a note on how a picture is drawn goes to its builder).
   askEpisode: (id: string, ask: EpisodeAsk) => call<EpisodeView>("POST", `/api/episodes/${id}/ask`, ask),
+  lineHistory: (id: string, frame: string) => call<{entries: {id: number; at: number; reason: string; changes: {label: string; before: string; after: string}[]}[]}>("GET", `/api/episodes/${id}/lines/${encodeURIComponent(frame)}/history`),
   editLine: (id: string, frame: string, text: string) => call<EpisodeView>("POST", `/api/episodes/${id}/lines/${encodeURIComponent(frame)}`, { text }),
   // A line a person adds after another (or first in a chapter, by the chapter's id): going on in
   // its block, said to camera, or bringing in a picture of a type. `keep` is what the line it
@@ -612,6 +613,8 @@ export const api = {
   applyEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/apply`),
   // Asks for pictures: the ones named, a chapter's, or with neither the ones that stopped.
   // with a level, the pictures named are made again that way (the person's yes to switching them)
+  previewVoice: (id: string, chapter: string) => call<EpisodeView>("POST", `/api/episodes/${id}/chapters/${chapter}/preview-voice`, {}),
+  previewPicture: (id: string, unit: string) => call<FileView>("POST", `/api/episodes/${id}/pictures/${unit}/preview`, {}),
   makePictures: (id: string, which: { units?: string[]; chapter?: string; level?: Level } = {}) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures`, which),
   pictureGo: (id: string, unit: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/go`),
   pictureNote: (id: string, unit: string, text: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/note`, { text }),

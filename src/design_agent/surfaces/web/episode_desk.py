@@ -35,6 +35,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any
+from urllib.parse import unquote
 
 from design_agent.episode import (
     catalog,
@@ -1200,8 +1201,17 @@ class EpisodeDesk:
                 "chapters, one line each."
             )
         if stage == "frames":
+            theme = layouts.theme_of({"brief": chosen})
+            kit = "\n".join(
+                f"- {key} ({layouts.LAY[key]['presence']}): {layouts.LAY[key]['reads_as']}"
+                for key in theme["kit"]
+            )
             return (
                 f"Stage: frames.\n\nEvery line was read for who has the frame:\n\n{said}\n\n"
+                f"Available layouts for this look:\n{kit}\n\n"
+                "On each new shot, set `layout_intent` to the layout ID that fits who is "
+                "on screen and what the viewer needs to see. Compose the picture for that "
+                "space. Keep the same framing on a hold. "
                 f"Read {skill}/references/frames.md and {skill}/references/motion.md. For every "
                 "frame marked NEEDS A PICTURE, write its `shows`, `focal`, `objects` and `cues` "
                 f"in {root}/plan.json; let a picture grow across beats with `hold`. Change no "
@@ -1462,6 +1472,54 @@ class EpisodeDesk:
         self._say(episode, f"Asked for a change: {note}", by=by, quiet=True)
         self._settle(episode_id)
         return self.view(episode_id)
+
+    def line_history(self, episode_id: str, frame: str) -> Row:
+        def fields(plan: Row) -> dict[str, str]:
+            for _, _, line in plans.frames_of(plans.merged(plan, {})):
+                if line["id"] != frame:
+                    continue
+                values = {
+                    "Transcript": str(line.get("vo") or ""),
+                    "Visual direction": str(line.get("shows") or ""),
+                }
+                if line.get("hold"):
+                    values["Layout"] = "Continue the preceding picture"
+                if line.get("focal"):
+                    values["Focus"] = str(line["focal"])
+                for i, obj in enumerate(line.get("objects") or []):
+                    label = str(obj.get("id") or i + 1).replace("_", " ")
+                    values[f"Object · {label}"] = " · ".join(
+                        f"{key}: {value}" for key, value in obj.items() if key != "id"
+                    )
+                for i, cue in enumerate(line.get("cues") or []):
+                    values[f"Cue {i + 1}"] = " · ".join(
+                        f"{key}: {value}" for key, value in cue.items()
+                    )
+                return values
+            return {}
+
+        current = fields(self._episode(episode_id)["plan"] or {})
+        if not current:
+            raise KeyError(frame)
+        entries = []
+        for record in self.store.previous_plans(episode_id):
+            previous = fields(record["plan"])
+            changes = [
+                {"label": key, "before": previous.get(key, ""), "after": current.get(key, "")}
+                for key in dict.fromkeys([*previous, *current])
+                if previous.get(key, "") != current.get(key, "")
+            ]
+            if changes:
+                entries.append(
+                    {
+                        "id": record["n"],
+                        "at": record["at"],
+                        "reason": record["why"],
+                        "changes": changes,
+                    }
+                )
+            current = previous
+        return {"entries": entries}
 
     def edit(self, episode_id: str, *, by: str, frame: str, text: str) -> Row:
         """A person's own words for one line. They are in at once: nothing is read again and
@@ -2009,9 +2067,7 @@ class EpisodeDesk:
         await worker.prepare(episode, {brief_file: json.dumps(brief, indent=1, ensure_ascii=False)})
         planned = ""
         if level == units.RICH:
-            motion = await self._motion(episode_id, unit, worker, note)
-            if not motion:
-                return
+            motion = await self._motion(episode_id, unit, worker, note, brief)
             # the plan rides in the brief, so a builder with no memory of writing it has it too
             brief = picture.brief(unit, full, look=look, note=note, planned=motion)
             await worker.prepare(
@@ -2063,6 +2119,18 @@ class EpisodeDesk:
                 f"Stage: picture.\n\n{root}/{brief['file']} can't be used yet:\n\n{listed}\n\n"
                 f"Use the brief at {root}/{brief_file}. Change only what these name, and reply with what you changed."
             )
+        layout_source = "writer"
+        if faults and not isinstance(worker, DemoWorker):
+            layout_source = "brief"
+            # An invalid drawing never gets published. Try the cue-driven layout from this brief.
+            html = sketch.built(brief)
+            faults = picture.faults(html, unit, full, look)
+            if not faults:
+                faults, stills = await asyncio.to_thread(
+                    self._pose, episode, unit, full, html, False
+                )
+            if not faults:
+                await worker.prepare(episode, {str(brief["file"]): html})
         if faults:
             self.store.set_picture(
                 episode_id, unit_id, status="failed", html=html, failure="; ".join(faults[:3])
@@ -2073,6 +2141,8 @@ class EpisodeDesk:
             "theme_sig": unit["theme_sig"],
             "catalog_version": catalog.CATALOG_VERSION,
             "drawing_version": catalog.DRAWING_VERSION,
+            "layout_source": layout_source,
+            "clip_lines": picture.clock(unit, timeline.schedule(full))["lines"],
         }
         if isinstance(worker, LocalWorker):
             if worker.reported_model:
@@ -2097,25 +2167,28 @@ class EpisodeDesk:
         if clip:
             self.store.set_picture(episode_id, unit_id, clip=clip)
 
-    async def _motion(self, episode_id: str, unit: Row, worker: Worker, note: str) -> Row:
+    async def _motion(
+        self, episode_id: str, unit: Row, worker: Worker, note: str, brief: Row
+    ) -> Row:
         """A rich picture's motion plan, written by its builder before anything is drawn: for
         each line, what the picture opens on, the one move the line is about, how the rest
         lands, and what the line's still shows. Code holds it to its shape and keeps it, and
-        the studio shows it while the picture is drawn. Returns nothing when no plan that
-        stands was written; the picture then says why."""
+        the studio shows it while the picture is drawn. Invalid output gets one correction
+        before the shot sheet derived from the brief is used."""
         unit_id = str(unit["id"])
         episode = self._episode(episode_id)
         root, skill = worker.place(episode)
         comp = picture.composition_id(unit_id)
         file = picture.motion_file(unit_id)
+        starter = json.dumps(picture.brief_motion(brief), ensure_ascii=False)
+        contract = f"Keep these exact frame IDs and JSON fields. Adapt this shot sheet to the brief:\n{starter}"
         # a plan left from an earlier build is not this one's
         await worker.prepare(episode, {file: ""})
         prompt = (
             f"Stage: motion plan.\n\nPlan how one picture of the episode moves, before anything "
             f"is drawn. Your folder is {root}. Read {skill}/briefs/motion.md, then the brief at "
             f"{root}/pictures/{comp}.brief.json, and write {root}/{file}. Write no HTML in this "
-            "turn. Deliver nothing: the house reads the file from your folder."
-            + (f"\n\nThe person's note on the picture: {note}" if note else "")
+            f"turn. {contract}" + (f"\n\nThe person's note on the picture: {note}" if note else "")
         )
         faults: list[str] = []
         for _ in range(MOTION_TRIES):
@@ -2127,6 +2200,8 @@ class EpisodeDesk:
             )
             if told.stopped:
                 raise asyncio.CancelledError
+            if told.failure:
+                raise ValueError(told.failure)
             text = (await worker.read(self._episode(episode_id), file) or "").strip()
             plan, faults = (
                 picture.motion_plan(text, unit) if text else ({}, [f"{file} was not written"])
@@ -2138,15 +2213,16 @@ class EpisodeDesk:
             listed = "\n".join(f"- {f}" for f in faults[:12])
             prompt = (
                 f"Stage: motion plan.\n\n{root}/{file} can't be used yet:\n\n{listed}\n\n"
-                f"Use the brief at {root}/pictures/{comp}.brief.json. Change only what these name, and reply with what you changed."
+                f"Read {root}/pictures/{comp}.brief.json and write {root}/{file}. {contract}"
             )
-        self.store.set_picture(
-            episode_id,
-            unit_id,
-            status="failed",
-            failure="Its motion plan could not be used: " + "; ".join(faults[:3]),
-        )
-        return {}
+        # The writer completed its turns but its output did not match the file contract.
+        plan, faults = picture.motion_plan(starter, unit)
+        if faults:
+            raise ValueError("The brief could not supply a shot sheet: " + "; ".join(faults[:3]))
+        await worker.prepare(episode, {file: json.dumps(plan, ensure_ascii=False)})
+        self.store.set_picture(episode_id, unit_id, motion=plan)
+        self._changed(episode_id)
+        return plan
 
     async def _looked(
         self, episode_id: str, unit: Row, full: Row, brief: Row, html: str, stills: dict[str, str]
@@ -2194,6 +2270,34 @@ class EpisodeDesk:
     def _pose_dir(self, episode: Row, unit: Row) -> str:
         return f"{PROJECTS}/{episode['id']}/pose/{picture.composition_id(unit['id'])}"
 
+    def _label_faults(
+        self, computer: Computer, folder: str, unit: Row, own: Row, dressed: str
+    ) -> list[str]:
+        folder = f"{folder}-measure"
+        check = Path(picture.__file__).with_name("check_labels.js").read_bytes()
+        computer.put(
+            [
+                (f"{folder}/check-labels.js", check),
+                (f"{folder}/check-labels.html", picture.label_probe(dressed, unit, own).encode()),
+            ]
+        )
+        result = computer.run(
+            f"cd {folder} && cp -n {GSAP} gsap.min.js && chrome-headless-shell --no-sandbox "
+            f"--window-size={int(unit['canvas'][0])},{int(unit['canvas'][1])} "
+            "--disable-gpu --disable-dev-shm-usage --virtual-time-budget=1500 "
+            '--dump-dom "file://$PWD/check-labels.html" 2>/dev/null | tail -c 10000',
+            timeout=45,
+        )
+        report = re.search(r"<body[^>]*>LABEL_REPORT=([^<]*)</body>", result.output)
+        if not report:
+            return [
+                "The picture could not be measured in Chromium. Check its initialization and timeline."
+            ]
+        findings = json.loads(unquote(report[1]))
+        if not isinstance(findings, list) or not all(isinstance(f, str) for f in findings):
+            return ["The label check returned an invalid report."]
+        return findings[:12]
+
     def _pose(
         self, episode: Row, unit: Row, full: Row, html: str, strict: bool = True
     ) -> tuple[list[str], dict[str, str]]:
@@ -2205,6 +2309,10 @@ class EpisodeDesk:
         own = picture.clock(unit, timeline.schedule(full))
         look = self._look(episode)
         folder = self._pose_dir(episode, unit)
+        dressed = picture.dressed(html, own, look)
+        label_faults = self._label_faults(computer, folder, unit, own, dressed)
+        if label_faults:
+            return label_faults, {}
         computer.put(
             [
                 (
@@ -2213,7 +2321,7 @@ class EpisodeDesk:
                 ),
                 (
                     f"{folder}/{picture.FOLDER}/{comp}.html",
-                    picture.dressed(html, own, look).encode(),
+                    dressed.encode(),
                 ),
             ]
         )
@@ -2227,7 +2335,7 @@ class EpisodeDesk:
             timeout=600,
         )
         broken, flagged = _findings(ran.output.split("---", 1)[0])
-        if broken or (strict and flagged):
+        if broken or (strict and flagged) or any(f.startswith("layout:") for f in flagged):
             return [*broken, *flagged], {}
         stills: dict[str, str] = {}
         for frame_id, at in times.items():
@@ -2248,9 +2356,24 @@ class EpisodeDesk:
         """A draft clip of one picture on the plan's clock, for playing it in the studio."""
         computer = self._computer(episode)
         folder = self._pose_dir(episode, unit)
+        have = self.store.picture(str(episode["id"]), str(unit["id"]))
+        full = self._full(episode)
+        if not have or not have["html"] or not full:
+            return ""
+        # A rejected last revision may still occupy the staging folder. Render the accepted HTML.
+        comp = picture.composition_id(unit["id"])
+        own = picture.clock(unit, timeline.schedule(full))
+        computer.put(
+            [
+                (
+                    f"{folder}/{picture.FOLDER}/{comp}.html",
+                    picture.dressed(have["html"], own, self._look(episode)).encode(),
+                )
+            ]
+        )
         ran = computer.run(
-            f"cd {folder} && hyperframes render . --quality draft --fps 30 --output clip.mp4 "
-            "--quiet 2>&1 | tail -3",
+            f"cd {folder} && rm -f clip.mp4 && hyperframes render . --quality draft --fps 30 "
+            "--output clip.mp4 --quiet >clip.log 2>&1",
             timeout=1800,
         )
         content = computer.get(f"{folder}/clip.mp4") if ran.ok else None
@@ -2664,13 +2787,133 @@ class EpisodeDesk:
             return f"local:{local_speech.engine()}:en:165:v1"
         return self._voice_id(episode)
 
-    async def _narrate(self, episode_id: str) -> None:
+    async def preview_clip(self, episode_id: str, unit_id: str) -> Row:
+        """Play the saved artwork with this cut's narration or takes, including older silent clips."""
+        gate = self._gates.setdefault(f"{episode_id}:mix:{unit_id}", asyncio.Semaphore(1))
+        async with gate:
+            episode = self._episode(episode_id)
+            full = self._full(episode) or {}
+            unit = next((u for u in self._units(episode, full) if u["id"] == unit_id), None)
+            have = self.store.picture(episode_id, unit_id)
+            if not unit or not have or have["status"] not in ("go", "made") or not have["clip"]:
+                raise ValueError("This picture does not have a playable preview yet.")
+            await self._narrate(episode_id, unit["chapter"])
+            episode = self._episode(episode_id)
+            spans = (have.get("generation") or {}).get("clip_lines") or picture.clock(
+                unit, timeline.schedule(full)
+            )["lines"]
+            identity = self._speech_identity(episode)
+            voice = self._voice(episode)
+            voice = {
+                f["id"]: voice[f["id"]]
+                for _, _, f in plans.frames_of(full)
+                if f["id"] in voice
+                and voice[f["id"]].get("h") == plans.digest(f.get("vo") or "", identity)
+            }
+            takes = {t["id"]: t for t in self.store.takes(episode_id) if t["kept"]}
+            clock = timeline.schedule(full, self._kept(episode_id), voice)
+            segments = []
+            for line in clock["lines"]:
+                fid = line["frame"]
+                if fid not in spans:
+                    continue
+                source = line["source"]
+                file_id = ""
+                if source["kind"] == "take":
+                    file_id = takes[source["take"]]["audio"]
+                elif source["kind"] == "voice":
+                    file_id = voice[fid]["file"]
+                start, end = spans[fid]
+                segments.append((start, end, file_id, source.get("offset", 0), line["seconds"]))
+            original = self._file(have["clip"])
+            if not original:
+                raise ValueError("The saved picture clip is missing.")
+            if not any(s[2] for s in segments):
+                return original
+            signature = plans.digest(have["clip"], segments)
+            cached = (have.get("generation") or {}).get("audio_preview", {})
+            if cached.get("sig") == signature and (file := self._file(cached.get("file"))):
+                return file
+            content = await asyncio.to_thread(self._mix_preview, episode, have["clip"], segments)
+            current = self.store.picture(episode_id, unit_id)
+            if not current or current["clip"] != have["clip"]:
+                raise ValueError("The picture changed while preparing playback. Press play again.")
+            saved = self.host.save_file(
+                str(episode["thread_id"]),
+                f"{picture.composition_id(unit_id)}-narrated.mp4",
+                content,
+                origin="episode",
+            )
+            self.store.set_picture(
+                episode_id,
+                unit_id,
+                generation={
+                    **(current.get("generation") or {}),
+                    "audio_preview": {"sig": signature, "file": saved["id"]},
+                },
+            )
+            return self.host.file_view(saved)
+
+    def _mix_preview(
+        self, episode: Row, clip: str, segments: list[tuple[float, float, str, float, float]]
+    ) -> bytes:
+        """Retime each visual to the actual spoken line and keep the speaker's natural pace."""
+        computer = self._computer(episode)
+        folder = f"{PROJECTS}/{episode['id']}/preview/{new_id('mix')}"
+
+        def file_bytes(fid: str) -> bytes:
+            row = self.store.file(fid)
+            if not row or row["thread_id"] != episode["thread_id"]:
+                raise ValueError("A preview source is unavailable.")
+            return (self.host.files_dir / str(row["rel_path"])).read_bytes()
+
+        files = [(f"{folder}/art.mp4", file_bytes(clip))]
+        inputs = ["-i art.mp4"]
+        filters = []
+        for i, (start, end, fid, offset, duration) in enumerate(segments):
+            filters.append(
+                f"[0:v]trim=start={start:.3f}:end={end:.3f},setpts=(PTS-STARTPTS)*{duration / max(end - start, 0.001):.8f},fps=30,tpad=stop_mode=clone:stop_duration=1,trim=duration={duration:.3f}[v{i}]"
+            )
+            if fid:
+                files.append((f"{folder}/sound-{i}", file_bytes(fid)))
+                inputs.append(f"-ss {offset:.3f} -i sound-{i}")
+                audio = f"[{len(inputs) - 1}:a]aresample=48000,apad"
+            else:
+                audio = "anullsrc=r=48000:cl=mono"
+            filters.append(f"{audio},atrim=duration={duration:.3f},asetpts=PTS-STARTPTS[a{i}]")
+        pairs = "".join(f"[v{i}][a{i}]" for i in range(len(segments)))
+        filters.append(f"{pairs}concat=n={len(segments)}:v=1:a=1[v][a]")
+        try:
+            computer.put(files)
+            command = f"cd {folder} && ffmpeg -v error -y {' '.join(inputs)} -filter_complex '{';'.join(filters)}' -map '[v]' -map '[a]' -c:v libx264 -preset ultrafast -crf 20 -threads 2 -pix_fmt yuv420p -c:a aac -movflags +faststart preview.mp4"
+            ran = computer.run(command, timeout=600)
+            content = computer.get(f"{folder}/preview.mp4") if ran.ok else None
+            if not content:
+                raise ValueError("The narrated preview could not be encoded.")
+            return content
+        finally:
+            computer.run(f"rm -rf {folder}")
+
+    async def preview_voice(self, episode_id: str, chapter: str) -> Row:
+        episode = self._episode(episode_id)
+        full = self._full(episode) or {}
+        if not any(ch["id"] == chapter for ch in full.get("chapters", [])):
+            raise KeyError(chapter)
+        await self._narrate(episode_id, chapter)
+        return self.view(episode_id)
+
+    async def _narrate(self, episode_id: str, chapter: str = "") -> None:
+        gate = self._gates.setdefault(f"{episode_id}:voice-cache", asyncio.Semaphore(1))
+        async with gate:
+            await self._speak_lines(episode_id, chapter)
+
+    async def _speak_lines(self, episode_id: str, chapter: str) -> None:
         """Speak every line no take covers, when the film is narrated. A line is spoken once:
         it is spoken again only when its words change."""
         episode = self._episode(episode_id)
         full = self._full(episode)
         mode = episode["settings"].get("voice")
-        if full is None or mode not in ("narrator", "local"):
+        if full is None or mode not in ("narrator", "local") or (chapter and mode != "local"):
             return
         if mode == "narrator" and not self._speaks():
             raise ValueError("Narration needs ELEVENLABS_API_KEY.")
@@ -2685,6 +2928,8 @@ class EpisodeDesk:
         spoken: Row = dict((episode["film"] or {}).get("voice") or {})
         for i, f in enumerate(lines):
             line = timeline.line_of(clock, f["id"])
+            if chapter and (line is None or line["chapter"] != chapter):
+                continue
             words = str(f.get("vo") or "")
             mark = plans.digest(words, voice_id)
             if line is None or line["source"]["kind"] == "take" or not words.strip():

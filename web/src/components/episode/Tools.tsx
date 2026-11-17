@@ -4,10 +4,10 @@
 // applies their changes when they have settled them. Each button says what is chosen and opens the choice
 // under it. A look is shown by the frames it is made of; one that would redraw pictures already
 // made asks first. The film, once rendered, is downloaded from the bar too.
-import { AudioLines, Bot, ChevronDown, Download, LayoutTemplate, RotateCcw, Shapes, Sparkles, TriangleAlert, type LucideIcon } from "lucide-react";
+import { AudioLines, Bot, ChevronDown, Download, LayoutTemplate, Shapes, Sparkles, TriangleAlert, type LucideIcon } from "lucide-react";
 import { useId, useRef, useState, type ReactNode } from "react";
-import { api, type EpisodeChoices, type EpisodeView } from "../../api";
-import { keepWriter, LEVEL_NAMES, LOOKS, pictureCount, PICTURES, pictureState } from "../../episode";
+import { api, type EpisodeChoices, type EpisodeUnit, type EpisodeView } from "../../api";
+import { keepWriter, LEVEL_NAMES, linesOf, LOOKS, pictureCount, PICTURES, pictureState } from "../../episode";
 import { Popover } from "../Popover";
 import { Tooltip } from "../Tooltip";
 import { turning, type Run } from "./Ask";
@@ -210,15 +210,14 @@ export function ApplyChanges({ view, run, busy }: Props) {
     [waits("added"), "designs the picture for the line you added", "designs the pictures for the N lines you added"],
     [waits("words"), "fits a picture's steps to the words you changed", "fits pictures' steps to the words you changed in N lines"],
   ] as const;
-  const chapters = view.plan?.chapters ?? [];
-  const where = (u: (typeof pictures)[number]) => `Chapter ${chapters.findIndex((c) => c.id === u.chapter) + 1} · ${PICTURES[u.kind_of_picture] ?? "Picture"}`;
   const count = lines + again.length + fresh.length;
+  const redrawOnly = again.length > 0 && count === again.length;
+  const redrawLabel = `Redraw ${again.length} ${again.length === 1 ? "visual" : "visuals"}`;
   if (count === 0) return null;
   return (
     <>
       <button ref={button} type="button" className="btn primary ep-apply" aria-haspopup="dialog" aria-expanded={open} disabled={turning(view)} onClick={() => setOpen((o) => !o)}>
-        Apply changes
-        <b>{count}</b>
+        {redrawOnly ? redrawLabel : <>Apply changes <b>{count}</b></>}
       </button>
       <Popover
         open={open}
@@ -229,10 +228,10 @@ export function ApplyChanges({ view, run, busy }: Props) {
         offset={8}
         width={420}
         className="ep-apply-pop"
-        title="Apply your changes"
-        description="Nothing has been planned or drawn for them yet."
+        title={redrawOnly ? "Review out-of-date visuals" : "Apply your changes"}
+        description={redrawOnly ? undefined : "Review the pending work before applying."}
       >
-        <ul className="ep-apply-list">
+        {!redrawOnly && <ul className="ep-apply-list">
           {writes.map(
             ([n, one, many]) =>
               n > 0 && (
@@ -247,18 +246,6 @@ export function ApplyChanges({ view, run, busy }: Props) {
                 </li>
               ),
           )}
-          {again.length > 0 && (
-            <li data-tone="amber">
-              <RotateCcw aria-hidden="true" />
-              <span>
-                <b>
-                  {again.length} {again.length === 1 ? "picture is" : "pictures are"} drawn again
-                </b>
-                , made for the plan as it was: {again.slice(0, 4).map(where).join(", ")}
-                {again.length > 4 ? ` and ${again.length - 4} more` : ""}.
-              </span>
-            </li>
-          )}
           {fresh.length > 0 && (
             <li>
               <Sparkles aria-hidden="true" />
@@ -270,7 +257,8 @@ export function ApplyChanges({ view, run, busy }: Props) {
               </span>
             </li>
           )}
-        </ul>
+        </ul>}
+        {open && again.length > 0 && <RedrawList view={view} units={again} />}
         {again.length > 0 && (
           <p className="ep-apply-warn" role="note">
             <TriangleAlert aria-hidden="true" />
@@ -291,11 +279,38 @@ export function ApplyChanges({ view, run, busy }: Props) {
               void run(() => api.applyEpisode(view.id));
             }}
           >
-            {again.length > 0 ? `Apply and draw ${again.length} again` : "Apply"}
+            {redrawOnly ? redrawLabel : "Apply changes"}
           </button>
         </div>
       </Popover>
     </>
+  );
+}
+
+function RedrawList({ view, units }: { view: EpisodeView; units: EpisodeUnit[] }) {
+  const groups = (view.plan?.chapters ?? []).map((chapter, index) => ({
+    title: `Chapter ${index + 1} · ${chapter.question}`,
+    lines: linesOf(chapter),
+    units: units.filter(unit => unit.chapter === chapter.id),
+  }));
+  const chapterIds = new Set(view.plan?.chapters.map(chapter => chapter.id));
+  const other = units.filter(unit => !chapterIds.has(unit.chapter));
+  if (other.length) groups.push({ title: "Other visuals", lines: [], units: other });
+  return (
+    <div className="ep-redraw-list" role="region" aria-label="Out-of-date visuals by chapter" tabIndex={0}>
+      {groups.filter(group => group.units.length).map(group => (
+        <section role="group" aria-label={group.title} key={group.title}>
+          <h4>{group.title}</h4>
+          <ul>{group.units.map(unit => {
+            const first = group.lines.findIndex(line => unit.frames.includes(line.id));
+            return <li key={unit.id}>
+              <b>{PICTURES[unit.kind_of_picture] ?? "Visual"}{first >= 0 && ` · Beat ${first + 1}`}</b>
+              <span>{unit.shows || group.lines[first]?.vo}</span>
+            </li>;
+          })}</ul>
+        </section>
+      ))}
+    </div>
   );
 }
 

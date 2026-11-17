@@ -31,8 +31,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
+from design_agent.episode import picture, sketch
 from design_agent.episode import plan as plans
-from design_agent.episode import sketch
 from design_agent.surfaces.web import research
 from design_agent.surfaces.web.computer import PROJECTS, Computer
 from design_agent.surfaces.web.store import Row, Store
@@ -635,32 +635,8 @@ class DemoWorker:
         brief = json.loads((folder / named.group(0)).read_text("utf8"))
         heard("step", "Reading the picture's lines")
         await asyncio.sleep(self.pause)
-        shots: list[dict[str, str]] = []
-        for n, line in enumerate(brief["lines"]):
-            steps = [str(c.get("does") or "").strip() for c in line.get("cues", [])]
-            steps = [step for step in steps if step]
-            shows = str(line.get("shows_when_finished") or "").strip()
-            focal = str(line.get("focal") or "").strip()
-            hero = steps[0] if steps else f"{focal or 'The picture'} holds still to be read"
-            shots.append(
-                {
-                    "frame": str(line["frame"]),
-                    "shot": " ".join((hero[:1].upper() + hero[1:]).split()[:20]),
-                    "opens_on": "What the lines before left in place."
-                    if n
-                    else "The frame the picture grows in, with nothing in it yet.",
-                    "hero": hero[:1].upper() + hero[1:],
-                    "others": "; ".join(steps[1:]),
-                    "still": shows if not shows.startswith("(") else "The picture as it stood.",
-                }
-            )
-        heard("note", f"{len(shots)} shots, one a line: each line gets the one move it is about.")
-        await asyncio.sleep(self.pause)
-        plan = {
-            "device": "one diagram that grows",
-            "world": "The film's own ground, flat and evenly lit; every part is a card of paper.",
-            "shots": shots,
-        }
+        plan = picture.brief_motion(brief)
+        shots = plan["shots"]
         heard("step", f"Writing {Path(target.group(0)).name}")
         (folder / target.group(0)).write_text(json.dumps(plan, indent=1), encoding="utf8")
         await asyncio.sleep(self.pause)

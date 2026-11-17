@@ -201,8 +201,14 @@ Who has the frame while a line is said. A person can switch between the three wh
 | Split (`split`) | both | The frame is halved between the person and the content. An agenda, a recap, a step, an objection answered on a diagram. | study |
 | Panel and portrait (`panel-and-portrait`) | both | The content builds in a large panel and the person stays in a tall portrait beside it. Long explanations in one layout. | study |
 | Corner window (`corner-window`) | both | The content fills the frame and the person sits in a small window in one corner. A mechanism, a worked example, code, a terminal. | study |
+| Upper corner window (`corner-top-right`) | both | Keep the presenter above a diagram or demo when its lower edge carries labels, output or a timeline. | study |
+| Presenter on the left (`split-presenter-left`) | both | Put the presenter on the left and a step, list or comparison on the right when the explanation points into that panel. | study |
+| Host with a floating card (`floating-card`) | both | Pair the host with one compact fact, quote or example in a separate card beside them. | study |
+| Question as a caption (`question-caption`) | both | Keep the host full frame with a short viewer question in the lower third while the host answers. | study |
 | Avatar and a speech bubble (`avatar-bubble`) | both | The person as a small cut-out with speech bubbles: a worked example read as a dialogue. | study |
 | Graphic on a plain ground (`graphic-on-ground`) | content | A diagram or an illustration that needs the whole frame, with nobody on screen. | study |
+| Number spotlight (`number-spotlight`) | content | Center one important measurement in a compact square with its unit and a short label. Use when the narration lands on the value. | study |
+| Chapter banner (`chapter-banner`) | content | Introduce a new section with its number and title in a wide horizontal panel. Use at a chapter boundary. | study |
 | Card on the ground (`card-on-ground`) | content | One figure, one statement or one block of code set as a card on the ground. | study |
 | Recording fills the frame (`recording-fills`) | content | A product screen, an editor or a terminal, edge to edge. | study |
 | Title card (`title-card`) | content | A name on its own: the video's title, a chapter's title, the end card. | study |
@@ -299,8 +305,8 @@ The shares are how a film on that theme splits its running time between the pers
 
 | Theme | Presenter | Stage | Layout kit | Person / both / content | Marks | Motion |
 | --- | --- | --- | --- | --- | --- | --- |
-| Presenter with a corner window (`corner-window`) | on | full bleed: the set, or a white ground | corner window, full frame, split, graphic on a plain ground | 24 / 71 / 5% | end-card | outline-then-fill |
-| Panel and portrait (`panel-and-portrait`) | on | one ground, a panel on the left and a portrait on the right | panel and portrait, graphic on a plain ground, full frame | 3 / 92 / 5% | chapter-card, end-card | pop-in-order |
-| Framed stage (`framed-stage`) | on | a coloured ground with the picture in a rounded window that never leaves | framed on a ground, corner window, graphic on a plain ground, avatar and a speech bubble, panel and portrait, person behind a glass card | 25 / 45 / 30% | title-sting, end-card | type-on-and-pop |
-| Expert to camera (`expert-to-camera`) | on | the set, full bleed; diagrams on a plain ground | full frame, graphic on a plain ground, split, person behind a glass card | 54 / 20 / 26% | end-card | outline-then-fill |
-| Voice only (`voice-only`) | off | one ground, edge to edge | graphic on a plain ground, card on the ground, recording fills the frame, title card | 0 / 0 / 100% | title-sting, end-card | carry-across-cuts |
+| Presenter with a corner window (`corner-window`) | on | full bleed: the set, or a white ground | corner window, full frame, split, graphic on a plain ground, upper corner window, presenter on the left, host with a floating card, question as a caption, number spotlight, chapter banner | 24 / 71 / 5% | end-card | outline-then-fill |
+| Panel and portrait (`panel-and-portrait`) | on | one ground, a panel on the left and a portrait on the right | panel and portrait, graphic on a plain ground, full frame, presenter on the left, host with a floating card, number spotlight, chapter banner | 3 / 92 / 5% | chapter-card, end-card | pop-in-order |
+| Framed stage (`framed-stage`) | on | a coloured ground with the picture in a rounded window that never leaves | framed on a ground, corner window, graphic on a plain ground, avatar and a speech bubble, panel and portrait, person behind a glass card, upper corner window, host with a floating card, question as a caption, number spotlight, chapter banner | 25 / 45 / 30% | title-sting, end-card | type-on-and-pop |
+| Expert to camera (`expert-to-camera`) | on | the set, full bleed; diagrams on a plain ground | full frame, graphic on a plain ground, split, person behind a glass card, presenter on the left, host with a floating card, question as a caption, number spotlight, chapter banner | 54 / 20 / 26% | end-card | outline-then-fill |
+| Voice only (`voice-only`) | off | one ground, edge to edge | graphic on a plain ground, card on the ground, recording fills the frame, title card, number spotlight, chapter banner | 0 / 0 / 100% | title-sting, end-card | carry-across-cuts |

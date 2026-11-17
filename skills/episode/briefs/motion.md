@@ -18,6 +18,10 @@ that settles at its end. For an exchange, stage both endpoints, trace from sende
 receiver, then reveal the arrowhead. For a measured comparison, establish a common scale
 before growing the bars. Keep the previous marks visible while the viewer compares them.
 
+
+Use the editable shot sheet in the turn. Keep the supplied frame IDs and field names and
+change each shot to fit the words and cues in its line. Write the named motion JSON file.
+
 ## The file
 
 ```json

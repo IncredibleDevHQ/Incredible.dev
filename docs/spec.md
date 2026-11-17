@@ -724,6 +724,9 @@ app's canvas, from a channel's material or a research frame's notes.
   was and can be asked again in the same words; one the writer made nothing of says so. A
   change keeps who has the frame for every line it does not redesign, and a picture is
   drawn again only when what it shows changed: its lines' words only move its clock.
+- **Beat history.** Open History directly on any saved beat to see its transcript, visual direction,
+  objects and cue changes, newest first. Each comparison comes from the retained history of
+  the last 12 applied episode edits. An undone edit disappears until it is redone.
 - **Seeing and undoing a change.** What the last change did is laid into the script: the words
   that went are struck, the new ones marked, a line that was cut stays as a ghost where it
   was, and a changed line's old words go back with one click. Changes are taken back one at a
@@ -752,6 +755,10 @@ app's canvas, from a channel's material or a research frame's notes.
   The script shows the beat count and numbers, with inline edit controls. The expanded timeline
   can be collapsed. Unrecorded camera lines can hold chapter artwork in the preview. The Layout
   panel selects the episode portrait for presenter windows without footage.
+  During frame planning the writer receives the selected look's layout IDs and their uses.
+  It can place one figure in a square spotlight, introduce a chapter in a wide banner,
+  move a presenter above a timeline, or pair the host with a card or question.
+  A held picture retains its framing. Studio layout choices take precedence.
   A chapter's page has the chapter's script
   in the middle as a document: a block for each run of lines said to camera, and for each
   picture a card that holds the picture itself (a placeholder until it is made), its kind,
@@ -810,7 +817,7 @@ app's canvas, from a channel's material or a research frame's notes.
   still and says so on its block, its slide and the pictures pill, and a pick taken back makes it
   current again. A pick that leaves the writer something to do (a line said to camera given a
   picture, a picture whose first line goes to camera, a line added with a picture, a step whose
-  word was typed away) waits as well. Apply changes, in the bar,
+  word was typed away) waits as well. When only existing pictures need redrawing, the bar shows “Redraw N visuals” and groups every affected picture by chapter for confirmation. For other pending work, Apply changes
   says what will run before anything does: the writer's part first, then the pictures drawn
   again, then (once the plan is approved) the new ones. Drawing a made picture again is another
   full run of its agent, so Apply and a block's Draw it again both say so first. A change asked
@@ -836,6 +843,12 @@ app's canvas, from a channel's material or a research frame's notes.
   built, and the block says so where the stills were. Any made picture plays in its block once
   its draft clip is rendered, and a clip rendered for what was drawn before is dropped the
   moment the new drawing lands. The switch on a picture's block says how it was made.
+  A malformed shot sheet gets one correction using the expected frame IDs. If the correction
+  still fails validation, the builder receives shots derived from that picture's saved cues.
+  Chromium measures visible labels at cue and line boundaries. A drawing with a collision
+  or off-canvas label must be corrected or replaced with a checked layout from the same brief.
+  Opening a chapter with Local narrator prepares speech for its unrecorded lines. Picture
+  playback mixes the saved artwork with those lines or kept takes and caches the playable cut.
   Switching a picture not made yet only sets how it will be made; switching a made one asks
   first, listing the stages to come (the go among them, as the person's), what it costs and
   the agent that will make it. Start redraws it at the chosen level.
@@ -891,7 +904,7 @@ app's canvas, from a channel's material or a research frame's notes.
   the cached narration for that text and voice, with the draft picture on the same clock.
   Before playback, an unrecorded camera line shows chapter artwork or the chapter title.
   The player supports line seeking, playback speed, volume and optional transcripts. The Picture panel
-  chooses the component and variant. Layout offers visual shape cards and shows presenter portraits in two columns. It changes the size and shape of the presenter window
+  chooses the component and variant. Layout offers a video box shape dropdown and two presenter portraits, Mira and June. It changes the size and shape of the presenter window
   in the preview and the export. The size slider spans 25% to 125% of the layout's window.
   A presenter moving between visible layouts eases to the next position, size and corner
   radius over the first 450 ms of the new line, shortened to fit short lines. Continuous

@@ -16,7 +16,7 @@ type Props = {
   cameraPoster: ReactNode;
   autoStart?: boolean;
   initialPosition?: number;
-  chapter?: { start: number; total: number; seek: (time: number, play: boolean) => void };
+  chapter?: { start: number; nextStart?: number; total: number; seek: (time: number, play: boolean) => void };
   onFinish?: () => void;
   audioControls?: { volume: number; muted: boolean; setVolume: (v: number) => void; setMuted: (v: boolean) => void };
   speed: number;
@@ -63,7 +63,7 @@ export function LinePlayer({ view, frame, unit, editingWindow, cameraPoster, aut
   const pos = useRef(initialPosition);
   const elapsed = (chapter?.start ?? 0) + position;
   const duration = chapter?.total ?? seconds;
-  const chapterEnded = !!chapter && elapsed >= duration - 0.001;
+  const chapterEnded = !!chapter && chapter.nextStart === undefined && position >= seconds - 0.001;
   const seek = (time: number) => {
     pos.current = time;
     setPosition(time);
@@ -179,7 +179,7 @@ export function LinePlayer({ view, frame, unit, editingWindow, cameraPoster, aut
           value={elapsed}
           onChange={e => {
             const time = e.currentTarget.valueAsNumber;
-            if (chapter && (time < chapter.start || (time >= chapter.start + seconds && chapter.start + seconds < duration))) {
+            if (chapter && (time < chapter.start || (chapter.nextStart !== undefined && time >= chapter.nextStart))) {
               chapter.seek(time, playing);
             } else {
               seek(Math.min(seconds, Math.max(0, time - (chapter?.start ?? 0))));

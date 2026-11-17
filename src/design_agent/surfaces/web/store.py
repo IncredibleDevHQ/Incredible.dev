@@ -721,6 +721,15 @@ class Store:
             "at": row["at"],
         }
 
+    def previous_plans(self, episode_id: str) -> list[Row]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT n, why, at, json_extract(data, '$.plan') AS plan FROM history "
+                "WHERE episode_id = ? AND kind = 'before' ORDER BY n DESC",
+                (episode_id,),
+            ).fetchall()
+        return [{**dict(row), "plan": json.loads(row["plan"] or "{}")} for row in rows]
+
     def snapshot_note(self, episode_id: str, kind: str = "before") -> Row | None:
         """What the newest change did, without the snapshot's weight."""
         row = self._history(episode_id, kind, "n, why, summary, at")

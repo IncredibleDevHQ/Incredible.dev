@@ -90,18 +90,23 @@ def split(theme: Row) -> float:
     return float(shares.get("both", 0.0) / shown) if shown else 0.0
 
 
-def rank(theme: Row, probs: Mapping[str, float], first: str | None = None) -> list[Row]:
+def rank(
+    theme: Row, probs: Mapping[str, float], first: str | None = None, preferred: str | None = None
+) -> list[Row]:
     """The theme's kit ranked for one frame. The classifier answers what it can read from a
     line: does it need the person alone, or something shown? The theme answers what it owns:
     whether shown content sits beside the person or alone. `first` is the presence picked."""
     pj = probs.get("person", 0.0)
     both_w = split(theme)
     score = {"person": pj, "both": (1 - pj) * both_w, "content": (1 - pj) * (1 - both_w)}
+    defaults = dict(theme["default"])
+    if preferred is not None:
+        defaults[LAY[preferred]["presence"]] = preferred
     ranked: list[Row] = []
     for lay_id in theme["kit"]:
         presence = LAY[lay_id]["presence"]
         p = score[presence]
-        if theme["default"].get(presence) != lay_id:
+        if lay_id != defaults.get(presence):
             p *= 0.35  # a second layout of the same presence is a variation, not the default
         ranked.append({"layout": lay_id, "presence": presence, "p": round(p, 2)})
     ranked.sort(key=lambda r: (r["presence"] != first, -r["p"]))
@@ -145,11 +150,15 @@ def settle_frames(plan: Row) -> None:
             presence = "both" if split(theme) >= 0.5 else "content"
         if not off and wants in PRESENCES and presence != wants:
             f["by"] = "overruled"  # the reading gave the writer's intent under the least it needs
-        layout = layout_for(theme, presence)
-        f["options"] = [r for r in rank(theme, probs, presence) if r["p"] > 0][:4] or rank(
-            theme, probs, presence
-        )[:1]
-        want = {} if off else wanted(plan, ch, f)
+        intent = f.get("layout_intent")
+        layout = layout_for(theme, presence, intent if intent in theme["kit"] else None)
+        ranked = rank(theme, probs, presence, layout)
+        f["options"] = [r for r in ranked if r["p"] > 0][:4] or ranked[:1]
+        want = wanted(plan, ch, f)
+        if off and (
+            want.get("layout") not in theme["kit"] or want.get("presence") not in (None, "content")
+        ):
+            want = {}
         if want.get("presence") in PRESENCES or want.get("layout") in LAY:
             new_presence = str(
                 want.get("presence")
@@ -176,7 +185,9 @@ def settle_frames(plan: Row) -> None:
             f["hold"] = True
             f["_auto_hold"] = True
         own = plan.get("_overrides", {}).get("frames", {}).get(f["id"], {})
-        if not off and not f.get("hold") and own.get("layout") not in LAY:
+        own_layout = own.get("layout")
+        own_applies = own_layout in (theme["kit"] if off else LAY) and (not off or bool(want))
+        if not f.get("hold") and not own_applies:
             # the line has no layout of its own picked: its chapter's, then the film's
             found = scoped(plan, ch, theme, presence)
             if found is not None and found[0] != layout:

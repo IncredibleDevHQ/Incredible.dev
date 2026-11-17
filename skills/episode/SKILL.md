@@ -70,8 +70,8 @@ read aloud: say so in your reply rather than invent one.
 its job, its words, how strongly the line reads as the person's, and what that came to:
 `person`, `holds` (the line needs no picture, so the picture before stays), or `both` /
 `content` with `NEEDS A PICTURE`. For every frame marked that way, write in the beat's
-`frames` list `{"id": "<beat id>.f1", "shows", "focal", "objects", "cues"}`. To let a picture
-grow across several beats, design it once and mark the frames that follow `"hold": true`: a
+`frames` list `{"id": "<beat id>.f1", "shows", "focal", "objects", "cues"}`. Set `layout_intent` to a compatible layout from the theme’s kit when the shot needs it.
+To let a picture grow across several beats, design it once and mark the frames that follow `"hold": true`: a
 held frame lists only the objects it adds and may move the ones already there. If a line
 should be the person's and is not, or the other way round, say so on the frame:
 `"wants": "person"`. Read `references/frames.md` and `references/motion.md` first.

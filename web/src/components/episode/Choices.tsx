@@ -13,6 +13,7 @@ import { Tooltip } from "../Tooltip";
 import type { Run } from "./Ask";
 import { KindArt, MoveArt } from "./PictureArt";
 import { LayoutThumb } from "./Stage";
+import { Select } from "../Select";
 import { Tiles } from "./Tiles";
 
 const WHO: Record<Presence, string> = { person: "You", both: "You and the picture", content: "The picture alone" };
@@ -131,18 +132,19 @@ function LayoutPanel({ view, chapter, line, unit, run, busy, onFilm, draftSize, 
             onPointerUp={commitSize} onPointerCancel={() => onDraftSize(null)}
             onKeyUp={commitSize} onBlur={commitSize} />
         </label>
-        <fieldset className="ep-window-group">
-          <legend>Video box shape</legend>
-          <Tiles label="Video box shape" columns={2} disabled={busy} value={line.picked?.window_shape ?? ""}
-            options={[
-              {value: "", label: "Layout default", art: <LayoutThumb view={view} layout={line.layout} />},
-              ...["rectangle", "rounded", "circle"].map(shape => ({
-                value: shape, label: shape[0].toUpperCase() + shape.slice(1),
-                art: <span className="ep-shape-art" data-shape={shape}><i /></span>,
-              })),
-            ]}
-            onPick={shape => void choose({frames: {[line.id]: {window_shape: shape || null}}})} />
-        </fieldset>
+        <Select
+          size="sm"
+          label="Video box shape"
+          value={line.picked?.window_shape ?? ""}
+          disabled={busy}
+          options={[
+            { value: "", label: "Layout default" },
+            { value: "rectangle", label: "Rectangle" },
+            { value: "rounded", label: "Rounded" },
+            { value: "circle", label: "Circle" },
+          ]}
+          onChange={shape => void choose({ frames: { [line.id]: { window_shape: shape || null } } })}
+        />
         <PortraitPicker selected={view.settings.portrait ?? "mira"} disabled={busy}
           onPick={portrait => void choose({settings: {portrait}})} />
       </div>}

@@ -833,6 +833,12 @@ def create_app(
         host.episodes.stop(episode_id, body.unit if body else "")
         return {"ok": True}
 
+    @app.get("/api/episodes/{episode_id}/lines/{frame}/history")
+    async def line_history(
+        episode_id: str, frame: str, _me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.line_history(episode_id, frame))
+
     @app.post("/api/episodes/{episode_id}/apply")
     async def apply_episode(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
         return episode_call(lambda: host.episodes.apply(episode_id, by=me))
@@ -900,6 +906,28 @@ def create_app(
     async def narrator_voices(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
         try:
             return await host.episodes.voices()
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/preview")
+    async def preview_clip(
+        episode_id: str, unit_id: str, _me: str = Depends(person)
+    ) -> dict[str, Any]:
+        try:
+            return await host.episodes.preview_clip(episode_id, unit_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Unknown episode.") from None
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.post("/api/episodes/{episode_id}/chapters/{chapter}/preview-voice")
+    async def preview_voice(
+        episode_id: str, chapter: str, _me: str = Depends(person)
+    ) -> dict[str, Any]:
+        try:
+            return await host.episodes.preview_voice(episode_id, chapter)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Unknown episode or chapter.") from None
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from None
 

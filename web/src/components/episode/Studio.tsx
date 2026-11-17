@@ -44,6 +44,7 @@ import { Stills } from "./Picture";
 import { FILM, Slides } from "./Slides";
 import { LinePlayer } from "./LinePlayer";
 import { FrameCanvas } from "./FrameCanvas";
+import { spanAt } from "./chapterSeek";
 import { spansOf, Timeline } from "./Timeline";
 import { Stage } from "./Stage";
 import { ApplyChanges, FilmDownload, FilmTools } from "./Tools";
@@ -298,6 +299,18 @@ function Chapter({
 }) {
   const plan = view.plan!;
   const lines = useMemo(() => linesOf(chapter), [chapter]);
+  const missingVoice = view.settings.voice === "local" ? lines.filter(line => {
+    const clock = clockLine(view, line.id);
+    return line.vo.trim() && clock && clock.source.kind !== "take" && !clock.audio_url;
+  }).map(line => line.id + "/" + line.vo).join("\n") : "";
+  useEffect(() => {
+    if (!missingVoice) return;
+    let active = true;
+    api.previewVoice(view.id, chapter.id).then(next => {
+      if (active) useHouse.getState().setEpisode(next);
+    }).catch(error => { if (active) useHouse.getState().say(error.message); });
+    return () => { active = false; };
+  }, [view.id, chapter.id, missingVoice]);
   const number = plan.chapters.indexOf(chapter) + 1;
   const [picked, setPicked] = useState(() => (opening && lines.some((l) => l.id === opening) ? opening : lines[0].id));
   const [progress, setProgress] = useState<number | null>(null);
@@ -564,7 +577,8 @@ function Chapter({
   );
   const cameraPoster = artwork && line.presence === "person" && !previewTake?.video ? chapterPoster : null;
   const seekChapter = (time: number, play: boolean) => {
-    const target = spans.find(s => time < s.start + s.seconds) ?? spans[spans.length - 1];
+    const target = spanAt(spans, time);
+    if (!target) return;
     const offset = Math.max(0, Math.min(target.seconds, time - target.start));
     setPicked(target.line.id);
     setProgress(offset / target.seconds);
@@ -691,7 +705,7 @@ function Chapter({
                     <Stage view={view} frame={line} unit={unit} stream={recorder.stream} />
                   ) : (
                     <LinePlayer cameraPoster={cameraPoster} key={playerKey + "/" + chapterRun} initialPosition={chapterCue?.offset} autoStart={chapterCue?.play}
-                      chapter={chapterCue && span ? {start: span.start, total, seek: seekChapter} : undefined} audioControls={{volume, setVolume, muted, setMuted}}
+                      chapter={chapterCue && span ? {start: span.start, nextStart: spans[at + 1]?.start, total, seek: seekChapter} : undefined} audioControls={{volume, setVolume, muted, setMuted}}
                       onFinish={() => {
                         if (chapterCue && spans[at + 1]) seekChapter(spans[at + 1].start, true);
                       }} speed={speed} onSpeed={setSpeed} view={view} frame={previewLine} editingWindow={draftSize !== null} unit={unit} captions={captions} onCaptions={setCaptions} onProgress={setProgress} />

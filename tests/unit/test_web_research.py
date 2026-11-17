@@ -676,3 +676,31 @@ async def test_a_new_question_is_told_the_frames_notes_and_no_other_chat(
     told_now = runner.calls[-1]["prompt"]
     assert "Note 11." in told_now and "Note 00." not in told_now and "Expiry" not in told_now
     assert len(told_now) < 6_000 + 400
+
+
+@pytest.mark.asyncio
+async def test_codex_failure_keeps_its_reported_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from design_agent.surfaces.web import research
+
+    binary = tmp_path / "codex"
+    binary.write_text(
+        "#!/bin/sh\ncat >/dev/null\n"
+        """echo '{"type":"turn.failed","error":{"message":"Model unavailable"}}'\nexit 1\n"""
+    )
+    binary.chmod(0o755)
+    monkeypatch.setattr(type(HARNESSES["codex"]), "binary", lambda self: str(binary))
+    events = [
+        event
+        async for event in research.run(
+            "codex", repo=tmp_path, prompt="Draw", session="", profile=tmp_path
+        )
+    ]
+    assert events == [Event("error", "Model unavailable")]
+
+
+def test_codex_nested_provider_error_has_readable_message(tmp_path: Path) -> None:
+    body = json.dumps({"status": 400, "error": {"message": "Model unavailable"}})
+    event = {"type": "turn.failed", "error": {"message": body}}
+    assert parse("codex", json.dumps(event), tmp_path) == [Event("error", "Model unavailable")]

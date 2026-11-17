@@ -8,8 +8,8 @@ import '/src/app.css';
 const frame = {id:'line', layout:'full', presence:'person', start:0, seconds:15, picked:{window_shape:'rounded'}};
 const chapter = {id:'chapter', question:'Chapter title', seconds:15, beats:[{frames:[frame]}]};
 const view = {id:'fixture', title:'Film title', plan:{chapters:[chapter], totals:{seconds:15}}, units:[], takes:[],
-  clock:{total:23, chapters:[{id:'chapter',seconds:23}]}, rerecord:[], settings:{portrait:'june'},
-  options:{themes:[], geometry:{frame:[1920,1080],layouts:{full:{person:[0,0,1920,1080]}}}}};
+  clock:{total:23, chapters:[{id:'chapter',seconds:23}]}, rerecord:[], settings:{portrait:'june',theme:'corner-window'},
+  options:{themes:[{id:'corner-window',kit:[{layout:'full',presence:'person'},{layout:'number-spotlight',presence:'content'}]}], geometry:{frame:[1920,1080],layouts:{full:{person:[0,0,1920,1080]},'number-spotlight':{picture:[600,180,720,720]}}}}};
 const props = {view,chapter,line:frame,run:async action=>{await action();return true},panel:'layout'};
 createRoot(document.querySelector('#root')).render(React.createElement('div', {style:{width:250}}, React.createElement(Slides,{view,at:'chapter',onAt(){}}),React.createElement(ChoicePanel,props)));
 </script></html>

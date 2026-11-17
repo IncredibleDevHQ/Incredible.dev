@@ -186,7 +186,7 @@ for (const id of ids) {
     name,
     x,
     y + bh * 0.55 + font * 0.75,
-    horizontal ? (w / ids.length) * 0.89 : w * 0.55,
+    Math.min(horizontal ? (w / ids.length) * 0.89 : w * 0.55, 2 * Math.min(x - left, right - x)),
     font,
     g,
     "middle"

@@ -44,3 +44,16 @@ test("chapter controls keep chapter time, seek across beats while paused and rep
   await player.getByRole("button", {name: "Replay chapter"}).click();
   assert.deepEqual(JSON.parse(await page.locator("#result").textContent()), {time: 0, play: true});
 });
+
+
+test("the last beat can replay when the stored chapter duration rounds past its end", async t => {
+  const server = await createServer({ server: { host: "127.0.0.1", port: 0 }, logLevel: "error" });
+  t.after(() => server.close());
+  await server.listen();
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(new URL("tests/browser/line-player.html?rounded", server.resolvedUrls.local[0]).href);
+  await page.getByRole("slider", {name: "Seek within chapter"}).press("End");
+  assert.equal(await page.getByRole("button", {name: "Replay chapter"}).count(), 1);
+});

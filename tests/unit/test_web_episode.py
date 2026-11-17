@@ -438,8 +438,15 @@ async def test_switching_a_made_picture_to_rich_with_a_yes_makes_it_again_that_w
     # the clip of the picture as it was never plays for the one made again
     assert desk.store.picture(episode_id, unit["id"])["clip"] != "f_was"
 
+    # Switching back starts a simple drawing and clears the previous rich shot sheet.
+    desk.make(episode_id, by="you", only=[unit["id"]], level="simple")
+    await settle(lambda: not desk._busy(episode_id))
+    back = next(u for u in desk.view(episode_id)["units"] if u["id"] == unit["id"])
+    assert back["level"] == "simple" and back["picture"]["level"] == "simple"
+    assert back["picture"]["status"] == "made" and back["picture"]["motion"] is None
 
-async def test_a_motion_plan_that_breaks_its_shape_goes_back_once_then_the_picture_says_so(
+
+async def test_invalid_motion_plan_recovers_from_the_same_brief_after_one_retry(
     tmp_path: Path, house: AgentHost
 ) -> None:
     asked: list[str] = []
@@ -460,17 +467,14 @@ async def test_a_motion_plan_that_breaks_its_shape_goes_back_once_then_the_pictu
     desk.make(episode_id, by="you", only=[unit["id"]])
     await settle(lambda: not desk._busy(episode_id))
     made = desk.view(episode_id)["units"][0]["picture"]
-    assert made["status"] == "failed" and made["motion"] is None
-    assert made["failure"].startswith("Its motion plan could not be used: ")
-    assert len(asked) == 2 and "has no shot" in asked[1] and '"device" is one of' in asked[1]
-    # nothing was drawn from a plan that does not stand
-    assert not (
-        desk.data_dir
-        / "episodes"
-        / episode_id
-        / "pictures"
-        / f"{picture.composition_id(unit['id'])}.html"
-    ).exists()
+    assert made["status"] == "go", made["failure"]
+    assert [s["frame"] for s in made["motion"]["shots"]] == unit["frames"]
+    assert (
+        made["motion"]["shots"][0]["still"]
+        == lines_of(desk.view(episode_id))[unit["frames"][0]]["shows"]
+    )
+    assert len(asked) == 2 and "has no shot" in asked[1]
+    assert unit["frames"][0] in asked[0] and '"hero"' in asked[0]
 
 
 def test_a_motion_plan_keeps_one_shot_a_line_and_only_what_its_shape_names() -> None:
@@ -3116,3 +3120,142 @@ async def test_redraw_uses_the_saved_beat_provider_model_and_effort(
     assert result["status"] == "made"
     assert result["generation"]["model"] == "gpt-6.1-sol"
     assert result["generation"]["effort"] == "medium"
+
+
+async def test_local_chapter_preview_caches_only_its_lines_and_serializes_requests(
+    house, monkeypatch
+):
+    from design_agent.tools import local_speech, media
+
+    said = []
+
+    def synth(words):
+        said.append(words)
+        return media.Spoken(b"wave", 2.5, [])
+
+    monkeypatch.setattr(local_speech, "engine", lambda: "say")
+    monkeypatch.setattr(local_speech, "synthesize", synth)
+    ep = await planned(house, voice="local")
+    desk = house.episodes
+    chapter = desk.view(ep)["plan"]["chapters"][0]["id"]
+    await asyncio.gather(desk.preview_voice(ep, chapter), desk.preview_voice(ep, chapter))
+    lines = desk.view(ep)["clock"]["lines"]
+    assert len(said) == sum(row["chapter"] == chapter for row in lines)
+    assert all(bool(row.get("audio_url")) == (row["chapter"] == chapter) for row in lines)
+    with pytest.raises(KeyError):
+        await desk.preview_voice(ep, "unknown")
+    assert not desk.view(ep)["film_state"]["file"]
+
+
+def test_motion_plan_rejects_two_shots_for_one_frame():
+    shot = {"frame": "a", "shot": "Show the path.", "hero": "Trace the path.", "still": "A path."}
+    _, faults = picture.motion_plan(
+        json.dumps({"device": "steps in order", "world": "A chart", "shots": [shot, shot]}),
+        {"frames": ["a"]},
+    )
+    assert any("duplicate" in f for f in faults)
+
+
+async def test_picture_preview_reuses_audio_mix_and_invalidates_on_edit(house, monkeypatch):
+    from design_agent.tools import local_speech, media
+
+    desk = house.episodes
+    monkeypatch.setattr(local_speech, "engine", lambda: "say")
+    monkeypatch.setattr(local_speech, "synthesize", lambda _: media.Spoken(b"wave", 2.5, []))
+    ep = await planned(house, voice="local")
+    unit = desk.view(ep)["units"][0]
+    clip = house.save_file(desk._episode(ep)["thread_id"], "pic.mp4", b"video", origin="episode")
+    desk.store.set_picture(
+        ep, unit["id"], status="go", clip=clip["id"], generation={"model": "keep"}
+    )
+    mixes = []
+
+    def mix(*args):
+        mixes.append(args)
+        return b"audio-video"
+
+    monkeypatch.setattr(desk, "_mix_preview", mix)
+    first = await desk.preview_clip(ep, unit["id"])
+    assert first["id"] != clip["id"]
+    assert (await desk.preview_clip(ep, unit["id"]))["id"] == first["id"]
+    assert len(mixes) == 1
+    desk.edit(ep, by="you", frame=unit["frames"][0], text="A changed line.")
+    assert (await desk.preview_clip(ep, unit["id"]))["id"] != first["id"]
+    assert len(mixes) == 2 and desk.store.picture(ep, unit["id"])["generation"]["model"] == "keep"
+
+
+async def test_beat_history_keeps_saved_wording_and_visual_changes(house: AgentHost) -> None:
+    eid = await made(house)
+    desk = house.episodes
+    frame = order_of(desk.view(eid))[0]
+    fid = frame["id"]
+    assert desk.line_history(eid, fid)["entries"] == []
+    for words in ("First revision.", "Second revision."):
+        desk.edit(eid, by="you", frame=fid, text=words)
+    entries = desk.line_history(eid, fid)["entries"]
+    assert [entry["changes"][0]["after"] for entry in entries] == [
+        "Second revision.",
+        "First revision.",
+    ]
+    assert entries[-1]["changes"][0]["before"] == frame["vo"]
+    desk.undo(eid, by="you")
+    assert len(desk.line_history(eid, fid)["entries"]) == 1
+    before = desk._episode(eid)
+    plan = json.loads(json.dumps(before["plan"]))
+    target = plan["chapters"][0]["beats"][1]["frames"][0]
+    old_direction = target["shows"]
+    target["shows"] = "Zoom in on the receiver."
+    desk._snapshot(eid, "More detail")
+    house.store.update_episode(eid, plan=plan)
+    history = desk.line_history(eid, target["id"])["entries"]
+    assert history[0]["changes"] == [
+        {"label": "Visual direction", "before": old_direction, "after": target["shows"]}
+    ]
+    assert len(desk.line_history(eid, fid)["entries"]) == 1
+    with pytest.raises(KeyError):
+        desk.line_history(eid, "unknown")
+
+
+@pytest.mark.parametrize("off", [False, True])
+def test_frames_writer_receives_only_the_selected_looks_layouts(
+    house: AgentHost, off: bool
+) -> None:
+    settings = {"theme": "corner-window", "presenter": "off" if off else "on"}
+    prompt = house.episodes._prompt(
+        {"settings": settings}, house.episodes.workers[DEMO], "frames", [], ""
+    )
+    assert "layout_intent" in prompt
+    assert ("corner-top-right" in prompt) is not off
+    assert ("recording-fills" in prompt) is off
+
+
+async def test_planned_layout_reaches_the_saved_episode_and_picture_builder(
+    house: AgentHost, tmp_path: Path
+) -> None:
+    script = json.loads(json.dumps(SCRIPT))
+    frame = next(
+        frame
+        for chapter in script["plan"]["chapters"]
+        for beat in chapter["beats"]
+        for frame in beat.get("frames", [])
+        if frame.get("shows")
+        and not frame.get("hold")
+        and script["labels"]["frames"][frame["id"]]["presence"] == "both"
+    )
+    frame["layout_intent"] = "corner-top-right"
+    house.episodes.workers[DEMO] = DemoWorker(data_dir=tmp_path, script=script, pause=0)
+    episode_id = await planned(house)
+    view = house.episodes.view(episode_id)
+    line = next(
+        f
+        for ch in view["plan"]["chapters"]
+        for b in ch["beats"]
+        for f in b["frames"]
+        if f["id"] == frame["id"]
+    )
+    assert line["layout"] == "corner-top-right"
+    unit = next(u for u in view["units"] if frame["id"] in u["frames"])
+    brief = picture.brief(unit, view["plan"])
+    assert brief["layout"]["id"] == line["layout"]
+    assert brief["keep_clear"]["top"] == 0
+    assert view["options"]["geometry"]["layouts"][line["layout"]]["person"] == [1432, 28, 460, 258]

@@ -1,11 +1,23 @@
 # Building one picture
 
+Compose for the brief’s layout and canvas. Draw only the content area. The studio places the presenter separately. Keep labels and focal objects outside `keep_clear`.
+
 You build one picture of an episode: a run of lines over which one drawing grows as the
 presenter speaks. You decide how it looks and how it moves. Code decides when: every time in
 your file comes from a clock that code sets, first from the plan and later from the recording.
 
 The turn names a brief file (`pictures/<id>.brief.json`). Read it whole. It gives the file to
 write, the canvas, the look, each line with what it adds, and the key of every cue.
+
+
+Leave a readable gutter between adjacent labels throughout each reveal and in the held pose.
+Reserve a landing space for moving cards before drawing their destination. Keep file icons,
+labels and port markers visible after arrival. Place connector captions wholly inside a panel
+or in a clear margin. Inspect the arrival and final hold for borders cutting through text.
+For a directed transfer, check that the final arrowhead points toward the receiving object.
+Reuse each object's element when later cues refer back to it. Keep SVG IDs unique and use
+the same typography and palette throughout the picture. A label collision report names both
+pieces of text so you can move the relevant label or resize its container.
 
 ## The file
 

@@ -1,14 +1,15 @@
-const cols = variant === "side-by-side" ? Math.max(1, Math.min(n, 3)) : 2;
+const cols = variant === "side-by-side" ? Math.max(1, Math.min(3, Math.ceil(Math.sqrt(n)))) : 2;
 const rows = Math.ceil(n / cols),
+  gap = Math.min(size * 0.65, w / cols * 0.12),
   cw = w / cols,
-  rh = Math.min(h / Math.max(1, rows), size * 3.6);
+  rh = Math.min(h / Math.max(1, rows), size * 5);
 items.forEach((item, i) => {
   const col = i % cols,
     row = Math.floor(i / cols),
     x = left + col * cw,
-    y = top + row * rh,
+    y = top + (h - rows * rh) / 2 + row * rh,
     g = node("g");
-  if (variant === "side-by-side") rect(x + 4, y + 4, cw - 8, rh - 8, colors.panel, g);
+  if (variant === "side-by-side") rect(x + gap / 2, y + gap / 2, cw - gap, rh - gap, colors.panel, g);
   if (variant === "table") {
     path("M" + x + " " + (y + rh) + "h" + cw, colors.line, g);
     if (col) path("M" + x + " " + y + "v" + rh, colors.line, g);

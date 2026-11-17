@@ -47,6 +47,7 @@ You see the second and third only through the report each turn opens with.
               "id": "c1.b1.f1",
               "vo": "...",            // only when the beat has more than one frame; the pieces joined are `says`
               "wants": "person",      // optional: who you meant to have the frame (person | both | content)
+              "layout_intent": "split", // optional layout ID from the chosen theme for that presence
               "hold": false,          // true: keeps the picture of the frame before, and may add to it
               "shows": "...",         // what the viewer sees when the frame has finished
               "focal": "o1",          // the one object the eye follows

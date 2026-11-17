@@ -256,6 +256,7 @@ async def run(
         limit=LINE_LIMIT,
         start_new_session=True,
     )
+    reported_error = False
     said: list[str] = []
     drain = asyncio.create_task(_tail(process.stderr, said))
     try:
@@ -293,9 +294,11 @@ async def run(
                                     used_effort[:16] if isinstance(used_effort, str) else "",
                                 )
                 for event in parse(harness_id, line, repo):
+                    if event.kind == "error":
+                        reported_error = True
                     yield event
             code = await process.wait()
-        if code:
+        if code and not reported_error:
             last = next((s for s in reversed(said) if s.strip()), "")
             yield Event("error", last.strip()[:300] or f"{harness.title} stopped (exit {code}).")
     except TimeoutError:
@@ -378,7 +381,14 @@ def _codex(record: Mapping[str, Any]) -> list[Event]:
     if kind in ("turn.failed", "error"):
         failure = record.get("error") or {}
         message = failure.get("message") if isinstance(failure, dict) else failure
-        return [Event("error", str(message or record.get("message") or "Codex stopped."))]
+        reason = str(message or record.get("message") or "Codex stopped.")
+        if reason.lstrip().startswith("{"):
+            with contextlib.suppress(ValueError):
+                body = json.loads(reason)
+                error = body.get("error") if isinstance(body, dict) else None
+                if isinstance(error, dict) and isinstance(error.get("message"), str):
+                    reason = error["message"] or reason
+        return [Event("error", reason[:300])]
     item = record.get("item") or {}
     if not isinstance(item, dict):
         return []

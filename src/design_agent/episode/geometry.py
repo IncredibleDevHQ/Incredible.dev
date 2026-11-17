@@ -45,6 +45,16 @@ REGIONS: dict[str, Region] = {
         picture_radius=20,
     ),
     "corner-window": Region(person=(1478, 676, 384, 346), picture=FULL, person_radius=18),
+    "corner-top-right": Region(person=(1432, 28, 460, 258), picture=FULL, person_radius=18),
+    "split-presenter-left": Region(
+        person=(0, 0, 960, 1080), picture=(1008, 60, 864, 960), picture_radius=20
+    ),
+    "floating-card": Region(
+        person=(0, 0, 1024, 1080), picture=(1088, 264, 768, 552), picture_radius=28
+    ),
+    "question-caption": Region(
+        person=FULL, picture=(96, 786, 1280, 214), picture_radius=20, glass=True
+    ),
     "avatar-bubble": Region(
         person=(77, 733, 270, 270),
         picture=(422, 86, 1421, 907),
@@ -52,6 +62,8 @@ REGIONS: dict[str, Region] = {
         picture_radius=20,
     ),
     "graphic-on-ground": Region(picture=FULL),
+    "number-spotlight": Region(picture=(600, 180, 720, 720), picture_radius=24),
+    "chapter-banner": Region(picture=(144, 340, 1632, 400), picture_radius=16),
     "card-on-ground": Region(picture=(346, 151, 1228, 778), picture_radius=24),
     "recording-fills": Region(picture=FULL),
     "title-card": Region(picture=FULL),
