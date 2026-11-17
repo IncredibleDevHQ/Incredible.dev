@@ -743,12 +743,16 @@ app's canvas, from a channel's material or a research frame's notes.
   on a canvas from the same table the film is rendered from: the picture's still in its box
   (the plan's words for it before it is made) and the person's take at that line (a stand-in
   before there is one). Down the left are the film and its chapters as slides: the film first, as its
-  title card, then each chapter's first picture as it stands, its question and where it
+  title card, then each chapter's thumbnail with its duration, its question and where it
   stands. The film's page has the whole script in the middle as one document (the plan's idea
   and who wrote it, then each chapter's question over its lines, run on as text in its blocks)
   and the film beside it: pointing at a line shows its frame there, a click keeps it, and
   the frame, a double click or Enter opens the chapter at that line; under it stand the film's
-  length, its render and the next chapter to record. A chapter's page has the chapter's script
+  length, its render and the next chapter to record. A chapter can play continuously from its first beat to its last, or preview one line.
+  The script shows the beat count and numbers, with inline edit controls. The expanded timeline
+  can be collapsed. Unrecorded camera lines can hold chapter artwork in the preview. The Layout
+  panel selects the episode portrait for presenter windows without footage.
+  A chapter's page has the chapter's script
   in the middle as a document: a block for each run of lines said to camera, and for each
   picture a card that holds the picture itself (a placeholder until it is made), its kind,
   where it stands, how it is made and what it shows, over the lines it is shown on. The frame
@@ -834,15 +838,11 @@ app's canvas, from a channel's material or a research frame's notes.
   moment the new drawing lands. The switch on a picture's block says how it was made.
   Switching a picture not made yet only sets how it will be made; switching a made one asks
   first, listing the stages to come (the go among them, as the person's), what it costs and
-  the agent to make it (its own, or another that is ready), and the yes (Start) makes it
-  again that way at once, one made before its level was kept included.
-- **Which agent works** is a person's choice at three levels, each among the agents that are
-  ready (a coding agent on their computer, or the built-in one). The film's agent, in the bar,
-  writes the changes asked for and draws the pictures from then on. A chapter can have another
-  draw its pictures, picked in the chapter's head. A picture that was not made can be tried
-  with another. A picture is drawn by its own agent, else its chapter's, else the film's; each
-  agent draws its own pictures a few at a time. A new episode starts with the agent picked
-  last on that computer.
+  the agent that will make it. Start redraws it at the chosen level.
+- **Which agent works** is set for the film in the bar. The beat's model picker saves its
+  provider, model and effort. Draw it again and retry use that saved choice. Beats without
+  an override inherit the chapter's saved provider, or the film's agent. Each agent draws
+  its pictures a few at a time. A new episode starts with the agent picked last on that computer.
 - **A take** per chapter is recorded in the browser or brought as a file (picked, or dropped
   on the chapter's frame). A chapter is said over its pictures, so it is recorded once they
   are made: asking to record one whose pictures nobody asked for yet makes them first, and
@@ -886,16 +886,16 @@ app's canvas, from a channel's material or a research frame's notes.
   The Cloned voice card names the saved voice and opens setup when the episode has none.
   Cancelling keeps the current narrator. A successful clone is selected for the next render
   and remains available if the person switches to another voice.
-- In a chapter, expanding the preview places the player above the script. Playback uses the
+- Chapter playback uses a single elapsed time and seek bar across beats. Replay starts from the chapter opening. The sidebar previews the whole chapter by default, with chapter actions below its cover. Choosing a beat switches to its frame. Opening the preview places the player above the script. Playback uses the
   current export when available. For a changed film the editor plays the selected take or
   the cached narration for that text and voice, with the draft picture on the same clock.
   Before playback, an unrecorded camera line shows chapter artwork or the chapter title.
   The player supports line seeking, playback speed, volume and optional transcripts. The Picture panel
-  chooses the component and variant. Layout changes the size and shape of the presenter window
+  chooses the component and variant. Layout offers visual shape cards and shows presenter portraits in two columns. It changes the size and shape of the presenter window
   in the preview and the export. The size slider spans 25% to 125% of the layout's window.
   A presenter moving between visible layouts eases to the next position, size and corner
   radius over the first 450 ms of the new line, shortened to fit short lines. Continuous
-  takes retain their media clock. Each picture card shows its edit model. On scripted beats
+  takes retain their media clock. Each picture card shows its edit model. A stepped effort slider offers the levels supported by that model, starting with its default. On scripted beats
   Studio suggests a model from a ready AI provider. Confirming a provider, model and effort
   applies to future script edits on that beat’s lines and to picture and motion graphics builds.
   The picker also shows which provider made the existing picture.

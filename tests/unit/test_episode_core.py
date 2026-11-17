@@ -892,3 +892,37 @@ def test_window_percentage_and_saved_presets() -> None:
     for invalid in (0, 126, True, "75", 50.5):
         with pytest.raises(ValueError):
             override.refuse({"frames": {"f": {"window_size": invalid}}})
+
+
+def test_timeline_keeps_chronology_when_events_have_links() -> None:
+    from design_agent.episode import catalog
+
+    frame = {
+        "id": "first",
+        "arrangement": "timeline",
+        "objects": [
+            {"id": "launch", "words": "Launch"},
+            {"id": "renew", "words": "Renewal"},
+            {"id": "after", "from": "launch", "to": "renew", "words": "Later"},
+        ],
+    }
+    choice = catalog.select(frame, [frame], {}, "diagram", 1400)
+    assert (choice["component"], choice["variant"]) == ("timeline", "horizontal")
+    assert (
+        catalog.select(frame, [frame], {"component": "flowchart"}, "diagram", 1400)["component"]
+        == "flowchart"
+    )
+
+
+def test_automatic_chart_requires_comparable_measurements() -> None:
+    from design_agent.episode import catalog
+
+    first = {
+        "objects": [
+            {"id": "a", "words": "North", "value": 8, "unit": "orders"},
+            {"id": "b", "words": "South", "value": 4, "unit": "orders"},
+        ]
+    }
+    assert catalog.select(first, [first], {}, "diagram", 1000)["component"] == "bar-chart"
+    first["objects"][1]["unit"] = "days"
+    assert catalog.select(first, [first], {}, "diagram", 1000)["component"] != "bar-chart"

@@ -5,7 +5,7 @@
 // on how such pickers behave; no other component's source is in it.
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 
-export type Tile<T extends string> = { value: T; label: string; art: ReactNode; means: string; note?: string };
+export type Tile<T extends string> = { value: T; label: string; art: ReactNode; means?: string; note?: string };
 
 export function Tiles<T extends string>({
   options,
@@ -71,7 +71,7 @@ export function Tiles<T extends string>({
             role="radio"
             className="ep-tile"
             aria-checked={o.value === value}
-            aria-describedby={`${uid}-${o.value}`}
+            aria-describedby={o.means ? `${uid}-${o.value}` : undefined}
             aria-disabled={disabled || undefined}
             tabIndex={o.value === tabStop ? 0 : -1}
             onClick={() => !disabled && o.value !== value && onPick(o.value)}
@@ -97,7 +97,7 @@ export function Tiles<T extends string>({
         ))}
       </div>
       {/* each tile names its meaning to a screen reader; this line is for the eye */}
-      {current && (
+      {current?.means && (
         <Swap swapKey={current.value} className="ep-tiles-means" hidden>
           <b>{current.label}</b> {current.means}
         </Swap>

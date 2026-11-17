@@ -9,7 +9,6 @@ import { useId, useRef, useState, type ReactNode } from "react";
 import { api, type EpisodeChoices, type EpisodeView } from "../../api";
 import { keepWriter, LEVEL_NAMES, LOOKS, pictureCount, PICTURES, pictureState } from "../../episode";
 import { Popover } from "../Popover";
-import { BackgroundSettings } from "./BackgroundSettings";
 import { Tooltip } from "../Tooltip";
 import { turning, type Run } from "./Ask";
 import { WRITERS } from "./Film";
@@ -81,15 +80,7 @@ function LookTool({ view, run, busy }: Props) {
               );
             })}
           </div>
-          <details className="ep-look-background">
-            <summary>Video background</summary>
-            <BackgroundSettings
-              key={[view.id, view.settings.background_color, view.settings.background_texture].join("/")}
-              view={view}
-              run={run}
-              busy={busy}
-            />
-          </details>
+
           {made > 0 && <Untouched />}
         </>
       )}

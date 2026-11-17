@@ -14,23 +14,17 @@
 // by the agent picked for the chapter; one can be drawn by another.
 import { Check, ChevronDown, Play, RotateCcw, Sparkles, Square } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { api, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Level, type Motion, type WriterId } from "../../api";
+import { api, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Level, type Motion } from "../../api";
 import { LEVEL_NAMES, pictureState, pictureWords } from "../../episode";
 import { Popover } from "../Popover";
 import { SegmentedControl } from "../SegmentedControl";
-import { Select } from "../Select";
 import type { Run } from "./Ask";
-import { AgentMark } from "../../ui";
 import { blockName, KindIcon, type Block } from "./Blocks";
 import { Changed } from "./Diff";
 import { WRITERS } from "./Film";
 import { BUILD, PictureTrail } from "./Work";
 import { GenerationSettings } from "./GenerationSettings";
 import { KindArt } from "./PictureArt";
-
-// The agents that are ready on this computer, as a select lists them: each by its mark and name.
-export const agentOptions = (view: EpisodeView) =>
-  view.options.writers.filter((w) => w.ready).map((w) => ({ value: w.id, label: w.title, icon: <AgentMark mark={w.local ? w.id : undefined} size="sm" /> }));
 
 const LEVELS: Record<Level, string> = {
   rich: "Each line is planned as a shot, then drawn. You play it and check a still of each line before your go.",
@@ -109,7 +103,6 @@ export function PictureCard({
   const [sent, setSent] = useState<Level | null>(null);
   const again = asking === "draw";
   const setAgain = (on: boolean) => setAsking(on ? "draw" : null);
-  const choose = (pick: { level?: Level; builder?: WriterId | null }) => run(() => api.chooseEpisode(view.id, { units: { [unit.id]: pick } }));
   const make = () => void run(() => api.makePictures(view.id, { units: [unit.id] }));
   // The switch says how the picture is made: a made one as it was built (one made before that was
   // kept is rich when it has a motion plan), else how it will be. A picture not made yet is only
@@ -118,7 +111,7 @@ export function PictureCard({
   const madeAs: Level = state === "planned" ? unit.level : p.level || (p.motion ? "rich" : "simple");
   const level = (next: Level) => {
     if (next === madeAs) return setToLevel(null);
-    if (state === "planned") return void choose({ level: next });
+    if (state === "planned") return void run(() => api.chooseEpisode(view.id, { units: { [unit.id]: { level: next } } }));
     setToLevel(next);
   };
   const remake = (to: Level) => {
@@ -126,22 +119,6 @@ export function PictureCard({
     setSent(to);
     void run(() => api.makePictures(view.id, { units: [unit.id], level: to })).then(() => setSent(null));
   };
-  // A picture that was not made can be tried with another agent than its chapter's.
-  const agents = agentOptions(view);
-  const builder = agents.length > 1 && (
-    <label className="ep-figure-by">
-      with
-      <Select
-        size="sm"
-        aria-label="The agent that makes this picture"
-        value={unit.builder}
-        options={agents}
-        disabled={busy}
-        onChange={(id) => id !== unit.builder && void choose({ builder: id === view.builders[unit.chapter] ? null : (id as WriterId) })}
-      />
-    </label>
-  );
-
   return (
     <>
       <div className="ep-figure-top">
@@ -172,8 +149,7 @@ export function PictureCard({
           <header className="ep-block-head" data-status={state}>
             <KindIcon block={block} />
             <b>{name}</b>
-            <span>{pictureWords(unit, view)}</span>
-            {p.motion && <MotionPlan motion={p.motion} lines={lines} />}
+            {pictureWords(unit, view) !== "Made" && <span>{pictureWords(unit, view)}</span>}
             {tools}
             {designed && (
               <div ref={levelAnchor} className="ep-figure-level">
@@ -191,7 +167,10 @@ export function PictureCard({
               </div>
             )}
           </header>
-          {designed && <GenerationSettings view={view} unit={unit} run={run} busy={busy || state === "making"} />}
+          <div className="ep-beat-options">
+            {designed && <GenerationSettings view={view} unit={unit} run={run} busy={busy || state === "making"} />}
+            {p.motion && <MotionPlan motion={p.motion} lines={lines} />}
+          </div>
           {unit.shows && <p className="ep-block-shows">{unit.shows}</p>}
           <Popover open={Boolean(toLevel)} anchor={levelAnchor} onClose={() => setToLevel(null)}
             side="bottom" align="end" width={296} title={toLevel === "rich" ? "Make it as motion graphics?" : "Make it simple?"}>
@@ -204,7 +183,6 @@ export function PictureCard({
                 ))}
               </ol>
               <span>{levelCost(unit, toLevel)}</span>
-              {builder}
               <div className="ep-level-do">
                 <button type="button" className="btn" onClick={() => setToLevel(null)}>
                   Cancel
@@ -263,7 +241,6 @@ export function PictureCard({
                   <RotateCcw />
                   Draw it again
                 </button>
-                {builder}
                 <small>or apply all your changes from the bar.</small>
               </div>
             )
@@ -332,7 +309,6 @@ export function PictureCard({
                 <RotateCcw />
                 Try again
               </button>
-              {builder}
             </div>
           ) : null}
         </div>
@@ -370,7 +346,7 @@ function MotionPlan({ motion, lines }: { motion: Motion; lines: EpisodeFrame[] }
   const button = useRef<HTMLButtonElement>(null);
   return (
     <>
-      <button ref={button} type="button" className="ep-figure-plan" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button ref={button} type="button" className="btn ep-beat-trigger" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         Motion plan
         <ChevronDown aria-hidden="true" />
       </button>

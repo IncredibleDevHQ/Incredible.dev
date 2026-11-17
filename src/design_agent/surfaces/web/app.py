@@ -210,6 +210,7 @@ class EpisodeSettingsIn(BaseModel):
     theme: str | None = Field(default=None, max_length=60)
     voice: str | None = Field(default=None, pattern=r"^(live|narrator|local)$")
     background_color: str | None = Field(default=None, pattern=r"^(#[0-9a-fA-F]{6})?$")
+    portrait: Literal["mira", "kai", "ellis", "june"] | None = None
     background_texture: Literal["solid", "dots", "grid", "diagonal"] | None = None
     narrator: NarratorIn | None = None
     level: str | None = Field(default=None, pattern=r"^(simple|rich)$")
@@ -706,6 +707,14 @@ def create_app(
             raise HTTPException(status_code=404, detail="no such episode") from None
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.get("/api/presenter-portraits/{name}")
+    def presenter_portrait(name: str) -> FileResponse:
+        from design_agent.episode import film
+
+        if name not in film.PORTRAITS:
+            raise HTTPException(status_code=404, detail="Unknown presenter portrait.")
+        return FileResponse(film.portrait_path(name), media_type="image/jpeg")
 
     @app.get("/api/episodes/options")
     async def episode_options(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001

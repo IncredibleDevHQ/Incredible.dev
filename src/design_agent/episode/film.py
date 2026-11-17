@@ -10,8 +10,10 @@ that long to leave by the same move.
 
 from __future__ import annotations
 
+import base64
 import html as html_lib
 import json
+from pathlib import Path
 from typing import Any
 
 from design_agent.episode import geometry, picture
@@ -24,6 +26,15 @@ Row = dict[str, Any]
 CHAPTERS = Q.table("chapter_types")
 #: A person's box when no take has been recorded for the line yet: the draft shows a stand-in.
 STAND_IN = "stand-in"
+PORTRAITS = ("mira", "kai", "ellis", "june")
+
+
+def portrait_path(name: str) -> Path:
+    if name not in PORTRAITS:
+        raise ValueError("Unknown presenter portrait.")
+    return Path(__file__).with_name("portraits") / f"{name}.jpg"
+
+
 FADE = 0.4
 TRANSITIONS = Q.table("transitions")
 #: The transitions that move a picture in; the others set it in place at an instant.
@@ -56,6 +67,7 @@ def project(
     takes: dict[str, Row] | None = None,
     voice: dict[str, str] | None = None,
     look: picture.Look | None = None,
+    portrait: str = "mira",
 ) -> dict[str, str]:
     """The project's text files by path: `index.html` and each picture with its clock set.
 
@@ -232,7 +244,7 @@ def project(
                 body.append(
                     f'<div class="person {STAND_IN} clip" id="window-{i}" style="{box}" '
                     f'data-start="{run["start"]:.3f}" data-duration="{seconds:.3f}" '
-                    f'data-track-index="{track}"><i></i><b></b></div>'
+                    f'data-track-index="{track}"></div>'
                 )
             for at, duration, before, after in run["moves"]:
                 source_box = _window(before, left, top)
@@ -304,7 +316,7 @@ def project(
                 f"{start + 0.6:.3f});"
             )
 
-    files["index.html"] = _page(colours, look, clock["total"], body, script)
+    files["index.html"] = _page(colours, look, clock["total"], body, script, portrait)
     return files
 
 
@@ -356,11 +368,17 @@ def _leaves(
 
 
 def _page(
-    colours: dict[str, str], look: picture.Look, total: float, body: list[str], script: list[str]
+    colours: dict[str, str],
+    look: picture.Look,
+    total: float,
+    body: list[str],
+    script: list[str],
+    portrait: str,
 ) -> str:
     ground, muted = colours["ground"], colours["muted"]
     accent, on_accent, line = colours["accent"], colours["accent_ink"], colours["line"]
     markup = "\n      ".join(body)
+    portrait_data = base64.b64encode(portrait_path(portrait).read_bytes()).decode("ascii")
     moves = "\n      ".join(script)
     return f"""<!doctype html>
 <html lang="en">
@@ -376,9 +394,7 @@ def _page(
       .pic > div {{ position: absolute; inset: 0; }}
       .person {{ position: absolute; overflow: hidden; z-index: 2; }}
       .person video {{ display: block; width: 100%; height: 100%; object-fit: cover; }}
-      .{STAND_IN} {{ background: {line}; }}
-      .{STAND_IN} i {{ position: absolute; left: 50%; top: 24%; width: 26%; aspect-ratio: 1; margin-left: -13%; border-radius: 999px; background: {muted}; opacity: 0.55; }}
-      .{STAND_IN} b {{ position: absolute; left: 50%; bottom: -8%; width: 62%; height: 46%; margin-left: -31%; border-radius: 999px 999px 0 0; background: {muted}; opacity: 0.55; }}
+      .{STAND_IN} {{ background: {line} url("data:image/jpeg;base64,{portrait_data}") center / cover; }}
       .card {{ position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 0 220px; box-sizing: border-box; {look.background_css()}; text-align: center; }}
       .card h1 {{ margin: 0; font-family: '{look.display}', serif; font-weight: 600; font-size: 92px; line-height: 1.08; letter-spacing: -0.02em; text-wrap: balance; }}
       .card p {{ margin: 0; font-size: 38px; line-height: 1.35; color: {muted}; text-wrap: balance; }}

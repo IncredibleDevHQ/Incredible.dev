@@ -129,7 +129,11 @@ links.forEach(({ a, b, item, blocked }) => {
   const mid = wire.getPointAtLength(len / 2);
   if (blocked) {
     wire.setAttribute("stroke-dasharray", "9 7");
-    path(`M${mid.x - 8} ${mid.y - 8}l16 16m0 -16l-16 16`, colors.ink, g, 4);
+    const mask = node("mask", { id: comp + "-wire-" + stage.childElementCount, maskUnits: "userSpaceOnUse", x: 0, y: 0, width, height }, stage);
+    wire.setAttribute("mask", "url(#" + mask.id + ")");
+    trace(path(d, "white", mask, 10), at(item));
+    const stop = path(`M${mid.x - 8} ${mid.y - 8}l16 16m0 -16l-16 16`, colors.ink, g, 4);
+    tl.fromTo(stop, { opacity: 0 }, { opacity: 1, duration: 0.15 }, at(item) + 0.25);
   } else {
     wire.setAttribute("stroke-dasharray", len);
     tl.fromTo(
@@ -151,6 +155,7 @@ links.forEach(({ a, b, item, blocked }) => {
     );
     if (kind === "flowchart") {
       const head = path("M-14 -7 L0 0 L-14 7", stroke, g, 4);
+      tl.fromTo(head, { opacity: 0 }, { opacity: 1, duration: 0.12 }, at(item) + 0.30);
       head.setAttribute("transform", `translate(${tip.x} ${tip.y}) rotate(${(angle * 180) / Math.PI})`);
     }
   }
@@ -189,7 +194,11 @@ for (const id of ids) {
   text.setAttribute("paint-order", "stroke");
   text.setAttribute("stroke", colors.ground);
   text.setAttribute("stroke-width", 5);
-  // Establish participants before their first exchange so the arrow always has two visible ends.
+  // Establish the endpoints before an exchange; retain them through the following cues.
+  const firstLink = Math.min(...links.filter(link => link.a === id || link.b === id).map(link => at(link.item)));
+  const entrance = Math.min(item ? at(item) : 0, Math.max(0, firstLink - 0.28));
+  tl.fromTo(g, { opacity: entrance === 0 ? 0.35 : 0, y: 8 },
+    { opacity: 1, y: 0, duration: 0.28, ease: "power2.out" }, entrance);
 }
 const cols = Math.min(4, notes.length),
   rows = Math.ceil(notes.length / (cols || 1));

@@ -126,9 +126,17 @@ def test_catalog_pictures_are_visible_and_change_on_their_cues(tmp_path: Path, d
                 {"words": "Visa", "what": "Method"},
             ],
         ),
+        "timeline": (
+            "horizontal",
+            [{"words": "Proposal"}, {"words": "Approval"}, {"words": "Launch"}],
+        ),
         "stepper": (
             "horizontal",
             [{"words": "Submitted"}, {"words": "Authorized"}, {"words": "Captured"}],
+        ),
+        "flowchart": (
+            "left-to-right",
+            [{"words": "Browser"}, {"words": "Server"}, {"words": "Request blocked"}],
         ),
         "sequence-diagram": (
             "vertical-lanes",
@@ -168,6 +176,27 @@ def test_catalog_pictures_are_visible_and_change_on_their_cues(tmp_path: Path, d
                 }
             ],
         }
+        if name == "flowchart":
+            brief["connections"] = [
+                {
+                    "from": "o0",
+                    "to": "o1",
+                    "object": "o2",
+                    "frame": "a",
+                    "cue": "a/1",
+                    "label": "Request blocked",
+                    "blocked": True,
+                },
+                {
+                    "from": "o1",
+                    "to": "o0",
+                    "object": "o2",
+                    "frame": "a",
+                    "cue": "a/2",
+                    "label": "Reply",
+                    "blocked": False,
+                },
+            ]
         (folder / "index.html").write_text(picture.stage(unit, own, ground=look.palette["ground"]))
         (folder / picture.FOLDER / f"{comp}.html").write_text(
             picture.dressed(sketch.built(brief), own, look)
@@ -175,11 +204,11 @@ def test_catalog_pictures_are_visible_and_change_on_their_cues(tmp_path: Path, d
     result = run(
         tmp_path,
         f"""set -e
-for scene in detail-card stepper sequence-diagram bar-chart; do
+for scene in detail-card stepper timeline flowchart sequence-diagram bar-chart; do
   cd "$scene"
   cp {GSAP} .
   hyperframes render . --quality draft --fps 24 --output sample.mp4 --quiet
-  for stamp in 0.5 1.2 1.95; do
+  for stamp in 0.5 0.9 1.2 1.95; do
     ffmpeg -nostdin -v error -ss "$stamp" -i sample.mp4 -frames:v 1 -y "$stamp.png"
   done
   cd ..
@@ -191,6 +220,13 @@ done""",
         for a, b in zip(frames, frames[1:], strict=False):
             assert max(ImageStat.Stat(ImageChops.difference(a, b)).mean) > 0.12, name
         assert max(ImageStat.Stat(frames[-1]).stddev) > 12, name
+        if name == "timeline":
+            # Between markers one and two, the spine advances before the new label appears.
+            strip = (175, 185, 365, 220)
+            midway = Image.open(tmp_path / name / "0.9.png").convert("RGB").crop(strip)
+            before, after = (frame.crop(strip) for frame in frames[:2])
+            for earlier, later in ((before, midway), (midway, after)):
+                assert ImageChops.difference(earlier, later).getbbox() is not None
 
 
 def test_presenter_window_interpolates_in_encoded_frames(tmp_path: Path) -> None:

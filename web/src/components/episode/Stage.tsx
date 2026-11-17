@@ -2,6 +2,7 @@
 // placed by the same table the film is rendered from. The person is the live camera while
 // recording, the take once there is one, and a stand-in before that. The picture is its posed
 // still, its draft clip while playing, or a sketch of what the plan says it shows.
+import { portraitUrl } from "./portraits";
 import { useEffect, useRef } from "react";
 import type { LayoutSpot, EpisodeFrame, EpisodeTake, EpisodeUnit, EpisodeView } from "../../api";
 import { boxStyle, clockLine, frameSpot, spotOf } from "../../episode";
@@ -64,10 +65,7 @@ export function Stage({
           ) : previewAt !== undefined && take?.video ? (
             <ScrubVideo src={take.video.url} time={offset + previewAt} zoom={zoom} />
           ) : (
-            <span className="ep-stand-in" aria-label="Where you will be">
-              <i />
-              <b />
-            </span>
+            <img className="ep-presenter-image" src={portraitUrl(view.settings?.portrait)} alt="Presenter portrait" />
           )}
         </div>
       )}

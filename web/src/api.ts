@@ -257,6 +257,7 @@ export type Voice = { id: string; name: string; own: boolean; usual: boolean; pr
 export type BackgroundTexture = "solid" | "dots" | "grid" | "diagonal";
 export type EpisodeSettings = {
   background_color?: string;
+  portrait?: string;
   background_texture?: BackgroundTexture;
   seconds: EpisodeLength;
   presenter: "on" | "off";

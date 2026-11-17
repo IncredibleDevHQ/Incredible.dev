@@ -1,14 +1,38 @@
 import { ChevronDown, Sparkles } from "lucide-react";
 import { Popover } from "../Popover";
 import { editModel, editTriggerText, pictureProvider, writerName } from "./pictureProvider";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { api, type EpisodeUnit, type EpisodeView, type WriterId } from "../../api";
+import { AgentMark } from "../../ui";
 import { Select } from "../Select";
 import { TextArea } from "../TextArea";
 import type { Run } from "./Ask";
 
 const title = (id: string) => id.replaceAll("-", " ").replace(/^./, (c) => c.toUpperCase());
 type Props = { view: EpisodeView; unit: EpisodeUnit; busy: boolean; run: Run };
+
+function EffortSlider({ efforts, value, onChange, disabled, automatic = "Automatic" }: {
+  efforts: string[]; value: string; onChange: (value: string) => void; disabled?: boolean; automatic?: string;
+}) {
+  const ticks = useId();
+  const index = Math.max(0, efforts.indexOf(value) + 1);
+  const level = efforts[index - 1];
+  const label = level === "xhigh" ? "Extra high" : level ? title(level) : efforts.length ? "Default" : automatic;
+  return (
+    <label className="ep-size-range ep-effort">
+      <span>Effort <output>{label}</output></span>
+      {efforts.length > 0 && <>
+        <input type="range" aria-label="Effort" aria-valuetext={label} list={ticks}
+          min={0} max={efforts.length} step={1} value={index} disabled={disabled}
+          onChange={e => onChange(e.currentTarget.valueAsNumber === 0 ? "" : efforts[e.currentTarget.valueAsNumber - 1])} />
+        <datalist id={ticks}>
+          <option value={0}>Default</option>
+          {efforts.map((effort, i) => <option key={effort} value={i + 1}>{title(effort)}</option>)}
+        </datalist>
+      </>}
+    </label>
+  );
+}
 
 function providers(view: EpisodeView, unit: EpisodeUnit) {
   const inherited = view.builders[unit.chapter] || view.writer;
@@ -65,7 +89,7 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
       <button
         ref={trigger}
         type="button"
-        className="btn ep-provider-trigger"
+        className="btn ep-beat-trigger"
         aria-label={accessibleLabel}
         title={accessibleLabel}
         aria-haspopup="dialog"
@@ -84,7 +108,7 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
         anchor={trigger}
         side="bottom"
         align="start"
-        width={272}
+        width={312}
         className="ep-edit-picker"
         title="Beat edit model"
       >
@@ -92,6 +116,7 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
           size="sm" label="Provider" value={writer} placeholder="Choose provider"
           options={writers.map(w => ({
             value: w.id,
+            icon: <AgentMark mark={w.id} size="sm" />,
             label: w.id === "demo" ? "Local preview" : writerName(w.id),
             description: !w.ready ? "Unavailable on this host" :
               edit.suggested && w.id === edit.writer ? "Suggested for this beat" : undefined,
@@ -106,14 +131,7 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
               options={models.map(m => ({value: m.id, label: m.name}))}
               onChange={v => { setModel(v); setEffort(""); }}
             />
-            <Select
-              size="sm" label="Effort" value={effort} disabled={!ready || !efforts.length}
-              options={[
-                {value: "", label: efforts.length ? "Default" : "Automatic"},
-                ...efforts.map(e => ({value: e, label: title(e)})),
-              ]}
-              onChange={setEffort}
-            />
+            <EffortSlider efforts={efforts} value={effort} onChange={setEffort} disabled={!ready} />
           </div>
         )}
         {unit.picture.generation && (
@@ -162,6 +180,7 @@ export function SettingsForm({ view, unit, run, busy }: Props) {
   };
   return (
     <div className="ep-generation-form">
+      <header><b>Picture generation</b><p>Save the drawing instructions for this beat, or generate a new picture with them now.</p></header>
       <Select
         label="Provider"
         value={providerPick}
@@ -182,16 +201,8 @@ export function SettingsForm({ view, unit, run, busy }: Props) {
           setEffort("");
         }}
       />
-      <Select
-        label="Effort"
-        value={effort}
-        disabled={!efforts.length}
-        options={[
-          { value: "", label: writer === "demo" ? "Not applicable" : "Provider default" },
-          ...efforts.map((e) => ({ value: e, label: title(e) })),
-        ]}
-        onChange={setEffort}
-      />
+      <EffortSlider efforts={efforts} value={effort} onChange={setEffort}
+        automatic={writer === "demo" ? "Not applicable" : "Provider default"} />
       <TextArea
         label="Custom visual direction"
         minRows={2}

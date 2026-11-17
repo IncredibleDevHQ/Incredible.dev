@@ -4,6 +4,7 @@
 // words for it; the person is the take at that line, or a stand-in before there is one. The
 // canvas is as wide as its place, at the screen's own pixel density, and draws again when a
 // still or the take's frame arrives.
+import { portraitUrl } from "./portraits";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { EpisodeFrame, EpisodeTake, EpisodeUnit, EpisodeView } from "../../api";
 import { clockLine, frameSpot } from "../../episode";
@@ -11,7 +12,7 @@ import { clockLine, frameSpot } from "../../episode";
 const GROUND = "#f4f4f5";
 const PAPER = "#ffffff";
 const WINDOW = "#d4d4d8";
-const FIGURE = "rgba(82, 82, 91, 0.5)";
+
 const INK = "#52525b";
 
 // Stills, loaded once each.
@@ -68,20 +69,6 @@ function contain(ctx: CanvasRenderingContext2D, src: CanvasImageSource, iw: numb
 function cover(ctx: CanvasRenderingContext2D, src: CanvasImageSource, iw: number, ih: number, x: number, y: number, w: number, h: number, zoom = 1) {
   const s = Math.max(w / iw, h / ih) * zoom;
   ctx.drawImage(src, x + (w - iw * s) / 2, y + (h - ih * s) / 2, iw * s, ih * s);
-}
-
-// Where the person will be, until there is a take.
-function standIn(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
-  ctx.fillStyle = FIGURE;
-  const r = w * 0.13;
-  ctx.beginPath();
-  ctx.arc(x + w / 2, y + h * 0.24 + r, r, 0, Math.PI * 2);
-  ctx.fill();
-  const sw = w * 0.62;
-  const sh = h * 0.46;
-  ctx.beginPath();
-  ctx.roundRect(x + (w - sw) / 2, y + h * 1.08 - sh, sw, sh, [Math.min(sw / 2, sh), Math.min(sw / 2, sh), 0, 0]);
-  ctx.fill();
 }
 
 // Before a picture is made: what the plan says it shows, set in its box, at a size that can be
@@ -198,7 +185,10 @@ export function FrameCanvas({
       ctx.fillRect(x, y, w, h);
       const video = takeUrl ? reel(takeUrl, offset, ready) : null;
       if (video && video.readyState >= 2 && video.videoWidth) cover(ctx, video, video.videoWidth, video.videoHeight, x, y, w, h, spot.zoom ?? 1);
-      else standIn(ctx, x, y, w, h);
+      else {
+        const img = still(portraitUrl(view.settings?.portrait), ready);
+        if (img.complete && img.naturalWidth) cover(ctx, img, img.naturalWidth, img.naturalHeight, x, y, w, h, 1);
+      }
       ctx.restore();
     };
     // a glass picture lies over the person; any other sits under the person's window

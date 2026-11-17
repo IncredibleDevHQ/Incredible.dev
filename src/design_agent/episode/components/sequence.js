@@ -49,7 +49,7 @@ function sequence() {
     );
     const ux = dx / mag,
       uy = dy / mag;
-    path(
+    const head = path(
       "M" +
         (ex - 14 * ux + 7 * uy) +
         " " +
@@ -66,6 +66,7 @@ function sequence() {
       g,
       4
     );
+    tl.fromTo(head, { opacity: 0 }, { opacity: 1, duration: 0.12 }, at(item) + 0.28);
     label(
       item.words || "",
       (x + ex) / 2,

@@ -44,13 +44,15 @@ export function Slides({ view, at, onAt }: { view: EpisodeView; at: string; onAt
               <span>The film</span>
             </span>
             <small>
-              {chapters.length} chapters · {mmss(view.clock?.total ?? view.plan?.totals.seconds ?? 0)}
+              {chapters.length} chapters
               {view.status === "studio" && ` · ${recorded} recorded`}
             </small>
+            <DurationBadge seconds={view.clock?.total ?? view.plan?.totals.seconds ?? 0} />
           </button>
         </li>
         {chapters.map((c, i) => {
           const state = chapterState(view, c);
+          const duration = view.clock?.chapters.find(chapter => chapter.id === c.id)?.seconds ?? c.seconds;
           const open = c.id === at;
           return (
             <li key={c.id}>
@@ -63,6 +65,7 @@ export function Slides({ view, at, onAt }: { view: EpisodeView; at: string; onAt
                 <small>
                   {chapterName(c)} · {STATE_WORDS[state]}
                 </small>
+                <DurationBadge seconds={duration} />
               </button>
             </li>
           );
@@ -70,6 +73,10 @@ export function Slides({ view, at, onAt }: { view: EpisodeView; at: string; onAt
       </ol>
     </nav>
   );
+}
+
+function DurationBadge({ seconds }: { seconds: number }) {
+  return <time className="ep-slide-duration" dateTime={`PT${seconds}S`}>{mmss(seconds)}</time>;
 }
 
 // The chapter's first line with a picture, as the film frames it.

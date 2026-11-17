@@ -22,7 +22,10 @@ for (const line of brief.lines) {
     const target = line.frame + "/" + cue.object;
     if (!cues.has(target)) cues.set(target, cue.key);
   }
-  for (const obj of line.objects) items.push({ ...obj, frame: line.frame });
+  for (const obj of line.objects) {
+    if ((kind === "timeline" || kind === "stepper") && obj.from && obj.to) continue;
+    items.push({ ...obj, frame: line.frame });
+  }
 }
 function at(item) {
   return clock.cues[item.cue] ?? clock.cues[cues.get(item.frame + "/" + item.id)] ?? clock.lines[item.frame]?.[0] ?? 0;
@@ -67,6 +70,13 @@ function label(
 const words = (item) => String(item.words || item.what || item.id);
 function reveal(el, item) {
   tl.fromTo(el, { opacity: 0 }, { opacity: 1, duration: 0.24, ease: "power1.out" }, at(item));
+}
+// Trace on the composition clock so a paused or scrubbed frame matches the export.
+function trace(stroke, time, duration = 0.42) {
+  const len = stroke.getTotalLength();
+  stroke.setAttribute("stroke-dasharray", String(len));
+  tl.fromTo(stroke, { attr: { "stroke-dashoffset": len } },
+    { attr: { "stroke-dashoffset": 0 }, duration, ease: "power1.inOut" }, time);
 }
 const n = items.length;
 const size = Math.min(44, h * 0.051);

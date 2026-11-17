@@ -17,7 +17,7 @@ import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } 
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type ReactNodeViewProps } from "@tiptap/react";
 import Suggestion, { type SuggestionKeyDownProps, type SuggestionProps } from "@tiptap/suggestion";
-import { Captions, FileText, PictureInPicture2, Video, Mic, Trash2, Undo2 } from "lucide-react";
+import { Pencil, Captions, FileText, PictureInPicture2, Video, Mic, Trash2, Undo2 } from "lucide-react";
 import { createContext, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import { api, type EpisodeChapter, type EpisodeFrame, type EpisodeTake, type EpisodeUnit, type EpisodeView, type LineKind } from "../../api";
 import { pictureState, PICTURES, PRESENCE, unitOf } from "../../episode";
@@ -276,12 +276,13 @@ function BlockView({ node }: ReactNodeViewProps) {
   );
 }
 
-function LineView({ node }: ReactNodeViewProps) {
+function LineView({ node, editor, getPos }: ReactNodeViewProps) {
   const c = useScript();
   const attrs = node.attrs as LineAttrs;
   const line = attrs.id ? c.byId.get(attrs.id) : undefined;
   const i = line ? c.lines.indexOf(line) : -1;
   const current = Boolean(attrs.id) && attrs.id === c.current;
+  const beat = c.chapter.beats.findIndex(b => b.frames.some(f => f.id === attrs.id));
   const empty = node.content.size === 0;
   const again = attrs.id ? c.view.rerecord.includes(attrs.id) : false;
   const before = c.marked && attrs.id ? c.was[attrs.id] : undefined;
@@ -308,6 +309,12 @@ function LineView({ node }: ReactNodeViewProps) {
     >
       <span className="ep-transcript-icon" data-presence={presence} role="img" aria-label={presence ? PRESENCE[presence] : "A new line"} title={presence ? PRESENCE[presence] : "A new line"} contentEditable={false}><TranscriptIcon aria-hidden="true" /></span>
       <div className="ep-line-body">
+        {beat >= 0 && <small className="ep-beat-number" contentEditable={false}>Beat {beat + 1}</small>}
+        {!c.recording && <button type="button" className="ep-edit-line btn" contentEditable={false}
+          aria-label={`Edit line ${i + 1}`} onMouseDown={e => e.preventDefault()} onClick={() => {
+            const pos = getPos();
+            if (typeof pos === "number") editor.chain().focus().setTextSelection(pos + 1 + node.content.size).run();
+          }}><Pencil />Edit</button>}
         <NodeViewContent<"p"> as="p" className="ep-line-text" />
         {empty && (
           <span className="ep-line-hint" contentEditable={false} aria-hidden="true">

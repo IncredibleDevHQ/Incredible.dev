@@ -3051,3 +3051,68 @@ async def test_line_edit_uses_its_picture_model_but_a_chapter_edit_uses_the_writ
     desk.ask(eid, by="you", scope="chapter", target=unit["chapter"], text="Shorten this section.")
     await settle(lambda: not desk.planning(eid))
     assert any("Shorten this section." in prompt for _, prompt in writer.turns)
+
+
+async def test_episode_presenter_portrait_is_saved_and_used_in_export(house: AgentHost) -> None:
+    import base64
+
+    from design_agent.episode import film
+
+    eid = await planned(house)
+    desk = house.episodes
+    for name in film.PORTRAITS:
+        view = desk.choose(eid, by="you", change={"settings": {"portrait": name}})
+        assert desk.view(eid)["settings"]["portrait"] == name
+        page = film.project(view["plan"], view["clock"], [], {}, portrait=name)["index.html"]
+        data = base64.b64encode(film.portrait_path(name).read_bytes()).decode("ascii")
+        assert f"data:image/jpeg;base64,{data}" in page
+    with pytest.raises(ValueError, match="portrait"):
+        desk.choose(eid, by="you", change={"settings": {"portrait": "../anything"}})
+    assert desk.view(eid)["settings"]["portrait"] == film.PORTRAITS[-1]
+
+
+async def test_redraw_uses_the_saved_beat_provider_model_and_effort(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    eid = await planned(house)
+    desk = house.episodes
+    desk.approve(eid, by="you")
+    await settle(lambda: not desk._busy(eid))
+    unit = desk.view(eid)["units"][0]
+    key = unit["id"]
+    assert unit["picture"]["builder"] == DEMO
+    desk._worker_called("codex")
+    desk.choose(
+        eid,
+        by="you",
+        change={
+            "units": {
+                key: {
+                    "builder": "codex",
+                    "model": "gpt-6.1-sol",
+                    "effort": "medium",
+                    "level": "simple",
+                }
+            }
+        },
+    )
+    calls = []
+
+    async def draw(
+        worker: LocalWorker, episode: dict[str, Any], *, lane: str, **kwargs: Any
+    ) -> Told:
+        calls.append((worker.id, worker.model, worker.effort, lane))
+        folder = worker.folder(episode)
+        comp = picture.composition_id(key)
+        brief = json.loads((folder / f"pictures/{comp}.brief.json").read_text())
+        (folder / brief["file"]).write_text((folder / f"pictures/{comp}.starter.html").read_text())
+        return Told()
+
+    monkeypatch.setattr(LocalWorker, "turn", draw)
+    desk.make(eid, by="you", only=[key])
+    await settle(lambda: not desk._busy(eid))
+    result = desk.view(eid)["units"][0]["picture"]
+    assert calls == [("codex", "gpt-6.1-sol", "medium", f"picture:{key}")]
+    assert result["status"] == "made"
+    assert result["generation"]["model"] == "gpt-6.1-sol"
+    assert result["generation"]["effort"] == "medium"

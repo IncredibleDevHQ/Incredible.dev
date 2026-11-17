@@ -3,11 +3,11 @@
 // sets who has the frame and how), the picture the line shows, how that picture comes in, and
 // the steps it takes on the line. A pick is the line's own until it is widened, in one click, to
 // the picture's other lines, the chapter or the film; like every pick it draws nothing.
+import { portraits, portraitUrl } from "./portraits";
 import { BackgroundSettings } from "./BackgroundSettings";
 import { Palette, Settings2, Blend, LayoutTemplate, ListOrdered, Shapes, type LucideIcon } from "lucide-react";
 import { api, type EpisodeChapter, type EpisodeChoices, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Presence } from "../../api";
 import { allLines, LAYOUTS, LEVEL_NAMES, linesIn, LOOKS, MOVES, PICTURES, pictureWords, TRANSITIONS } from "../../episode";
-import { Select } from "../Select";
 import { ComponentFields, SettingsForm } from "./GenerationSettings";
 import { Tooltip } from "../Tooltip";
 import type { Run } from "./Ask";
@@ -24,7 +24,7 @@ export const PANELS: { id: Panel; label: string; icon: LucideIcon }[] = [
   { id: "picture", label: "Picture", icon: Shapes },
   { id: "transition", label: "Transition", icon: Blend },
   { id: "steps", label: "Steps", icon: ListOrdered },
-  { id: "background", label: "Background", icon: Palette },
+  { id: "background", label: "Cover", icon: Palette },
   { id: "others", label: "Others", icon: Settings2 },
 ];
 
@@ -131,9 +131,20 @@ function LayoutPanel({ view, chapter, line, unit, run, busy, onFilm, draftSize, 
             onPointerUp={commitSize} onPointerCancel={() => onDraftSize(null)}
             onKeyUp={commitSize} onBlur={commitSize} />
         </label>
-        <Select size="sm" label="Video box shape" value={line.picked?.window_shape ?? ""} disabled={busy}
-          options={[{value:"",label:"Layout default"},{value:"rectangle",label:"Rectangle"},{value:"rounded",label:"Rounded"},{value:"circle",label:"Circle"}]}
-          onChange={(v) => void choose({frames:{[line.id]:{window_shape:v || null}}})} />
+        <fieldset className="ep-window-group">
+          <legend>Video box shape</legend>
+          <Tiles label="Video box shape" columns={2} disabled={busy} value={line.picked?.window_shape ?? ""}
+            options={[
+              {value: "", label: "Layout default", art: <LayoutThumb view={view} layout={line.layout} />},
+              ...["rectangle", "rounded", "circle"].map(shape => ({
+                value: shape, label: shape[0].toUpperCase() + shape.slice(1),
+                art: <span className="ep-shape-art" data-shape={shape}><i /></span>,
+              })),
+            ]}
+            onPick={shape => void choose({frames: {[line.id]: {window_shape: shape || null}}})} />
+        </fieldset>
+        <PortraitPicker selected={view.settings.portrait ?? "mira"} disabled={busy}
+          onPick={portrait => void choose({settings: {portrait}})} />
       </div>}
       {presenterOff && <small>Nobody is on screen in this film.</small>}
       {line.override && (
@@ -177,6 +188,22 @@ function LayoutPanel({ view, chapter, line, unit, run, busy, onFilm, draftSize, 
         </button>
       </footer>
     </>
+  );
+}
+
+function PortraitPicker({selected, disabled, onPick}: {selected: string; disabled: boolean; onPick: (portrait: string) => void}) {
+  return (
+    <fieldset className="ep-window-group ep-portraits">
+      <legend>Episode presenter portrait</legend>
+      <div className="ep-portrait-pair">
+        {portraits.map(name => (
+          <button type="button" className="ep-tile" key={name} aria-pressed={selected === name.toLowerCase()}
+            disabled={disabled} onClick={() => onPick(name.toLowerCase())}>
+            <img src={portraitUrl(name)} alt="" /><span className="ep-tile-name">{name}</span>
+          </button>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 

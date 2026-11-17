@@ -14,6 +14,11 @@ type Props = {
   unit?: EpisodeUnit;
   editingWindow?: boolean;
   cameraPoster: ReactNode;
+  autoStart?: boolean;
+  initialPosition?: number;
+  chapter?: { start: number; total: number; seek: (time: number, play: boolean) => void };
+  onFinish?: () => void;
+  audioControls?: { volume: number; muted: boolean; setVolume: (v: number) => void; setMuted: (v: boolean) => void };
   speed: number;
   onSpeed: (speed: number) => void;
   captions: boolean;
@@ -21,7 +26,7 @@ type Props = {
   onProgress: (fraction: number | null) => void;
 };
 
-export function LinePlayer({ view, frame, unit, editingWindow, cameraPoster, speed, onSpeed, captions, onCaptions, onProgress }: Props) {
+export function LinePlayer({ view, frame, unit, editingWindow, cameraPoster, autoStart, initialPosition = 0, chapter, onFinish, audioControls, speed, onSpeed, captions, onCaptions, onProgress }: Props) {
   const line = clockLine(view, frame.id);
   const film = !editingWindow && view.film_state.status === "done" && !view.film_state.stale ? view.film_state.file?.url : undefined;
   const take = line?.source.kind === "take" ? view.takes.find((t) => t.id === line.source.take) : undefined;
@@ -37,14 +42,28 @@ export function LinePlayer({ view, frame, unit, editingWindow, cameraPoster, spe
     return frameSpot(view, previous);
   }, [view, frame.id]);
   const media = useRef<HTMLVideoElement>(null);
-  const [position, setPosition] = useState(0);
+  const [position, setPosition] = useState(initialPosition);
   const [playing, setPlaying] = useState(false);
   const [problem, setProblem] = useState("");
-  const [volume, setVolume] = useState(1);
-  const [muted, setMuted] = useState(false);
+  const [lineVolume, setLineVolume] = useState(1);
+  const [lineMuted, setLineMuted] = useState(false);
+  const { volume, setVolume, muted, setMuted } = audioControls ?? { volume: lineVolume, setVolume: setLineVolume, muted: lineMuted, setMuted: setLineMuted };
+  const finish = useRef(onFinish);
+  finish.current = onFinish;
+  const ended = useRef(false);
+  const complete = () => {
+    if (ended.current) return;
+    ended.current = true;
+    media.current?.pause();
+    setPlaying(false);
+    finish.current?.();
+  };
   const [settings, setSettings] = useState(false);
   const gear = useRef<HTMLButtonElement>(null);
-  const pos = useRef(0);
+  const pos = useRef(initialPosition);
+  const elapsed = (chapter?.start ?? 0) + position;
+  const duration = chapter?.total ?? seconds;
+  const chapterEnded = !!chapter && elapsed >= duration - 0.001;
   const seek = (time: number) => {
     pos.current = time;
     setPosition(time);
@@ -73,8 +92,7 @@ export function LinePlayer({ view, frame, unit, editingWindow, cameraPoster, spe
       }
       last = now;
       if (next >= seconds) {
-        media.current?.pause();
-        setPlaying(false);
+        complete();
       } else id = requestAnimationFrame(tick);
     };
     id = requestAnimationFrame(tick);
@@ -89,7 +107,12 @@ export function LinePlayer({ view, frame, unit, editingWindow, cameraPoster, spe
       setPlaying(false);
       return;
     }
-    if (position >= seconds - 0.05) seek(0);
+    if (chapter && chapterEnded) {
+      chapter.seek(0, true);
+      return;
+    }
+    if (!chapter && position >= seconds - 0.05) seek(0);
+    ended.current = false;
     try {
       if (media.current) await media.current.play();
       setProblem("");
@@ -98,24 +121,35 @@ export function LinePlayer({ view, frame, unit, editingWindow, cameraPoster, spe
       setProblem("Playback could not start. Try again.");
     }
   };
+  useEffect(() => {
+    if (!autoStart) return;
+    const video = media.current;
+    if (!video) { setPlaying(true); return; }
+    let active = true;
+    void video.play().then(() => { if (active) setPlaying(true); }).catch(() => {
+      if (active) setProblem("Press play to continue this chapter.");
+    });
+    return () => { active = false; };
+  }, [autoStart]);
+  const renderedVisual = film && (take?.video || frame.presence === "content");
   const showPoster = !editingWindow && !playing && position === 0;
   const showStill = showPoster && unit?.picture.stills[frame.id] && !take?.video;
   return (
-    <div className="ep-line-player" role="group" aria-label="Line player">
-      {!film && <Stage view={view} frame={frame} unit={unit} take={take} previewAt={showStill ? undefined : position} incoming={incoming} motionTime={!editingWindow && (playing || position > 0) ? position / Math.min(0.45, seconds) : undefined} />}
+    <div className="ep-line-player" role="group" aria-label={chapter ? "Chapter player" : "Line player"}>
+      {!renderedVisual && <Stage view={view} frame={frame} unit={unit} take={take} previewAt={showStill ? undefined : position} incoming={incoming} motionTime={!editingWindow && (playing || position > 0) ? position / Math.min(0.45, seconds) : undefined} />}
       {src && (
         <video
           ref={media}
           src={src}
           playsInline
           preload="auto"
-          hidden={!film}
+          hidden={!renderedVisual}
           aria-label={film ? "Rendered line" : "Line audio"}
           onLoadedMetadata={() => {
             if (media.current) media.current.currentTime = start + pos.current;
           }}
           onEnded={() => {
-            setPlaying(false);
+            complete();
             setPosition(seconds);
             pos.current = seconds;
             onProgress(1);
@@ -126,23 +160,31 @@ export function LinePlayer({ view, frame, unit, editingWindow, cameraPoster, spe
           }}
         />
       )}
-      {cameraPoster && showPoster && <div className="ep-player-poster">{cameraPoster}</div>}
+      {cameraPoster && !editingWindow && <div className="ep-player-poster">{cameraPoster}</div>}
       {captions && <Captions words={frame.vo} progress={position / seconds} />}
       <div className="ep-player-controls">
-        <button type="button" aria-label={playing ? "Pause line" : "Play line"} onClick={() => void toggle()}>
+        <button type="button" aria-label={chapter ? (playing ? "Pause chapter" : chapterEnded ? "Replay chapter" : "Resume chapter") : (playing ? "Pause line" : "Play line")} onClick={() => void toggle()}>
           {playing ? <Pause /> : <Play />}
         </button>
         <small>
-          {mmss(position)} / {mmss(seconds)}
+          {mmss(elapsed)} / {mmss(duration)}
         </small>
         <input
           type="range"
-          aria-label="Seek within line"
+          className="ep-playback-seek"
+          aria-label={chapter ? "Seek within chapter" : "Seek within line"}
           min={0}
-          max={seconds}
-          step={0.05}
-          value={position}
-          onChange={(e) => seek(Number(e.target.value))}
+          max={duration}
+          step={chapter ? "any" : 0.05}
+          value={elapsed}
+          onChange={e => {
+            const time = e.currentTarget.valueAsNumber;
+            if (chapter && (time < chapter.start || (time >= chapter.start + seconds && chapter.start + seconds < duration))) {
+              chapter.seek(time, playing);
+            } else {
+              seek(Math.min(seconds, Math.max(0, time - (chapter?.start ?? 0))));
+            }
+          }}
         />
         <button
           type="button"

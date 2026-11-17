@@ -9,10 +9,17 @@ from typing import Any
 from design_agent.episode import connections
 
 Row = dict[str, Any]
-CATALOG_VERSION = 1
+CATALOG_VERSION = 2
 # Drawing revisions are independent of the classifier's choice vocabulary.
-ILLUSTRATED = {"flowchart", "relationship-diagram", "sequence-diagram", "list"}
-DRAWING_VERSION = 2
+ILLUSTRATED = {
+    "flowchart",
+    "relationship-diagram",
+    "sequence-diagram",
+    "list",
+    "stepper",
+    "timeline",
+}
+DRAWING_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -154,7 +161,9 @@ def select(first: Row, frames: list[Row], pick: Row, kind: str, width: int) -> R
                 "loop": "flowchart",
             }.get(first.get("arrangement", ""), "custom"),
         )
-        if edges and kind in ("diagram", "illustration"):
+        if first.get("arrangement") == "timeline" and kind in ("diagram", "illustration"):
+            suggested = "timeline"
+        elif edges and kind in ("diagram", "illustration"):
             if (
                 any(o.get("type") == "lifeline" for o in objects)
                 and sum(bool(e["label"]) for e in edges) > 1
@@ -162,6 +171,12 @@ def select(first: Row, frames: list[Row], pick: Row, kind: str, width: int) -> R
                 suggested = "sequence-diagram"
             elif suggested not in ("flowchart", "relationship-diagram"):
                 suggested = "flowchart"
+        elif (
+            suggested in ("custom", "comparison")
+            and "bar-chart" in options
+            and kind in ("diagram", "illustration")
+        ):
+            suggested = "bar-chart"
     chosen = pick.get("component") or suggested
     if chosen not in options:
         chosen = suggested
@@ -174,6 +189,16 @@ def select(first: Row, frames: list[Row], pick: Row, kind: str, width: int) -> R
         and all(len(str(o.get("words", ""))) <= 22 for o in objects)
     ):
         default = "horizontal"
+    if chosen in ("timeline", "stepper") and default not in layouts:
+        events = [o for o in objects if not (o.get("from") and o.get("to"))]
+        label_width = max(
+            (len(str(o.get("words") or o.get("what") or "")) for o in events), default=0
+        )
+        default = (
+            "horizontal"
+            if width / max(1, len(events)) >= max(140, label_width * 12)
+            else "vertical"
+        )
     if chosen == "flowchart" and default not in layouts and width >= 1000:
         default = "left-to-right"
     variant = pick.get("variant") or default

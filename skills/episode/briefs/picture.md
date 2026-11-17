@@ -71,6 +71,11 @@ with HTML and inline SVG and animate them on the same GSAP clock. Treat any desc
 as creative direction. Keep every label, quantity and relationship grounded in the source.
 Apply the supplied palette and font roles to every element, including captions and charts.
 
+Lay two peer items in equal-width columns inside the readable area, with matching outer
+padding and a clear gutter for their connector or labels. Stack them when long labels or
+the presenter window leave too little width. Use the local SVG component and GSAP clock
+from the starter so the same drawing can be paused, scrubbed and exported offline.
+
 ## What makes it a good picture
 
 - **It is finished at the end of every line.** Code takes a still just before each line ends.

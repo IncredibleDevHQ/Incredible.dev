@@ -12,6 +12,12 @@ episode's: every cue still lands on its word, and code sets every time. What you
 is how it looks and how it moves: what kind of picture this is, what each line opens on, the
 one change each line is about, and what is on screen when the line ends.
 
+Use the brief’s selected component to plan the movement. For a timeline, name the
+milestone visible at the start, the segment that draws on the next cue, and the label
+that settles at its end. For an exchange, stage both endpoints, trace from sender to
+receiver, then reveal the arrowhead. For a measured comparison, establish a common scale
+before growing the bars. Keep the previous marks visible while the viewer compares them.
+
 ## The file
 
 ```json

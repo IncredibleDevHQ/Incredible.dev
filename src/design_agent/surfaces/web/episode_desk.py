@@ -581,6 +581,10 @@ class EpisodeDesk:
             clone = out.get("cloned_voice") or {}
             if clone.get("id") == picked["id"] and clone.get("verify"):
                 out["narrator"]["verify"] = True
+        if "portrait" in given:
+            if given["portrait"] not in film.PORTRAITS:
+                raise ValueError("Unknown presenter portrait.")
+            out["portrait"] = given["portrait"]
         if "background_color" in given:
             color = given["background_color"]
             if not isinstance(color, str) or (
@@ -1388,6 +1392,7 @@ class EpisodeDesk:
         ).keys() <= {
             "background_color",
             "background_texture",
+            "portrait",
         }
         if not background_only and any(f.get("presence") for _, _, f in plans.frames_of(merged)):
             feedback = override.apply(merged, new)
@@ -2574,6 +2579,7 @@ class EpisodeDesk:
         pictures: Sequence[Row],
         kept: Sequence[Row],
         look: picture.Look | None = None,
+        clock: Row | None = None,
     ) -> str:
         takes = [(t["id"], t["marks"]) for t in kept]
         made = sorted(
@@ -2583,6 +2589,15 @@ class EpisodeDesk:
         )
         spoken = sorted((k, v.get("h")) for k, v in self._voice(episode).items())
         parts: list[Any] = [full.get("chapters"), full.get("brief"), takes, made, spoken]
+        camera_frames = {
+            f["id"] for _, _, f in plans.frames_of(full) if f.get("presence") in ("person", "both")
+        }
+        video_takes = {t["id"] for t in kept if t.get("video")}
+        if camera_frames and any(
+            line["frame"] in camera_frames and line["source"].get("take") not in video_takes
+            for line in (clock or timeline.schedule(full, list(kept)))["lines"]
+        ):
+            parts.append(("portrait", episode["settings"].get("portrait", "mira")))
         previous = None
         for _, _, frame in plans.frames_of(full):
             current = (
@@ -2713,6 +2728,7 @@ class EpisodeDesk:
                 "frame": t["frame"],
                 "seconds": t["seconds"],
                 "marks": t["marks"],
+                "video": t.get("video"),
             }
             for t in self.store.takes(episode_id)
             if t["kept"]
@@ -2903,11 +2919,20 @@ class EpisodeDesk:
         if blocked:
             raise ValueError(blocked)
         look = self._look(episode)
-        signature = self._film_sig(episode, full, rows, kept, look)
+        signature = self._film_sig(episode, full, rows, kept, look, clock)
         pictures = {
             p["unit"]: p["html"] for p in rows if p["html"] and p["status"] in ("made", "go")
         }
-        files = film.project(full, clock, found, pictures, takes=takes, voice=voice, look=look)
+        files = film.project(
+            full,
+            clock,
+            found,
+            pictures,
+            takes=takes,
+            voice=voice,
+            look=look,
+            portrait=episode["settings"].get("portrait", "mira"),
+        )
         pictured_frames = {
             frame for unit in found if unit["id"] in pictures for frame in unit["frames"]
         }
@@ -3215,7 +3240,7 @@ class EpisodeDesk:
         film_state["blocked"] = self._render_blocked(picture_rows, kept)
         if full is not None and film_state.get("status") == "done":
             film_state["stale"] = film_state.get("sig") != self._film_sig(
-                episode, full, picture_rows, kept, look
+                episode, full, picture_rows, kept, look, clock
             )
         film_state["file"] = self._file(film_state.get("file"))
         report = episode["report"] or {}
