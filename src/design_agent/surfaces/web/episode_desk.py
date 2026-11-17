@@ -1087,7 +1087,7 @@ class EpisodeDesk:
             self.store.update_episode(episode_id, plan=plan)
             if stage in STANDING and plan == before["plan"]:
                 return problems  # written as it was: its labels stand, and nothing is read again
-            if stage == "change" and not isinstance(worker, DemoWorker):
+            if stage in STANDING and not isinstance(worker, DemoWorker):
                 # a change keeps who has the frame for every line it did not redesign: said
                 # another way, a line is still the person's or the picture's, and no picture
                 # is drawn again because a reading moved
@@ -1858,6 +1858,12 @@ class EpisodeDesk:
         if kept["data"].get("picked"):
             left["picked"] = kept["data"]["picked"]
         self._go_to(episode_id, kept)
+        restored = self._merged(self._episode(episode_id))
+        self._fit_later(
+            episode_id,
+            [f["id"] for _, _, f in plans.frames_of(restored) if f.get("by_person")],
+            self._report(episode_id),
+        )
         self.store.turn_snapshot(kept["n"], kind="undone" if back else "before", data=left)
         self._stage(episode_id, name="done", state="done", said="", asked=None)
         said = "Took the last change back." if back else "Put the change back."

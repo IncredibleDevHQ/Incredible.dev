@@ -724,6 +724,7 @@ app's canvas, from a channel's material or a research frame's notes.
   was and can be asked again in the same words; one the writer made nothing of says so. A
   change keeps who has the frame for every line it does not redesign, and a picture is
   drawn again only when what it shows changed: its lines' words only move its clock.
+  Applying cue anchor edits preserves object classifications and the existing drawing.
   Transcript edits preserve the encoded animation's original beat spans during preview.
   A cue whose word was removed keeps its original proportional timing on the revised line.
 - **Beat history.** History appears on beats with retained changes. Open it to see transcript, visual direction,

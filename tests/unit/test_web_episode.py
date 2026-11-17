@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from design_agent.config import Settings
 from design_agent.episode import picture
+from design_agent.episode import plan as plans
 from design_agent.surfaces.web import catalog
 from design_agent.surfaces.web.agent import AgentHost
 from design_agent.surfaces.web.app import create_app
@@ -1517,6 +1518,7 @@ async def test_a_step_that_lost_its_word_is_fitted_by_the_writer_once_applied(
     back = house.episodes.undo(episode_id, by="you")
     assert back["last_change"]["lines"] == [line["id"]]
     assert lines_of(back)[line["id"]]["vo"] == "Nothing here that a step landed on before."
+    assert [item["line"] for item in back["waiting"]] == [line["id"]]
 
 
 async def test_a_change_asked_in_words_is_made_by_the_writer_and_can_be_taken_back(
@@ -3308,3 +3310,30 @@ async def test_transcript_edits_preserve_rich_artwork_and_original_animation_spa
         assert current["picture"]["motion"] == motion
         assert house.store.picture(eid, unit["id"])["html"] == saved["html"]
         assert not desk._busy(eid)
+
+
+async def test_applying_cue_word_changes_preserves_classified_artwork(
+    house: AgentHost, tmp_path: Path
+) -> None:
+    eid = await made(house)
+    desk = house.episodes
+    worker = LocalWorker("codex", store=house.store, data_dir=tmp_path, project_root=ROOT)
+    before = desk.view(eid)
+    unit = next(u for u in before["units"] if lines_of(before)[u["id"]].get("cues"))
+    desk.edit(eid, by="you", frame=unit["id"], text="New words for the animation.")
+    episode = desk._episode(eid)
+    original = desk._full(episode)
+    raw = json.loads(json.dumps(episode["plan"]))
+    _, _, frame = next((ch, b, f) for ch, b, f in plans.frames_of(raw) if f["id"] == unit["id"])
+    for cue in frame["cues"]:
+        cue["at"] = "New"
+    await worker.prepare(episode, {"plan.json": json.dumps(raw)})
+    assert not await desk._take_plan(eid, worker, "redo")
+    fitted = desk._merged(desk._episode(eid))
+    old = lines_of({"plan": original})[unit["id"]]
+    new = lines_of({"plan": fitted})[unit["id"]]
+    assert new.get("_designed"), "cue anchors alone must retain the picture's labels"
+    assert new["objects"] == old["objects"]
+    after = desk.view(eid)
+    assert next(u for u in after["units"] if u["id"] == unit["id"])["sig"] == unit["sig"]
+    assert [c["move"] for c in new["cues"]] == [c["move"] for c in old["cues"]]
