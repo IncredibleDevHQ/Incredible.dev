@@ -142,6 +142,19 @@ def _cut(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit].rstrip() + " …"
 
 
+#: The HyperFrames guides the episode's briefs name, copied beside the skill for a coding agent.
+HYPERFRAMES_GUIDES = (
+    "story.md",
+    "spec.md",
+    "look.md",
+    "motion.md",
+    "film.md",
+    "review.md",
+    "types/explainer.md",
+    "types/data.md",
+)
+
+
 class LocalWorker:
     """One of the person's own coding agents, writing in the episode's folder on this computer."""
 
@@ -160,6 +173,9 @@ class LocalWorker:
         self.store = store
         self.root = data_dir / "episodes"
         self.skill = project_root / "skills" / "episode"
+        #: HyperFrames' own guides (the vendored skill's references), which the episode's briefs
+        #: send a builder to: it works in its folder alone, so the ones named go in with it.
+        self.guides = project_root / "skills" / "hyperframes" / "references"
         self.runner = runner
         self.profiles = data_dir / "episodes" / ".profiles"
 
@@ -184,6 +200,12 @@ class LocalWorker:
         folder.mkdir(parents=True, exist_ok=True)
         if self.skill.is_dir():
             shutil.copytree(self.skill, folder / "skill", dirs_exist_ok=True)
+        for name in HYPERFRAMES_GUIDES:
+            guide = self.guides / name
+            if guide.is_file():
+                target = folder / "skill" / "hyperframes" / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(guide, target)
         for name, text in files.items():
             target = folder / name
             target.parent.mkdir(parents=True, exist_ok=True)

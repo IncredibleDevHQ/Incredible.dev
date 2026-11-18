@@ -1,33 +1,70 @@
-# Planning how one picture moves
+# Planning one picture: its spec
 
-A rich picture is planned before it is drawn. This turn you write that plan and nothing else:
-no HTML. The next turn builds the picture to it, and a person reads it while that happens.
+A motion-graphics picture is planned before it is drawn, the way HyperFrames plans a film:
+three treatments in words, one picked, then a spec with a number wherever an adjective would
+go. This turn you write that plan and nothing else: no HTML. The next turn builds the picture
+to it, and a person reads it while that happens.
+
+Read first, in the HyperFrames guides the turn names:
+
+- `types/explainer.md`: what makes a picture explain. Ground it, the devices that explain, the
+  shapes of information, the tells.
+- `spec.md`: the spec's lines, turning words into numbers, the composition numbers, what is
+  banned by default, a look built from a medium.
+- `motion.md`, "Motion craft": the measured numbers for moves, eases by role, overlaps, holds.
+- `story.md`, section 2, for how three treatments differ; `look.md` for where a look comes from.
+
+Those guides are written for a whole film made in one go by an agent with a shell. Here the
+film exists: its script is written and approved, you plan one picture of it, and you have no
+shell (the house runs the renderer's check and takes the stills). Where they and this page
+disagree, this page wins, and these parts of theirs are not yours: the stop for a person to
+pick a storyline; `STORYLINES.md`, `SPEC.md` and `REVIEW.md` as files; the CLI; sound and
+music; the hook, the end card and the brand's mark.
 
 The turn names the picture's brief (`pictures/<id>.brief.json`) and the file to write
 (`pictures/<id>.motion.json`). Read the brief whole: the canvas, the look, and every line with
 what is said, what it adds, its objects and its cues.
 
-The plan never changes what is said or when. The lines, the objects and the cues are the
-episode's: every cue still lands on its word, and code sets every time. What you decide here
-is how it looks and how it moves: what kind of picture this is, what each line opens on, the
-one change each line is about, and what is on screen when the line ends.
+## What is fixed, and what is yours
 
-Use the brief’s selected component to plan the movement. For a timeline, name the
-milestone visible at the start, the segment that draws on the next cue, and the label
-that settles at its end. For an exchange, stage both endpoints, trace from sender to
-receiver, then reveal the arrowhead. For a measured comparison, establish a common scale
-before growing the bars. Keep the previous marks visible while the viewer compares them.
+Fixed, because it is the episode's: what is said and when; the lines, the objects and what each
+means; the cues and the word each lands on (code sets every time from the voice); the canvas
+and `keep_clear`; the brand's palette and type.
 
+Yours: the treatment (where it happens, what carries the idea, how the view carries it); how
+each thing is drawn so it reads as what it is; how every shot is framed and how the view
+moves; how things move, by role; what moves in the stretches the cues leave quiet; and what
+the picture must not become.
 
-Use the editable shot sheet in the turn. Keep the supplied frame IDs and field names and
-change each shot to fit the words and cues in its line. Write the named motion JSON file.
+## Three treatments, then one
+
+Before any shot, write three treatments of the picture. They are three different pictures,
+not three names for one: each has its own **world** (where it happens and what it is made of),
+its own **device** (the table below) and its own **form** (how the view carries it: one frame
+that rebuilds, a tour through one object with a dive into the part that matters, a chain where
+each thing becomes the next, several panes that collapse into one). Sketch five first, a line
+each; keep the three that differ most, one of them the bold one you would not have picked
+first. Then pick the one a stranger would follow and remember, ahead of the most striking
+frame. A treatment in which every line is "a box appears" has not tried the forms.
+
+Nobody is asked to choose: `treatments` keeps the three, a line each with the picked one
+first, so a person reading the plan can ask for another.
 
 ## The file
 
 ```json
 {
-  "device": "one diagram that grows",
-  "world": "A workbench seen from above, evenly lit. Every part is a paper card with an ink edge.",
+  "treatments": [
+    "Picked: the stockroom. A storeroom seen from above; the object is the explanation; a tour that dives into the one shelf. A stranger knows a storeroom, and the cache's rule is where things are shelved.",
+    "The ledger: one page of a paper ledger; one diagram that grows; one frame that rebuilds. Clear, but it is a table of labels.",
+    "The relay: three runners on a track; the worked example; a chain. Bold, but the baton hides which copy is kept."
+  ],
+  "device": "the object is the explanation",
+  "world": "A stockroom seen from above, evenly lit. Every part is a paper card with an ink edge on the brand's ground.",
+  "look": "Ground #ffffff with the look's dot texture at 16%. Ink #000000 lines 3 px, corners 10 px. Accent #6d28d9 on the one part a line is about, nowhere else. Labels Inter 600 at 34 px, the hero's label 44 px (the floor is 28 px). Paper and ink: flat fills, a contact shadow 0 6px 0 at 8% under what sits on the bench, no gradients, no glow.",
+  "objects": "Browser: a window frame with a toolbar and three dots, 380 px wide. Cache: an open drawer with file tabs, not a box named cache. Server: a rack of three units with status lights. A response: a dog-eared sheet that travels.",
+  "motion": "Arrive on expo.out, 0.6 s, the hero 0.9 s. Camera and anything travelling on power2.inOut, 0.9 s. What leaves or recedes on power3.in, 0.35 s. Drawer and chips settle on back.out(1.4); nothing else springs. The next thing starts when the one before is 40% done; items of a set 60 ms apart.",
+  "banned": "A row of labelled boxes; three equal cards; every part fading up the same way; one curve on every move; a label arriving as the hero; glow; anything that floats or breathes; the whole picture fading in.",
   "shots": [
     {
       "frame": "c2.b1.f1",
@@ -35,16 +72,29 @@ change each shot to fit the words and cues in its line. Write the named motion J
       "opens_on": "The bench with the browser card at its left edge, nothing else.",
       "hero": "On “store”, a drawer slides out of the browser card to the centre and settles, a third of the canvas wide.",
       "others": "Its label types on once the drawer has settled.",
+      "camera": "Framed on the browser and the empty bench, the browser 45% of the canvas high. After the drawer lands, the view pushes in 12% on the drawer and holds.",
+      "between": "From “every time” to “instead”, 4 s with no cue: a response sheet travels from the server's edge into the drawer, the thing those words describe.",
       "still": "The browser card on the left, the open drawer in the centre with its label, the right third empty for the server."
     }
   ]
 }
 ```
 
+- `treatments`: the three, a line each, the picked one first and marked "Picked:".
 - `device`: how this picture carries its idea. One of the nine below, word for word.
 - `world`: one line on where the picture happens: its ground, its light, its scale and the one
   material its things are made of, taken from the subject (a desk, a machine, a page, a map).
-  Name colours by the look's roles (ground, panel, ink, accent), never as values.
+- `look`: the picture's LOOK line, as numbers. The ground and its texture, the ink and where
+  the one accent may appear, all as the brief's palette gives them; the sizes of what is read,
+  in pixels for this canvas (never under 2.6% of its shorter side); the medium and its
+  numbers (line weight, corner, a contact shadow's offset and strength, grain). A look holds
+  together as the rules of one medium, not a palette; the colours are still the brand's.
+- `objects`: every thing the lines name, drawn with the material and the detail that make it
+  read without its label: a drawer with tabs, not a box named "cache".
+- `motion`: the eases by role as named curves, the durations and the stagger, in seconds.
+  Arrivals, the camera and what travels, what leaves, and what (if anything) springs.
+- `banned`: what this picture must not become: the defaults of `spec.md` it is most at risk of,
+  by name, and the way this subject usually goes wrong.
 - `shots`: one for every line of the brief, in the brief's order.
   - `frame`: the line's id, as the brief gives it.
   - `shot`: the shot in one plain sentence of at most twenty words. A person reads it beside
@@ -56,6 +106,14 @@ change each shot to fit the words and cues in its line. Write the named motion J
     how it lands. Say the spoken word it starts on.
   - `others`: how the line's other cues land around the hero, in a sentence. Empty when the
     hero is the line's only cue.
+  - `camera`: how the shot is framed, and the one move of the view if it has one. Say what
+    fills the frame (the thing the line is about takes at least two fifths of the canvas's
+    height or width), then the move: from which framing to which, and what it waits for.
+    "Holds" when the view does not move.
+  - `between`: for each stretch of the line where the cues leave more than three seconds with
+    nothing changing, the move that fills it and the words it rides. It acts on what is
+    already there and is caused by what is being said: something travels, counts, works,
+    or the view moves to the part the words are on. Empty when the cues leave no such stretch.
   - `still`: what is on screen just before the line ends, in one sentence. Code takes a still
     there and a person approves the picture by it.
 
@@ -80,35 +138,41 @@ change each shot to fit the words and cues in its line. Write the named motion J
 1. **A world, not a slide.** Things sit somewhere and are made of something. A row of boxes
    with labels is the failure this plan exists to avoid.
 2. **Draw what a thing is.** A drawer, a ticket, a stack of pages, a stamp: not a box that says
-   "cache". A label rides on the thing it names.
-3. **It fills its canvas.** The thing a line is about takes 40 to 60 per cent of the canvas.
-   When the brief gives `keep_clear`, nothing that must be read sits there.
+   "cache". A label rides on the thing it names, with a leader line when it needs one.
+3. **The view makes the hero large.** The thing a line is about takes at least two fifths of
+   the canvas. When the whole picture is wider than that allows, the shot frames tight on the
+   part and pulls back to place it. When the brief gives `keep_clear`, nothing that must be
+   read sits there in any framing.
 4. **Every object of the brief is in it, once.** An object with no cue is there from the first
    second. You add no object that carries words the plan does not have.
 
 **Each shot**
 
 5. **One hero.** It is the change the line is about, which is usually the line's focal object
-   developing. A heading or a label arriving is never the hero. When the line is a set of
-   items arriving, the set is the hero and each item lands on its own cue the same way.
-6. **Nothing arrives before its cue.** A shot's moves start on the line's cues, in their order.
-   Never give a number of seconds for when something happens.
+   developing. A heading or a label arriving is never the hero. Everything else travels half
+   to two thirds as far and starts a moment after it.
+6. **Nothing arrives before its cue.** A shot's cue moves start on the line's cues, in their
+   order. Never give a number of seconds for when something happens: say the word, or the
+   move it follows.
 7. **Change, not only entrance.** Where a cue points at, counts, fills or moves something
-   already there, the hero does that. When two heroes in a row are both arrivals, the second
-   arrives another way (it unfolds, it is drawn, it drops in), on the same object the line
-   names.
-8. **The rest supports.** Other cues land smaller and faster than the hero, as a group where
-   they are close together.
-9. **A shot opens on the last one's still.** A later line adds to the picture or changes it. It
-   never clears it and never redraws it.
-10. **It ends still.** By the end of the line everything it added is in place and nothing is
-    half-way. The view is still while the viewer reads: at most one slow push in a shot, and
-    only after the hero has landed.
+   already there, the hero does that. When the brief's cues are all arrivals, each arrives a
+   different way and out of something already on screen (it unfolds from, splits off, is
+   drawn by, drops out of), never four fades in a row.
+8. **Something new every two to four seconds.** A stretch of more than three seconds with
+   nothing changing is where a picture goes dead, and the renderer measures it. `between`
+   fills each one with a move the words cause. Never an idle loop, a float or a creeping
+   scale: those read as a picture with nothing to say.
+9. **What is done recedes.** A later line adds to the picture or changes it. It never clears
+   it and never redraws it; what an earlier line finished may dim or step back so the eye has
+   one place to go.
+10. **It ends still.** By the end of the line everything it added is in place, the view has
+    settled and nothing is half-way. Whatever is being read does not move.
 
-**Never:** glow or particles as decoration; small things floating in a dark void; everything
-fading and sliding up the same way; three equal cards in a row as the whole picture; anything
-that breathes, floats or loops; the whole picture fading in or out (the film brings it in and
-takes it out).
+**Never:** glow or particles as decoration; small things floating in an empty ground;
+everything fading and sliding up the same way; one curve on every move; three equal cards in a
+row as the whole picture; anything that breathes, floats or loops; the whole picture fading in
+or out (the film brings it in and takes it out).
 
-Write the file and stop. Reply in two lines: the device and why it fits, and anything in the
-brief the plan could not carry. When a turn opens with faults, change only what they name.
+Write the file and stop. Reply in three lines: the treatment you picked and why; the two you
+passed over; anything in the brief the plan could not carry. When a turn opens with faults,
+change only what they name.

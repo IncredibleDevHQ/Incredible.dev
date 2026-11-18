@@ -49,8 +49,19 @@ DEVICES = (
     "a real screen, the detail circled",
 )
 #: What a shot of a motion plan says. `shot` is the line a person reads beside the script, so
-#: it is short; the rest is the builder's and is kept nearly whole.
-SHOT_FIELDS = ("shot", "opens_on", "hero", "others", "still")
+#: it is short; the rest is the builder's and is kept nearly whole. `camera` (how the shot is
+#: framed and how the view moves) and `between` (what happens where the line's cues leave more
+#: than a few seconds with nothing changing) are the shot as HyperFrames' spec writes one, and
+#: a plan may leave them out.
+SHOT_FIELDS = ("shot", "opens_on", "hero", "others", "still", "camera", "between")
+#: The picture's spec, after HyperFrames' `SPEC.md`: the look as numbers, how each thing is
+#: drawn so it reads without its label, the motion by role, and what the picture must not
+#: become. Each is prose with numbers in it; a plan written before the spec has none.
+SPEC_FIELDS = ("look", "objects", "motion", "banned")
+#: The treatments weighed before one was built, a line each, so a person can ask for another.
+TREATMENTS = 3
+#: The fields every shot has, as the studio shows them; the others are kept only when said.
+REQUIRED_SHOT_FIELDS = ("shot", "opens_on", "hero", "others", "still")
 SHOT_CHARS = 1500
 SHOT_WORDS = 24
 
@@ -210,6 +221,52 @@ def still_times(own: Row) -> dict[str, float]:
         frame: round(max(span[0], span[1] - 0.05), 3)
         for frame, span in own.get("lines", {}).items()
     }
+
+
+#: A stretch this long with no cue in it is where a picture goes dead (HyperFrames' check
+#: warns past three seconds with nothing changing).
+QUIET_SECONDS = 3.0
+#: The most frames taken of one picture's motion for its review.
+MOTION_FRAMES = 24
+
+
+def motion_times(own: Row) -> list[tuple[str, float]]:
+    """Where a picture's motion is looked at, beyond the still at each line's end: inside every
+    cue's move, once it has landed, and in the middle of each stretch the cues leave quiet. Each
+    is named by its line, its place in the picture and what it shows, in the order they play."""
+    seconds = float(own.get("seconds") or 0.0)
+    lines = own.get("lines", {})
+    cues = sorted(own.get("cues", {}).items(), key=lambda item: item[1])
+
+    def line_of(at: float) -> str:
+        return next((frame for frame, (start, end) in lines.items() if start <= at <= end), "")
+
+    marks: list[tuple[str, float]] = []
+    edges = [0.0]
+    for key, at in cues:
+        frame, _, n = key.partition("/")
+        cue = f"cue{int(n) + 1}" if n.isdigit() else "cue"
+        marks.append((f"{frame}-{cue}-moving", at + 0.15))
+        marks.append((f"{frame}-{cue}-landed", at + 0.75))
+        edges.append(float(at))
+    edges.append(seconds)
+    for before, after in zip(edges, edges[1:], strict=False):
+        if after - before > QUIET_SECONDS + 0.75:
+            middle = (before + 0.75 + after) / 2
+            marks.append((f"{line_of(middle) or 'picture'}-quiet", middle))
+    kept = sorted(
+        ((name, round(min(max(at, 0.0), max(seconds - 0.05, 0.0)), 3)) for name, at in marks),
+        key=lambda mark: mark[1],
+    )
+    # two looks a few frames apart show the same thing: the first of each is kept
+    spaced: list[tuple[str, float]] = []
+    for name, at in kept:
+        if not spaced or at - spaced[-1][1] >= 0.1:
+            spaced.append((name, at))
+    if len(spaced) > MOTION_FRAMES:
+        step = len(spaced) / MOTION_FRAMES
+        spaced = [spaced[int(i * step)] for i in range(MOTION_FRAMES)]
+    return [(f"{n:02d}-{name}", at) for n, (name, at) in enumerate(spaced, start=1)]
 
 
 def with_clock(html: str, own: Row) -> str:
@@ -416,7 +473,9 @@ def motion_plan(text: str, unit: Row) -> tuple[Row, list[str]]:
             continue
         kept: Row = {"frame": frame}
         for name in SHOT_FIELDS:
-            kept[name] = " ".join(str(shot.get(name) or "").split())[:SHOT_CHARS]
+            value = " ".join(str(shot.get(name) or "").split())[:SHOT_CHARS]
+            if value or name in REQUIRED_SHOT_FIELDS:
+                kept[name] = value
         for name in ("shot", "hero", "still"):
             if not kept[name]:
                 faults.append(f'the shot for line {frame} needs "{name}"')
@@ -436,7 +495,19 @@ def motion_plan(text: str, unit: Row) -> tuple[Row, list[str]]:
     world = " ".join(str(given.get("world") or "").split())[:SHOT_CHARS]
     if not world:
         faults.append('"world" says where the picture happens, in one line')
-    return {"device": device, "world": world, "shots": shots}, faults
+    plan: Row = {"device": device, "world": world, "shots": shots}
+    for name in SPEC_FIELDS:
+        value = " ".join(str(given.get(name) or "").split())[:SHOT_CHARS]
+        if value:
+            plan[name] = value
+    weighed = given.get("treatments")
+    if isinstance(weighed, list):
+        lines = [
+            " ".join(str(t).split())[:400] for t in weighed if isinstance(t, str) and t.strip()
+        ]
+        if lines:
+            plan["treatments"] = lines[:TREATMENTS]
+    return plan, faults
 
 
 def faults(html: str, unit: Row, full: Row, look: Look | None = None) -> list[str]:

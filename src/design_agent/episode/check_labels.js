@@ -1,5 +1,7 @@
 // Measure painted text runs at the sought time. A connector crossing a card or a
 // repeated word in two columns is valid; two letters occupying the same space are not.
+// A label the view has moved away from (wholly off the canvas) is not on screen and is left
+// alone; one the canvas's edge cuts through is.
 function checkLabels(scene) {
   const bounds = scene.getBoundingClientRect();
   const findings = new Set();
@@ -37,9 +39,11 @@ function checkLabels(scene) {
     range.selectNodeContents(text);
     for (const box of range.getClientRects()) {
       if (box.width < 2 || box.height < 2) continue;
+      if (box.right <= bounds.left || box.left >= bounds.right ||
+          box.bottom <= bounds.top || box.top >= bounds.bottom) continue;
       if (box.left < bounds.left - 2 || box.right > bounds.right + 2 ||
           box.top < bounds.top - 2 || box.bottom > bounds.bottom + 2)
-        findings.add('Label outside canvas: "' + name + '"');
+        findings.add('Label cut by the canvas edge: "' + name + '"');
       if ([0.25, 0.5, 0.75].every(f => covered(el, box, f)))
         findings.add('Label covered by a panel: "' + name + '"');
       for (const run of runs) {

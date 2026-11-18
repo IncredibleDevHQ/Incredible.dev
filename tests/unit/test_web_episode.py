@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import re
 import time
 from collections.abc import AsyncGenerator, Mapping
 from pathlib import Path
@@ -21,10 +22,18 @@ from design_agent.episode import plan as plans
 from design_agent.surfaces.web import catalog, episode_models
 from design_agent.surfaces.web.agent import AgentHost
 from design_agent.surfaces.web.app import create_app
-from design_agent.surfaces.web.episode_desk import EPISODE, EpisodeDesk, _changed, _shape
+from design_agent.surfaces.web.episode_desk import (
+    EPISODE,
+    EpisodeDesk,
+    _changed,
+    _craft_notes,
+    _guides,
+    _shape,
+)
 from design_agent.surfaces.web.episode_workers import (
     BUILTIN,
     DEMO,
+    HYPERFRAMES_GUIDES,
     DemoWorker,
     LocalWorker,
     Told,
@@ -86,6 +95,7 @@ async def house(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncGenerat
 
     monkeypatch.setattr(desk, "_pose", pose)
     monkeypatch.setattr(desk, "_clip", lambda episode, unit: "")
+    monkeypatch.setattr(desk, "_motion_frames", lambda episode, unit, full, html: {})
     yield host
     await desk.close()
 
@@ -382,12 +392,16 @@ async def test_one_picture_is_stopped_and_the_others_go_on(
 
 
 async def test_a_rich_picture_is_planned_shot_by_shot_before_it_is_drawn(
-    tmp_path: Path, house: AgentHost
+    tmp_path: Path, house: AgentHost, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     desk = house.episodes
     desk.workers[DEMO] = DemoWorker(data_dir=tmp_path, script=SCRIPT, pause=0, store=house.store)
     episode_id = await planned(house)
     unit = next(u for u in desk.view(episode_id)["units"] if len(u["frames"]) > 1)
+    # what the computer would give its review: a frame from inside a move, and a measurement
+    moving = f"01-{unit['frames'][0]}-cue1-moving"
+    monkeypatch.setattr(desk, "_motion_frames", lambda episode, unit, full, html: {moving: PNG})
+    desk._craft[(episode_id, unit["id"])] = ["dead_stretch: 4.2 s with nothing changing"]
     # its level is picked before it is asked for: nothing is drawn by the pick
     view = desk.choose(episode_id, by="you", change={"units": {unit["id"]: {"level": "rich"}}})
     picked = next(u for u in view["units"] if u["id"] == unit["id"])
@@ -407,8 +421,104 @@ async def test_a_rich_picture_is_planned_shot_by_shot_before_it_is_drawn(
     assert [turn.split("\n")[0] for turn in turns[:2]] == ["Stage: motion plan.", "Stage: picture."]
     assert "Look at how" in turns[2] and "motion_plan" in turns[1]
     folder = desk.data_dir / "episodes" / episode_id / "pictures"
-    brief = json.loads((folder / f"{picture.composition_id(unit['id'])}.brief.json").read_text())
+    comp = picture.composition_id(unit["id"])
+    brief = json.loads((folder / f"{comp}.brief.json").read_text())
     assert brief["motion_plan"] == motion and brief["level"] == "rich"
+    # each turn is sent to HyperFrames' own guides, beside the episode's brief for that turn
+    assert all("skill/hyperframes/" in turn for turn in turns[:3])
+    # the review has the stills, frames of the motion by name, and what the renderer measured
+    assert f"pictures/{comp}.stills/" in turns[2] and f"pictures/{comp}.motion/" in turns[2]
+    assert (folder / f"{comp}.motion" / f"{moving}.png").read_bytes() == PNG
+    assert "What the renderer measured:\n- dead_stretch: 4.2 s with nothing changing" in turns[2]
+    assert (episode_id, unit["id"]) not in desk._craft
+
+
+def test_a_pictures_motion_is_looked_at_inside_its_moves_and_its_quiet_stretches() -> None:
+    own = {
+        "seconds": 20.0,
+        "lines": {"c1.b1.f1": [0.0, 9.0], "c1.b2.f1": [9.0, 20.0]},
+        "cues": {"c1.b1.f1/0": 0.5, "c1.b1.f1/1": 6.5, "c1.b2.f1/0": 9.4, "c1.b2.f1/1": 9.45},
+    }
+    marks = picture.motion_times(own)
+    names = [name for name, _ in marks]
+    # every cue inside its move and once landed, in the order they play, numbered
+    assert names[:2] == ["01-c1.b1.f1-cue1-moving", "02-c1.b1.f1-cue1-landed"]
+    assert dict(marks)["01-c1.b1.f1-cue1-moving"] == 0.65
+    # a stretch the cues leave quiet is looked at in its middle, on the line it falls in
+    quiet = [(name, at) for name, at in marks if name.endswith("-quiet")]
+    assert [name.split("-", 1)[1] for name, _ in quiet] == ["c1.b1.f1-quiet", "c1.b2.f1-quiet"]
+    assert 1.25 < quiet[0][1] < 6.5 and 10.2 < quiet[1][1] < 20.0
+    # two looks a few frames apart show the same thing; none falls outside the picture
+    times = [at for _, at in marks]
+    assert times == sorted(times) and all(
+        b - a >= 0.1 for a, b in zip(times, times[1:], strict=False)
+    )
+    assert all(0.0 <= at <= 19.95 for at in times)
+    assert picture.motion_times({"seconds": 0.0, "lines": {}, "cues": {}}) == []
+    busy = {
+        "seconds": 90.0,
+        "lines": {"c1.b1.f1": [0.0, 90.0]},
+        "cues": {f"c1.b1.f1/{n}": n * 5.0 for n in range(18)},
+    }
+    assert len(picture.motion_times(busy)) == picture.MOTION_FRAMES
+
+
+def test_what_the_renderer_measures_is_kept_as_notes_for_the_review_never_as_faults() -> None:
+    report = """
+Lint
+  ◇ 0 errors, 0 warnings
+
+Runtime
+  ◇ 0 errors, 0 warnings
+
+Contrast
+  ◇ 12/12 text checks pass WCAG AA
+
+Craft
+  ⚠ dead_stretch: nothing changes for 5.5 s
+    index.html #root 20.9–26.4s
+    Fix: add a change, or mark a deliberate hold with data-hold
+  ⚠ film_silent: a film over 15 s has no sound
+    index.html
+  ⚠ text_below_floor: 22 px text is under 2.6% of the short side
+    compositions/pic.html #pic-label 0–27.5s
+  0 error(s), 3 warning(s), 0 info(s)
+
+Snapshots
+  ◇ disabled
+"""
+    notes = _craft_notes(report)
+    assert notes == [
+        "dead_stretch: nothing changes for 5.5 s (index.html #root 20.9–26.4s) "
+        "(Fix: add a change, or mark a deliberate hold with data-hold)",
+        "text_below_floor: 22 px text is under 2.6% of the short side "
+        "(compositions/pic.html #pic-label 0–27.5s)",
+    ]
+    # an older renderer has no craft pass: nothing is said
+    assert _craft_notes("Lint\n  ◇ 0 errors, 0 warnings\n\nSnapshots\n  ◇ disabled\n") == []
+    # the engine's agent reads the vendored skill; a coding agent a copy beside its own
+    assert _guides("/skills/episode") == "/skills/hyperframes/references"
+    assert _guides("skill") == "skill/hyperframes"
+
+
+async def test_a_coding_agent_is_handed_the_hyperframes_guides_its_briefs_name(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    worker = LocalWorker("kimi", store=house.store, data_dir=tmp_path, project_root=ROOT)
+    episode = {"id": "ep_guides", "thread_id": "th_guides"}
+    await worker.prepare(episode, {"pictures/pic.brief.json": "{}"})
+    guides = worker.folder(episode) / "skill" / "hyperframes"
+    for name in HYPERFRAMES_GUIDES:
+        assert (guides / name).read_text() == (
+            ROOT / "skills" / "hyperframes" / "references" / name
+        ).read_text()
+    # every guide the two briefs send a builder to is one it is handed
+    briefs = "".join(
+        (ROOT / "skills" / "episode" / "briefs" / name).read_text()
+        for name in ("motion.md", "picture.md")
+    )
+    named = set(re.findall(r"`((?:types/)?[a-z]+\.md)`", briefs)) - {"motion.md", "picture.md"}
+    assert named and named <= set(HYPERFRAMES_GUIDES) | {"motion.md"}
 
 
 async def test_switching_a_made_picture_to_rich_with_a_yes_makes_it_again_that_way(
@@ -505,7 +615,27 @@ def test_a_motion_plan_keeps_one_shot_a_line_and_only_what_its_shape_names() -> 
         "hero": "The drawer slides out.",
         "others": "",
         "still": "The drawer, open.",
+        # how the shot is framed is part of a shot; what a plan leaves out is not invented
+        "camera": "push",
     }
+    assert "between" not in plan["shots"][0]
+    # a plan written as a spec keeps its numbers and the treatments it weighed, three at most
+    spec = {
+        "look": "Ink  #000000 lines 3 px.",
+        "objects": "A drawer with tabs.",
+        "motion": "Arrive on expo.out, 0.6 s.",
+        "banned": "A row of labelled boxes.",
+        "treatments": ["Picked: the stockroom.", "The ledger.", "The relay.", "A fourth.", 5, " "],
+    }
+    plan, faults = picture.motion_plan(json.dumps({**json.loads(text), **spec}), unit)
+    assert not faults and plan["look"] == "Ink #000000 lines 3 px."
+    assert (plan["objects"], plan["motion"], plan["banned"]) == (
+        "A drawer with tabs.",
+        "Arrive on expo.out, 0.6 s.",
+        "A row of labelled boxes.",
+    )
+    assert plan["treatments"] == ["Picked: the stockroom.", "The ledger.", "The relay."]
+    assert "palette" not in plan
     assert picture.motion_plan("not json", unit)[1][0].startswith("the file is not JSON")
     assert picture.motion_plan("[]", unit)[1] == [
         'the file is one object with "device", "world" and a "shots" list'

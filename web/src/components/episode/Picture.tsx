@@ -361,7 +361,8 @@ function WhatChanged({ madeFor, lines }: { madeFor: Record<string, string>; line
 
 // A rich picture's motion plan, a click away from its block: how the picture carries its idea
 // and where it happens, then each line's shot as its builder planned it (what it opens on, the
-// move the line is about, what lands around it, what it ends on).
+// move the line is about, what lands around it, how the view moves, what it ends on), and under
+// them the spec it is built to.
 function MotionPlan({ motion, lines }: { motion: Motion; lines: EpisodeFrame[] }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -405,12 +406,53 @@ function MotionPlan({ motion, lines }: { motion: Motion; lines: EpisodeFrame[] }
                     <dd>{shot.others}</dd>
                   </>
                 )}
+                {shot.camera && (
+                  <>
+                    <dt>The view</dt>
+                    <dd>{shot.camera}</dd>
+                  </>
+                )}
+                {shot.between && (
+                  <>
+                    <dt>In between</dt>
+                    <dd>{shot.between}</dd>
+                  </>
+                )}
                 <dt>Ends on</dt>
                 <dd>{shot.still}</dd>
               </dl>
             </li>
           ))}
         </ol>
+        {/* the spec behind the shots, and the treatments weighed: folded, for whoever wants them */}
+        {(motion.look || motion.motion || motion.objects || motion.banned || motion.treatments?.length) && (
+          <details className="ep-plan-spec">
+            <summary>The spec it is built to</summary>
+            <dl>
+              {motion.treatments?.map((t, i) => (
+                <div key={t}>
+                  <dt>{i === 0 ? "Treatment" : "Passed over"}</dt>
+                  <dd>{t}</dd>
+                </div>
+              ))}
+              {(
+                [
+                  ["Look", motion.look],
+                  ["Objects", motion.objects],
+                  ["Motion", motion.motion],
+                  ["Never", motion.banned],
+                ] as const
+              ).map(([name, said]) =>
+                said ? (
+                  <div key={name}>
+                    <dt>{name}</dt>
+                    <dd>{said}</dd>
+                  </div>
+                ) : null,
+              )}
+            </dl>
+          </details>
+        )}
       </Popover>
     </>
   );

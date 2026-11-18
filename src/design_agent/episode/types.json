@@ -252,10 +252,10 @@
     { "id": "voice-only", "name": "Voice only", "presenter": "off", "stage": "one ground, edge to edge", "kit": [ "graphic-on-ground", "card-on-ground", "recording-fills", "title-card", "number-spotlight", "chapter-banner" ], "default": { "person": "card-on-ground", "both": "graphic-on-ground", "content": "graphic-on-ground" }, "overlays": [], "marks": [ "title-sting", "end-card" ], "motion": "carry-across-cuts", "shares": { "person": 0.0, "both": 0.0, "content": 1.0 }, "person_from": 2 }
   ],
   "motion_styles": [
-    { "id": "outline-then-fill", "name": "Outline, then fill", "reveal": "an object draws its outline, then fills", "ease": "one smooth ease, no bounce", "primary_transition": "cut", "accent": "one accent colour marks the active object" },
-    { "id": "pop-in-order", "name": "Pop in order", "reveal": "chips and cards pop in, one per phrase", "ease": "one smooth ease, a small spring on chips only", "primary_transition": "crossfade", "accent": "the active chip takes the accent" },
-    { "id": "type-on-and-pop", "name": "Type on and pop", "reveal": "text types on; objects pop", "ease": "one smooth ease, no bounce", "primary_transition": "cut", "accent": "the brand shapes carry the joins" },
-    { "id": "carry-across-cuts", "name": "Carry across cuts", "reveal": "the focal object keeps developing; support arrives when it explains", "ease": "one smooth ease, no bounce", "primary_transition": "push", "accent": "anchors stay put" }
+    { "id": "outline-then-fill", "name": "Outline, then fill", "reveal": "an object draws its outline, then fills", "ease": "by role: arrivals land on a long tail, the view and what travels ease both ways, what leaves accelerates; no bounce", "primary_transition": "cut", "accent": "one accent colour marks the active object" },
+    { "id": "pop-in-order", "name": "Pop in order", "reveal": "chips and cards pop in, one per phrase", "ease": "by role: arrivals land on a long tail, the view and what travels ease both ways, what leaves accelerates; a small spring on chips only", "primary_transition": "crossfade", "accent": "the active chip takes the accent" },
+    { "id": "type-on-and-pop", "name": "Type on and pop", "reveal": "text types on; objects pop", "ease": "by role: arrivals land on a long tail, the view and what travels ease both ways, what leaves accelerates; no bounce", "primary_transition": "cut", "accent": "the brand shapes carry the joins" },
+    { "id": "carry-across-cuts", "name": "Carry across cuts", "reveal": "the focal object keeps developing; support arrives when it explains", "ease": "by role: arrivals land on a long tail, the view and what travels ease both ways, what leaves accelerates; no bounce", "primary_transition": "push", "accent": "anchors stay put" }
   ],
   "numbers": {
     "words_per_second": 2.6,

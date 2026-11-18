@@ -837,23 +837,37 @@ app's canvas, from a channel's material or a research frame's notes.
   as well as the plan, or one picture from its block; the ones that stopped are made again
   only on request.
 - **Simple and motion graphics.** A picture is simple (drawn at once from the plan) or motion
-  graphics (`rich` in the plan), by the film's choice or its own. Both move on their cues; motion
-  graphics are planned before they are drawn, the way a
-  HyperFrames explainer plans a frame as a shot sequence before any HTML: its builder writes
-  a motion plan (how the picture carries its idea, from a closed list of nine devices; where
-  it happens; and for each of its lines what it opens on, the one move the line is about, how
-  the rest lands and what its still shows). The plan never moves a word or a cue: code still
-  sets every time. Code holds it to its shape (one shot per line), the studio shows it on the
-  picture's lines while the picture is drawn, the picture is built to it, its builder looks at
-  the stills once, and the stills wait for the person's go. The picture is built and moving
+  graphics (`rich` in the plan), by the film's choice or its own. Both move on their cues, and
+  both are built by HyperFrames' own craft: every builder is handed the guides of the vendored
+  `hyperframes` skill that its brief names (motion, spec, review, look, film, story and the
+  page on explainers), and the brief says where the episode differs (the clock, the canvas,
+  the cue keys, no shell). Moves ease by their role and never all on one curve, the view moves
+  (a push in on the part a line is about, a pull back to place it), what is done recedes, and
+  no stretch of more than three seconds passes with nothing changing. Motion graphics are
+  planned before they are drawn, as HyperFrames plans a film: their builder weighs three
+  treatments (a world, a device, a form each), picks one, and writes the picture's spec: how
+  the picture carries its idea, from a closed list of nine devices; where it happens; the
+  look, the objects, the motion and what is banned, as numbers; and for each of its lines what
+  it opens on, the one move the line is about, how the rest lands, how the shot is framed and
+  how the view moves, what fills a stretch the cues leave quiet, and what its still shows.
+  The plan never moves a word or a cue: code still sets every time. Code holds it to its shape
+  (one shot per line), the studio shows it on the picture's lines while the picture is drawn
+  (the spec and the treatments passed over are folded under the shots), and the picture is
+  built to it. Its builder then reviews it once as a first-time viewer would see it: the still
+  at the end of each line, frames from inside every cue's move, the same cue landed and the
+  middle of each quiet stretch, and what the renderer's craft pass measured (a stretch with
+  nothing changing, a line too brief to read, type under the floor), which are questions for
+  the review and never faults. It fixes what breaks the read and what weakens the picture,
+  and the stills wait for the person's go. The picture is built and moving
   before its stills are taken, so the go makes nothing more: it puts the picture in the film as
   built, and the block says so where the stills were. Any made picture plays in its block once
   its draft clip is rendered, and a clip rendered for what was drawn before is dropped the
   moment the new drawing lands. The switch on a picture's block says how it was made.
   A malformed shot sheet gets one correction using the expected frame IDs. If the correction
   still fails validation, the builder receives shots derived from that picture's saved cues.
-  Chromium measures visible labels at cue and line boundaries. A drawing with a collision
-  or off-canvas label must be corrected or replaced with a checked layout from the same brief.
+  Chromium measures visible labels at cue and line boundaries. A drawing with a collision,
+  or a label the canvas's edge cuts through, must be corrected or replaced with a checked
+  layout from the same brief; a label the view has moved wholly away from is not on screen.
   Opening a chapter with Local narrator prepares speech for its unrecorded lines. Picture
   playback mixes the saved artwork with those lines or kept takes and caches the playable cut.
   Switching a picture not made yet only sets how it will be made; switching a made one asks

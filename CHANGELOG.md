@@ -87,11 +87,17 @@
     card with the picture, a placeholder until it is made, over the lines it is shown on), a
     chapter's together by asking to record the chapter (the camera opens once they are made),
     or the whole film's from the bar. A picture is simple or motion graphics (`rich` in the
-    plan), on its block or for the film. Motion graphics are planned before they are drawn:
-    their builder writes a motion plan (a
-    device, a world, and a shot for each line: what it opens on, the one move the line is
-    about, what its still shows), code holds it to its shape, the studio shows it on the
-    picture's lines, and the picture is built to it and posed for the person's go. Switching a
+    plan), on its block or for the film. Pictures are built on HyperFrames' own path: each
+    builder is handed the guides of the vendored `hyperframes` skill (motion, spec, review and
+    the page on explainers), moves ease by role, the view moves, and no stretch passes three
+    seconds with nothing changing. Motion graphics are planned before they are drawn: their
+    builder weighs three treatments, picks one and writes its spec (a device, a world, the
+    look, the objects and the motion as numbers, and a shot for each line: what it opens on,
+    the one move the line is about, how it is framed, what fills a quiet stretch, what its
+    still shows), code holds it to its shape, the studio shows it on the picture's lines, and
+    the picture is built to it. Its builder then reviews frames from inside its moves and what
+    the renderer's craft pass measured, beside the stills, before they wait for the person's
+    go. Switching a
     made picture to the other level asks first (the stages to come, the go among them, what it
     costs, and which agent makes it) and Start makes it again that way (`POST …/pictures` with
     a `level`); while it is made, its block follows the build stage by stage with its builder's

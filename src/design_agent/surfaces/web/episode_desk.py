@@ -155,8 +155,13 @@ STEPS: tuple[tuple[str, str], ...] = (
 )
 #: The renderer's check prints its findings under these heads. A file that breaks the first two
 #: does not render as written; the rest are about how it looks.
-CHECK_SECTIONS = ("Lint", "Runtime", "Layout", "Motion", "Contrast", "Snapshots")
+CHECK_SECTIONS = ("Lint", "Runtime", "Layout", "Motion", "Contrast", "Craft", "Audio", "Snapshots")
 BREAKING = ("Lint", "Runtime")
+#: What the renderer's craft pass says of how a picture plays (a stretch with nothing changing,
+#: a line too brief to read, type under the floor, an empty first frame). They are questions for
+#: the builder's review, never faults; a picture has no sound of its own, so that one is dropped.
+CRAFT_NOTE = re.compile(r"[⚠ℹ]\s*([a-z_]+):\s*(.+)")
+CRAFT_SKIPPED = frozenset({"film_silent"})
 GENERIC = ("system-ui", "sans-serif", "serif", "monospace", "ui-monospace", "ui-sans-serif")
 LINT_ERROR = re.compile(r"✗\s*(?:\[[^\]]*\]\s*)?(.+)")
 
@@ -227,6 +232,9 @@ class EpisodeDesk:
         self._redraw: dict[str, set[str]] = {}
         self._gates: dict[str, asyncio.Semaphore] = {}
         self._said_at: dict[str, float] = {}
+        #: What the renderer's craft pass said of each picture as it was last posed, kept for
+        #: its builder's review.
+        self._craft: dict[tuple[str, str], list[str]] = {}
         self._closing = False
         #: The brand pack a thread's channel wears (the app's brand shelf), or None for the
         #: configured one.
@@ -2118,7 +2126,8 @@ class EpisodeDesk:
             await worker.prepare(episode, {starter: sketch.built(brief), str(brief["file"]): ""})
         prompt = (
             f"Stage: picture.\n\nBuild one picture of the episode. Your folder is {root}. Read "
-            f"{skill}/briefs/picture.md, then the brief at {root}/{brief_file}, "
+            f"{skill}/briefs/picture.md and the HyperFrames guides it names in "
+            f"{_guides(skill)}/, then the brief at {root}/{brief_file}, "
             f"and adapt the themed starting scene at {root}/{starter}. Write {root}/{brief['file']}.{planned} Deliver nothing: the house reads the "
             "file from your folder." + (f"\n\nThe person's note on it: {note}" if note else "")
         )
@@ -2225,7 +2234,8 @@ class EpisodeDesk:
         await worker.prepare(episode, {file: ""})
         prompt = (
             f"Stage: motion plan.\n\nPlan how one picture of the episode moves, before anything "
-            f"is drawn. Your folder is {root}. Read {skill}/briefs/motion.md, then the brief at "
+            f"is drawn. Your folder is {root}. Read {skill}/briefs/motion.md and the HyperFrames "
+            f"guides it names in {_guides(skill)}/, then the brief at "
             f"{root}/pictures/{comp}.brief.json, and write {root}/{file}. Write no HTML in this "
             f"turn. {contract}" + (f"\n\nThe person's note on the picture: {note}" if note else "")
         )
@@ -2266,12 +2276,14 @@ class EpisodeDesk:
     async def _looked(
         self, episode_id: str, unit: Row, full: Row, brief: Row, html: str, stills: dict[str, str]
     ) -> tuple[str, dict[str, str]]:
-        """A rich picture's builder looks at its own stills once and fixes what it sees: what
-        only a render shows (an overlap, a label cut off, something under the person's window).
-        A fix that breaks the file is dropped; the picture it had stands."""
+        """A rich picture's builder reviews it once as a first-time viewer would see it, and
+        fixes what it finds: its stills (what only a render shows: an overlap, a label cut off,
+        something under the person's window), frames from inside its moves and its quiet
+        stretches, and what the renderer's craft pass measured. A fix that breaks the file is
+        dropped; the picture it had stands."""
         episode = self._episode(episode_id)
         worker = self._builder(episode, unit)
-        root, _ = worker.place(episode)
+        root, skill = worker.place(episode)
         comp = brief["composition_id"]
         images: dict[str, bytes] = {}
         for n, frame_id in enumerate(unit["frames"], start=1):
@@ -2282,17 +2294,33 @@ class EpisodeDesk:
                 ).read_bytes()
         if not images:
             return html, stills
+        moving = await asyncio.to_thread(self._motion_frames, episode, unit, full, html)
+        images.update({f"pictures/{comp}.motion/{name}.png": data for name, data in moving.items()})
+        measured = self._craft.pop((episode_id, str(unit["id"])), [])
         await worker.show(episode, images)
+        frames = (
+            f" In {root}/pictures/{comp}.motion/ are frames from inside its moves and from the "
+            "middle of its quiet stretches, in the order they play, each named by its line "
+            "and what it shows (a cue moving, the same cue landed, a quiet stretch)."
+            if moving
+            else ""
+        )
+        notes = (
+            "\n\nWhat the renderer measured:\n" + "\n".join(f"- {note}" for note in measured)
+            if measured
+            else ""
+        )
         told = await worker.turn(
             episode,
             lane=f"picture:{unit['id']}",
             prompt=(
-                f"Stage: picture.\n\nLook at how {root}/{brief['file']} came out. Its stills, "
-                f"one taken at the end of each line, in line order, are in "
-                f"{root}/pictures/{comp}.stills/. Open each one. If anything overlaps, is cut "
-                "off, is too small to read, sits where the brief says to keep clear, or a "
-                "still does not show what its line added, fix the file. If they are right, "
-                "change nothing and reply “Nothing to change.”"
+                f"Stage: picture.\n\nLook at how {root}/{brief['file']} came out, as someone "
+                "seeing it once at full speed will. Its stills, one taken at the end of each "
+                f"line, in line order, are in {root}/pictures/{comp}.stills/.{frames} Open "
+                f"every one and review them the way {_guides(skill)}/review.md says "
+                f"({skill}/briefs/picture.md, “Reviewing it”). Fix what breaks the read and "
+                "what weakens the picture, in the file, and nothing else. If it holds up, "
+                f"change nothing and reply “Nothing to change.”{notes}"
             ),
             heard=self._seen(episode_id),
         )
@@ -2305,6 +2333,51 @@ class EpisodeDesk:
         self._changed(episode_id)
         faults, posed = await asyncio.to_thread(self._pose, episode, unit, full, again)
         return (html, stills) if faults else (again, posed)
+
+    def _motion_frames(self, episode: Row, unit: Row, full: Row, html: str) -> dict[str, bytes]:
+        """Frames from inside a posed picture's moves and its quiet stretches, by name, for its
+        builder's review (`picture.motion_times`). The stills are what a person approves; these
+        show how it gets there. Nothing here can stop a picture: with no frames, the review
+        goes on by the stills alone."""
+        try:
+            own = picture.clock(unit, timeline.schedule(full))
+            wanted = picture.motion_times(own)
+            if not wanted:
+                return {}
+            computer = self._ready(episode)
+            folder = self._pose_dir(episode, unit)
+            comp = picture.composition_id(unit["id"])
+            look = self._look(episode)
+            computer.put(
+                [
+                    (
+                        f"{folder}/index.html",
+                        picture.stage(unit, own, ground=look.palette["ground"]).encode(),
+                    ),
+                    (
+                        f"{folder}/{picture.FOLDER}/{comp}.html",
+                        picture.dressed(html, own, look).encode(),
+                    ),
+                ]
+            )
+            times = ",".join(f"{at:.3f}".rstrip("0").rstrip(".") for _, at in wanted)
+            computer.run(
+                f"cd {folder} && cp -n {GSAP} gsap.min.js; rm -rf motion; "
+                f"hyperframes snapshot . --at {times} --no-end --keep -o motion --describe false "
+                "2>&1 | tail -3",
+                timeout=600,
+            )
+            found: dict[str, bytes] = {}
+            for name, at in wanted:
+                still = computer.get(
+                    f"{folder}/motion/at-{f'{at:.3f}'.rstrip('0').rstrip('.')}s.png"
+                )
+                if still:
+                    found[name] = still
+            return found
+        except Exception:  # the review goes on by the stills alone
+            _LOGGER.exception("no motion frames for %s", unit.get("id"))
+            return {}
 
     def _pose_dir(self, episode: Row, unit: Row) -> str:
         return f"{PROJECTS}/{episode['id']}/pose/{picture.composition_id(unit['id'])}"
@@ -2368,12 +2441,14 @@ class EpisodeDesk:
         wanted = ",".join(f"{t:.3f}".rstrip("0").rstrip(".") for t in times.values())
         ran = computer.run(
             f"cd {folder} && cp -n {GSAP} gsap.min.js; rm -rf stills; "
-            f"hyperframes check . 2>&1 | tail -80; echo ---; "
+            f"hyperframes check . 2>&1 | tail -160; echo ---; "
             f"hyperframes snapshot . --at {wanted} --no-end --keep -o stills --describe false "
             "2>&1 | tail -5; ls stills 2>/dev/null",
             timeout=600,
         )
-        broken, flagged = _findings(ran.output.split("---", 1)[0])
+        report = ran.output.split("---", 1)[0]
+        self._craft[(str(episode["id"]), str(unit["id"]))] = _craft_notes(report)
+        broken, flagged = _findings(report)
         if broken or (strict and flagged) or any(f.startswith("layout:") for f in flagged):
             return [*broken, *flagged], {}
         stills: dict[str, str] = {}
@@ -3779,6 +3854,15 @@ def _made_for(have: Row, unit: Row, lines: Mapping[str, Row]) -> dict[str, str]:
     return out
 
 
+def _guides(skill: str) -> str:
+    """Where HyperFrames' own guides are for a builder, beside the episode skill it was given:
+    a copy in its folder for a coding agent on this computer, the vendored skill for the
+    engine's agent."""
+    if skill.startswith("/skills/"):
+        return "/skills/hyperframes/references"
+    return f"{skill}/hyperframes"
+
+
 def _findings(report: str) -> tuple[list[str], list[str]]:
     """What the renderer's check found in a picture: what breaks it, and what it flags about
     how it looks, each as one line the builder can act on."""
@@ -3797,6 +3881,30 @@ def _findings(report: str) -> tuple[list[str], list[str]]:
         elif line.startswith(("Try ", "Fix: ")) and into:
             into[-1] += f" ({line[:160]})"
     return broken[:12], flagged[:12]
+
+
+def _craft_notes(report: str) -> list[str]:
+    """What the renderer's craft pass flags in a picture, each as one line with where it is."""
+    section = ""
+    notes: list[str] = []
+    for raw in report.splitlines():
+        line = raw.strip()
+        if line in CHECK_SECTIONS:
+            section = line
+            continue
+        if section != "Craft":
+            continue
+        found = CRAFT_NOTE.match(line)
+        if found is not None:
+            if found.group(1) not in CRAFT_SKIPPED:
+                notes.append(f"{found.group(1)}: {found.group(2).strip()[:300]}")
+            else:
+                notes.append("")
+        elif notes and line and not line.startswith(("◇", "0 error")) and "error(s)" not in line:
+            # the line under a finding says where and when it is, or how to fix it
+            if notes[-1]:
+                notes[-1] += f" ({line[:160]})"
+    return [note for note in notes if note][:12]
 
 
 def _dark(colour: str) -> bool:

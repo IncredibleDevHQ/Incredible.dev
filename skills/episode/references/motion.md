@@ -1,8 +1,8 @@
 # Motion: cues and moves
 
 These rules come from two places that have been used to build motion, with the source after
-each rule: **HF** is HyperFrames (its faceless-explainer, animation and creative skills),
-**Product** is this product's own motion-direction and storyboard guidance.
+each rule: **HF** is HyperFrames (its story, film and motion guides and its page on
+explainers), **Product** is this product's own motion-direction and storyboard guidance.
 
 A plan does not animate. It says, for each built frame, **what changes and on which spoken
 word**. The builder turns that into tweens. Write no eases, no milliseconds, no pixels.
@@ -81,10 +81,14 @@ fills to* for a count; *stays from the frame before* for a carry. "Lands" reads 
 
 **What must not move**
 
-13. No idle loops and no drifting camera to fake life. A long hold gets one slow push or
-    nothing. (HF; Product)
-14. The camera is still while the viewer reads, and starts half a second after the content
-    has landed. (HF; Product)
+13. No idle loops, floats or creeping scales to fake life. A hold longer than three seconds
+    is where a picture goes dead: give it a change the words cause (something already there
+    travels, counts or works, or a camera cue takes the view to the part being talked about).
+    The builder fills what the cues leave; a plan that spreads its cues leaves it less to
+    fill. (HF: something new every two to four seconds)
+14. The camera is still while the viewer reads, and moves once the content has landed. A
+    camera cue is a change like any other: use one where a line dwells on one part of a
+    picture that is already drawn. (HF; Product)
 15. A title card moves once. A pinned anchor never moves. (HF)
 16. No blur on text that is being read; three seconds on screen must read in two. On-screen
     text is short copy, never the spoken sentence. (HF)
@@ -102,9 +106,10 @@ fills to* for a count; *stays from the frame before* for a carry. "Lands" reads 
 
 ## One style for the whole video
 
-The theme names a motion style: how an object arrives, the one ease family (smooth, no
-bounce), the primary transition, how the active object is marked. A frame never picks its own
-style (HF: one video direction with a motion grammar and a negative list).
+The theme names a motion style: how an object arrives, how its moves ease by their role (an
+arrival on a long tail, the view both ways, what leaves accelerating), the primary transition,
+how the active object is marked. A frame never picks its own style (HF: one video direction
+with a motion grammar and a negative list).
 
 ## How motion fails
 

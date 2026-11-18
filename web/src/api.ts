@@ -313,8 +313,11 @@ export type PictureStatus = "none" | "queued" | "making" | "posing" | "go" | "ma
 // carries its idea, where it happens, and for each of its lines what it opens on, the one move
 // the line is about, how the rest lands and what the line's still shows.
 // `shot` is the shot in one short sentence, for a person; the rest is the builder's detail.
-export type MotionShot = { frame: string; shot: string; opens_on: string; hero: string; others: string; still: string };
-export type Motion = { device: string; world: string; shots: MotionShot[] };
+// A plan written as a spec also says how each shot is framed and how the view moves (`camera`),
+// what fills a stretch its cues leave quiet (`between`), the treatments weighed (the picked one
+// first), and the look, the objects, the motion and what is banned, as numbers.
+export type MotionShot = { frame: string; shot: string; opens_on: string; hero: string; others: string; still: string; camera?: string; between?: string };
+export type Motion = { device: string; world: string; shots: MotionShot[]; treatments?: string[]; look?: string; objects?: string; motion?: string; banned?: string };
 export type EpisodeUnit = {
   visual: {component:string; suggested:string; variant_pick:string | null; variant:string; direction:string; automatic:boolean; options:Record<string,string[]>};
   generation: PictureGeneration;
