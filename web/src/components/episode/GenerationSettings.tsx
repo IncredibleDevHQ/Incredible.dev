@@ -1,8 +1,11 @@
-import { ChevronDown, Sparkles } from "lucide-react";
+import { ChevronDown, RotateCcw, Sparkles } from "lucide-react";
 import { Popover } from "../Popover";
+import { SegmentedControl } from "../SegmentedControl";
 import { editModel, editTriggerText, pictureProvider, writerName } from "./pictureProvider";
 import { useId, useRef, useState } from "react";
-import { api, type EpisodeUnit, type EpisodeView, type ModelOption, type WriterId } from "../../api";
+import { api, type EpisodeUnit, type EpisodeView, type Level, type ModelOption, type WriterId } from "../../api";
+import { LEVEL_NAMES, madeLevel, pictureState } from "../../episode";
+import { againCost, levelCost } from "./costs";
 import { effortName, modelChoices, pickLabel } from "./models";
 import { AgentMark } from "../../ui";
 import { Select } from "../Select";
@@ -62,7 +65,11 @@ function providers(view: EpisodeView, unit: EpisodeUnit) {
   ];
 }
 
-export function GenerationSettings({ view, unit, busy, run }: Props) {
+// A beat's agent, model and effort, picked from its chip, where a made picture is also drawn
+// again with them. As the editor's "Redo beat" it is one form for making the beat again: the
+// agent (its harness), the model, the effort and how it is made, simple or motion graphics,
+// with what that costs said before the press.
+export function GenerationSettings({ view, unit, busy, run, variant = "chip" }: Props & { variant?: "chip" | "redo" }) {
   const writers = view.options.picture_writers;
   const used = pictureProvider(unit, writers);
   const edit = editModel(unit, writers, view.options.generation_models);
@@ -87,6 +94,17 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
   const row = effortRow(models, model, film);
   const efforts = row?.efforts ?? [];
   const ready = writers.some(w => w.id === writer && w.ready);
+  // A made picture is drawn again from here, with what is picked, and one that failed is tried
+  // again: either is another full run, said under the picks before the press.
+  const state = pictureState(unit, view);
+  const redo = state === "failed" ? "Try again" : state === "planned" || state === "making" ? null : "Draw it again";
+  // whether the picks were changed since the picker opened: those, or an agent it suggests in
+  // place of the beat's own, are saved first, so the picture is drawn by what the picker shows
+  const [changed, setChanged] = useState(false);
+  // how it is made again: as it was made, unless the redo form switches it
+  const madeAs = madeLevel(unit, view);
+  const [level, setLevel] = useState<Level>(madeAs);
+  const remade = variant === "redo" ? level : madeAs;
   const inspect = (writer: WriterId | null) => {
     setWriter(writer);
     if (!writer) return;
@@ -98,43 +116,61 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
     const level = saved ? saved.effort : made?.effort || "";
     setEffort(initial?.efforts.includes(level) ? level : "");
   };
+  // an effort picked over the film's choice keeps the film's model, as its own pick
+  const pick = (builder: WriterId | null) => ({ builder, model: builder ? model || (effort ? film?.model ?? "" : "") : "", effort: builder ? effort : "" });
   const save = async (builder: WriterId | null) => {
-    if (
-      await run(() =>
-        // an effort picked over the film's choice keeps the film's model, as its own pick
-        api.chooseEpisode(view.id, { units: { [unit.id]: { builder, model: builder ? model || (effort ? film?.model ?? "" : "") : "", effort: builder ? effort : "" } } }),
-      )
-    )
-      setOpen(false);
+    if (await run(() => api.chooseEpisode(view.id, { units: { [unit.id]: pick(builder) } }))) setOpen(false);
   };
+  // the picks saved first when they changed, then the picture made again the way it is made
+  const again = async () => {
+    const saving = changed || writer !== unit.builder;
+    if (saving && !(await run(() => api.chooseEpisode(view.id, { units: { [unit.id]: pick(writer) } })))) return;
+    setOpen(false);
+    void run(() => api.makePictures(view.id, { units: [unit.id], level: remade }));
+  };
+  const toggle = () => {
+    if (!open) {
+      inspect(edit.writer);
+      setChanged(false);
+      setLevel(madeAs);
+    }
+    setOpen(!open);
+  };
+  // the redo form is for a picture there is something to make again of
+  if (variant === "redo" && !redo) return null;
+  const doing = variant === "redo" && redo !== "Try again" ? "Redo it" : redo;
   return (
     <div className="ep-generation">
-      <button
-        ref={trigger}
-        type="button"
-        className="btn ep-beat-trigger"
-        aria-label={accessibleLabel}
-        title={accessibleLabel}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => {
-          if (!open) inspect(edit.writer);
-          setOpen(!open);
-        }}
-      >
-        {edit.suggested && edit.writer && <Sparkles aria-hidden="true" />}
-        {!edit.suggested && edit.writer && edit.writer !== "demo" && <AgentMark mark={edit.writer} size="sm" />}
-        <span>{caption}</span><ChevronDown aria-hidden="true" />
-      </button>
+      {variant === "redo" ? (
+        <button ref={trigger} type="button" className="btn" aria-haspopup="dialog" aria-expanded={open} disabled={busy} onClick={toggle}>
+          <RotateCcw aria-hidden="true" />
+          {redo === "Try again" ? "Try again" : "Redo beat"}
+        </button>
+      ) : (
+        <button
+          ref={trigger}
+          type="button"
+          className="btn ep-beat-trigger"
+          aria-label={accessibleLabel}
+          title={accessibleLabel}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={toggle}
+        >
+          {edit.suggested && edit.writer && <Sparkles aria-hidden="true" />}
+          {!edit.suggested && edit.writer && edit.writer !== "demo" && <AgentMark mark={edit.writer} size="sm" />}
+          <span>{caption}</span><ChevronDown aria-hidden="true" />
+        </button>
+      )}
       <Popover
         open={open}
         onClose={() => setOpen(false)}
         anchor={trigger}
         side="bottom"
-        align="start"
+        align={variant === "redo" ? "end" : "start"}
         width={312}
         className="ep-edit-picker"
-        title="Beat edit model"
+        title={variant === "redo" ? "Redo this beat" : "Beat edit model"}
       >
         <Select
           size="sm" label="Provider" value={writer} placeholder="Choose provider"
@@ -146,28 +182,61 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
               edit.suggested && w.id === edit.writer ? "Suggested for this beat" : undefined,
             disabled: !w.ready,
           }))}
-          onChange={v => inspect(v as WriterId)}
+          onChange={v => { inspect(v as WriterId); setChanged(true); }}
         />
         {writer && writer !== "demo" && (
           <div className="ep-provider-fields">
             <Select
               size="sm" label="Model" value={model} disabled={!ready || choices.length <= 1}
               options={choices}
-              onChange={v => { setModel(v); setEffort(""); }}
+              onChange={v => { setModel(v); setEffort(""); setChanged(true); }}
             />
-            <EffortSlider efforts={efforts} value={effort} onChange={setEffort} disabled={!ready}
+            <EffortSlider efforts={efforts} value={effort} onChange={v => { setEffort(v); setChanged(true); }} disabled={!ready}
               usual={(!model && film?.effort) || row?.default_effort} />
           </div>
         )}
+        {variant === "redo" && (
+          <div className="ep-redo-level">
+            <span>Made as</span>
+            <SegmentedControl<Level>
+              size="sm"
+              aria-label="How it is made again"
+              value={level}
+              onChange={setLevel}
+              options={[
+                { value: "simple", label: LEVEL_NAMES.simple },
+                { value: "rich", label: LEVEL_NAMES.rich },
+              ]}
+            />
+          </div>
+        )}
+        {redo && writer && (
+          <small className="ep-redo-cost">
+            {remade !== madeAs ? levelCost({ builder: writer }, remade) : againCost([{ builder: writer, level: remade }])}
+          </small>
+        )}
         <div className="ep-provider-footer">
-          {(unit.builder_pick || now.from === "beat") && (
-            <button className="linkish" type="button" disabled={busy} onClick={() => void save(null)}>
-              {film ? "Use the film's choice" : "Use chapter default"}
+          {variant === "redo" ? (
+            <button type="button" className="btn" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+          ) : (
+            <>
+              {(unit.builder_pick || now.from === "beat") && (
+                <button className="linkish" type="button" disabled={busy} onClick={() => void save(null)}>
+                  {film ? "Use the film's choice" : "Use chapter default"}
+                </button>
+              )}
+              <button type="button" className={redo ? "btn" : "btn primary"} disabled={busy || !ready} onClick={() => void save(writer)}>
+                Use for beat
+              </button>
+            </>
+          )}
+          {doing && (
+            <button type="button" className="btn primary" disabled={busy || !ready} onClick={() => void again()}>
+              {doing}
             </button>
           )}
-          <button type="button" className="btn primary" disabled={busy || !ready} onClick={() => void save(writer)}>
-            Use for beat
-          </button>
         </div>
       </Popover>
     </div>

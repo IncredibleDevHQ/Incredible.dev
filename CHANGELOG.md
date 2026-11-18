@@ -37,10 +37,11 @@
     sit beside the person or fill the screen, and the line that brings a picture in can be
     given another type of picture and another transition (cut, push, crossfade, zoom), which
     the film renders by moving the picture's whole box. While pictures are being made a pill
-    in the bar fills as they land, with a Stop, and opens onto every picture with its state and
-    what its builder is doing. The ones that stopped are made again on request. While the plan
-    is written it fills the screen: its stages as a trail, every turn of the writer on one strip
-    of time, the turn under way with its steps and notes as they come, and the idea and the
+    in the bar fills as they land and opens onto every picture with its state and what its
+    builder is doing. The ones that stopped are made again on request. While the plan
+    is written it fills the screen: its stages on the agent trail, each with its own time and
+    the writer's steps and notes under the one at work, every turn of the writer on one strip
+    of time and in a list, and the idea and the
     chapters as they land (the demo's writer keeps its turns in the record as an agent does).
   - The plan is read, and changed, before anything is drawn. A chapter's script is a document
     edited as text (TipTap): words are typed in place and kept when the caret leaves the line,
@@ -97,21 +98,38 @@
     still shows), code holds it to its shape, the studio shows it on the picture's lines, and
     the picture is built to it. Its builder then reviews frames from inside its moves and what
     the renderer's craft pass measured, beside the stills, before they wait for the person's
-    go. The block follows the build stage by stage with each stage's time, the builder's
-    tool calls and words, and a line when it has gone quiet; a note left while a
+    go. The block follows the build stage by stage with each stage's time and the build's
+    total running on over them, the builder's tool calls and words, and a line when it has
+    gone quiet. Each build's times, in all and stage by stage, are kept with its beat in the
+    house's database (`pictures.timing`) once it ends. A note left while a
     motion-graphics picture is made goes in with the builder's next turn without stopping
     it; and a made picture says how its build went (its stages as a bar, what the review
     said, the notes it took in), from components of the house's own agent library
     (`web/src/components/agent`). Switching a
     made picture to the other level asks first (the stages to come, the go among them, what it
     costs, and which agent makes it) and Start makes it again that way (`POST …/pictures` with
-    a `level`); while it is made, its block follows the build stage by stage with its builder's
+    a `level`). The switch and the beat's model picker sit over the frame too, after the
+    picture's kind, and the picker draws a made picture again (or tries a failed one again)
+    with what is picked, saying first that it is another full run. The editor's timeline bar
+    has Redo beat, one form for the picked beat's agent, model, effort and level, and Redo it.
+    A beat made again holds nothing up: its frame keeps the version it was, which plays on,
+    and where the build is shows on its chapter (a small turning mark on the slide and the
+    notebook row), on its tile on the timeline (the mark turns, a line runs along its foot,
+    and it says what its builder is on) and in the bar, as one pill for what runs now. The
+    pill opens onto each task as a row (a picture's stages as a strip, who builds it on what
+    and for how long; the writer's turn; the film being rendered), a picture's row opens its
+    beat, and the stop moved there from the bar. The versions made before are kept with the
+    beat (`pictures.versions`, newest first, up to twelve), and the editor's History tab
+    lists them for the beat and for the chapter; a press shows one in the frame, as it was
+    made. While it is made, its
+    block follows the build stage by stage with its builder's
     steps and notes streaming under the stage under way (`picture.live` in the view). One
-    picture can be stopped by itself. A made picture plays in its block from its draft clip;
+    picture can be stopped by itself. A made picture plays in its block from its draft clip, or full
+    screen from a button on it (the studio's own, so it works in an app's browser pane);
     the stills ask the person to play it before the go, and the go, which makes nothing more,
     says so where the stills were.
-  - Picks are free to try: a frame, a layout for the chapter or the film, a kind of picture, the
-    look, a level or an agent changes the plan and the preview and starts no agent (a made
+  - Picks are free to try: a frame, a layout for the chapter or the film, a kind of picture, a
+    level or an agent changes the plan and the preview and starts no agent (a made
     picture's level asks first, and its yes makes it again). A picture
     made before is out of date until the person presses Apply changes in the bar (or Draw it
     again on its block); a pick that needs the writer waits too, and Apply runs the writer's
@@ -147,7 +165,8 @@
     Play plays a line's take, else its picture's draft, else its words at the plan's pace, and
     a Script switch (C) shows the line's words over the frame in time with what plays. Under
     the script runs the chapter's timeline on its own clock, after the Figma editor's strip:
-    each block a tile as long as its lines with its kind on a small screen and its name, a mark
+    each block a tile as long as its lines with its kind on a small screen, its name and at most
+    one quiet mark (not made, needs your go, being made, out of date, or motion graphics), a mark
     on the join where a picture comes in (which opens that choice), the film's title, a
     chapter's card or the end card at the ends, and each line a span as long as it lasts: the
     caret's line lands the playhead on its span and a span's click puts the caret on its line;

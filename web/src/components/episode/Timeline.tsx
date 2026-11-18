@@ -10,11 +10,15 @@
 // of times. The playhead stands on the open line, or on the moment playing while a line plays. A
 // click on a line opens it, a click on a block opens its first line, and every tile and span says
 // when it starts and how long it runs. Tall, it shows each line's frame in its span where the span
-// is wide enough to hold one.
-import { Blend, MoveRight, Pause, Scissors, ZoomIn, type LucideIcon } from "lucide-react";
+// is wide enough to hold one. Each beat's tile carries at most one quiet mark, as a slide's
+// thumbnail marks its transition: the most pressing of a picture that was not made, one that
+// needs the person's go, one being made and one out of date, else that it is motion graphics.
+// A beat whose picture is being made turns its mark, runs a line along its foot however narrow
+// the tile is, and where it is wide enough says what its builder is on.
+import { Blend, Film, MoveRight, Pause, Scissors, ZoomIn, type LucideIcon } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { EpisodeChapter, EpisodeFrame, EpisodeView } from "../../api";
-import { clockLine, mmss, pictureState, TRANSITIONS, unitOf } from "../../episode";
+import { clockLine, doingNow, markOf, mmss, pictureState, TRANSITIONS, unitOf } from "../../episode";
 import { blockName, blocksOf, KindIcon, type Block } from "./Blocks";
 import { FrameCanvas } from "./FrameCanvas";
 
@@ -38,6 +42,7 @@ const stepFor = (total: number) => STEPS.find((s) => total / s <= 8) ?? 300;
 
 // The mark of each way a picture comes in.
 const MOVE_ICONS: Record<string, LucideIcon> = { cut: Scissors, push: MoveRight, crossfade: Blend, "zoom-through": ZoomIn, none: Pause };
+
 
 // How a block's picture comes in, where the block brings one in: on the picture's first line, when
 // that line is not said to camera (the Transition panel's own rule).
@@ -118,10 +123,14 @@ export function Timeline({
     const mine = block.lines.flatMap((l) => spanOf.get(l.id) ?? []);
     const start = Math.min(...mine.map((s) => s.start));
     const end = Math.max(...mine.map((s) => s.start + s.seconds));
+    const mark = markOf(block.unit, view);
     return {
       block,
       name: blockName(block),
       state: block.unit ? pictureState(block.unit, view) : undefined,
+      mark,
+      // what its builder is on, in a word, while its picture is made
+      doing: block.unit && mark?.kind === "making" ? doingNow(block.unit, view) : "",
       way: i > 0 ? wayIn(block) : undefined,
       start,
       seconds: end - start,
@@ -154,6 +163,8 @@ export function Timeline({
           {blocks.map((b, i) => {
             const px = (b.seconds / total) * width;
             const first = b.block.lines[0].id;
+            // wide enough, a beat being made says what its builder is on beside its turning mark
+            const says = Boolean(b.doing) && px >= 210;
             return (
               <button
                 key={b.block.key}
@@ -165,8 +176,8 @@ export function Timeline({
                 data-open={b.block.lines.some((l) => l.id === current) || undefined}
                 data-after-join={Boolean(b.way) || undefined}
                 data-before-join={Boolean(blocks[i + 1]?.way) || undefined}
-                aria-label={`${b.name}, ${linesSaid(b.from, b.to)}, ${mmss(b.start)} to ${mmss(b.start + b.seconds)}`}
-                title={`${b.name} · ${linesSaid(b.from, b.to)} · ${mmss(b.start)}–${mmss(b.start + b.seconds)}`}
+                aria-label={`${b.name}, ${linesSaid(b.from, b.to)}, ${mmss(b.start)} to ${mmss(b.start + b.seconds)}${b.mark ? `, ${b.mark.said}` : ""}`}
+                title={`${b.name} · ${linesSaid(b.from, b.to)} · ${mmss(b.start)}–${mmss(b.start + b.seconds)}${b.mark ? ` · ${b.mark.said}` : ""}`}
                 disabled={recording}
                 style={{ left: pct(b.start), width: `max(2px, calc(${pct(b.seconds)} - 3px))` }}
                 onClick={() => first !== current && onPick(first)}
@@ -177,6 +188,17 @@ export function Timeline({
                   </span>
                 )}
                 {px >= 124 && <span className="ep-timeline-name">{b.name}</span>}
+                {says && (
+                  <span className="ep-timeline-doing">
+                    <i className="ep-working" aria-hidden="true" />
+                    {b.doing}
+                  </span>
+                )}
+                {b.mark && px >= 34 && !says && (
+                  <i className="ep-timeline-mark" data-mark={b.mark.kind} aria-hidden="true">
+                    {b.mark.kind === "rich" && <Film />}
+                  </i>
+                )}
               </button>
             );
           })}

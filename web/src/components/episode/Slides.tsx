@@ -5,10 +5,17 @@
 import { Clapperboard } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { EpisodeChapter, EpisodeView } from "../../api";
-import { boxStyle, chapterName, chapterState, linesOf, mmss, spotOf, STATE_WORDS, takeOf, unitOf } from "../../episode";
+import { boxStyle, chapterMaking, chapterName, chapterState, linesOf, mmss, spotOf, STATE_WORDS, takeOf, unitOf } from "../../episode";
 
 // Where the studio is when it shows the film rather than one chapter.
 export const FILM = "film";
+
+// A chapter's small turning mark while a picture of it is being made. Where the chapter's words
+// say so already, the mark is only seen; where they say something else, it says it too.
+export function WorkingMark({ said }: { said: boolean }) {
+  if (said) return <i className="ep-working" aria-hidden="true" />;
+  return <i className="ep-working" role="img" aria-label="A picture being made" title="A picture being made" />;
+}
 
 export function Slides({ view, at, onAt }: { view: EpisodeView; at: string; onAt: (to: string) => void }) {
   const chapters = view.plan?.chapters ?? [];
@@ -63,6 +70,7 @@ export function Slides({ view, at, onAt }: { view: EpisodeView; at: string; onAt
                   <span>{c.question}</span>
                 </span>
                 <small>
+                  {chapterMaking(view, c) && <WorkingMark said={state === "making"} />}
                   {chapterName(c)} · {STATE_WORDS[state]}
                 </small>
                 <DurationBadge seconds={duration} />

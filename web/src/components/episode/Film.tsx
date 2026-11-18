@@ -8,14 +8,15 @@
 import { ArrowRight, Circle, Clapperboard } from "lucide-react";
 import { useMemo, useState } from "react";
 import { api, type EpisodeChapter, type EpisodeView } from "../../api";
-import { chapterName, chapterState, LAYOUTS, linesOf, mmss, pictureCount, STATE_WORDS, takeOf, unitOf } from "../../episode";
+import { chapterMaking, chapterName, chapterState, LAYOUTS, linesOf, mmss, pictureCount, STATE_WORDS, takeOf, unitOf } from "../../episode";
 import { AgentMark } from "../../ui";
 import { Tooltip } from "../Tooltip";
 import { Ask, Elapsed, type AskTarget, type Run, type Waiting } from "./Ask";
 import { BlockHead, blockName, blocksOf } from "./Blocks";
 import { FrameCanvas } from "./FrameCanvas";
+import { WorkingMark } from "./Slides";
 
-const renderPhases: Record<string, string> = {
+export const RENDER_PHASES: Record<string, string> = {
   prepare: "Preparing film", compile: "Preparing scenes", start_browsers: "Starting renderer",
   extract_video: "Reading source video",
   prepare_audio: "Preparing audio", capture: "Capturing frames", encode: "Encoding video",
@@ -26,7 +27,7 @@ export function RenderStatus({ film }: { film: EpisodeView["film_state"] }) {
   const running = film.status === "rendering";
   const stopped = film.status === "failed";
   const percent = Math.round(100 * (film.fraction ?? 0));
-  const phase = renderPhases[film.phase ?? ""] ?? "Rendering film";
+  const phase = RENDER_PHASES[film.phase ?? ""] ?? "Rendering film";
   return (
     <section className="ep-render-status" aria-label="Film export" data-failed={stopped || undefined}>
       <div className="ep-render-heading">
@@ -48,6 +49,11 @@ export function RenderStatus({ film }: { film: EpisodeView["film_state"] }) {
 }
 
 export const WRITERS: Record<string, string> = { claude: "Claude Code", codex: "Codex", kimi: "Kimi Code", builtin: "the built-in agent", demo: "the demo's writer" };
+// An agent's name where it starts a line.
+export const writerTitle = (id: string) => {
+  const name = WRITERS[id] ?? id;
+  return name.slice(0, 1).toUpperCase() + name.slice(1);
+};
 
 // Opens the film or a chapter: to be recorded at once, at a line, or with the frame's pop-up open.
 export type Open = (to: string, record?: boolean, line?: string, pop?: boolean) => void;
@@ -267,6 +273,7 @@ function ChapterText({
           </Tooltip>
         </h2>
         <small>
+          {chapterMaking(view, chapter) && <WorkingMark said={state === "making"} />}
           {chapterName(chapter)} · {mmss(seconds)}
           {` · ${STATE_WORDS[state]}`}
         </small>

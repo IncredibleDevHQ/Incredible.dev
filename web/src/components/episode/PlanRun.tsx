@@ -1,26 +1,25 @@
 // The plan being written, across the whole screen. Written for this house from notes on how
-// agent-progress components behave (a run's screen, a monitor's strip of time, a trail, a working
-// log, a tool call's line); no other component's source is in it.
+// agent-progress components behave; no other component's source is in it.
 //
 // - The head: who writes it, the film's name, the stage it is on and how long it has run, Stop.
 //   Under it, every turn the writer took as one strip of time, each as wide as it ran, the house's
 //   checks between turns as quieter gaps, and the turn under way growing at the end.
-// - The plan: its stages as a trail, green where the writer has been, a light running down into
-//   the stage under way, and what each finished stage left behind.
-// - Now: each finished turn as a line with its own first words, and the turn under way open onto
-//   the writer's steps and notes, newest last. The log stays at its newest line unless a person
-//   scrolls up to read, and then offers the way back down.
+// - The plan: its stages on the house's agent trail, each with its own time, a finished one with
+//   what it left behind, and the one at work with the writer's steps and words under it as they
+//   come, and a line when it has said nothing for a while.
+// - Turns: each turn as a line with its own first words and how long it took. The list stays at
+//   its newest line unless a person scrolls up to read, and then offers the way back down.
 // - So far: the film's idea once it is found, its chapters as they land, and what it is made from.
-import { Check, FilePen, FileSearch, FileText, FolderOpen, Globe, ListChecks, RotateCcw, Sparkles, Square, SquareTerminal, Wrench, X, type LucideIcon } from "lucide-react";
+import { Check, RotateCcw, Square, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { api, type EpisodeLength, type EpisodeRun, type EpisodeView, type WorkEvent, type WriterId } from "../../api";
+import { api, type EpisodeLength, type EpisodeRun, type EpisodeView, type WriterId } from "../../api";
 import { LEVEL_NAMES, mmss, voiceName } from "../../episode";
 import { useHouse } from "../../store";
 import { AgentMark } from "../../ui";
 import { Tooltip } from "../Tooltip";
 import { Elapsed, type Run } from "./Ask";
 import { WRITERS } from "./Film";
-import { Swap } from "./Tiles";
+import { AgentTrail, type TrailStage, type TrailState } from "../agent/AgentTrail";
 
 // A pause between two turns shorter than this is the house handing over, not checking: no gap.
 const GAP = 2;
@@ -32,46 +31,6 @@ const AHEAD: Record<string, string> = {
   frames: "Gives every line its frame and picture",
   check: "Checks the length, the pace and the pictures",
 };
-
-type Kind = "read" | "web" | "write" | "edit" | "search" | "list" | "run" | "helper" | "plan" | "tool";
-// The house says each tool call as a step ("Reading notes.md"): its verb, read back as what it
-// is doing while it is the newest and as what it did once something came after it.
-const VERBS: { kind: Kind; match: RegExp; doing: string; did: string }[] = [
-  { kind: "web", match: /^Searching the web for\s*/, doing: "Searching the web for", did: "Searched the web for" },
-  { kind: "search", match: /^Searching for\s*/, doing: "Searching for", did: "Searched for" },
-  { kind: "read", match: /^Reading\s+/, doing: "Reading", did: "Read" },
-  { kind: "write", match: /^Writing\s+/, doing: "Writing", did: "Wrote" },
-  { kind: "edit", match: /^Editing\s+/, doing: "Editing", did: "Edited" },
-  { kind: "list", match: /^Listing\s+/, doing: "Listing", did: "Listed" },
-  { kind: "run", match: /^Running\s+/, doing: "Running", did: "Ran" },
-  { kind: "helper", match: /^Asking a helper:\s*/, doing: "Asking a helper", did: "Asked a helper" },
-  { kind: "plan", match: /^Planning its steps$/, doing: "Planning its steps", did: "Planned its steps" },
-  { kind: "tool", match: /^Using\s+/, doing: "Using", did: "Used" },
-];
-const ICONS: Record<Kind, LucideIcon> = {
-  read: FileText,
-  web: Globe,
-  write: FilePen,
-  edit: FilePen,
-  search: FileSearch,
-  list: FolderOpen,
-  run: SquareTerminal,
-  helper: Sparkles,
-  plan: ListChecks,
-  tool: Wrench,
-};
-
-function stepOf(text: string): { kind: Kind; doing: string; did: string; what: string } {
-  for (const v of VERBS) {
-    const found = v.match.exec(text);
-    if (found) {
-      const what = text.slice(found[0].length);
-      // a page read from the web is a fetch, not a file
-      return { ...v, kind: v.kind === "read" && /^https?:\/\//.test(what) ? "web" : v.kind, what };
-    }
-  }
-  return { kind: "tool", doing: text, did: text, what: "" };
-}
 
 // Long paths keep their head and, mostly, their tail: the file's own name is what is read.
 const middle = (text: string, most: number) => (text.length <= most ? text : `${text.slice(0, Math.ceil(most * 0.35))}…${text.slice(-Math.floor(most * 0.6))}`);
@@ -153,7 +112,7 @@ export function PlanRun({ view, run, busy }: { view: EpisodeView; run: Run; busy
       </header>
       <TimeStrip turns={turns} now={now} failed={failed} lit={lit} onLight={setLit} />
       <div className="ep-run-body">
-        <PlanTrail view={view} at={at} since={since} />
+        <PlanTrail view={view} at={at} since={since} turns={turns} />
         <NowLog view={view} turns={turns} lit={lit} onLight={setLit} run={run} busy={busy} />
         <SoFar view={view} />
       </div>
@@ -202,61 +161,41 @@ function TimeStrip({ turns, now, failed, lit, onLight }: { turns: EpisodeRun[]; 
   );
 }
 
-function PlanTrail({ view, at, since }: { view: EpisodeView; at: number; since?: number }) {
+// The plan as the house's agent trail: each stage with its own time, the one at work saying who
+// is at it, with the writer's steps and words under it as they come, and a finished one saying
+// what it left behind. A plan written before the house dated its stages says where it stands.
+function PlanTrail({ view, at, since, turns }: { view: EpisodeView; at: number; since?: number; turns: EpisodeRun[] }) {
   const failed = view.status === "failed";
   const stage = view.stage;
-  const doing = stage.state === "reading" ? "Checking" : (stage.round ?? 0) > 0 ? `Fixing · round ${stage.round}` : "Writing";
+  const live = turns.find((t) => t.state === "working");
+  // between the writer's turns the house reads what was written, or readies the next turn
+  const between = stage.state === "reading" ? "Checking" : (stage.round ?? 0) > 0 ? `Fixing · round ${stage.round}` : "Getting ready";
+  const kept = new Map(view.plan_stages.map((s) => [s.id, s]));
   const done = Math.min(at, view.steps.length);
-
-  // What a screen reader hears: a stage that finishes or stops, said once.
-  const [heard, setHeard] = useState("");
-  const was = useRef(at);
-  useEffect(() => {
-    if (at > was.current) setHeard(`${view.steps[at - 1]?.label ?? "A stage"}: done`);
-    was.current = at;
-  }, [at, view.steps]);
-  useEffect(() => {
-    if (failed) setHeard(`${view.steps[at]?.label ?? "The plan"}: stopped`);
-  }, [failed, at, view.steps]);
-
+  const steps: TrailStage[] = view.steps.map((s, i) => {
+    const got = kept.get(s.id);
+    const state: TrailState = got ? got.state : i < at ? "done" : i === at ? (failed ? "failed" : "running") : "pending";
+    return {
+      id: s.id,
+      label: s.label,
+      state,
+      startedAt: got?.started_at ?? (state === "running" ? since : null),
+      endedAt: got?.ended_at ?? null,
+      doing: state === "running" ? (live ? "Writing" : between) : undefined,
+      working: state === "running" && Boolean(live),
+      word: state === "failed" ? "Stopped" : undefined,
+      detail: state === "done" ? outcome(s.id, view) : state === "pending" ? AHEAD[s.id] : undefined,
+    };
+  });
   return (
     <section className="ep-run-panel ep-run-plan" aria-labelledby="ep-run-plan-title">
       <header className="ep-run-panel-head">
         <h2 id="ep-run-plan-title">The plan</h2>
-        <span className="ep-run-count" aria-label={`${done} of ${view.steps.length} stages done`}>
+        <span className="ep-run-count" aria-hidden="true">
           {done}/{view.steps.length}
         </span>
       </header>
-      <ol className="ep-run-trail" aria-label="The plan, stage by stage">
-        {view.steps.map((s, i) => {
-          const state = i < at ? "done" : i === at ? (failed ? "failed" : "running") : "next";
-          const said = state === "done" ? outcome(s.id, view) : state === "running" ? doing : state === "failed" ? "Stopped" : AHEAD[s.id];
-          return (
-            <li key={s.id} data-state={state} aria-current={state === "running" ? "step" : undefined} aria-label={`${s.label}: ${state === "next" ? "next" : said}`}>
-              {state === "done" && i + 1 === at && !failed && <span className="ep-run-light" aria-hidden="true" />}
-              <span className="ep-run-mark" aria-hidden="true">
-                {state === "done" ? <Check /> : state === "failed" ? <X /> : null}
-              </span>
-              <span className="ep-run-stage" aria-hidden="true">
-                <b>{s.label}</b>
-                {state === "running" ? (
-                  <small className="ep-run-doing">
-                    <Swap swapKey={doing} className="ep-run-shine">
-                      {doing}
-                    </Swap>
-                    {since && <Elapsed since={since} />}
-                  </small>
-                ) : (
-                  <small>{said}</small>
-                )}
-              </span>
-            </li>
-          );
-        })}
-      </ol>
-      <span className="sr-only" role="status" aria-live="polite">
-        {heard}
-      </span>
+      <AgentTrail label="The plan, stage by stage" steps={steps} events={live ? (view.working?.events ?? []) : []} turnSince={live?.started_at ?? null} />
     </section>
   );
 }
@@ -275,15 +214,13 @@ function outcome(id: string, view: EpisodeView): string {
 
 function NowLog({ view, turns, lit, onLight, run, busy }: { view: EpisodeView; turns: EpisodeRun[]; lit: string | null; onLight: (id: string | null) => void; run: Run; busy: boolean }) {
   const failed = view.status === "failed";
-  const live = turns.find((t) => t.state === "working") ?? null;
-  const events = live ? (view.working?.events ?? []) : [];
   const scroller = useRef<HTMLDivElement>(null);
-  // The log keeps to its newest line while a person reads there; scrolled up, it stays put.
+  // The list keeps to its newest turn while a person reads there; scrolled up, it stays put.
   const [pinned, setPinned] = useState(true);
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && pinned) el.scrollTop = el.scrollHeight;
-  }, [events.length, turns.length, pinned, failed]);
+  }, [turns.length, pinned, failed]);
   const onScroll = () => {
     const el = scroller.current;
     if (el) setPinned(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
@@ -297,22 +234,16 @@ function NowLog({ view, turns, lit, onLight, run, busy }: { view: EpisodeView; t
   return (
     <section className="ep-run-panel ep-run-now" aria-labelledby="ep-run-now-title">
       <header className="ep-run-panel-head">
-        <h2 id="ep-run-now-title">{failed ? "Where it stopped" : "Now"}</h2>
+        <h2 id="ep-run-now-title">{failed ? "Where it stopped" : "Turns"}</h2>
       </header>
       <div className="ep-run-scroll" ref={scroller} onScroll={onScroll}>
         <ol className="ep-run-turns" aria-label="Every turn, oldest first">
           {turns.map((t, i) =>
             t.state === "working" ? (
-              <LiveTurn key={t.id} turn={t} n={i + 1} events={events} since={view.working?.since ?? t.started_at} lit={lit === t.id} onLight={onLight} />
+              <LiveTurn key={t.id} turn={t} n={i + 1} lit={lit === t.id} onLight={onLight} />
             ) : (
               <PastTurn key={t.id} turn={t} n={i + 1} lit={lit === t.id} onLight={onLight} />
             ),
-          )}
-          {!live && !failed && (
-            <li className="ep-run-between">
-              <span className="ep-run-spin" aria-hidden="true" />
-              <span className="ep-run-shine">{turns.length ? (view.stage.state === "reading" ? "Checking what was written" : "Starting the next turn") : "Getting ready"}</span>
-            </li>
           )}
         </ol>
         {failed && <Stopped view={view} run={run} busy={busy} />}
@@ -348,8 +279,8 @@ function PastTurn({ turn, n, lit, onLight }: { turn: EpisodeRun; n: number; lit:
   );
 }
 
-function LiveTurn({ turn, n, events, since, lit, onLight }: { turn: EpisodeRun; n: number; events: WorkEvent[]; since: number; lit: boolean; onLight: (id: string | null) => void }) {
-  const steps = events.filter((e) => e.kind === "step").length;
+// The turn under way, as one line: its steps show under the plan's stage at work.
+function LiveTurn({ turn, n, lit, onLight }: { turn: EpisodeRun; n: number; lit: boolean; onLight: (id: string | null) => void }) {
   return (
     <li id={`ep-turn-${turn.id}`} className="ep-run-turn" data-state="working" data-lit={lit || undefined} onPointerEnter={() => onLight(turn.id)} onPointerLeave={() => onLight(null)}>
       <span className="ep-run-turn-mark" aria-hidden="true" />
@@ -357,40 +288,10 @@ function LiveTurn({ turn, n, events, since, lit, onLight }: { turn: EpisodeRun; 
         <p className="ep-run-turn-head">
           <b>Turn {n}</b>
           <span>
-            {steps} {steps === 1 ? "step" : "steps"} · <Elapsed since={turn.started_at} />
+            Under way · <Elapsed since={turn.started_at} />
           </span>
         </p>
-        {/* every step and note as it comes; only the stage changes are read aloud */}
-        <ol className="ep-run-log" role="log" aria-live="off" aria-label="Its steps and notes, newest last">
-          {events.map((e, i) => (
-            <LogLine key={`${e.at}-${i}`} event={e} newest={i === events.length - 1} since={since} />
-          ))}
-        </ol>
       </div>
-    </li>
-  );
-}
-
-function LogLine({ event, newest, since }: { event: WorkEvent; newest: boolean; since: number }) {
-  if (event.kind === "note") {
-    return (
-      <li className="ep-run-note" data-newest={newest || undefined}>
-        <q>{event.text}</q>
-      </li>
-    );
-  }
-  const step = stepOf(event.text);
-  const Icon = ICONS[step.kind];
-  return (
-    <li className="ep-run-step" data-newest={newest || undefined} title={event.text}>
-      <span className="ep-run-tile" aria-hidden="true">
-        <Icon />
-      </span>
-      <span className="ep-run-verb">
-        <span className={newest ? "ep-run-shine" : undefined}>{newest ? step.doing : step.did}</span>
-        {step.what && <code>{middle(step.what, 72)}</code>}
-      </span>
-      <time aria-hidden="true">{mmss(Math.max(0, event.at - since))}</time>
     </li>
   );
 }

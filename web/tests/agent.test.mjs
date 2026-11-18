@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { clock, middle, took } from '../src/components/agent/format.ts';
+import { middle, took } from '../src/components/agent/format.ts';
 import { toolOf } from '../src/components/agent/tools.ts';
 
 test('a time taken is said the short way, and nothing for a time not known', () => {
@@ -13,13 +13,6 @@ test('a time taken is said the short way, and nothing for a time not known', () 
   for (const unknown of [null, undefined, -3, Number.NaN, Infinity]) assert.equal(took(unknown), '');
 });
 
-test('a running clock reads like a clock', () => {
-  assert.equal(clock(7.9), '0:07');
-  assert.equal(clock(587), '9:47');
-  assert.equal(clock(3725), '1:02:05');
-  assert.equal(clock(-4), '0:00');
-});
-
 test('a long path keeps its end, where the file is named', () => {
   assert.equal(middle('pictures/a.html'), 'pictures/a.html');
   const cut = middle('house/episodes/ep_0a1b2c3d4e5f/pictures/pic-c2-b2-f1.stills/2.png', 40);
@@ -28,10 +21,11 @@ test('a long path keeps its end, where the file is named', () => {
 });
 
 test("a step's words say which kind of tool it was and what it touched", () => {
-  assert.deepEqual(toolOf('Reading pictures/pic-c2-b2-f1.html'), { kind: 'read', verb: 'Reading', target: 'pictures/pic-c2-b2-f1.html' });
+  assert.deepEqual(toolOf('Reading pictures/pic-c2-b2-f1.html'), { kind: 'read', verb: 'Reading', did: 'Read', target: 'pictures/pic-c2-b2-f1.html' });
   assert.deepEqual(toolOf('Searching for “"theme"|"layout"” in plan.json'), {
     kind: 'search',
     verb: 'Searching for',
+    did: 'Searched for',
     target: '“"theme"|"layout"” in plan.json',
   });
   // the web's search is never taken for a search of files, and a page read is the web's
@@ -41,8 +35,11 @@ test("a step's words say which kind of tool it was and what it touched", () => {
   assert.equal(toolOf('Editing pictures/pic.html').kind, 'edit');
   assert.equal(toolOf('Listing pictures/*.png').kind, 'list');
   assert.equal(toolOf('Running hyperframes check .').kind, 'run');
-  assert.deepEqual(toolOf('Asking a helper: read the brief'), { kind: 'helper', verb: 'Asking a helper', target: 'read the brief' });
+  assert.deepEqual(toolOf('Asking a helper: read the brief'), { kind: 'helper', verb: 'Asking a helper', did: 'Asked a helper', target: 'read the brief' });
   assert.equal(toolOf('Planning its steps').kind, 'plan');
   // anything else is said as it came
-  assert.deepEqual(toolOf('mcp__weird_tool'), { kind: 'other', verb: 'mcp__weird_tool', target: '' });
+  assert.deepEqual(toolOf('mcp__weird_tool'), { kind: 'other', verb: 'mcp__weird_tool', did: 'mcp__weird_tool', target: '' });
+  // a step that is done is said as done
+  assert.equal(toolOf('Writing plan.json').did, 'Wrote');
+  assert.equal(toolOf('Running hyperframes check .').did, 'Ran');
 });

@@ -1,7 +1,8 @@
-// The time now, and a clock that counts up from a moment. Written for this house from notes on
-// how agent-progress components behave; no other component's source is in it.
+// The time now, and a live time that counts up from a moment, said as a duration is ("49s",
+// "1m 04s") so it reads the same as the times of what is done. Written for this house from notes
+// on how agent-progress components behave; no other component's source is in it.
 import { useEffect, useState } from "react";
-import { clock } from "./format";
+import { took } from "./format";
 
 // Seconds since the epoch, ticking once a second while `live` (a clock that is not shown costs
 // nothing).
@@ -16,13 +17,13 @@ export function useNow(live = true): number {
   return now;
 }
 
-// A clock counting up from `since` (seconds since the epoch). Screen readers are told the time
+// How long since `since` (seconds since the epoch), counting up. Screen readers are told the time
 // where it matters by the row around it, not every second.
 export function Clock({ since }: { since: number }) {
   const now = useNow(true);
   return (
     <time className="ag-clock" aria-hidden="true">
-      {clock(now - since)}
+      {took(Math.max(0, now - since))}
     </time>
   );
 }

@@ -15,15 +15,6 @@ export function took(seconds: number | null | undefined): string {
   return left ? `${hours}h ${String(left).padStart(2, "0")}m` : `${hours}h`;
 }
 
-// A running clock: "0:07", "9:47", "1:02:05".
-export function clock(seconds: number): string {
-  const whole = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
-  const hours = Math.floor(whole / 3600);
-  const minutes = Math.floor((whole % 3600) / 60);
-  const rest = String(whole % 60).padStart(2, "0");
-  return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${rest}` : `${minutes}:${rest}`;
-}
-
 // A long path or name kept to `max` characters by cutting its middle: its end (a file's own name)
 // is what tells one from another, so the end keeps the larger share.
 export function middle(text: string, max = 44): string {

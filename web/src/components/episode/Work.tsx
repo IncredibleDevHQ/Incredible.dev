@@ -7,12 +7,13 @@
 //   stages are drawn across the whole screen by `PlanRun`.)
 // - `WorkPill`: the pictures in the bar, as one pill with a ring that fills as they are made. It
 //   opens onto every picture as a cell, filtered by state, each saying what its builder is on or
-//   why it stopped; a cell opens its chapter.
-import { Check, ChevronDown, RotateCcw, Square, X } from "lucide-react";
+//   why it stopped; a cell opens its chapter. (What runs now, and its stop, is the pill before
+//   it: Running.tsx.)
+import { Check, ChevronDown, RotateCcw, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { api, type BuildStageId, type EpisodeUnit, type EpisodeView, type Level } from "../../api";
-import { PICTURES, pictureState, type PictureState } from "../../episode";
-import { useHouse } from "../../store";
+import { DOING, PICTURES, pictureState, type PictureState } from "../../episode";
+import { AgentMark } from "../../ui";
 import { AgentTrail, type TrailStage } from "../agent/AgentTrail";
 import { RunSummary, type SummaryStage } from "../agent/RunSummary";
 import { Steer } from "../agent/Steer";
@@ -67,8 +68,8 @@ export function PictureTrail({ view, unit, builder, run }: { view: EpisodeView; 
       state,
       startedAt: got?.started_at ?? (state === "running" && turn ? p.live?.since : null),
       endedAt: got?.ended_at ?? null,
-      // between two turns the house works on its own: it renders the stills, or readies the next turn
-      doing: state === "running" ? (turn ? builder : s.id === "pose" ? "Rendering" : undefined) : undefined,
+      // what it is doing; who does it is said once, over the trail
+      doing: state === "running" ? DOING[s.id] : undefined,
       working: state === "running" && turn && p.live !== null,
       word: waiting && i === 0 ? `Waiting for ${builder}` : s.yours && state === "pending" ? "Yours" : undefined,
       taken: p.steered.filter((n) => n.stage === s.id).map((n) => ({ id: n.id, text: n.text })),
@@ -79,7 +80,17 @@ export function PictureTrail({ view, unit, builder, run }: { view: EpisodeView; 
   const next = waiting ? order[0]?.id : order.slice(at + 1).find((s) => TURNS.includes(s.id))?.id;
   return (
     <>
-      <AgentTrail label="How the picture is being made" steps={steps} events={waiting ? [] : (p.live?.events ?? [])} turnSince={p.live?.since ?? null} />
+      <AgentTrail
+        label="How the picture is being made"
+        steps={steps}
+        events={waiting ? [] : (p.live?.events ?? [])}
+        turnSince={p.live?.since ?? null}
+        // over it: who builds it, the build's own clock (which runs on from stage to stage) and
+        // how many of its stages are done
+        agent={{ name: builder.slice(0, 1).toUpperCase() + builder.slice(1), mark: <AgentMark mark={p.builder || unit.builder} size="sm" /> }}
+        total={!waiting && p.timing?.started_at ? { since: p.timing.started_at, seconds: p.timing.seconds } : null}
+        count
+      />
       {p.steerable && next && (
         <Steer
           queued={p.queued}
@@ -106,7 +117,7 @@ export function PictureSummary({ unit }: { unit: EpisodeUnit }) {
     const got = p.stages.find((x) => x.id === s.id);
     return got?.state === "done" && got.started_at && got.ended_at ? [{ id: s.id, label: s.label, seconds: got.ended_at - got.started_at }] : [];
   });
-  return <RunSummary stages={stages} reviewed={p.reviewed} notes={p.steered} />;
+  return <RunSummary stages={stages} reviewed={p.reviewed} notes={p.steered} seconds={p.timing?.seconds} />;
 }
 
 const STATE_WORDS: Record<PictureState, string> = {
@@ -145,7 +156,6 @@ export function WorkPill({ view, run, busy, onAt }: { view: EpisodeView; run: Ru
               ? `${ready} of ${units.length} pictures made`
               : `${units.length} pictures made`;
   const tone = count.making > 0 ? "making" : count.failed > 0 ? "failed" : count.go > 0 || count.changed > 0 ? "go" : "made";
-  const stop = () => void api.stopEpisode(view.id).catch((e: Error) => useHouse.getState().say(e.message));
   return (
     <span className="ep-work">
       <button ref={pill} type="button" className="ep-work-pill" data-tone={tone} aria-haspopup="dialog" aria-expanded={open} aria-label={`Pictures: ${words}`} onClick={() => setOpen((o) => !o)}>
@@ -155,12 +165,6 @@ export function WorkPill({ view, run, busy, onAt }: { view: EpisodeView; run: Ru
         </Swap>
         <ChevronDown />
       </button>
-      {count.making > 0 && (
-        <button type="button" className="btn" onClick={stop}>
-          <Square />
-          Stop
-        </button>
-      )}
       {count.making === 0 && count.failed > 0 && (
         <button type="button" className="btn" disabled={busy} onClick={() => void run(() => api.makePictures(view.id))}>
           <RotateCcw />

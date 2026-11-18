@@ -700,11 +700,13 @@ app's canvas, from a channel's material or a research frame's notes.
   most, at least 30 seconds apart, and the script must land between the two (a plan that ends
   outside them says what was asked for beside its length); on Auto no length is asked for and
   none is checked, so the material decides how long it runs. While it is written, it fills the
-  screen: the stages as a trail that turns green as each one finishes and says what it left
-  (the passages read, the chapters and beats); every turn the writer took on one strip of time,
-  the house's checks between them; each finished turn with the first words of its answer, and
-  the turn under way with its steps and notes as they come, the newest in the present tense;
-  and beside them the film's idea, its chapters as they land and what it is made from.
+  screen: the stages on the house's agent trail, each with its own time (a stage begins when
+  the house moves to it, and checking the plan runs from the writer's last turn), a finished
+  one saying what it left (the passages read, the chapters and beats), one to come what it
+  will do, and the one at work with the writer's steps and notes under it as they come and a
+  line when it has gone quiet; every turn the writer took on one strip of time, the house's
+  checks between them, and in a list each turn with the first words of its answer; and beside
+  them the film's idea, its chapters as they land and what it is made from.
 - **Changing it** takes two forms and no others. The chapter's script is edited as a text:
   words are typed where they are read and kept when the caret leaves the line; Enter starts
   the next line of its block (in the middle of a line it splits it, as one change), Backspace
@@ -783,6 +785,10 @@ app's canvas, from a channel's material or a research frame's notes.
   opens that choice; and what the film shows that no line says stands at the ends (its title
   before the first chapter, a chapter's card, the end card after the last). Under the tiles each
   line is a span as long as it lasts, a picture's lines tinted together, under a ruler of times.
+  A tile carries at most one quiet mark, said in its label: a picture not made, one that needs
+  the person's go, one being made or one out of date, else a filmstrip for motion graphics; a
+  simple picture that is made, and a run said to camera, have none. A tile whose picture is
+  being made turns that mark and runs a line along its foot.
   Placing the caret on a line lands the playhead on its span, a click on a span puts the caret on
   its line and a click on a tile on its block's first. Over the timeline one line says what the
   writer is on (with Stop), what its last change did (with Undo) and what waits. The frame opens in a pop-up over the studio, as
@@ -838,9 +844,10 @@ app's canvas, from a channel's material or a research frame's notes.
   is made, its block follows the build stage by stage (motion graphics: plan each shot, draw
   it, take a still of each line, your go; a simple one: draw it, check it), the stage under way
   opening onto its builder's steps and notes as they happen, and a pill in the bar fills as
-  the pictures land and opens onto every picture; one opens its chapter. Stop ends the pictures under way
-  as well as the plan, or one picture from its block; the ones that stopped are made again
-  only on request.
+  the pictures land and opens onto every picture; one opens its chapter. What runs now is the
+  pill before it, where a picture is stopped from its row or its block, and Stop all ends the
+  pictures under way as well as the plan; the ones that stopped are made again only on
+  request.
 - **Simple and motion graphics.** A picture is simple (drawn at once from the plan) or motion
   graphics (`rich` in the plan), by the film's choice or its own. Both move on their cues, and
   both are built by HyperFrames' own craft: every builder is handed the guides of the vendored
@@ -866,33 +873,66 @@ app's canvas, from a channel's material or a research frame's notes.
   and the stills wait for the person's go. While a picture is made its block follows the
   build stage by stage (plan each shot, draw it, take a still of each line, look it over,
   your go; a simple picture is drawn and checked), each done stage with how long it took.
-  The stages are read from the builder's own turns on the picture, which the house keeps, so
-  they hold across a restart. Under the stage under way are the builder's steps, each tool
-  call with its kind and what it touched, and its own words; when it has said nothing for
-  20 seconds (it thinks, or writes a long file) the block says it is still at work and for
-  how long. While a motion-graphics picture is made, until its builder begins to look it
-  over, the person can leave a note without stopping it: the note waits for the builder's
-  next turn on the picture and goes in with it, can be taken back until then, and stays
-  under the stage that took it in. A made picture says how its build went, folded: its
-  stages as a bar, each as wide as its time, what its builder said when it looked it over,
-  and the notes it took in. The picture is built and moving
-  before its stills are taken, so the go makes nothing more: it puts the picture in the film as
-  built, and the block says so where the stills were. Any made picture plays in its block once
-  its draft clip is rendered, and a clip rendered for what was drawn before is dropped the
-  moment the new drawing lands. The switch on a picture's block says how it was made.
-  A malformed shot sheet gets one correction using the expected frame IDs. If the correction
-  still fails validation, the builder receives shots derived from that picture's saved cues.
-  Chromium measures visible labels at cue and line boundaries. A drawing with a collision,
-  or a label the canvas's edge cuts through, must be corrected or replaced with a checked
-  layout from the same brief; a label the view has moved wholly away from is not on screen.
-  Opening a chapter with Local narrator prepares speech for its unrecorded lines. Picture
-  playback mixes the saved artwork with those lines or kept takes and caches the playable cut.
-  Switching a picture not made yet only sets how it will be made; switching a made one asks
-  first, listing the stages to come (the go among them, as the person's), what it costs and
-  the agent that will make it. Start redraws it at the chosen level.
+  Each stage's clock starts afresh, so over them the build's own clock runs on from stage to
+  stage. The stages are read from the builder's own turns on the picture, which the house
+  keeps, so they hold across a restart. When a build ends, however it ends, its beat keeps its
+  times in the house's database (`pictures.timing`): when it began and ended, how long it took
+  in all, and each of its stages with its own times (the go is the person's and not among
+  them). Over the trail stand the agent at work, the build's whole time (which runs on from
+  stage to stage, while each stage's own time starts afresh) and how many stages are done; the
+  summary reads the kept times back. The stage under way says what it is doing, and its work
+  branches off the line beside it: each step the builder takes as a dot, said as it happens
+  while it is the newest and as done once another follows, with what it touched on the right,
+  and its own words; a light runs down the branch to the newest step, and when the builder has
+  said nothing for 20 seconds (it thinks, or writes a long file) the branch says it is still at
+  work and for how long. While a motion-graphics picture is made, until its builder begins to
+  look it over, the person can leave a note without stopping it: the note waits for the
+  builder's next turn on the picture and goes in with it, can be taken back until then, and
+  stays under the stage that took it in. A made picture says how its build went, folded: its
+  stages as a bar, each as wide as its time, what its builder said when it looked it over, and
+  the notes it took in. The picture is built and moving before its stills are taken, so the go
+  makes nothing more: it puts the picture in the film as built, and the block says so where the
+  stills were. Any made picture plays in its block once its draft clip is rendered, and full
+  screen from a button on it: the studio's own full screen, as large as the window on black (the
+  browser's too where it allows it), so it works in an app's browser pane, and Escape puts it
+  away without leaving the episode. A clip rendered for what was drawn before is dropped the
+  moment the new drawing lands. The switch on a picture's block, and over its frame after the
+  picture's kind, says how it was made. A malformed shot sheet gets one correction using the
+  expected frame IDs. If the correction still fails validation, the builder receives shots
+  derived from that picture's saved cues. Chromium measures visible labels at cue and line
+  boundaries. A drawing with a collision, or a label the canvas's edge cuts through, must be
+  corrected or replaced with a checked layout from the same brief; a label the view has moved
+  wholly away from is not on screen. Opening a chapter with Local narrator prepares speech for
+  its unrecorded lines. Picture playback mixes the saved artwork with those lines or kept takes
+  and caches the playable cut. Switching a picture not made yet only sets how it will be made;
+  switching a made one asks first, listing the stages to come (the go among them, as the
+  person's), what it costs and the agent that will make it. Start redraws it at the chosen
+  level.
 - **Which agent works** is set for the film in the bar, with the model it runs on and how
   hard it thinks: the film's agent writes the changes asked for and draws every picture
-  without a pick of its own. The beat's model picker saves its provider, model and effort.
+  without a pick of its own. The beat's model picker, on its block and over its frame, saves
+  its provider, model and effort; on a made picture it also draws it again with what is picked
+  (on one that failed, tries again), saying under the picks that it is another full run.
+  In the editor, the timeline bar's Redo beat is that picker as one form for the picked beat:
+  its agent, model, effort and how it is made, simple or motion graphics, with what it costs
+  said, and Redo it makes it again. Making a beat again holds nothing up: its frame keeps
+  the version it was, which plays on until the new one lands, and the studio says where the
+  build is in three places. A chapter with any picture being made turns a small mark on its
+  slide and its notebook row, whatever else the chapter waits on. The bar has one pill for
+  what runs now, there only while something runs, opening onto each as a row: a picture being
+  made (its build's stages as a strip that fills, the one under way in a word, who builds it
+  on what and for how long; the row opens its beat, and stops it), the writer's turn on the
+  script, the film being rendered, then the pictures waiting their turn; two or more can be
+  stopped together. And the beat's tile on the timeline turns its mark, runs a line along its
+  foot and, where it is wide enough, says what its builder is on.
+  Asking for a made picture again keeps the version it replaces with the beat
+  (`pictures.versions`, newest first: each one's number, stills, clip, level, builder, what it
+  was made on, when and how long its build took; the oldest is dropped past twelve, and
+  versions keep their numbers). The editor's History tab lists them for the open beat as
+  cards, the one being made first, then the one that stands, then the ones before, and for the
+  whole chapter as tiles under each beat. A press shows that version in the frame, where it
+  plays as it was made, with its number and the way back to the latest over the frame's
+  corner; it shows nothing else differently and makes nothing.
   Draw it again and retry use that saved choice. Beats without an override inherit the
   chapter's saved provider, or the film's agent with the film's model and effort. Each agent
   draws its pictures a few at a time. A new episode starts with the agent picked last on that

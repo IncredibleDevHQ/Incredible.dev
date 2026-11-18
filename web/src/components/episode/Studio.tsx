@@ -25,28 +25,30 @@ import {
 import { flushSync } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type EpisodeAsk, type EpisodeChapter, type EpisodeView } from "../../api";
-import { chapterName, clockLine, resizePresenter, LAYOUTS, linesOf, mmss, pictureCount, takeOf, unitOf } from "../../episode";
+import { asVersion, chapterName, clockLine, LAYOUTS, linesOf, mmss, pictureCount, resizePresenter, takeOf, turning, unitOf, versionShown } from "../../episode";
 import { useHouse } from "../../store";
 import { useTheme } from "../../theme";
 import { FileDrop } from "../FileDrop";
 import { Kbd } from "../Kbd";
 import { Tooltip } from "../Tooltip";
-import { Ask, turning, useWaiting, type Marks, type Run, type Waiting } from "./Ask";
+import { Ask, useWaiting, type Marks, type Run, type Waiting } from "./Ask";
 import { ChoicePanel, PANELS, type Panel } from "./Choices";
 import { Devices, Level } from "./Devices";
 import { useRecorder, type Recording } from "./recorder";
 import { FilmPage, type Open } from "./Film";
 import { Script, type ScriptHandle } from "./Script";
-import { Stills } from "./Picture";
+import { PictureHead, Stills } from "./Picture";
 import { RegenerateChapter } from "./RegenerateChapter";
+import { GenerationSettings } from "./GenerationSettings";
 import { FILM, Slides } from "./Slides";
 import { LinePlayer } from "./LinePlayer";
-import { MadeWith } from "./MadeWith";
 import { FrameCanvas } from "./FrameCanvas";
 import { spanAt } from "./chapterSeek";
 import { spansOf, Timeline } from "./Timeline";
 import { Stage } from "./Stage";
 import { ApplyChanges, FilmDownload, FilmTools } from "./Tools";
+import { RunningPill } from "./Running";
+import { VersionChip, type Seen } from "./Versions";
 import { WorkPill } from "./Work";
 import { PlanRun } from "./PlanRun";
 
@@ -61,11 +63,14 @@ export function EpisodeStudio() {
   // the frame's pop-up stays open when the carousel moves it to another chapter
   const [popNext, setPopNext] = useState(false);
   const [busy, setBusy] = useState(false);
+  // counts the times a place was asked for, so a chapter already open goes to the line asked for
+  const [asked, setAsked] = useState(0);
   const go = useCallback<Open>((to, record = false, line, pop = false) => {
     setRecordNext(record);
     setLineNext(line ?? null);
     setPopNext(pop);
     setAt(to);
+    setAsked((n) => n + 1);
   }, []);
 
   // Every change goes to the server and comes back as the whole episode.
@@ -137,7 +142,7 @@ export function EpisodeStudio() {
         <main className={chapter ? "ep-chapter" : "ep-chapter ep-film-page"}>
           <Slides view={view} at={chapter?.id ?? FILM} onAt={go} />
           {chapter ? (
-            <Chapter key={chapter.id} view={view} chapter={chapter} run={run} busy={busy} record={recordNext} line={lineNext} pop={popNext} onAt={go} waiting={waiting} marks={marks} />
+            <Chapter key={chapter.id} view={view} chapter={chapter} run={run} busy={busy} record={recordNext} line={lineNext} pop={popNext} asked={asked} onAt={go} waiting={waiting} marks={marks} />
           ) : <FilmPage view={view} run={run} busy={busy} onAt={go} waiting={waiting} />}
         </main>
       )}
@@ -145,9 +150,9 @@ export function EpisodeStudio() {
   );
 }
 
-// The way back to the canvas, the film's choices, its picture status, and light
+// The way back to the canvas, the film's choices, what runs now, its picture status, and light
 // or dark. The slides under it are the way between the film and its chapters.
-function Bar({ view, ready, onAt, onClose, run, busy }: { view: EpisodeView; ready: boolean; onAt: (at: string) => void; onClose: () => void; run: Run; busy: boolean }) {
+function Bar({ view, ready, onAt, onClose, run, busy }: { view: EpisodeView; ready: boolean; onAt: Open; onClose: () => void; run: Run; busy: boolean }) {
   return (
     <header className="ep-bar">
       <Tooltip content="Back to the canvas" shortcut="Esc" side="bottom" align="start">
@@ -185,15 +190,17 @@ function Appearance() {
   );
 }
 
-// Where the pictures stand, the changes that wait to be applied, and the way to make the pictures
-// nobody asked for yet: all of them at once, or the rest once some were made a chapter or a
-// picture at a time. Once the plan is approved, applying the changes makes the new ones too.
-function Now({ view, run, busy, onAt }: { view: EpisodeView; run: Run; busy: boolean; onAt: (at: string) => void }) {
+// What runs now, where the pictures stand, the changes that wait to be applied, and the way to
+// make the pictures nobody asked for yet: all of them at once, or the rest once some were made a
+// chapter or a picture at a time. Once the plan is approved, applying the changes makes the new
+// ones too.
+function Now({ view, run, busy, onAt }: { view: EpisodeView; run: Run; busy: boolean; onAt: Open }) {
   const pictures = pictureCount(view);
   const asked = pictures.all - pictures.planned;
   const first = asked === 0 && view.waiting.length === 0;
   return (
     <div className="ep-now">
+      <RunningPill view={view} onAt={onAt} />
       {asked > 0 && <WorkPill view={view} run={run} busy={busy} onAt={onAt} />}
       <ApplyChanges view={view} run={run} busy={busy} />
       {pictures.planned > 0 && !view.approved && (
@@ -219,6 +226,7 @@ function Chapter({
   record,
   line: opening,
   pop,
+  asked,
   onAt,
   waiting,
   marks,
@@ -230,6 +238,8 @@ function Chapter({
   record: boolean;
   line: string | null;
   pop: boolean;
+  // counts the times a place was asked for: this chapter asked for again goes to that line
+  asked: number;
   onAt: Open;
   waiting: Waiting;
   marks: Marks;
@@ -294,12 +304,21 @@ function Chapter({
   const said = solo ? lines.find((l) => l.id === solo) : lines[recorder.index];
   const line = (recording && recorder.state !== "saving" ? said : undefined) ?? lines.find((l) => l.id === picked) ?? lines[0];
   const unit = unitOf(view, line.id);
+  // A version of the line's picture picked to look back at, which the frame shows in place of the
+  // latest while that picture's lines are open. With none picked, a picture being made again
+  // shows the version it was until then, which plays on while the new one is made.
+  const [seen, setSeen] = useState<Seen>(null);
+  const seenUnit = unit?.id;
+  useEffect(() => setSeen((was) => (was && was.unit !== seenUnit ? null : was)), [seenUnit]);
+  const lookedAt = seen && unit && seen.unit === unit.id && unit.picture.versions.some((v) => v.n === seen.n) ? seen.n : null;
+  const version = unit?.kind === "picture" ? versionShown(unit, lookedAt, view) : undefined;
+  const shown = unit && version ? asVersion(unit, version) : unit;
   const at = lines.indexOf(line);
   const scheduled = clockLine(view, line.id);
   const [resizing, setResizing] = useState<{line: string; size: number} | null>(null);
   const draftSize = resizing?.line === line.id ? resizing.size : null;
   const previewLine = draftSize === null ? line : resizePresenter(view, line, draftSize);
-  const playerKey = [line.id, view.film_state.stale, view.film_state.file?.id, view.settings.voice, unit?.picture.clip?.id, scheduled?.audio_url, scheduled?.source.take].join("/");
+  const playerKey = [line.id, view.film_state.stale, view.film_state.file?.id, view.settings.voice, shown?.picture.clip?.id, version?.n, scheduled?.audio_url, scheduled?.source.take].join("/");
   const following = plan.chapters[number];
   const previous = number > 1 ? plan.chapters[number - 2] : undefined;
   // How long the take was planned to run: the chapter, or the one line said again.
@@ -393,13 +412,19 @@ function Chapter({
   const transition = useRef<ViewTransition | null>(null);
   const toggleEditor = useCallback((open: boolean) => {
     if (!open) setChapterCue(null);
-    const scroller = scriptBody.current;
-    if (open) scriptScroll.current = scroller?.scrollTop ?? 0;
+    // a version looked back at is the editor's: put away, the chapter shows its pictures as they stand
+    if (!open) setSeen(null);
+    if (open) scriptScroll.current = scrollerOf(scriptBody.current)?.scrollTop ?? 0;
     const source = open ? peekRef.current : fullRef.current?.querySelector<HTMLElement>(".ep-pop-stage");
     const from = source?.getBoundingClientRect();
     const update = () => {
       flushSync(() => { setFull(open); setSelected(open); });
-      if (scroller) scroller.scrollTop = open ? 0 : scriptScroll.current;
+      // what scrolls the script depends on the window's size: opened, the editor at its head is
+      // brought into view from wherever the script was; put away, the script is where it was
+      const scroller = scrollerOf(scriptBody.current);
+      if (!scroller) return;
+      if (!open) scroller.scrollTop = scriptScroll.current;
+      else if (fullRef.current) scroller.scrollTop += fullRef.current.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
     };
     transition.current?.skipTransition();
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { update(); return; }
@@ -429,6 +454,16 @@ function Chapter({
     askAfter.current = false;
     wasFull.current = full;
   }, [full]);
+  // Asked for again while it is open (a task opened from the bar): the line asked for is picked
+  // and, where its frame was asked for too, the editor opens on it.
+  const askedAt = useRef(asked);
+  useEffect(() => {
+    if (askedAt.current === asked) return;
+    askedAt.current = asked;
+    if (recording) return;
+    if (opening && lines.some((l) => l.id === opening)) pick(opening);
+    if (pop && !full) toggleEditor(true);
+  }, [asked]);
   useEffect(() => {
     if (!full || recording) return;
     const onKey = (e: KeyboardEvent) => {
@@ -543,6 +578,8 @@ function Chapter({
             Take {take.n} · {mmss(take.seconds)}
           </small>
         )}
+        {/* the picked beat made again from here: by another agent or model, or the other way */}
+        {full && unit?.kind === "picture" && <GenerationSettings variant="redo" view={view} unit={unit} run={run} busy={busy || working || recording} />}
         <Tooltip content="Asks the writer for a change, at the caret" shortcut={ASK_KEYS} side="bottom" align="end">
           <button type="button" className="btn" disabled={recording} onClick={() => script.current?.askAt(line.id, "chapter")}>
             <Sparkles />
@@ -597,7 +634,7 @@ function Chapter({
                 <b>Chapter {number}</b>
                 <span className="ep-chapter-kind">{chapterName(chapter)}</span>
                 <small>{mmss(total)}</small>
-                {unit?.kind === "picture" && <MadeWith view={view} unit={unit} />}
+                {unit?.kind === "picture" && <PictureHead view={view} unit={unit} run={run} busy={busy || working} recording={recording} />}
                 <span className="ep-gap" />
                 {!recording && <div className="ep-preview-actions"><FilmDownload view={view} />
                   <Tooltip content="Bring a recording of this chapter: pick a video or audio file, or drop one on the frame" side="bottom">
@@ -650,8 +687,10 @@ function Chapter({
                       chapter={chapterCue && span ? {start: span.start, nextStart: spans[at + 1]?.start, total, seek: seekChapter} : undefined} audioControls={{volume, setVolume, muted, setMuted}}
                       onFinish={() => {
                         if (chapterCue && spans[at + 1]) seekChapter(spans[at + 1].start, true);
-                      }} speed={speed} onSpeed={setSpeed} view={view} frame={previewLine} editingWindow={draftSize !== null} unit={unit} captions={captions} onCaptions={setCaptions} onProgress={setProgress} />
+                      }} speed={speed} onSpeed={setSpeed} view={view} frame={previewLine} editingWindow={draftSize !== null} unit={shown} draft={Boolean(version)} captions={captions} onCaptions={setCaptions} onProgress={setProgress} />
                   )}
+                  {/* a version picked to look back at is named over the frame's corner, with the way back */}
+                  {!recording && version && lookedAt !== null && <VersionChip n={version.n} onLatest={() => setSeen(null)} />}
                   {recorder.state === "count" && <span className="ep-count">{recorder.count}</span>}
                 </FileDrop>
               </div>
@@ -918,6 +957,11 @@ function Chapter({
                 askAfter.current = true;
                 toggleEditor(false);
               }}
+              shownVersion={lookedAt}
+              onShow={(of, n, frame) => {
+                if (of !== unit?.id) pick(frame);
+                setSeen(n === null ? null : { unit: of, n });
+              }}
             />
           </section>
           {choiceRail}
@@ -927,6 +971,16 @@ function Chapter({
 }
 
 // Whether the line's words are shown over the frame, kept on this computer; on until switched off.
+// What scrolls a chapter's script: its own body where that scrolls, else the nearest box around
+// it that does, since the page's layout moves it with the window's size.
+function scrollerOf(at: HTMLElement | null): HTMLElement | null {
+  for (; at; at = at.parentElement) {
+    const { overflowY } = getComputedStyle(at);
+    if ((overflowY === "auto" || overflowY === "scroll") && at.scrollHeight > at.clientHeight) return at;
+  }
+  return null;
+}
+
 function useCaptions(): [boolean, (on: boolean) => void] {
   const [on, setOn] = useState(() => {
     try {

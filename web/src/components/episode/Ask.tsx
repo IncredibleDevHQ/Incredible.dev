@@ -8,7 +8,7 @@
 import { ArrowUp, ChevronDown, CornerDownLeft, Redo2, RotateCcw, Square, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from "react";
 import { api, type AskScope, type EpisodeAsk, type EpisodeChange, type EpisodeView } from "../../api";
-import { mmss } from "../../episode";
+import { mmss, turning } from "../../episode";
 import { useHouse } from "../../store";
 import { Kbd } from "../Kbd";
 import { Popover } from "../Popover";
@@ -29,14 +29,12 @@ const MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator
 const UNDO_KEYS = MAC ? "⌘Z" : "Ctrl+Z";
 const REDO_KEYS = MAC ? "⇧⌘Z" : "Ctrl+Shift+Z";
 
-const WORKING: Record<string, string> = {
+// What a turn of the writer's is doing, by the stage it is on.
+export const WORKING: Record<string, string> = {
   change: "Making your change",
   redo: "Planning a picture for this line",
   edit: "Fitting the picture to your words",
 };
-
-// Whether a turn of the writer's is under way on a plan that already stands.
-export const turning = (view: EpisodeView) => view.status !== "planning" && (view.stage.state === "working" || view.stage.state === "reading");
 
 function plural(n: number, one: string, many: string) {
   return `${n} ${n === 1 ? one : many}`;

@@ -15,18 +15,22 @@ export function RunSummary({
   reviewed = "",
   notes = [],
   title = "How it was made",
+  seconds = null,
 }: {
   stages: SummaryStage[];
   // what the agent said when it looked its work over
   reviewed?: string;
   notes?: { id: string; text: string }[];
   title?: string;
+  // how long the whole run took, where it was kept (the stages' times summed when it was not)
+  seconds?: number | null;
 }) {
   const [open, setOpen] = useState(false);
   const [lit, setLit] = useState<string | null>(null);
   const body = useId();
-  const total = stages.reduce((sum, s) => sum + s.seconds, 0);
-  if (!stages.length || total < 1) return null;
+  const summed = stages.reduce((sum, s) => sum + s.seconds, 0);
+  const total = seconds ?? summed;
+  if (!stages.length || summed < 1) return null;
   const dim = (id: string) => (lit !== null && lit !== id) || undefined;
   return (
     <div className="ag-summary" data-open={open || undefined} onPointerLeave={() => setLit(null)}>

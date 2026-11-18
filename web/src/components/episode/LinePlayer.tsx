@@ -12,6 +12,8 @@ type Props = {
   view: EpisodeView;
   frame: EpisodeFrame;
   unit?: EpisodeUnit;
+  // the picture is one of its earlier versions: it plays as a draft, never from the rendered film
+  draft?: boolean;
   editingWindow?: boolean;
   cameraPoster: ReactNode;
   autoStart?: boolean;
@@ -26,9 +28,9 @@ type Props = {
   onProgress: (fraction: number | null) => void;
 };
 
-export function LinePlayer({ view, frame, unit, editingWindow, cameraPoster, autoStart, initialPosition = 0, chapter, onFinish, audioControls, speed, onSpeed, captions, onCaptions, onProgress }: Props) {
+export function LinePlayer({ view, frame, unit, draft, editingWindow, cameraPoster, autoStart, initialPosition = 0, chapter, onFinish, audioControls, speed, onSpeed, captions, onCaptions, onProgress }: Props) {
   const line = clockLine(view, frame.id);
-  const film = !editingWindow && view.film_state.status === "done" && !view.film_state.stale ? view.film_state.file?.url : undefined;
+  const film = !editingWindow && !draft && view.film_state.status === "done" && !view.film_state.stale ? view.film_state.file?.url : undefined;
   const take = line?.source.kind === "take" ? view.takes.find((t) => t.id === line.source.take) : undefined;
   const sound = take?.audio?.url ?? take?.video?.url ?? line?.audio_url;
   const src = film ?? sound;

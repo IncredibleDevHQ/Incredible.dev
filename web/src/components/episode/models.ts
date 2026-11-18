@@ -1,6 +1,6 @@
 // What an agent runs on, in the words the studio uses for it: its models by name, the efforts
 // each one takes, and what a picture was made on.
-import type { ModelOption, PictureGeneration } from "../../api";
+import type { EpisodeUnit, EpisodeView, ModelOption, PictureGeneration } from "../../api";
 
 const EFFORTS: Record<string, string> = { none: "None", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };
 export const effortName = (effort: string): string => EFFORTS[effort] ?? (effort ? effort[0].toUpperCase() + effort.slice(1) : "");
@@ -40,6 +40,12 @@ export function pickLabel(models: ModelOption[] | undefined, pick: { model: stri
   const name = !option ? pick.model : option.id ? option.name : (option.resolves ?? (option.name === UNNAMED ? "" : option.name));
   const effort = pick.effort || option?.default_effort || "";
   return [name, effortName(effort)].filter(Boolean).join(" · ");
+}
+
+// What a picture being made is built on by `builder`: the beat's model and effort now. The
+// scripted builder runs on no model, so it names none.
+export function builtOn(view: EpisodeView, unit: EpisodeUnit, builder: string): string {
+  return builder === "demo" ? "" : pickLabel(view.options.generation_models[builder], unit.model_now ?? unit.model_pick);
 }
 
 // What a made picture's record says it was made on: the model by name, then the effort. A record

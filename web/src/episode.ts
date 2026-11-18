@@ -1,6 +1,6 @@
 // What the studio reads off an episode: its lines, each line's picture and take, and where a
 // chapter stands. The server derives every number (episode_desk.py); nothing here recounts one.
-import type { EpisodeChapter, EpisodeFrame, EpisodeLine, EpisodeSettings, EpisodeTake, EpisodeUnit, EpisodeView, LayoutSpot, Level, Presence } from "./api";
+import type { BuildStageId, EpisodeChapter, EpisodeFrame, EpisodeLine, EpisodeSettings, EpisodeTake, EpisodeUnit, EpisodeView, LayoutSpot, Level, PictureVersion, Presence } from "./api";
 
 export const PRESENCE: Record<Presence, string> = { person: "You", both: "Both", content: "Picture" };
 export const LAYOUTS: Record<string, string> = {
@@ -128,6 +128,27 @@ export function pictureState(unit: EpisodeUnit, view?: EpisodeView): PictureStat
   return "making";
 }
 
+// How a picture is made, as its switch says it: one asked for as it was built (one made before
+// that was kept is motion graphics when it has a motion plan), else as it will be.
+export function madeLevel(unit: EpisodeUnit, view?: EpisodeView): Level {
+  const p = unit.picture;
+  return pictureState(unit, view) === "planned" ? unit.level : p.level || (p.motion ? "rich" : "simple");
+}
+
+// A beat's one quiet mark on the timeline and what it says: the most pressing of a picture not
+// made, one that needs the person's go, one being made and one out of date, else that it is
+// motion graphics. A simple picture that is made, one not asked for yet and a run said to camera
+// have none.
+export type BeatMark = { kind: "failed" | "go" | "making" | "changed" | "rich"; said: string };
+export function markOf(unit: EpisodeUnit | undefined, view?: EpisodeView): BeatMark | null {
+  if (unit?.kind !== "picture") return null;
+  const state = pictureState(unit, view);
+  if (state === "failed" || state === "go" || state === "making") return { kind: state, said: pictureWords(unit, view) };
+  if (state === "changed" || state === "reworded") return { kind: "changed", said: pictureWords(unit, view) };
+  if (state === "made" && madeLevel(unit, view) === "rich") return { kind: "rich", said: LEVEL_NAMES.rich };
+  return null;
+}
+
 // Where a chapter stands, as its slide and its row read.
 export type ChapterState = "planned" | "making" | "go" | "changed" | "reworded" | "failed" | "ready" | "recorded";
 export function chapterState(view: EpisodeView, chapter: EpisodeChapter): ChapterState {
@@ -135,6 +156,37 @@ export function chapterState(view: EpisodeView, chapter: EpisodeChapter): Chapte
   const states = new Set(view.units.filter((u) => u.chapter === chapter.id).map((u) => pictureState(u, view)));
   for (const state of ["go", "making", "changed", "reworded", "failed", "planned"] as const) if (states.has(state)) return state;
   return "ready";
+}
+// The beat as one of its earlier versions was: its stills and its clip, as they were made then.
+export function asVersion(unit: EpisodeUnit, version: PictureVersion): EpisodeUnit {
+  return {
+    ...unit,
+    picture: {
+      ...unit.picture,
+      status: "made",
+      stills: version.stills,
+      clip: version.clip,
+      level: version.level,
+      builder: version.builder || unit.picture.builder,
+      generation: version.generation,
+      stale: false,
+      reworded: false,
+    },
+  };
+}
+
+// The version of a picture the frame shows: the one picked to look back at (by its number); else,
+// while the picture is made again, the one it was until then, which plays on meanwhile; else none,
+// and the frame shows the picture as it stands.
+export function versionShown(unit: EpisodeUnit, picked: number | null, view?: EpisodeView): PictureVersion | undefined {
+  const kept = unit.picture.versions;
+  if (picked !== null) return kept.find((v) => v.n === picked);
+  return pictureState(unit, view) === "making" ? kept[0] : undefined;
+}
+
+// Whether a picture of a chapter is being made, whatever else the chapter stands on.
+export function chapterMaking(view: EpisodeView, chapter: EpisodeChapter): boolean {
+  return view.units.some((u) => u.chapter === chapter.id && pictureState(u, view) === "making");
 }
 export const STATE_WORDS: Record<ChapterState, string> = {
   planned: "Pictures not made yet",
@@ -162,6 +214,34 @@ export const LEVEL_NAMES: Record<Level, string> = { simple: "Simple", rich: "Mot
 // The voice that reads the film, in the words the studio uses for it.
 export const voiceName = (settings: EpisodeSettings) =>
   settings.voice === "local" ? "Local narrator" : settings.voice === "narrator" ? (settings.narrator?.name ?? "ElevenLabs") : settings.presenter === "off" ? "Recorded" : "Your voice";
+
+// What a stage under way is doing, in a word: the builder's turns, and the house's stills between.
+export const DOING: Partial<Record<BuildStageId, string>> = { motion: "Planning", draw: "Drawing", pose: "Rendering", review: "Looking" };
+// What a picture being made is on now, in a word or two: waiting its turn, else its stage under way.
+export function doingNow(unit: EpisodeUnit, view?: EpisodeView): string {
+  const p = unit.picture;
+  const stage = p.status === "queued" ? undefined : p.stages.find((s) => s.state === "running");
+  return (stage && DOING[stage.id]) || pictureWords(unit, view);
+}
+
+// Whether a turn of the writer's is under way on a plan that already stands.
+export const turning = (view: EpisodeView) => view.status !== "planning" && (view.stage.state === "working" || view.stage.state === "reading");
+
+// What runs for an episode now, as the bar lists it: the work under way first (each picture being
+// built, the writer's turn on the script, the film being rendered), then the pictures waiting
+// their turn; pictures in the film's order.
+export type RunningTask = { kind: "picture"; id: string; unit: EpisodeUnit; waiting: boolean } | { kind: "writer"; id: "writer" } | { kind: "film"; id: "film" };
+export function runningTasks(view: EpisodeView): RunningTask[] {
+  const pictures = view.units
+    .filter((u) => u.kind === "picture" && pictureState(u, view) === "making")
+    .map((unit): RunningTask => ({ kind: "picture", id: unit.id, unit, waiting: unit.picture.status === "queued" }));
+  return [
+    ...pictures.filter((t) => t.kind === "picture" && !t.waiting),
+    ...(turning(view) ? [{ kind: "writer", id: "writer" } as const] : []),
+    ...(view.film_state.status === "rendering" ? [{ kind: "film", id: "film" } as const] : []),
+    ...pictures.filter((t) => t.kind === "picture" && t.waiting),
+  ];
+}
 
 export function pictureWords(unit: EpisodeUnit, view?: EpisodeView): string {
   if (unit.kind === "undesigned") return pictureState(unit, view) === "changed" ? "Waits for the writer" : "Being planned";

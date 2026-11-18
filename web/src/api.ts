@@ -367,11 +367,31 @@ export type EpisodeUnit = {
     // the person left the builder while it worked: waiting for its next turn, or taken in; and
     // whether a note would still reach it (a motion-graphics picture before its review)
     stages: BuildStage[];
+    // how long the build has taken in all: while it runs, when it began; once it ends, as the
+    // beat's record keeps it (null before a build, or for one the house did not date)
+    timing: BuildTiming | null;
+    // which version it is (or will be, while it is made), counting up from 1, and the ones made
+    // before it was asked for again, newest first, to look back at
+    version: number;
+    versions: PictureVersion[];
     reviewed: string;
     queued: SteerNote[];
     steered: SteerNote[];
     steerable: boolean;
   };
+};
+export type BuildTiming = { started_at: number | null; ended_at: number | null; seconds: number | null };
+// A version of a picture kept to look back at: its number, its stills and clip, how and by whom
+// it was made, when its build ended and how long that took.
+export type PictureVersion = {
+  n: number;
+  stills: Record<string, FileView>;
+  clip: FileView | null;
+  level: Level | "";
+  builder: string;
+  generation: PictureGeneration | null;
+  made_at: number | null;
+  seconds: number | null;
 };
 // One stage of a picture's build: the builder's turns (plan, draw, review), the stills the house
 // takes between the drawing and the review, and a motion-graphics picture's go, which is the
@@ -423,12 +443,17 @@ export type EpisodeCard = {
 };
 export type EpisodeCheck = { group: string; rule: string; level: "must" | "look"; where: string; text: string };
 export type EpisodeRun = { id: string; lane: string; harness: string; state: string; asked: string; said: string; steps: number; started_at: number; ended_at: number | null };
+// One stage of the plan as its page times it: from when the house moved to it until the next
+// began (checking the plan runs from the writer's last turn). Times are seconds since the epoch.
+export type PlanStage = { id: string; state: "pending" | "running" | "done" | "failed"; started_at: number | null; ended_at: number | null };
 export type EpisodeView = EpisodeCard & {
   background: {color: string; brand_color: string; textures: Record<BackgroundTexture, [string, string]>};
   channel_id: string;
   settings: EpisodeSettings;
   channel_voices: ChannelVoice[];
   steps: { id: string; label: string }[];
+  // the plan's stages with their times; none for a plan written before the house dated them
+  plan_stages: PlanStage[];
   plan: EpisodePlan | null;
   // What the writer has put down so far, shown while the plan is still being written.
   sample_notes?: string | null;

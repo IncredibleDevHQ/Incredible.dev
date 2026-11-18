@@ -2,12 +2,13 @@
 // rail at the frame's right edge the way the Figma editor's pop-up has it: the layout (one pick
 // sets who has the frame and how), the picture the line shows, how that picture comes in, and
 // the steps it takes on the line. A pick is the line's own until it is widened, in one click, to
-// the picture's other lines, the chapter or the film; like every pick it draws nothing.
+// the picture's other lines, the chapter or the film; like every pick it draws nothing. The last
+// panel is the picture's history: its versions, and its chapter's, to look back at (Versions.tsx).
 import { portraits, portraitUrl } from "./portraits";
 import { BackgroundSettings } from "./BackgroundSettings";
-import { Palette, Settings2, Blend, LayoutTemplate, ListOrdered, Shapes, type LucideIcon } from "lucide-react";
+import { Palette, Settings2, Blend, History, LayoutTemplate, ListOrdered, Shapes, type LucideIcon } from "lucide-react";
 import { api, type EpisodeChapter, type EpisodeChoices, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Presence } from "../../api";
-import { allLines, LAYOUTS, LEVEL_NAMES, linesIn, MOVES, PICTURES, pictureWords, TRANSITIONS } from "../../episode";
+import { allLines, LAYOUTS, linesIn, MOVES, PICTURES, pictureWords, TRANSITIONS } from "../../episode";
 import { ComponentFields, SettingsForm } from "./GenerationSettings";
 import { Tooltip } from "../Tooltip";
 import type { Run } from "./Ask";
@@ -15,11 +16,12 @@ import { KindArt, MoveArt } from "./PictureArt";
 import { LayoutThumb } from "./Stage";
 import { Select } from "../Select";
 import { Tiles } from "./Tiles";
+import { HistoryPanel, type ShowVersion } from "./Versions";
 
 const WHO: Record<Presence, string> = { person: "You", both: "You and the picture", content: "The picture alone" };
 const ORDER: Record<Presence, number> = { person: 0, both: 1, content: 2 };
 
-export type Panel = "layout" | "picture" | "transition" | "steps" | "background" | "others";
+export type Panel = "layout" | "picture" | "transition" | "steps" | "background" | "others" | "history";
 export const PANELS: { id: Panel; label: string; icon: LucideIcon }[] = [
   { id: "layout", label: "Layout", icon: LayoutTemplate },
   { id: "picture", label: "Picture", icon: Shapes },
@@ -27,6 +29,7 @@ export const PANELS: { id: Panel; label: string; icon: LucideIcon }[] = [
   { id: "steps", label: "Steps", icon: ListOrdered },
   { id: "background", label: "Cover", icon: Palette },
   { id: "others", label: "Others", icon: Settings2 },
+  { id: "history", label: "History", icon: History },
 ];
 
 type Props = {
@@ -39,10 +42,14 @@ type Props = {
   onAskPicture: () => void;
   draftSize: number | null;
   onDraftSize: (value: number | null) => void;
+  // the kept version of the line's picture picked to be shown in the frame (none: the latest),
+  // and the way to show one
+  shownVersion: number | null;
+  onShow: ShowVersion;
 };
 
 export function ChoicePanel({ panel, ...props }: Props & { panel: Panel }) {
-  const panels = { layout: LayoutPanel, picture: PicturePanel, transition: TransitionPanel, steps: StepsPanel, background: BackgroundSettings, others: OtherSettings };
+  const panels = { layout: LayoutPanel, picture: PicturePanel, transition: TransitionPanel, steps: StepsPanel, background: BackgroundSettings, others: OtherSettings, history: HistoryPanel };
   const Selected = panels[panel];
   return (
     <div className="ep-choices" data-panel={panel} aria-label={`${PANELS.find((p) => p.id === panel)?.label} for this line`}>
@@ -249,7 +256,7 @@ function PicturePanel({ view, line, unit, run, busy, onAskPicture }: Props) {
       </div>
       {unit && unit.kind !== "undesigned" && (
         <footer className="ep-picture-status">
-          <small>{LEVEL_NAMES[unit.level]} · {pictureWords(unit, view)}</small>
+          <small>{pictureWords(unit, view)}</small>
           <button type="button" className="linkish" onClick={onAskPicture}>Ask for a change</button>
         </footer>
       )}
