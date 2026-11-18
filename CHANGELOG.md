@@ -271,6 +271,10 @@
   upstream is one `hyperframes` skill (story, spec, look, motion, film, review and a page per
   kind of video) beside its CLI, registry and media skills; the workflow and domain skills it
   replaced are no longer vendored.
+- A rebuilt sandbox image reaches the threads that already had a container: a stopped
+  container made from an older build is made again from the current one the next time its
+  thread runs (it used to be restarted on the old image for good). The thread's files are in
+  its volume and stay.
 - An offline demo through the real graph with a scripted model, and `doctor`.
 - A 4-second HyperFrames teaser in the offline demo, gated by `video-gate` and `hyperframes check`
   and measured by `artifact-contract`; render smoke for HyperFrames (lint, check, snapshot, render)

@@ -210,13 +210,20 @@ class DockerSandboxRunner:
 
     def _ensure_running(self, container: _Container) -> None:
         state = self._run(
-            ["container", "inspect", "--format", "{{.State.Running}}", container.name],
+            ["container", "inspect", "--format", "{{.State.Running}} {{.Image}}", container.name],
             check=False,
             timeout=30,
         )
-        if state.returncode == 0 and state.stdout.strip() == b"true":
+        exists = state.returncode == 0
+        running, _, made_from = state.stdout.decode().strip().partition(" ")
+        if exists and running == "true":
             return
-        if state.returncode == 0:
+        if exists and self._outdated(made_from):
+            # The sandbox image was rebuilt since (a renderer upgrade), and a restart would keep
+            # the old one. A stopped container holds no work: the thread's files are in its volume.
+            self._run(["rm", container.name], timeout=60)
+            exists = False
+        if exists:
             self._run(["start", container.name], timeout=60)
         else:
             cpus, memory = self._host_limits()
@@ -269,6 +276,15 @@ class DockerSandboxRunner:
             ],
             timeout=60,
         )
+
+    def _outdated(self, made_from: str) -> bool:
+        """Whether a container was made from another build of the image than the one configured
+        now. Unknown on either side counts as current: a container is never dropped on a guess."""
+        found = self._run(
+            ["image", "inspect", "--format", "{{.Id}}", self.image], check=False, timeout=15
+        )
+        wanted = found.stdout.decode().strip() if found.returncode == 0 else ""
+        return bool(made_from and wanted) and made_from != wanted
 
     def reap_idle(self) -> list[str]:
         """Stop containers idle past the TTL. Their volumes (the thread's files) stay."""

@@ -23,6 +23,9 @@ class RecordingRunner(DockerSandboxRunner):
         super().__init__(image="design-agent-sandbox:test", **kwargs)
         self.calls: list[list[str]] = []
         self.running: set[str] = set()
+        #: stopped containers, by name, with the image each was made from
+        self.stopped: dict[str, str] = {}
+        self.built = "sha256:current"
         self.host = f"{host_cpus} {host_mem_gib * 1024**3}\n"
 
     def _run(
@@ -36,14 +39,21 @@ class RecordingRunner(DockerSandboxRunner):
         self.calls.append(list(args))
         if args[0] == "container":
             name = args[-1]
-            return subprocess.CompletedProcess(
-                args,
-                0 if name in self.running else 1,
-                b"true" if name in self.running else b"",
-                b"",
-            )
+            if name in self.running:
+                return subprocess.CompletedProcess(args, 0, f"true {self.built}".encode(), b"")
+            if name in self.stopped:
+                state = f"false {self.stopped[name]}".encode()
+                return subprocess.CompletedProcess(args, 0, state, b"")
+            return subprocess.CompletedProcess(args, 1, b"", b"")
+        if args[0] == "image":
+            return subprocess.CompletedProcess(args, 0, self.built.encode(), b"")
         if args[0] == "info":
             return subprocess.CompletedProcess(args, 0, self.host.encode(), b"")
+        if args[0] == "rm":
+            self.stopped.pop(args[-1], None)
+        if args[0] == "start":
+            self.stopped.pop(args[-1], None)
+            self.running.add(args[-1])
         if args[0] == "run":
             self.running.add(args[args.index("--name") + 1])
         if args[0] == "exec" and args[-2:-1] == ["cat"]:
@@ -98,6 +108,36 @@ def test_threads_get_their_own_container_and_volume() -> None:
     assert sum(1 for c in runner.calls if c[0] == "run") == 2
     runner.container_for("a")
     assert sum(1 for c in runner.calls if c[0] == "run") == 2, "a running container is reused"
+
+
+def test_a_stopped_container_made_from_an_older_build_of_the_image_is_made_again() -> None:
+    """A rebuilt sandbox (a renderer upgrade) reaches the threads that already had a container.
+    Nothing is lost: the thread's files are in its volume, which the new container mounts."""
+    runner = RecordingRunner()
+    name, volume = runner.names_for("t")
+    runner.stopped[name] = "sha256:older"
+    assert runner.container_for("t") == name
+    assert ["rm", name] in runner.calls
+    assert not any(c[0] == "start" for c in runner.calls)
+    run = next(c for c in runner.calls if c[0] == "run")
+    assert run[run.index("--mount") + 1] == f"type=volume,source={volume},target=/workspace"
+
+    # one made from the image as it is now is started as before
+    current = RecordingRunner()
+    name, _ = current.names_for("t")
+    current.stopped[name] = current.built
+    current.container_for("t")
+    assert ["start", name] in current.calls
+    assert not any(c[0] in ("rm", "run") for c in current.calls)
+
+    # and one is never dropped on a guess: an image Docker cannot name leaves it alone
+    unknown = RecordingRunner()
+    name, _ = unknown.names_for("t")
+    unknown.stopped[name] = "sha256:older"
+    unknown.built = ""
+    unknown.container_for("t")
+    assert ["start", name] in unknown.calls
+    assert not any(c[0] in ("rm", "run") for c in unknown.calls)
 
 
 def test_agent_commands_run_unprivileged_and_staging_runs_as_root() -> None:
