@@ -3,7 +3,7 @@ import { Popover } from "../Popover";
 import { editModel, editTriggerText, pictureProvider, writerName } from "./pictureProvider";
 import { useId, useRef, useState } from "react";
 import { api, type EpisodeUnit, type EpisodeView, type ModelOption, type WriterId } from "../../api";
-import { effortName, optionLabel, pickLabel } from "./models";
+import { effortName, modelChoices, pickLabel } from "./models";
 import { AgentMark } from "../../ui";
 import { Select } from "../Select";
 import { TextArea } from "../TextArea";
@@ -45,10 +45,6 @@ function filmChoice(view: EpisodeView, writer: string | null): { model: string; 
   return { model: chosen.writer_model ?? "", effort: chosen.writer_effort ?? "" };
 }
 
-// A beat's models: the first row is what it inherits, said as the film's choice where there is one.
-const modelChoices = (models: ModelOption[], film: { model: string; effort: string } | null) =>
-  models.map((m) => ({ value: m.id, label: !m.id && film ? `Film's choice · ${pickLabel(models, film) || "its default"}` : optionLabel(m) }));
-
 // The row whose efforts hold for a pick: the model picked, else the film's, else the agent's own.
 const effortRow = (models: ModelOption[], model: string, film: { model: string; effort: string } | null) =>
   models.find((m) => m.id === (model || film?.model || ""));
@@ -87,6 +83,7 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
   const [effort, setEffort] = useState("");
   const models = writer ? availableModels[writer] ?? [] : [];
   const film = filmChoice(view, writer);
+  const choices = modelChoices(models, model, film);
   const row = effortRow(models, model, film);
   const efforts = row?.efforts ?? [];
   const ready = writers.some(w => w.id === writer && w.ready);
@@ -154,8 +151,8 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
         {writer && writer !== "demo" && (
           <div className="ep-provider-fields">
             <Select
-              size="sm" label="Model" value={model} disabled={!ready || models.length <= 1}
-              options={modelChoices(models, film)}
+              size="sm" label="Model" value={model} disabled={!ready || choices.length <= 1}
+              options={choices}
               onChange={v => { setModel(v); setEffort(""); }}
             />
             <EffortSlider efforts={efforts} value={effort} onChange={setEffort} disabled={!ready}
@@ -188,6 +185,7 @@ export function SettingsForm({ view, unit, run, busy }: Props) {
   const options = view.options;
   const models = options.generation_models[writer] ?? [];
   const film = filmChoice(view, writer);
+  const choices = modelChoices(models, model, film);
   const row = effortRow(models, model, film);
   const efforts = row?.efforts ?? [];
   const demoCustom = writer === "demo" && !!direction.trim();
@@ -219,8 +217,8 @@ export function SettingsForm({ view, unit, run, busy }: Props) {
       <Select
         label="Model"
         value={model}
-        disabled={models.length <= 1}
-        options={modelChoices(models, film)}
+        disabled={choices.length <= 1}
+        options={choices}
         onChange={(v) => {
           setModel(v);
           setEffort("");

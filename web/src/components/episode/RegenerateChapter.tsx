@@ -5,7 +5,7 @@ import { AgentMark } from "../../ui";
 import { Popover } from "../Popover";
 import { Select } from "../Select";
 import type { Run } from "./Ask";
-import { optionLabel } from "./models";
+import { modelChoices } from "./models";
 import { writerName } from "./pictureProvider";
 
 type Provider = Exclude<WriterId, "demo">;
@@ -19,6 +19,7 @@ export function RegenerateChapter({ view, chapter, count, disabled, run }: {
   const [model, setModel] = useState("");
   const providers = view.options.picture_writers.filter(w => w.id !== "demo");
   const models = view.options.generation_models[provider] ?? [];
+  const choices = modelChoices(models, model);
   const visuals = `${count} ${count === 1 ? "visual" : "visuals"}`;
   const ready = !disabled && (!provider || providers.some(w => w.id === provider && w.ready) &&
     models.some(m => m.id === model));
@@ -62,8 +63,8 @@ export function RegenerateChapter({ view, chapter, count, disabled, run }: {
               setModel(view.options.generation_models[value]?.[0]?.id ?? "");
             }}
           />
-          {provider && <Select label="Model" value={model} disabled={disabled || models.length <= 1}
-            options={models.map(m => ({ value: m.id, label: optionLabel(m) }))} onChange={setModel} />}
+          {provider && <Select label="Model" value={model} disabled={disabled || choices.length <= 1}
+            options={choices} onChange={setModel} />}
           {provider && <small>Uses this model for every visual in this run.</small>}
           <div className="ep-provider-footer">
             <button type="button" className="btn" onClick={() => setOpen(false)}>Cancel</button>

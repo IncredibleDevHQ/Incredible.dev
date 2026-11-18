@@ -29,6 +29,8 @@ CLAUDE_CODE: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 #: Where Kimi Code keeps its settings: the models its account offers, the one it starts on and
 #: how hard it thinks unless told otherwise.
 KIMI_HOME = Path("~/.kimi-code")
+#: The Codex CLI is launched with the Studio host's HOME.
+CODEX_HOME = Path("~/.codex")
 
 
 def options(settings: Settings, writer: str) -> list[Row]:
@@ -57,6 +59,11 @@ def options(settings: Settings, writer: str) -> list[Row]:
             return [default]
     else:
         default = {"id": "", "name": "CLI default", "efforts": []}
+        if writer == "codex" and (model := _codex_default(CODEX_HOME.expanduser())):
+            default["resolves"] = model
+            caps = CAPABILITY_REGISTRY.get(f"openai:{model}")
+            if caps is not None:
+                default["efforts"] = [e for e in ORDER if e in caps.efforts]
     choices = [default]
     for spec, caps in CAPABILITY_REGISTRY.items():
         provider, name = spec.split(":", 1)
@@ -65,6 +72,25 @@ def options(settings: Settings, writer: str) -> list[Row]:
                 {"id": name, "name": name, "efforts": [e for e in ORDER if e in caps.efforts]}
             )
     return choices
+
+
+def _codex_default(home: Path) -> str:
+    path = home / "config.toml"
+    try:
+        stamp = path.stat().st_mtime_ns
+    except OSError:
+        return ""
+    return _codex_model(path, stamp)
+
+
+@lru_cache(maxsize=4)
+def _codex_model(path: Path, stamp: int) -> str:  # noqa: ARG001 - changes invalidate the cached read
+    try:
+        with path.open("rb") as handle:
+            model = tomllib.load(handle).get("model")
+    except (OSError, ValueError):
+        return ""
+    return model if isinstance(model, str) and re.fullmatch(r"[\w./:-]{1,120}", model) else ""
 
 
 def _kimi(home: Path) -> list[Row]:

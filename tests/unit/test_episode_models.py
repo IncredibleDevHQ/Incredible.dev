@@ -61,6 +61,24 @@ def settings() -> Settings:
     return Settings(_env_file=None)
 
 
+def test_codex_names_its_configured_default_without_changing_the_pick(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(episode_models, "CODEX_HOME", tmp_path)
+    path = tmp_path / "config.toml"
+    path.write_text('model = "gpt-6.1-sol"\n', encoding="utf8")
+    rows = episode_models.options(settings(), "codex")
+    assert rows[0]["id"] == ""
+    assert rows[0]["resolves"] == "gpt-6.1-sol"
+    assert rows[0]["efforts"] == next(r["efforts"] for r in rows if r["id"] == "gpt-6.1-sol")
+    assert episode_models.generation(settings(), "codex", {})["model"] == "gpt-6.1-sol"
+    assert episode_models.generation(settings(), "codex", {"effort": "low"})["effort"] == "low"
+    path.write_text('model = "gpt-6.2-sol"\n', encoding="utf8")
+    assert episode_models.options(settings(), "codex")[0]["resolves"] == "gpt-6.2-sol"
+    path.write_text("model = [broken", encoding="utf8")
+    assert "resolves" not in episode_models.options(settings(), "codex")[0]
+
+
 def test_kimi_offers_the_models_its_own_settings_list_newest_first(kimi_home: Path) -> None:
     rows = episode_models.options(settings(), "kimi")
     assert [r["name"] for r in rows] == [

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { effortName, madeOn, optionLabel, pickLabel } from '../src/components/episode/models.ts';
+import { effortName, madeOn, modelChoices, optionLabel, pickLabel } from '../src/components/episode/models.ts';
 
 const kimi = [
   { id: '', name: 'CLI default', efforts: ['low', 'high', 'max'], default_effort: 'high', resolves: 'K3.1 Pro' },
@@ -41,6 +41,21 @@ test('a pick is said as its model and its effort, the default effort where the a
   // a pick the agent no longer lists is still named as it was saved
   assert.equal(pickLabel(kimi, { model: 'kimi-code/gone', effort: '' }), 'kimi-code/gone');
   assert.equal(pickLabel(undefined, { model: '', effort: '' }), '');
+});
+
+test('the model list shows the default once and keeps a saved explicit pick switchable', () => {
+  const explicit = 'kimi-code/k3.1-pro';
+  assert.deepEqual(modelChoices(kimi, '').map(row => row.value), ['', 'kimi-code/k3', 'kimi-code/fast']);
+  assert.deepEqual(modelChoices(kimi, explicit).slice(0, 2), [
+    { value: '', label: 'Use default' },
+    { value: explicit, label: 'K3.1 Pro' },
+  ]);
+  assert.deepEqual(modelChoices(kimi, '', { model: 'kimi-code/k3', effort: 'low' }), [
+    { value: '', label: "Film's choice · K3 · Low" },
+    { value: explicit, label: 'K3.1 Pro' },
+    { value: 'kimi-code/fast', label: 'K2.7 Code Highspeed' },
+  ]);
+  assert.equal(modelChoices(claude, '').length, claude.length);
 });
 
 test('a made picture says the model and effort its record names, and nothing it does not know', () => {

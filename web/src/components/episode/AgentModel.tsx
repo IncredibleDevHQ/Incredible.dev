@@ -3,7 +3,7 @@
 // effort, since the levels are each model's own.
 import type { ModelOption } from "../../api";
 import { Select } from "../Select";
-import { effortName, optionLabel } from "./models";
+import { effortName, modelChoices } from "./models";
 
 export type ModelPick = { model: string; effort: string };
 
@@ -12,6 +12,7 @@ export const offersPicks = (models: ModelOption[] | undefined) => (models?.lengt
 
 export function AgentModel({ models, pick, disabled, onChange }: { models: ModelOption[]; pick: ModelPick; disabled?: boolean; onChange: (pick: ModelPick) => void }) {
   const row = models.find((m) => m.id === pick.model) ?? models[0];
+  const choices = modelChoices(models, row?.id ?? "");
   const efforts = row?.efforts ?? [];
   const usual = !efforts.length ? "Agent's default" : row?.default_effort ? `Default · ${effortName(row.default_effort)}` : "Default";
   return (
@@ -20,8 +21,8 @@ export function AgentModel({ models, pick, disabled, onChange }: { models: Model
         size="sm"
         label="Model"
         value={row?.id ?? ""}
-        disabled={disabled || models.length <= 1}
-        options={models.map((m) => ({ value: m.id, label: optionLabel(m) }))}
+        disabled={disabled || choices.length <= 1}
+        options={choices}
         onChange={(model) => onChange({ model, effort: "" })}
       />
       <Select

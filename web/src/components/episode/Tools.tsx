@@ -108,7 +108,7 @@ function VoiceTool({ view, run, busy }: Props) {
               ]}
             />
             {voice === "narrator" && !usingClone && narrator && <NarratorVoice view={view} run={run} busy={busy} />}
-            {narrator && <ChannelVoices view={view} voices={clones} selected={usingClone ? picked : undefined}
+            {narrator && usingClone && <ChannelVoices view={view} voices={clones} selected={picked}
               busy={busy} onAdd={add}
               onSelect={id => {
                 const next = clones.find(clone => clone.id === id);

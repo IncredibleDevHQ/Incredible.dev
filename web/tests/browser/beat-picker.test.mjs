@@ -33,4 +33,23 @@ test("beat effort supports keyboard adjustment and resets for a fixed-effort mod
   await page.getByRole("option", {name:"Fixed"}).click();
   assert.equal(await effort.count(), 0);
   assert.deepEqual(await save(), {builder:"codex", model:"fixed", effort:""});
+
+  await page.goto(new URL("tests/browser/beat-picker.html?default", server.resolvedUrls.local[0]).href);
+  await page.getByRole("button", {name: "Edit model: Codex · gpt-6.1-sol"}).click();
+  await page.getByRole("combobox", {name: "Model Default · gpt-6.1-sol"}).click();
+  await page.getByRole("option", {name: "Default · gpt-6.1-sol", exact: true}).waitFor();
+  assert.equal(await page.getByRole("option", {name: "gpt-6.1-sol", exact: true}).count(), 0);
+  await page.keyboard.press("Escape");
+  assert.deepEqual(await save(), {builder:"codex", model:"", effort:""});
+  await open.click();
+  await effort.press("ArrowRight");
+  assert.deepEqual(await save(), {builder:"codex", model:"", effort:"low"});
+
+  await page.goto(new URL("tests/browser/beat-picker.html?pinned", server.resolvedUrls.local[0]).href);
+  await page.getByRole("button", {name: "Edit model: Codex · gpt-6.1-sol · Low"}).click();
+  assert.deepEqual(await save(), {builder:"codex", model:"gpt-6.1-sol", effort:"low"});
+  await open.click();
+  await page.getByRole("combobox", {name: "Model gpt-6.1-sol"}).click();
+  await page.getByRole("option", {name: "Use default", exact: true}).click();
+  assert.deepEqual(await save(), {builder:"codex", model:"", effort:""});
 });

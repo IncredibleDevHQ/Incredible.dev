@@ -16,6 +16,22 @@ export function optionLabel(option: ModelOption): string {
   return option.name === UNNAMED ? "Agent's default" : option.name;
 }
 
+export function modelChoices(models: ModelOption[], selected: string, film?: { model: string; effort: string } | null) {
+  const defaultOption = models.find(m => !m.id);
+  const inherited = film?.model || defaultOption?.resolves || defaultOption?.name;
+  const duplicate = defaultOption && (
+    models.find(m => m.id && m.id === inherited) ?? models.find(m => m.id && m.name === inherited)
+  );
+  const pinned = duplicate?.id === selected;
+  let defaultLabel = defaultOption ? optionLabel(defaultOption) : "";
+  if (film) defaultLabel = `Film's choice · ${pickLabel(models, film) || "its default"}`;
+  if (pinned) defaultLabel = film ? "Use film's choice" : "Use default";
+  return models.filter(m => m !== duplicate || pinned).map(m => ({
+    value: m.id,
+    label: m.id ? optionLabel(m) : defaultLabel,
+  }));
+}
+
 // What a pick comes to, in a few words ("K3.1 Pro · High"): the model by name, then the effort
 // picked or, where the agent says it, the one it thinks at by default. Empty when nothing is
 // picked and the agent does not say what its default is.

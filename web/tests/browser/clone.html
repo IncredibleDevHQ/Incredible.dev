@@ -13,7 +13,7 @@
       const clone = { id: "stored-voice", name: "Sample narrator" };
       const [settings, setSettings] = useState({ voice: "live", level: "simple", writer: "demo", cloned_voice: clone });
       const channelVoices = [clone, { id: "second-voice", name: "Second narrator" }];
-      const view = { id: "test-episode", settings, units: [], channel_voices: channelVoices, options: { writers: [], generation_models: {}, themes: [], narrator: {ready: true} } };
+      const view = { id: "test-episode", settings, units: [], channel_voices: channelVoices, options: { writers: [], generation_models: {}, themes: [], local_narrator: true, narrator: {ready: true} } };
       return React.createElement(FilmTools, {view, busy: false, run: async task => {
         const next = await task();
         setSettings(prev => ({ ...prev, ...next.settings }));

@@ -3547,8 +3547,9 @@ async def test_the_films_agent_runs_on_the_model_and_effort_picked_for_the_film(
 
 
 async def test_a_pick_the_agent_no_longer_offers_falls_back_to_its_default(
-    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    monkeypatch.setattr(episode_models, "CODEX_HOME", tmp_path)
     eid = await planned(house)
     desk = house.episodes
     desk._worker_called("codex")

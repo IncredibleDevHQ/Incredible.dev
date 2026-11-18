@@ -77,15 +77,22 @@ test("voice setup records locally, requires consent, uploads the sample and dism
   await page.route("**/api/voices", route => route.fulfill({json: {voices: []}}));
   await page.goto(new URL("tests/browser/clone.html?saved", server.resolvedUrls.local[0]).href);
   await page.getByRole("button", {name:"Voice: Your voice"}).click();
+  const channelVoices = page.getByRole("combobox", {name:/Channel voices/});
+  assert.equal(await channelVoices.count(), 0);
+  await page.getByRole("radio", {name:/Local narrator/}).click();
+  await page.getByRole("button", {name:"Voice: Local narrator"}).waitFor();
+  assert.equal(await channelVoices.count(), 0);
   const saved = page.getByRole("radio", {name:/Cloned voice Second narrator/});
   await saved.click();
   await page.getByRole("button", {name:"Voice: Second narrator"}).waitFor();
   assert.ok(await saved.isChecked());
-  assert.equal(picks[0].narrator.id, "second-voice");
+  assert.equal(picks[1].narrator.id, "second-voice");
+  await channelVoices.waitFor();
   await page.getByRole("radio", {name:/ElevenLabs Choose/}).click();
   await page.getByRole("button", {name:"Voice: ElevenLabs"}).waitFor();
   assert.equal(await saved.isChecked(), false);
-  assert.equal(picks[1].narrator, null);
+  assert.equal(picks[2].narrator, null);
+  assert.equal(await channelVoices.count(), 0);
 
   let previews = 0;
   const sampleUrl = "/api/episodes/test-episode/voice/stored-voice/preview";
@@ -107,7 +114,8 @@ test("voice setup records locally, requires consent, uploads the sample and dism
     previews++;
     return route.fulfill({json: {url: sampleUrl}});
   });
-  await page.getByRole("combobox", {name:/Channel voices/}).click();
+  await saved.click();
+  await channelVoices.click();
   await page.getByRole("option", {name:"Sample narrator"}).click();
   await page.getByRole("button", {name:"Voice: Sample narrator"}).waitFor();
   assert.equal(previews, 0);
