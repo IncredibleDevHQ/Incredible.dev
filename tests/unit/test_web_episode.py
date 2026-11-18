@@ -1150,12 +1150,10 @@ async def test_a_narrators_voice_is_picked_for_an_episode_or_cloned_from_its_tak
     recorded = {line["frame"] for line in view["clock"]["lines"] if line["chapter"] == chapter}
     assert spoke and set(spoke) == {"clone1234567890"}
     assert len(spoke) == len(view["clock"]["lines"]) - len(recorded)
-    # the account's voices, the ones made in it first; another voice is another film
+    # the channel's clones stay in its library, separate from the account picker
     listed = (await house.episodes.voices())["voices"]
-    assert [(v["id"], v["own"]) for v in listed] == [
-        ("clone1234567890", True),
-        ("premade123456", False),
-    ]
+    assert [(v["id"], v["own"]) for v in listed] == [("premade123456", False)]
+    assert view["channel_voices"] == [{"id": "clone1234567890", "name": "My voice"}]
     episode = house.store.episode(episode_id)
     assert episode is not None
     full = house.episodes._full(episode)
@@ -3635,6 +3633,63 @@ async def test_cloned_voice_narrates_only_the_requested_chapter(
     await desk.preview_voice(ep, chapter)
     assert len(said) == sum(line["chapter"] == chapter for line in lines)
     assert not view["film_state"]["file"]
+
+
+async def test_channel_clones_can_be_selected_and_sampled_once(house, monkeypatch):
+    from pydantic import SecretStr
+
+    from design_agent.tools import media
+
+    house.settings = house.settings.model_copy(update={"elevenlabs_api_key": SecretStr("test")})
+    desk = house.episodes
+    first = await planned(house)
+    second = await planned(house)
+    other = desk.create(
+        house.store.channels()[1]["id"], by="you", text=NOTES, settings={"writer": DEMO}
+    )["id"]
+    await settle(lambda: not desk.planning(other))
+    ids = iter(("testvoice00001", "testvoice00002"))
+    spoken = []
+
+    async def clone(*args, **kwargs):
+        return media.Cloned(next(ids), False)
+
+    async def speak(keys, text, voice):
+        spoken.append(voice)
+        return media.Spoken(b"sample audio", 2, [])
+
+    monkeypatch.setattr(media, "clone_voice", clone)
+    monkeypatch.setattr(media, "speak", speak)
+    for name in ("First voice", "Second voice"):
+        await desk.clone(first, by="you", name=name, consent=True, sample=("sample.wav", b"audio"))
+    saved = desk.view(second)["channel_voices"]
+    assert {voice["name"] for voice in saved} == {"First voice", "Second voice"}
+    assert not desk.view(other)["channel_voices"] and spoken == []
+    voice = next(v for v in saved if v["name"] == "First voice")
+    pick = {"settings": {"voice": "narrator", "narrator": {"id": voice["id"], "name": "Ignored"}}}
+    assert (
+        desk.choose(second, by="you", change=pick)["settings"]["narrator"]["name"] == "First voice"
+    )
+    with pytest.raises(ValueError, match="another channel"):
+        desk.choose(other, by="you", change=pick)
+    with pytest.raises(KeyError):
+        await desk.preview_channel_voice(other, voice["id"])
+    await asyncio.gather(*(desk.preview_channel_voice(second, voice["id"]) for _ in range(2)))
+    assert spoken == [voice["id"]]
+    assert any(v.get("preview") for v in desk.view(second)["channel_voices"])
+    assert desk.channel_voice_audio(second, voice["id"]).read_bytes() == b"sample audio"
+    with pytest.raises(KeyError):
+        desk.channel_voice_audio(other, voice["id"])
+    old = desk.view(second)
+    legacy = {"id": "testoldvoice00", "name": "Legacy voice", "verify": True}
+    house.store.update_episode(second, settings={**old["settings"], "cloned_voice": legacy})
+    store = Store(house.store.path)
+    try:
+        persisted = store.channel_voice_clones(old["channel_id"])
+        assert {row["id"] for row in persisted} == {v["id"] for v in saved} | {legacy["id"]}
+        assert store.voice_clone(legacy["id"])["verify"] == 1
+    finally:
+        store.close()
 
 
 def test_motion_plan_rejects_two_shots_for_one_frame():

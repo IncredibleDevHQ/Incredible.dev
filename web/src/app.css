@@ -1156,6 +1156,11 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-options b { color: var(--ink); font-size: 13.5px; font-weight: 650; }
 .ep-options small { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
 .ep-options + .ep-voice { margin-top: 12px; }
+.ep-channel-voices { display: grid; gap: 9px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.ep-channel-voice-picker { display: flex; align-items: end; gap: 8px; }
+.ep-channel-voice-picker > :first-child { flex: 1; min-width: 0; }
+.ep-channel-voice-picker > span { align-self: center; font-size: 13px; color: var(--ink-2); }
+.ep-channel-voice-picker .ep-add-voice { min-height: 28px; padding: 0 8px; }
 .ep-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-basis: 100%; margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line); font-size: 13px; }
 .ep-confirm > span { flex: 1; min-width: 160px; color: var(--ink); }
 .ep-confirm .btn { height: 30px; }

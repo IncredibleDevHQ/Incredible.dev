@@ -255,6 +255,7 @@ export type EpisodeOptions = {
 export type EpisodeLength = [number, number] | "auto";
 // The voice picked to narrate an episode. `verify`: ElevenLabs wants its speaker verified on its site before it speaks.
 export type Narrator = { id: string; name: string; verify?: boolean };
+export type ChannelVoice = Narrator & { preview?: string };
 // A voice the ElevenLabs account can speak in: one made in it (a clone), and the house's own.
 export type Voice = { id: string; name: string; own: boolean; usual: boolean; preview?: string };
 export type BackgroundTexture = "solid" | "dots" | "grid" | "diagonal";
@@ -426,6 +427,7 @@ export type EpisodeView = EpisodeCard & {
   background: {color: string; brand_color: string; textures: Record<BackgroundTexture, [string, string]>};
   channel_id: string;
   settings: EpisodeSettings;
+  channel_voices: ChannelVoice[];
   steps: { id: string; label: string }[];
   plan: EpisodePlan | null;
   // What the writer has put down so far, shown while the plan is still being written.
@@ -666,6 +668,8 @@ export const api = {
     return call<EpisodeView>("POST", `/api/episodes/${id}/takes`, form);
   },
   voices: () => call<{ voices: Voice[] }>("GET", "/api/voices"),
+  previewChannelVoice: (episode: string, voice: string) =>
+    call<{ url: string }>("POST", `/api/episodes/${episode}/voice/${encodeURIComponent(voice)}/preview`, {}),
   // A clone of the person's voice, from this episode's takes or from a recording they bring. `consent` is theirs to give.
   cloneVoice: (id: string, clone: { name: string; consent: boolean; file?: File }) => {
     const form = new FormData();

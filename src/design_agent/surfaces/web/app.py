@@ -965,6 +965,27 @@ def create_app(
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from None
 
+    @app.post("/api/episodes/{episode_id}/voice/{voice_id}/preview")
+    async def preview_clone(
+        episode_id: str, voice_id: str, _me: str = Depends(person)
+    ) -> dict[str, Any]:
+        try:
+            return await host.episodes.preview_channel_voice(episode_id, voice_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="No such voice in this channel.") from None
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.get("/api/episodes/{episode_id}/voice/{voice_id}/preview")
+    async def clone_audio(
+        episode_id: str, voice_id: str, _me: str = Depends(person)
+    ) -> FileResponse:
+        try:
+            path = host.episodes.channel_voice_audio(episode_id, voice_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="No saved sample for this voice.") from None
+        return FileResponse(path, media_type="audio/mpeg")
+
     @app.post("/api/episodes/{episode_id}/voice")
     async def clone_voice(
         episode_id: str,

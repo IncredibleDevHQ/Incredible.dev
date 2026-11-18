@@ -1,7 +1,7 @@
 // Account voices and local recording setup for the episode narrator.
-import { Mic, Square, Upload } from "lucide-react";
+import { Mic, Play, Plus, Square, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, type EpisodeView, type Voice } from "../../api";
+import { api, type ChannelVoice, type EpisodeView, type Voice } from "../../api";
 import { mmss } from "../../episode";
 import { MAX_SAMPLE_BYTES, useVoiceSample } from "./voiceSample";
 import { Select } from "../Select";
@@ -56,6 +56,65 @@ export function NarratorVoice({ view, run, busy }: { view: EpisodeView; run: Run
       )}
       {picked?.verify && <small data-tone="amber">ElevenLabs asks you to verify this voice on its site before it speaks.</small>}
     </span>
+  );
+}
+
+export function ChannelVoices({ view, voices, selected, busy, onSelect, onAdd }: {
+  view: EpisodeView; voices: ChannelVoice[]; selected?: ChannelVoice; busy: boolean;
+  onSelect: (id: string) => void; onAdd: () => void;
+}) {
+  return (
+    <div className="ep-channel-voices">
+      <div className="ep-channel-voice-picker">
+        {voices.length > 0 ? (
+          <Select label="Channel voices" size="sm" value={selected?.id ?? null}
+            placeholder="Choose a cloned voice" disabled={busy}
+            options={voices.map(voice => ({ value: voice.id, label: voice.name }))}
+            onChange={onSelect} />
+        ) : <span>Channel voices</span>}
+        <button className="btn ep-add-voice" type="button" disabled={busy}
+          aria-label="Add cloned voice" title="Add cloned voice" onClick={onAdd}>
+          <Plus aria-hidden="true" />{voices.length === 0 && "Add voice"}
+        </button>
+      </div>
+      {selected && <VoicePreview key={selected.id} episode={view.id} voice={selected} />}
+    </div>
+  );
+}
+
+function VoicePreview({ episode, voice }: { episode: string; voice: ChannelVoice }) {
+  const [sample, setSample] = useState(voice.preview ?? "");
+  const [loading, setLoading] = useState(false);
+  const [problem, setProblem] = useState("");
+  const [autoPlay, setAutoPlay] = useState(false);
+
+  const play = async () => {
+    setLoading(true);
+    setProblem("");
+    try {
+      const result = await api.previewChannelVoice(episode, voice.id);
+      setAutoPlay(true);
+      setSample(result.url);
+    } catch (error) {
+      setProblem((error as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="ep-voice">
+      {sample ? (
+        <audio controls autoPlay={autoPlay} src={sample} aria-label={`Sample of ${voice.name}`}
+          onError={() => { setSample(""); setProblem("The sample didn’t load. Try playing it again."); }} />
+      ) : (
+        <button className="btn" type="button" disabled={loading} onClick={() => void play()}>
+          <Play aria-hidden="true" /> {loading ? "Preparing sample" : "Play sample"}
+        </button>
+      )}
+      {voice.verify && !sample && <small data-tone="amber">ElevenLabs may ask the speaker to verify this voice before it can speak.</small>}
+      {problem && <small data-tone="red" role="alert">{problem}</small>}
+    </div>
   );
 }
 
@@ -119,7 +178,7 @@ export function CloneDialog({ view, run, onDone }: { view: EpisodeView; run: Run
       }}
     >
       <h2 id="ep-clone-title">Clone your voice</h2>
-      <p>Record or upload a sample to narrate this episode’s unrecorded lines.</p>
+      <p>Record or upload a sample. The cloned voice is saved to this channel and selected for this episode.</p>
       <form
         className="ep-clone"
         onSubmit={(e) => {

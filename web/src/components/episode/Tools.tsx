@@ -16,7 +16,7 @@ import { turning, type Run } from "./Ask";
 import { pickLabel } from "./models";
 import { WRITERS } from "./Film";
 import { againCost } from "./Picture";
-import { CloneDialog, NarratorVoice } from "./Voice";
+import { ChannelVoices, CloneDialog, NarratorVoice } from "./Voice";
 
 type Props = { view: EpisodeView; run: Run; busy: boolean };
 
@@ -67,14 +67,18 @@ function VoiceTool({ view, run, busy }: Props) {
   const presenterOff = view.settings.presenter === "off";
   const narrator = view.options.narrator.ready;
   const voice = view.settings.voice;
-  const clone = view.settings.cloned_voice;
-  const usingClone = voice === "narrator" && !!clone && clone.id === view.settings.narrator?.id;
+  const clones = view.channel_voices ?? (view.settings.cloned_voice ? [view.settings.cloned_voice] : []);
+  const picked = clones.find(clone => clone.id === view.settings.narrator?.id);
+  const clone = picked ?? clones.at(-1);
+  const usingClone = voice === "narrator" && !!picked;
   const [upload, setUpload] = useState(false);
   const value = voiceName(view.settings);
   return (
     <>
       <Tool icon={AudioLines} label="Voice" value={value} width={380}>
-        {(close) => (
+        {(close) => {
+          const add = () => { close(); setUpload(true); };
+          return (
           <>
             <Options
               label="Voice"
@@ -83,9 +87,9 @@ function VoiceTool({ view, run, busy }: Props) {
               onChange={(v) => {
                 if (v === "clone") {
                   if (clone) void choose(view, run, { voice: "narrator", narrator: clone });
-                  else { close(); setUpload(true); }
+                  else add();
                 } else {
-                  const reset = v === "narrator" && clone && clone.id === view.settings.narrator?.id;
+                  const reset = v === "narrator" && picked;
                   void choose(view, run, { voice: v, ...(reset ? { narrator: null } : {}) });
                 }
               }}
@@ -103,23 +107,16 @@ function VoiceTool({ view, run, busy }: Props) {
                 { value: "clone", label: "Cloned voice", note: clone ? clone.name : narrator ? "Record or upload a voice sample." : "Set up ElevenLabs to add a voice sample.", disabled: !narrator },
               ]}
             />
-            {usingClone && (
-              <button
-                className="linkish"
-                type="button"
-                disabled={!narrator || busy}
-                onClick={() => {
-                  close();
-                  setUpload(true);
-                }}
-              >
-                Replace cloned voice
-              </button>
-            )}
-            {usingClone && clone?.verify && <small>Verify this voice in ElevenLabs before using it for narration.</small>}
             {voice === "narrator" && !usingClone && narrator && <NarratorVoice view={view} run={run} busy={busy} />}
+            {narrator && <ChannelVoices view={view} voices={clones} selected={usingClone ? picked : undefined}
+              busy={busy} onAdd={add}
+              onSelect={id => {
+                const next = clones.find(clone => clone.id === id);
+                if (next) void choose(view, run, { voice: "narrator", narrator: { id: next.id, name: next.name } });
+              }} />}
           </>
-        )}
+          );
+        }}
       </Tool>
       {upload && <CloneDialog view={view} run={run} onDone={() => setUpload(false)} />}
     </>

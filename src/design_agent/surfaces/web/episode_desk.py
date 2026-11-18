@@ -542,12 +542,14 @@ class EpisodeDesk:
             frame = self.store.thread(frame_id)
             if frame is None or self.store.research(frame_id) is None:
                 raise KeyError(frame_id)
+            self._channel_narrator(chosen, str(frame["channel_id"]))
             notes = self.host.research.notes_markdown(frame_id)
             if not notes:
                 raise ValueError("Keep a note from the research first: an episode starts there.")
             material.insert(0, notes)
             thread = frame
         else:
+            self._channel_narrator(chosen, channel_id)
             for file_id in file_ids:
                 row = self.store.file(file_id)
                 if row is not None and str(row["name"]).lower().endswith(TEXT_FILES):
@@ -698,6 +700,20 @@ class EpisodeDesk:
         if episode is None:
             raise KeyError(episode_id)
         return episode
+
+    def _channel_of(self, episode: Row) -> str:
+        thread = self.store.thread(str(episode["thread_id"]))
+        if not thread:
+            raise KeyError(episode["thread_id"])
+        return str(thread["channel_id"])
+
+    def _channel_narrator(self, settings: Row, channel_id: str) -> None:
+        narrator = settings.get("narrator")
+        if not narrator or not (voice := self.store.voice_clone(narrator["id"])):
+            return
+        if voice["channel_id"] != channel_id:
+            raise ValueError("That cloned voice belongs to another channel.")
+        settings["narrator"] = self._clone_pick(voice)
 
     def _merged(self, episode: Row) -> Row:
         """The writer's plan under the classifier's labels, with what the person chose for the
@@ -1405,6 +1421,8 @@ class EpisodeDesk:
             raise ValueError("The plan is being written. Pick again when it has landed.")
         before = dict(episode["settings"])
         chosen = self._settings(change.get("settings") or {}, before)
+        if (change.get("settings") or {}).get("narrator"):
+            self._channel_narrator(chosen, self._channel_of(episode))
         picks: Row = {
             "units": dict((episode["picks"] or {}).get("units", {})),
             "chapters": dict((episode["picks"] or {}).get("chapters", {})),
@@ -3279,6 +3297,7 @@ class EpisodeDesk:
                 raise ValueError(found)
             heard = self._listed = (time.monotonic(), found)
         usual = str(self.host.settings.narrator_voice_id or "")
+        channel_clones = self.store.voice_clone_ids()
         rows = [
             {
                 "id": v.id,
@@ -3288,11 +3307,69 @@ class EpisodeDesk:
                 **({"preview": v.preview} if v.preview else {}),
             }
             for v in heard[1]
+            if v.id not in channel_clones
         ]
-        if usual and not any(row["usual"] for row in rows):
+        if usual and usual not in channel_clones and not any(row["usual"] for row in rows):
             # a voice from ElevenLabs' library, used by its id without being kept in the account
             rows.insert(0, {"id": usual, "name": "The house's voice", "own": False, "usual": True})
         return {"voices": rows}
+
+    @staticmethod
+    def _clone_pick(voice: Row) -> Row:
+        pick = {"id": voice["id"], "name": voice["name"]}
+        if voice.get("verify"):
+            pick["verify"] = True
+        return pick
+
+    @staticmethod
+    def _voice_preview_url(episode_id: str, voice_id: str) -> str:
+        return f"/api/episodes/{episode_id}/voice/{voice_id}/preview"
+
+    def _channel_voice(self, episode: Row, voice_id: str) -> Row:
+        voice = self.store.voice_clone(voice_id)
+        if not voice or voice["channel_id"] != self._channel_of(episode):
+            raise KeyError(voice_id)
+        return voice
+
+    def _voice_audio(self, voice: Row) -> Path | None:
+        file = self.store.file(voice["preview_file"]) if voice["preview_file"] else None
+        if file:
+            path = (self.host.files_dir / str(file["rel_path"])).resolve()
+            if self.host.files_dir.resolve() in path.parents and path.is_file():
+                return path
+        return None
+
+    def channel_voice_audio(self, episode_id: str, voice_id: str) -> Path:
+        path = self._voice_audio(self._channel_voice(self._episode(episode_id), voice_id))
+        if path is None:
+            raise KeyError(voice_id)
+        return path
+
+    async def preview_channel_voice(self, episode_id: str, voice_id: str) -> Row:
+        """Generate one reusable sample on request for a voice saved in the episode's channel."""
+        episode = self._episode(episode_id)
+        self._channel_voice(episode, voice_id)
+        gate = self._gates.setdefault(f"voice-preview:{voice_id}", asyncio.Semaphore(1))
+        async with gate:
+            voice = self._channel_voice(episode, voice_id)
+            if self._voice_audio(voice) is None:
+                from design_agent.tools.media import MediaKeys, speak
+
+                said = await speak(
+                    MediaKeys.from_settings(self.host.settings),
+                    "Here’s how this voice sounds. A clear explanation starts with one good question.",
+                    voice_id,
+                )
+                if isinstance(said, str):
+                    raise ValueError(said)
+                file = self.host.save_file(
+                    str(episode["thread_id"]),
+                    f"voice-preview-{voice_id}.mp3",
+                    said.audio,
+                    origin="episode",
+                )
+                self.store.save_voice_preview(voice_id, str(file["id"]))
+        return {"url": self._voice_preview_url(episode_id, voice_id)}
 
     def _samples(self, episode_id: str) -> tuple[list[tuple[str, bytes]], float]:
         """The sound of the takes a person kept, oldest first, until there is as much speech
@@ -3326,6 +3403,7 @@ class EpisodeDesk:
         name and its bytes). The recordings leave this computer and a voice is a person's own,
         so each time the person says it is theirs to clone, and the thread keeps that they did."""
         episode = self._episode(episode_id)
+        channel_id = self._channel_of(episode)
         if not self._speaks():
             raise ValueError("Cloning a voice needs ELEVENLABS_API_KEY.")
         if not consent:
@@ -3355,6 +3433,7 @@ class EpisodeDesk:
         if made.verify:
             # ElevenLabs wants the speaker verified on its own site before the voice speaks
             picked["verify"] = True
+        self.store.add_voice_clone(channel_id, picked)
         episode = self._episode(episode_id)
         self.store.update_episode(
             episode_id,
@@ -3822,6 +3901,19 @@ class EpisodeDesk:
                 "textures": picture.TEXTURES,
             },
             "channel_id": thread["channel_id"] if thread else "",
+            "channel_voices": [
+                {
+                    **self._clone_pick(voice),
+                    **(
+                        {"preview": self._voice_preview_url(episode_id, voice["id"])}
+                        if voice["preview_file"]
+                        else {}
+                    ),
+                }
+                for voice in self.store.channel_voice_clones(str(thread["channel_id"]))
+            ]
+            if thread
+            else [],
             "settings": episode["settings"],
             "steps": [{"id": key, "label": label} for key, label in STEPS],
             "plan": full,

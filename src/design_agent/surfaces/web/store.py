@@ -107,6 +107,19 @@ CREATE TABLE IF NOT EXISTS episodes (
   film TEXT NOT NULL DEFAULT '{}', approved INTEGER NOT NULL DEFAULT 0,
   started_by TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS episodes_by_thread ON episodes(thread_id, created_at);
+CREATE TABLE IF NOT EXISTS channel_voice_clones (
+  id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, name TEXT NOT NULL,
+  verify INTEGER NOT NULL DEFAULT 0, preview_file TEXT NOT NULL DEFAULT '',
+  created_at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS voice_clones_by_channel
+  ON channel_voice_clones(channel_id, created_at);
+INSERT OR IGNORE INTO channel_voice_clones (id, channel_id, name, verify, created_at)
+  SELECT json_extract(e.settings, '$.cloned_voice.id'), t.channel_id,
+         COALESCE(json_extract(e.settings, '$.cloned_voice.name'), 'Cloned voice'),
+         COALESCE(json_extract(e.settings, '$.cloned_voice.verify'), 0), e.updated_at
+  FROM episodes e JOIN threads t ON t.id = e.thread_id
+  WHERE json_extract(e.settings, '$.cloned_voice.id') IS NOT NULL
+  ORDER BY e.updated_at;
 CREATE TABLE IF NOT EXISTS pictures (
   id TEXT PRIMARY KEY, episode_id TEXT NOT NULL, unit TEXT NOT NULL, sig TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL, html TEXT NOT NULL DEFAULT '', stills TEXT NOT NULL DEFAULT '{}',
@@ -646,6 +659,27 @@ class Store:
     def update_episode(self, episode_id: str, **values: Any) -> Row | None:
         self._update("episodes", episode_id, {**values, "updated_at": time.time()})
         return self.episode(episode_id)
+
+    def voice_clone(self, voice_id: str) -> Row | None:
+        return self._one("SELECT * FROM channel_voice_clones WHERE id = ?", (voice_id,))
+
+    def channel_voice_clones(self, channel_id: str) -> list[Row]:
+        return self._all(
+            "SELECT * FROM channel_voice_clones WHERE channel_id = ? ORDER BY created_at, id",
+            (channel_id,),
+        )
+
+    def voice_clone_ids(self) -> set[str]:
+        return {str(row["id"]) for row in self._all("SELECT id FROM channel_voice_clones")}
+
+    def add_voice_clone(self, channel_id: str, voice: Row) -> None:
+        self._insert(
+            "channel_voice_clones",
+            {**voice, "channel_id": channel_id, "created_at": time.time()},
+        )
+
+    def save_voice_preview(self, voice_id: str, file_id: str) -> None:
+        self._update("channel_voice_clones", voice_id, {"preview_file": file_id, "verify": 0})
 
     def picture(self, episode_id: str, unit: str) -> Row | None:
         return self._one(
