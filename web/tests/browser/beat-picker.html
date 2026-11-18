@@ -6,7 +6,7 @@
   import { GenerationSettings } from '/src/components/episode/GenerationSettings.tsx';
   import '/src/app.css';
   const unit = {id:'beat', builder:'codex', builder_pick:'codex', picture:{}, model_pick:{model:'adjustable', effort:'medium'}};
-  const view = {id:'fixture', options:{picture_writers:[{id:'codex', ready:true}], generation_models:{codex:[
+  const view = {id:'fixture', settings:{writer:'codex'}, options:{picture_writers:[{id:'codex', ready:true}], generation_models:{codex:[
     {id:'adjustable', name:'Adjustable', efforts:['low','medium','high']}, {id:'fixed', name:'Fixed', efforts:[]}
   ]}}};
   createRoot(document.querySelector('#root')).render(React.createElement(GenerationSettings, {view, unit, run: async action => { await action(); return true; }}));

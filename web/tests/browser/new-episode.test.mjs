@@ -17,6 +17,7 @@ test("new episodes submit the chosen narration and respect host availability", a
   await page.route("**/api/episodes/options", route => route.fulfill({json: {
     seconds: {usual: [300, 420], least: 240, most: 600, gap: 30}, themes: [],
     writers: [{ id: "demo", ready: true, title: "HTTP caching sample" }, { id: "codex", ready: writerReady, title: "Codex" }],
+    generation_models: { codex: [{ id: "", name: "CLI default", efforts: [] }] },
     local_narrator: available, narrator: { ready: available },
   }}));
   await page.route("**/api/channels/test/episodes", route => route.fulfill({json: {id: "sample"}}));
