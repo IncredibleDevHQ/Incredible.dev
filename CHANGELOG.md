@@ -161,10 +161,11 @@
     film beside it: pointing at a line shows its frame, and a chapter opens at the line picked.
     A chapter's page has its script as a block per picture and per run said to camera, and the
     frame for the picked line, which opens full screen with its choices and the recorder. The
-    film's look, voice and pictures' level are buttons in the bar over every page, each saying
-    what is chosen, beside the film's agent; the look is picked from cards of the frames each
-    look is made of, the rendered film is downloaded from the bar, and light or dark is
-    switched there as in the sidebar (each switch hears the other). A picture's
+    film's voice and pictures' level are buttons in the bar over every page, each saying what
+    is chosen, beside the film's agent; the look is picked when the episode is started (each
+    line's layout is the planner's, and another is picked on the line), the rendered film is
+    downloaded from the bar, and light or dark is switched there as in the sidebar (each
+    switch hears the other). A picture's
     kind and its way in are picked from tiles that draw each kind and play each move as the film
     makes it, with one line saying what the one pointed at is.
   - A take is recorded as the camera and the microphone give it: no echo cancelling, one

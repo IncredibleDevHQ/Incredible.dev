@@ -7,7 +7,7 @@ import { portraits, portraitUrl } from "./portraits";
 import { BackgroundSettings } from "./BackgroundSettings";
 import { Palette, Settings2, Blend, LayoutTemplate, ListOrdered, Shapes, type LucideIcon } from "lucide-react";
 import { api, type EpisodeChapter, type EpisodeChoices, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Presence } from "../../api";
-import { allLines, LAYOUTS, LEVEL_NAMES, linesIn, LOOKS, MOVES, PICTURES, pictureWords, TRANSITIONS } from "../../episode";
+import { allLines, LAYOUTS, LEVEL_NAMES, linesIn, MOVES, PICTURES, pictureWords, TRANSITIONS } from "../../episode";
 import { ComponentFields, SettingsForm } from "./GenerationSettings";
 import { Tooltip } from "../Tooltip";
 import type { Run } from "./Ask";
@@ -36,7 +36,6 @@ type Props = {
   unit?: EpisodeUnit;
   run: Run;
   busy: boolean;
-  onFilm: () => void;
   onAskPicture: () => void;
   draftSize: number | null;
   onDraftSize: (value: number | null) => void;
@@ -60,10 +59,10 @@ function OtherSettings({ view, unit, busy, run }: Props) {
 
 const choosing = (view: EpisodeView, run: Run) => (body: EpisodeChoices) => run(() => api.chooseEpisode(view.id, body));
 
-// The look's layouts, you first, then you with a picture, then the picture alone; one pick sets
-// who has the frame and how. The line's own layout is always among them, even one the look no
-// longer has.
-function LayoutPanel({ view, chapter, line, unit, run, busy, onFilm, draftSize, onDraftSize }: Props) {
+// The look's layouts, you first, then you with a picture, then the picture alone: the planner
+// picked one for the line, and one pick here sets who has the frame and how. The line's own
+// layout is always among them, even one the look does not have.
+function LayoutPanel({ view, chapter, line, unit, run, busy, draftSize, onDraftSize }: Props) {
   const presenterOff = view.settings.presenter === "off";
   const theme = view.options.themes.find((t) => t.id === view.settings.theme);
   const choose = choosing(view, run);
@@ -181,14 +180,6 @@ function LayoutPanel({ view, chapter, line, unit, run, busy, onFilm, draftSize, 
           )}
         </p>
       )}
-      <footer>
-        <span>
-          {LOOKS[theme?.id ?? ""] ?? "Look"} · {view.settings.voice === "local" ? "local narrator" : view.settings.voice === "narrator" ? "narrator" : "your voice"}
-        </span>
-        <button type="button" className="linkish" onClick={onFilm}>
-          Change
-        </button>
-      </footer>
     </>
   );
 }

@@ -792,11 +792,12 @@ app's canvas, from a channel's material or a research frame's notes.
   draft, else its words alone at the plan's pace. The Script switch (C) shows the line's words
   over the frame, in time with what plays (the words said, the one being said, the ones to
   come); it is kept on that computer. The bar over every page holds the film's own
-  choices, each a button that says what is chosen: its look (each drawn as the frames it is
-  made of), its voice, its pictures' level and its agent; beside them stand where the pictures
-  are, once the film is rendered its file, and light or dark (the same switch as the
-  sidebar's, which the studio covers). One pick of a frame from the look's layouts
-  sets who has the frame and how; it is the line's own until it is widened, in one click, to
+  choices, each a button that says what is chosen: its voice, its pictures' level and its
+  agent; beside them stand where the pictures are, once the film is rendered its file, and
+  light or dark (the same switch as the sidebar's, which the studio covers). The look is
+  picked when the episode is started and is not offered again: the planner picks each line's
+  frame from the look's layouts, and one pick of another sets who has the frame and how; it
+  is the line's own until it is widened, in one click, to
   the picture's other lines, the chapter or the film. The line that brings a picture in may be
   given another kind of picture and another way in (a cut, a push, a crossfade, a zoom),
   picked from tiles that draw
@@ -818,7 +819,7 @@ app's canvas, from a channel's material or a research frame's notes.
   recorded. A picture is made when a person asks for it: one from its block, a chapter's
   together by asking to record the chapter, or the whole film's from the bar.
 - **Picks are free to try; nothing runs until it is applied.** A pick (a frame, a layout for the
-  chapter or the film, a kind of picture, the look, a level, an agent) changes the plan and the
+  chapter or the film, a kind of picture, a level, an agent) changes the plan and the
   preview at once and starts no agent (a made picture's level is the one pick that asks first,
   and its yes is the apply: see Simple and motion graphics). A picture made before it is out of date: it keeps its
   still and says so on its block, its slide and the pictures pill, and a pick taken back makes it
@@ -968,7 +969,7 @@ app's canvas, from a channel's material or a research frame's notes.
 - The delivered episode card on the canvas opens playback from a thumbnail and provides an
   Edit episode action. Each render captures a poster from a picture scene when available.
   Older exports use existing picture artwork when available.
-- **Video backgrounds.** Look and the editor’s Background tab offer a brand or custom color and solid, dot, grid, or
+- **Video backgrounds.** The editor’s Cover tab offers a brand or custom color and solid, dot, grid, or
   diagonal textures. The choice belongs to the episode and travels with its picture briefs,
   stills, and film cards. Saving a background marks affected pictures for regeneration.
   Diagrams use distinct silhouettes for participants, including browsers, servers, storage,

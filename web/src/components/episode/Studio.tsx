@@ -908,7 +908,6 @@ function Chapter({
               unit={unit}
               run={run}
               busy={busy || working}
-              onFilm={() => onAt(FILM)}
               onAskPicture={() => {
                 askAfter.current = true;
                 toggleEditor(false);

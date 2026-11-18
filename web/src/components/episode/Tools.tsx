@@ -1,13 +1,14 @@
-// The film's own choices, in the bar so they are at hand on every page: how it looks, whose voice
-// says it, how its pictures are made, and which agent works on it. Each is free to try: a choice
-// that changes how pictures are drawn puts the made ones out of date and runs nothing; the person
-// applies their changes when they have settled them. Each button says what is chosen and opens the choice
-// under it. A look is shown by the frames it is made of; one that would redraw pictures already
-// made asks first. The film, once rendered, is downloaded from the bar too.
-import { AudioLines, Bot, ChevronDown, Download, LayoutTemplate, Shapes, Sparkles, TriangleAlert, type LucideIcon } from "lucide-react";
+// The film's own choices, in the bar so they are at hand on every page: whose voice says it, how
+// its pictures are made, and which agent works on it. Each is free to try: a choice that changes
+// how pictures are drawn puts the made ones out of date and runs nothing; the person applies their
+// changes when they have settled them. Each button says what is chosen and opens the choice under
+// it. The film's look has no button here: the planner picks each line's layout from it, and the
+// person picks another on the line (Choices.tsx). The film, once rendered, is downloaded from the
+// bar too.
+import { AudioLines, Bot, ChevronDown, Download, Shapes, Sparkles, TriangleAlert, type LucideIcon } from "lucide-react";
 import { useId, useRef, useState, type ReactNode } from "react";
 import { api, type EpisodeChoices, type EpisodeUnit, type EpisodeView } from "../../api";
-import { keepWriter, LEVEL_NAMES, linesOf, LOOKS, pictureCount, PICTURES, pictureState, voiceName } from "../../episode";
+import { keepWriter, LEVEL_NAMES, linesOf, pictureCount, PICTURES, pictureState, voiceName } from "../../episode";
 import { Popover } from "../Popover";
 import { Tooltip } from "../Tooltip";
 import { AgentModel, offersPicks } from "./AgentModel";
@@ -15,7 +16,6 @@ import { turning, type Run } from "./Ask";
 import { pickLabel } from "./models";
 import { WRITERS } from "./Film";
 import { againCost } from "./Picture";
-import { LayoutThumb } from "./Stage";
 import { CloneDialog, NarratorVoice } from "./Voice";
 
 type Props = { view: EpisodeView; run: Run; busy: boolean };
@@ -23,7 +23,6 @@ type Props = { view: EpisodeView; run: Run; busy: boolean };
 export function FilmTools({ view, run, busy }: Props) {
   return (
     <div className="ep-tools" role="group" aria-label="The film's choices">
-      <LookTool view={view} run={run} busy={busy} />
       <VoiceTool view={view} run={run} busy={busy} />
       <PicturesTool view={view} run={run} busy={busy} />
       <AgentTool view={view} run={run} busy={busy} />
@@ -51,44 +50,6 @@ function Tool({ icon: Icon, label, value, width, children }: { icon: LucideIcon;
 }
 
 const choose = (view: EpisodeView, run: Run, settings: EpisodeChoices["settings"]) => run(() => api.chooseEpisode(view.id, { settings }));
-
-// The looks the film can wear, each drawn as the frames it is made of: the one it is named for,
-// large, and the next ones it uses beside it.
-function LookTool({ view, run, busy }: Props) {
-  const presenterOff = view.settings.presenter === "off";
-  const looks = view.options.themes.filter((t) => (t.presenter === "off") === presenterOff);
-  const now = view.options.themes.find((t) => t.id === view.settings.theme);
-  const made = asked(view);
-  return (
-    <Tool icon={LayoutTemplate} label="Look" value={LOOKS[view.settings.theme] ?? now?.name ?? "None"} width={520}>
-      {() => (
-        <>
-          <div className="ep-look-cards">
-            {looks.map((t) => {
-              const [usual] = t.kit;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  className="ep-look-card"
-                  aria-pressed={view.settings.theme === t.id}
-                  disabled={busy}
-                  onClick={() => t.id !== view.settings.theme && void choose(view, run, { theme: t.id })}
-                >
-                  {usual && <LayoutThumb view={view} layout={usual.layout} />}
-                  <b>{LOOKS[t.id] ?? t.name}</b>
-                  <small>{t.stage}</small>
-                </button>
-              );
-            })}
-          </div>
-
-          {made > 0 && <Untouched />}
-        </>
-      )}
-    </Tool>
-  );
-}
 
 // Pictures asked for already: a pick puts them out of date, and nothing more until it is applied.
 const asked = (view: EpisodeView) => {

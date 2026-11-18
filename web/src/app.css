@@ -1145,22 +1145,6 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-looks button { height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--ink-2); font-size: 13px; }
 .ep-looks button:hover:not(:disabled) { border-color: var(--line-strong); }
 .ep-looks button[aria-pressed="true"] { background: var(--green-soft); border-color: var(--green); color: var(--green); font-weight: 600; }
-/* the film's look, shown by the frames it is made of: the one it is named for, then the next ones */
-.ui-pop.ep-tool-pop:has(.ep-look-cards) { max-height: min(64dvh, 480px); }
-.ep-look-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.ep-look-card { display: grid; gap: 6px; align-content: start; padding: 7px 7px 10px; border: 1px solid var(--line-soft); border-radius: 12px; background: none; color: var(--ink-2); text-align: left; transition: border-color 140ms ease, box-shadow 140ms ease; }
-.ep-look-card:hover:not(:disabled) { border-color: var(--line-strong); }
-.ep-look-card[aria-pressed="true"] { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); color: var(--ink); }
-.ep-look-card:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
-.ep-look-card > .ep-thumb { width: min(100%, 92px); }
-.ep-look-background { margin-top: 12px; border-top: 1px solid var(--line-soft); }
-.ep-look-background summary { padding: 10px 0 0; cursor: pointer; font-weight: 600; }
-.ep-look-background .ep-background { margin-top: 6px; border: 0; }
-.ep-look-background .ep-background legend { position: absolute; clip-path: inset(50%); }
-.ep-look-card b { padding: 2px 3px 0; font-size: 13px; font-weight: 650; }
-.ep-look-card[aria-pressed="true"] b { color: var(--green); }
-.ep-look-card small { padding: 0 3px; color: var(--muted); font-size: 12px; line-height: 1.4; }
-.ep-look-card small::first-letter { text-transform: uppercase; }
 /* one of a few, each said in a line */
 .ep-options { display: grid; gap: 6px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .ep-options label { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 10px; cursor: pointer; transition: border-color 140ms ease, background 140ms ease; }
