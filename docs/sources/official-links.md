@@ -28,9 +28,10 @@ Confirm each URL still resolves when you move a pin forward; the docs site renam
   <https://github.com/heygen-com/hyperframes/releases> · adopters list `ADOPTERS.md`
 - Agent skills: `npx skills add heygen-com/hyperframes` (standalone) or the HyperFrames plugin;
   update with `npx hyperframes skills update`.
-- CLI at the pinned 0.8.169 (verified with `--help` in the sandbox): `hyperframes init | lint |
-  check | snapshot | preview | render --quality draft|looks|delivery --output <file>`; `validate`,
-  `inspect` and `layout` are deprecated aliases of `check`.
+- CLI at the pinned 0.9.64 (verified with `--help` in the sandbox): `hyperframes init | lint |
+  check | snapshot | keyframes | preview | render --quality draft|looks|delivery --output <file>`.
+  `check` runs lint, runtime validation and layout inspection as one gate, and since 0.9 a craft
+  pass too (a stretch with nothing changing, a line too brief to read, type under the floor).
 - Studio (desktop preview app): <https://hyperframes.dev/studio/download>
 
 ## Models and tool disclosure

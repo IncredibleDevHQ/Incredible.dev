@@ -14,7 +14,7 @@
  *
  * Everything here is a pure function of its arguments: no clock, no randomness (seeded() is a hash),
  * no timers. Tweens are added to the timeline you pass, never played on their own, so video-gate
- * passes. Animate children of a `.clip`, never the clip itself (hyperframes-core).
+ * passes. Animate children of a `.clip`, never the clip itself (hyperframes, the contract).
  */
 (function (root) {
   "use strict";

@@ -22,7 +22,7 @@ ever enters the sandbox.
 
 ## Pinning
 
-- The CLI is pinned in `sandbox/render/package.json` (0.8.169) and installed from a lockfile embedded
+- The CLI is pinned in `sandbox/render/package.json` (0.9.64) and installed from a lockfile embedded
   in `sandbox/setup.sh`; Chrome Headless Shell and the other binaries are pinned by checksum.
 - Upstream agent skills are vendored unmodified at the matching release commit into `skills/`, with
   a per-file `sha256` in `skills-lock.json` that CI verifies. Upstream assets without a recorded

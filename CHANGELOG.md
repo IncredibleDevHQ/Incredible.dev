@@ -250,7 +250,7 @@
   an exact-id model capability registry (Claude Opus 5.5 by default, direct providers, optional
   LangSmith Gateway).
 - The designer's computer: a pinned, checksum-verified sandbox recipe (Chrome Headless Shell,
-  ffmpeg, HyperFrames 0.8.169, sharp, ECharts, D2, open fonts) shared by MDA's bake, the published
+  ffmpeg, HyperFrames 0.9.64, sharp, ECharts, D2, open fonts) shared by MDA's bake, the published
   snapshot, the local Docker runner and CI, with a build-time probe.
 - A per-thread Docker sandbox runner (no network, dropped capabilities, unprivileged agent user,
   read-only staged brand and gates) and LangSmith Sandboxes from a published snapshot.
@@ -260,8 +260,11 @@
 - Delivery through `upload_files` on every runtime with an exactly-once `DELIVERY.json` ledger.
 - Host media tools (OpenAI images with a measured alpha report, ElevenLabs voice, effects and
   music, local or Groq transcription) and an SSRF-hardened `fetch_asset`; keys stay on the host.
-- HyperFrames skills vendored unmodified at the v0.8.169 release commit with a per-file
-  `skills-lock.json`; third-party assets without recorded licenses are left out.
+- HyperFrames skills vendored unmodified at the v0.9.64 release commit with a per-file
+  `skills-lock.json`; third-party assets without recorded licenses are left out. Since v0.8.170
+  upstream is one `hyperframes` skill (story, spec, look, motion, film, review and a page per
+  kind of video) beside its CLI, registry and media skills; the workflow and domain skills it
+  replaced are no longer vendored.
 - An offline demo through the real graph with a scripted model, and `doctor`.
 - A 4-second HyperFrames teaser in the offline demo, gated by `video-gate` and `hyperframes check`
   and measured by `artifact-contract`; render smoke for HyperFrames (lint, check, snapshot, render)

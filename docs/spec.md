@@ -592,7 +592,7 @@ See [HyperFrames](partners/hyperframes.md). Summary:
 | `film-breakdown` | measure a film: cuts, contact sheets, motion energy, beat grid, audio |
 | `reference-study` | study a user-supplied reference frame by frame, write a teardown to `workspace/references/`, propose observations or skill edits for a person to approve |
 | `sound` | voice, music, effects, mixing and mastering |
-| vendored HyperFrames skills | composition authoring, CLI, animation, creative, media, registry, slideshow, website-to-video, PR-to-video, music-to-video, captions, overlays, explainer, general video, Remotion porting |
+| vendored HyperFrames skills | one `hyperframes` skill (the render contract, story, spec, look, motion, film, review, captions, overlays and a page per kind of video), its CLI, the registry, media, slideshow, Remotion porting |
 
 ### 11.2 Principles the skills must encode
 

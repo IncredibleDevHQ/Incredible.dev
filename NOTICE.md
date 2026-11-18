@@ -22,7 +22,7 @@ that code's MIT notice is preserved in [licenses/managed-deepagents-sdk-MIT.txt]
 
 | Component | Where | License |
 | --- | --- | --- |
-| HyperFrames agent skills (HeyGen), vendored unmodified at release v0.8.169 | `skills/` entries listed in `skills-lock.json` | Apache-2.0, [licenses/hyperframes-LICENSE.txt](licenses/hyperframes-LICENSE.txt) |
+| HyperFrames agent skills (HeyGen), vendored unmodified at release v0.9.64 | `skills/` entries listed in `skills-lock.json` | Apache-2.0, [licenses/hyperframes-LICENSE.txt](licenses/hyperframes-LICENSE.txt) |
 | LangSmith agent skills (LangChain), vendored unmodified at commit 1fb52e836f2d | `skills/langsmith-trace`, `.agents/skills/langsmith-dataset`, `.agents/skills/langsmith-evaluator` | MIT, [licenses/langsmith-skills-LICENSE.txt](licenses/langsmith-skills-LICENSE.txt) |
 | Deep Agents agent skills (LangChain), vendored unmodified at commit 16a992f09ab3 | `.agents/skills/deep-agents-*` | MIT, [licenses/langchain-skills-LICENSE.txt](licenses/langchain-skills-LICENSE.txt) |
 | affectUI free items: Select (adapted to open on hover), Text Field, Text Area, Thinking Loader, Segmented Control, Tooltip, Popover, Kbd and Shimmer Loader (as they come), Progress Tracker (adapted to follow work as it happens), each in the house's colours | `web/src/components/Select.tsx`, `TextField.tsx`, `TextArea.tsx`, `ThinkingLoader.tsx`, `SegmentedControl.tsx`, `Tooltip.tsx`, `Popover.tsx`, `Kbd.tsx`, `Shimmer.tsx`, `ProgressTracker.tsx` | MIT, [licenses/affectui-MIT.txt](licenses/affectui-MIT.txt) |

@@ -215,7 +215,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         "Captions",
         "Captions on a talking-head clip",
         "captions on a talking-head video",
-        "embedded-captions",
+        "hyperframes",
         "",
         "video",
         ("video",),

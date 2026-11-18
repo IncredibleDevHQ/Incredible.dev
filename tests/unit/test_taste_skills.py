@@ -141,8 +141,12 @@ def script_basenames() -> frozenset[str]:
 @cache
 def cli_commands() -> frozenset[str]:
     cli = ROOT / "skills" / "hyperframes-cli"
+    # upstream teaches `add` and `catalog` in its registry skill and the rest in its CLI skill
+    taught = [cli, ROOT / "skills" / "hyperframes-registry"]
     text = "\n".join(
-        _text(p) for p in [cli / "SKILL.md", *sorted((cli / "references").glob("*.md"))]
+        _text(p)
+        for skill in taught
+        for p in [skill / "SKILL.md", *sorted((skill / "references").glob("*.md"))]
     )
     commands = set(re.findall(r"\bhyperframes ([a-z][a-z-]*)", text))
     description = FRONTMATTER.match(_text(cli / "SKILL.md"))

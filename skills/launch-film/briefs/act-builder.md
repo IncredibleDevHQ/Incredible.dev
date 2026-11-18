@@ -53,7 +53,7 @@ follow the brand pack and log it.
 - Work dir (WD): /workspace/projects/{{slug}}/. Every file you create lives here. Run the hyperframes CLI from WD;
   the gates in /workspace/tools take paths relative to /workspace (projects/{{slug}}/...).
 - How to build: /skills/motion-direction/SKILL.md and its references (craft.md, techniques.md,
-  brand-in-motion.md); the HyperFrames contract in /skills/hyperframes-core/SKILL.md (sub-compositions: styles and
+  brand-in-motion.md); the HyperFrames contract in /skills/hyperframes/SKILL.md (sub-compositions: styles and
   scripts inside the <template>); the CLI in /skills/hyperframes-cli/SKILL.md.
 - The film contract: one paused timeline per composition, seek-driven; no Math.random (use a seeded hash), no
   clock, no timers, no CSS animation; callbacks write state derived from their time. `video-gate` checks it.
