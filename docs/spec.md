@@ -859,10 +859,24 @@ app's canvas, from a channel's material or a research frame's notes.
   Switching a picture not made yet only sets how it will be made; switching a made one asks
   first, listing the stages to come (the go among them, as the person's), what it costs and
   the agent that will make it. Start redraws it at the chosen level.
-- **Which agent works** is set for the film in the bar. The beat's model picker saves its
-  provider, model and effort. Draw it again and retry use that saved choice. Beats without
-  an override inherit the chapter's saved provider, or the film's agent. Each agent draws
-  its pictures a few at a time. A new episode starts with the agent picked last on that computer.
+- **Which agent works** is set for the film in the bar, with the model it runs on and how
+  hard it thinks: the film's agent writes the changes asked for and draws every picture
+  without a pick of its own. The beat's model picker saves its provider, model and effort.
+  Draw it again and retry use that saved choice. Beats without an override inherit the
+  chapter's saved provider, or the film's agent with the film's model and effort. Each agent
+  draws its pictures a few at a time. A new episode starts with the agent picked last on that
+  computer, on the model and effort picked in its sheet (the agent's own when none is).
+- **Models and efforts** are each agent's own, and only what an agent offers can be picked.
+  Kimi Code's come from its settings on this computer (`~/.kimi-code/config.toml`): every
+  model its account lists under the name Kimi gives it, newest first, with the efforts that
+  model takes, and the model and effort it starts on named as its default. A model reaches
+  Kimi Code as `--model` and an effort as `KIMI_MODEL_THINKING_EFFORT` for that run alone,
+  so its own settings stay as they are. Claude Code offers Fable, Opus, Sonnet and Haiku by
+  name with the levels its `--effort` takes (low to max; Haiku takes none). Codex and the
+  built-in agent offer the registry's models. A new model starts on its default effort. A
+  pick an agent no longer offers falls back to that agent's default and never stops the
+  studio. A made picture records the model and the effort it ran on, the default by name
+  where the agent says what it is.
 - **A take** per chapter is recorded in the browser or brought as a file (picked, or dropped
   on the chapter's frame). A chapter is said over its pictures, so it is recorded once they
   are made: asking to record one whose pictures nobody asked for yet makes them first, and
@@ -918,7 +932,9 @@ app's canvas, from a channel's material or a research frame's notes.
   takes retain their media clock. Each picture card shows its edit model. A stepped effort slider offers the levels supported by that model, starting with its default. On scripted beats
   Studio suggests a model from a ready AI provider. Confirming a provider, model and effort
   applies to future script edits on that beat’s lines and to picture and motion graphics builds.
-  The picker also shows which provider made the existing picture.
+  A made picture says what made it: the agent's mark with the model and effort, over the
+  frame in the open chapter, and on its card where that is no longer what the beat is set to
+  (the card's picker names the beat's own choice).
   A picture’s Motion graphics switch opens a confirmation beneath the switch.
   The Picture panel keeps its generation status and change request below the choices. The Others
   tab accepts custom direction. Open Studio menus retain their position when focus moves to a

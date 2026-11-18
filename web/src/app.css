@@ -2109,7 +2109,16 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-edit-picker .ui-pop__head:not(:last-child) { margin-bottom: 8px; }
 .ep-provider-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 8px; }
 .ep-edit-picker .ui-sel__label { font-size: 12px; }
-.ep-provider-used { margin: 9px 0 0; font-size: 11.5px; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere; }
+/* What a made picture was made with: its agent's mark, the model and the effort, as one quiet chip */
+.ep-made-with { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; padding: 2px 8px 2px 3px; border-radius: 999px; background: var(--wash); box-shadow: inset 0 0 0 1px var(--line-soft); color: var(--ink-2); font-size: 12px; font-weight: 500; line-height: 1.5; white-space: nowrap; }
+.ep-made-with .mark.sm, .ep-beat-trigger .mark.sm { width: 16px; height: 16px; border-radius: 5px; }
+.ep-made-with > span { overflow: hidden; text-overflow: ellipsis; }
+.ep-pop-head .ep-made-with { margin-left: 4px; }
+/* An agent's model and its effort, side by side; under the film's agent, a line on what they hold for */
+.ep-agent-model { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 10px; }
+.ep-agent-pick { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.ep-agent-pick:first-child { padding-top: 0; border-top: 0; }
+.ep-agent-pick small { color: var(--muted); font-size: 12px; line-height: 1.45; }
 .ep-provider-footer { display: flex; align-items: center; gap: 8px; margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
 .ep-provider-footer .btn { margin-left: auto; min-height: 26px; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
 @media (pointer: coarse) {

@@ -228,11 +228,14 @@ export type WriterId = HarnessId | "builtin" | "demo";
 export type Box = [number, number, number, number];
 export type LayoutSpot = { person: Box | null; picture: Box | null; person_radius: number; picture_radius: number; glass: boolean; zoom: number };
 export type PictureGeneration = {provider: string; model: string; effort: string; clip_lines?: Record<string, [number, number]>};
+export type ModelOption = { id: string; name: string; efforts: string[]; default_effort?: string; resolves?: string };
 export type PicturePick = { level?: Level; builder?: WriterId | null; component?: string | null; variant?: string | null; direction?: string; model?: string; effort?: string };
 export type EpisodeOptions = {
   components: Record<string,{purpose:string; layouts:string[]}>;
   picture_writers: {id:WriterId; title:string; ready:boolean; provider:string}[];
-  generation_models: Record<string, {id:string; name:string; efforts:string[]}[]>;
+  // What each agent can run on. The first row is the agent's own default: where the agent says
+  // which model that is and how hard it thinks unasked, the row does too.
+  generation_models: Record<string, ModelOption[]>;
   writers: { id: WriterId; title: string; ready: boolean; local: boolean }[];
   // A look, with its layouts and who has the frame in each: one picker covers both.
   themes: { id: string; name: string; presenter: "on" | "off"; stage: string; kit: { layout: string; presence: Presence }[] }[];
@@ -267,6 +270,9 @@ export type EpisodeSettings = {
   cloned_voice?: Narrator;
   level: Level;
   writer: WriterId;
+  // The model the film's agent runs on and how hard it thinks; neither is the agent's default.
+  writer_model?: string;
+  writer_effort?: string;
 };
 export type EpisodeCue = { at: string; object: string; does: string; move?: string; t?: number };
 export type EpisodeObject = { id: string; what: string; words?: string; state?: string; type?: string };
@@ -314,6 +320,8 @@ export type EpisodeUnit = {
   generation: PictureGeneration;
   builder_pick: WriterId | null;
   model_pick: {model:string; effort:string};
+  // What it is built on: its own pick, else the film's while the film's agent builds it.
+  model_now: { model: string; effort: string; from: "beat" | "film" | "" };
   id: string;
   chapter: string;
   kind: "picture" | "undesigned";

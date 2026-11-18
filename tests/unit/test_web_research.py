@@ -25,6 +25,7 @@ from design_agent.surfaces.web.research import (
     command,
     find_repos,
     parse,
+    run_env,
 )
 from design_agent.surfaces.web.research_desk import RESEARCH, ResearchDesk
 from design_agent.surfaces.web.store import AGENT_ID, CONVERSATION, Store
@@ -221,6 +222,32 @@ def test_every_agent_runs_read_only_with_the_prompt_kept_out_of_its_options(
     )
     assert kimi[kimi.index("--agent-file") + 1] == str(profile)
     assert "--prompt=-why?" in kimi and said is None
+    assert "--model" not in kimi
+
+
+def test_kimi_takes_its_model_as_an_option_and_its_effort_from_the_environment(
+    tmp_path: Path,
+) -> None:
+    profile = tmp_path / "writer.md"
+    kimi, said = command(
+        HARNESSES["kimi"],
+        "kimi",
+        repo=tmp_path,
+        prompt="why?",
+        session="",
+        profile=profile,
+        model="kimi-code/k3",
+        effort="low",
+    )
+    assert kimi[:3] == ["kimi", "--model", "kimi-code/k3"] and said is None
+    # its CLI has no option for effort: nothing of it is on the command line
+    assert "low" not in kimi and not any("effort" in part for part in kimi)
+    house = {"HOME": "/Users/k", "PATH": "/usr/bin", "KIMI_MODEL_THINKING_EFFORT": "max"}
+    assert run_env("kimi", "low", house)["KIMI_MODEL_THINKING_EFFORT"] == "low"
+    # nothing asked leaves Kimi's own setting alone, and no other agent is handed the variable
+    assert "KIMI_MODEL_THINKING_EFFORT" not in run_env("kimi", "", house)
+    assert "KIMI_MODEL_THINKING_EFFORT" not in run_env("claude", "low", house)
+    assert run_env("claude", "low", house) == clean_env(house)
 
 
 def test_an_agent_gets_none_of_the_houses_environment() -> None:

@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from design_agent.config import Settings
 from design_agent.episode import picture
 from design_agent.episode import plan as plans
-from design_agent.surfaces.web import catalog
+from design_agent.surfaces.web import catalog, episode_models
 from design_agent.surfaces.web.agent import AgentHost
 from design_agent.surfaces.web.app import create_app
 from design_agent.surfaces.web.episode_desk import EPISODE, EpisodeDesk, _changed, _shape
@@ -3122,6 +3122,103 @@ async def test_redraw_uses_the_saved_beat_provider_model_and_effort(
     assert result["status"] == "made"
     assert result["generation"]["model"] == "gpt-6.1-sol"
     assert result["generation"]["effort"] == "medium"
+
+
+async def test_the_films_agent_runs_on_the_model_and_effort_picked_for_the_film(
+    house: AgentHost,
+) -> None:
+    eid = await planned(house)
+    desk = house.episodes
+    desk._worker_called("codex")
+    # only what the agent offers is kept
+    for pick in (
+        {"writer_model": "gpt-nope"},
+        {"writer_model": "gpt-6.1-sol", "writer_effort": "minimal"},
+    ):
+        with pytest.raises(ValueError, match="supported model and effort"):
+            desk.choose(eid, by="you", change={"settings": {"writer": "codex", **pick}})
+    assert desk.view(eid)["settings"]["writer"] == DEMO
+    view = desk.choose(
+        eid,
+        by="you",
+        change={
+            "settings": {"writer": "codex", "writer_model": "gpt-6.1-sol", "writer_effort": "low"}
+        },
+    )
+    assert view["settings"]["writer_model"] == "gpt-6.1-sol"
+    assert view["settings"]["writer_effort"] == "low"
+    worker = desk._worker(desk._episode(eid))
+    assert isinstance(worker, LocalWorker)
+    assert (worker.id, worker.model, worker.effort) == ("codex", "gpt-6.1-sol", "low")
+    # the agent kept for the next film is left as it was
+    assert (desk.workers["codex"].model, desk.workers["codex"].effort) == ("", "")
+    # every picture the film's agent builds is built on it, and says so
+    mine, other = view["units"][0], view["units"][1]
+    assert mine["builder"] == "codex" and mine["model_pick"] == {"model": "", "effort": ""}
+    assert mine["model_now"] == {"model": "gpt-6.1-sol", "effort": "low", "from": "film"}
+    assert (mine["generation"]["model"], mine["generation"]["effort"]) == ("gpt-6.1-sol", "low")
+    built = desk._builder(desk._episode(eid), mine)
+    assert (built.model, built.effort) == ("gpt-6.1-sol", "low")  # type: ignore[union-attr]
+    # a picture's own pick holds over the film's, and one built by another agent takes none of it
+    view = desk.choose(
+        eid,
+        by="you",
+        change={
+            "units": {
+                mine["id"]: {"model": "gpt-6-sol", "effort": "high"},
+                other["id"]: {"builder": DEMO},
+            }
+        },
+    )
+    mine, other = view["units"][0], view["units"][1]
+    assert mine["model_now"] == {"model": "gpt-6-sol", "effort": "high", "from": "beat"}
+    assert other["builder"] == DEMO and other["model_now"]["from"] == ""
+    assert other["generation"]["model"] == "demo"
+    # a new model alone starts on its own default effort; nothing picked is the agent's default
+    view = desk.choose(eid, by="you", change={"settings": {"writer_model": "gpt-6-sol"}})
+    assert view["settings"]["writer_model"] == "gpt-6-sol"
+    assert "writer_effort" not in view["settings"]
+    view = desk.choose(eid, by="you", change={"settings": {"writer_effort": "high"}})
+    assert (view["settings"]["writer_model"], view["settings"]["writer_effort"]) == (
+        "gpt-6-sol",
+        "high",
+    )
+    view = desk.choose(
+        eid, by="you", change={"settings": {"writer_model": "", "writer_effort": ""}}
+    )
+    assert not {"writer_model", "writer_effort"} & view["settings"].keys()
+    worker = desk._worker(desk._episode(eid))
+    assert worker is desk.workers["codex"]
+    # another agent has its own models: the last one's picks go with it
+    desk.choose(eid, by="you", change={"settings": {"writer_model": "gpt-6.1-sol"}})
+    view = desk.choose(eid, by="you", change={"settings": {"writer": DEMO}})
+    assert view["settings"]["writer"] == DEMO and "writer_model" not in view["settings"]
+
+
+async def test_a_pick_the_agent_no_longer_offers_falls_back_to_its_default(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    eid = await planned(house)
+    desk = house.episodes
+    desk._worker_called("codex")
+    view = desk.choose(
+        eid,
+        by="you",
+        change={"settings": {"writer": "codex", "writer_model": "gpt-6.1-sol"}},
+    )
+    unit = view["units"][0]
+    desk.choose(eid, by="you", change={"units": {unit["id"]: {"model": "gpt-6-sol"}}})
+    # the agent's models are its own to change: these two are gone the next time it is asked
+    offered = episode_models.options
+
+    def fewer(settings: Settings, writer: str) -> list[dict[str, Any]]:
+        return [o for o in offered(settings, writer) if o["id"] not in ("gpt-6.1-sol", "gpt-6-sol")]
+
+    monkeypatch.setattr(episode_models, "options", fewer)
+    view = desk.view(eid)
+    assert all(u["model_now"] == {"model": "", "effort": "", "from": ""} for u in view["units"])
+    assert view["units"][0]["generation"]["model"] == "CLI default"
+    assert desk._worker(desk._episode(eid)) is desk.workers["codex"]
 
 
 async def test_local_chapter_preview_caches_only_its_lines_and_serializes_requests(

@@ -24,6 +24,7 @@ import { Changed } from "./Diff";
 import { WRITERS } from "./Film";
 import { BUILD, PictureTrail } from "./Work";
 import { GenerationSettings } from "./GenerationSettings";
+import { MadeWith, madeOtherwise } from "./MadeWith";
 import { KindArt } from "./PictureArt";
 
 const LEVELS: Record<Level, string> = {
@@ -168,6 +169,8 @@ export function PictureCard({
             <KindIcon block={block} />
             <b>{name}</b>
             {pictureWords(unit, view) !== "Made" && <span>{pictureWords(unit, view)}</span>}
+            {/* what made it, where that is not what the beat is set to now (the picker below says that) */}
+            {madeOtherwise(view, unit) && <MadeWith view={view} unit={unit} />}
             {tools}
             {designed && (
               <div ref={levelAnchor} className="ep-figure-level">

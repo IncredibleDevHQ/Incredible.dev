@@ -50,6 +50,8 @@ CLAUDE_BLOCKED = "Edit,Write,NotebookEdit,ExitPlanMode"
 CLAUDE_WRITER_TOOLS = "Read,Write,Edit,Glob,Grep"
 #: What a CLI keeps of the house's environment: enough to find itself and its sign-in.
 KEPT_ENV = ("HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR")
+#: The variable Kimi Code reads how hard one run thinks from, over its own settings.
+KIMI_EFFORT_ENV = "KIMI_MODEL_THINKING_EFFORT"
 #: Where the CLIs' installers put them, ahead of whatever PATH the house was started with.
 BIN_DIRS = ("~/.local/bin", "~/.kimi-code/bin", "/opt/homebrew/bin", "/usr/local/bin")
 #: A research run's limit; a repository question rarely needs more.
@@ -136,6 +138,17 @@ def clean_env(environ: Mapping[str, str] = os.environ) -> dict[str, str]:
     return env
 
 
+def run_env(
+    harness_id: str, effort: str = "", environ: Mapping[str, str] = os.environ
+) -> dict[str, str]:
+    """The environment of one run: the clean one and, for Kimi Code, the effort asked for. Its
+    CLI has no option for how hard a run thinks; it reads this variable over its own settings."""
+    env = clean_env(environ)
+    if harness_id == "kimi" and effort:
+        env[KIMI_EFFORT_ENV] = effort
+    return env
+
+
 def command(
     harness: Harness,
     binary: str,
@@ -199,8 +212,10 @@ def command(
             "--skip-git-repo-check",
             "-",
         ], f"{guide}\n\n{prompt}"
+    # Kimi Code takes a model by its alias; how hard it thinks is not an option (`run_env`)
     return [
         binary,
+        *(["--model", model] if model else []),
         "--agent-file",
         str(profile),
         f"--prompt={prompt}",
@@ -249,7 +264,7 @@ async def run(
     process = await asyncio.create_subprocess_exec(
         *argv,
         cwd=str(repo),
-        env=clean_env(),
+        env=run_env(harness.id, effort),
         stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,

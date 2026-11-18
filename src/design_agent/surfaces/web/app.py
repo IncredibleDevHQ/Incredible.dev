@@ -215,6 +215,10 @@ class EpisodeSettingsIn(BaseModel):
     narrator: NarratorIn | None = None
     level: str | None = Field(default=None, pattern=r"^(simple|rich)$")
     writer: str | None = Field(default=None, pattern=r"^(claude|codex|kimi|builtin|demo)$")
+    #: The model the film's agent runs on and how hard it thinks; an empty one is the agent's
+    #: own default. The desk holds both to what that agent offers.
+    writer_model: str | None = Field(default=None, max_length=120)
+    writer_effort: str | None = Field(default=None, pattern=r"^[a-z]{0,12}$")
 
 
 class EpisodeIn(BaseModel):

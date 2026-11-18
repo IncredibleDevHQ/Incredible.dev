@@ -322,16 +322,35 @@ class EpisodeDesk:
         return str(picked.get("id") or self.host.settings.narrator_voice_id or "")
 
     def _worker(self, episode: Row) -> Worker:
-        return self._worker_called(str(episode["settings"].get("writer") or ""))
+        """The film's agent, on the model and effort picked for the film (its own otherwise)."""
+        worker = self._worker_called(str(episode["settings"].get("writer") or ""))
+        pick = self._film_pick(episode)
+        if (pick["model"] or pick["effort"]) and isinstance(worker, LocalWorker | BuiltinWorker):
+            scoped = copy.copy(worker)
+            scoped.model, scoped.effort = pick["model"] or worker.model, pick["effort"]
+            return scoped
+        return worker
+
+    def _film_pick(self, episode: Row) -> Row:
+        """The model and effort picked for the film's agent, while that agent still offers them
+        (an agent's models are its own to change): nothing picked is the agent's default."""
+        chosen = episode["settings"]
+        pick = {k: str(chosen.get(f"writer_{k}") or "") for k in ("model", "effort")}
+        if pick["model"] or pick["effort"]:
+            try:
+                episode_models.generation(self.host.settings, str(chosen.get("writer") or ""), pick)
+            except ValueError:
+                return {"model": "", "effort": ""}
+        return pick
 
     def _builder(self, episode: Row, unit: Row) -> Worker:
         """Who builds one picture: the agent a person picked for it, else its chapter's, else
-        the film's writer (`_units` settles which)."""
+        the film's writer, on the model and effort that hold for it (`_units` settles both)."""
         worker = self._worker_called(
             str(unit.get("builder") or episode["settings"].get("writer") or "")
         )
-        model = unit.get("model_pick", {}).get("model", "")
-        effort = unit.get("model_pick", {}).get("effort", "")
+        now = unit.get("model_now") or unit.get("model_pick") or {}
+        model, effort = now.get("model", ""), now.get("effort", "")
         if (
             isinstance(worker, LocalWorker)
             or isinstance(worker, BuiltinWorker)
@@ -604,12 +623,33 @@ class EpisodeDesk:
             writer = str(given["writer"])
             if not self._can_write(writer):
                 raise ValueError("That writer isn't ready on this computer.")
+            if writer != out.get("writer"):
+                # another agent has its own models: the picks made for the last one go
+                out.pop("writer_model", None)
+                out.pop("writer_effort", None)
             out["writer"] = writer
         if "writer" not in out:
             first = next((w["id"] for w in self.options()["writers"] if w["ready"]), "")
             if not first:
                 raise ValueError("No writer is ready: install a coding agent or set a model.")
             out["writer"] = first
+        if "writer_model" in given or "writer_effort" in given:
+            # the model the film's agent runs on and how hard it thinks; a new model's efforts
+            # are its own, so one picked without an effort starts on its default
+            model = str(given.get("writer_model", out.get("writer_model")) or "")
+            effort = str(
+                given.get(
+                    "writer_effort", "" if "writer_model" in given else out.get("writer_effort")
+                )
+                or ""
+            )
+            episode_models.generation(
+                self.host.settings, out["writer"], {"model": model, "effort": effort}
+            )
+            for key, value in (("writer_model", model), ("writer_effort", effort)):
+                out.pop(key, None)
+                if value:
+                    out[key] = value
         return out
 
     # -- reading the plan -----------------------------------------------------------------------
@@ -659,6 +699,7 @@ class EpisodeDesk:
         chosen = (episode["picks"] or {}).get("units", {})
         by_chapter = self._chapter_builders(episode)
         writer = str(episode["settings"].get("writer") or "")
+        film_pick = self._film_pick(episode)
         said = {str(f["id"]): f for _, _, f in plans.frames_of(full)}
         if not found:
             return []
@@ -681,9 +722,25 @@ class EpisodeDesk:
                 if not pick.get("builder") or pick["builder"] == unit["builder"]
                 else {"model": "", "effort": ""}
             )
-            unit["generation"] = episode_models.generation(
-                self.host.settings, unit["builder"], unit["model_pick"]
-            )
+            # what it is built on: its own pick, else the film's while the film's agent builds
+            # it, else that agent's default
+            own = unit["model_pick"]
+            if own["model"] or own["effort"]:
+                unit["model_now"] = {**own, "from": "beat"}
+            elif unit["builder"] == writer and (film_pick["model"] or film_pick["effort"]):
+                unit["model_now"] = {**film_pick, "from": "film"}
+            else:
+                unit["model_now"] = {"model": "", "effort": "", "from": ""}
+            try:
+                unit["generation"] = episode_models.generation(
+                    self.host.settings, unit["builder"], unit["model_now"]
+                )
+            except ValueError:
+                # the agent no longer offers what was picked: its default builds it
+                unit["model_now"] = {"model": "", "effort": "", "from": ""}
+                unit["generation"] = episode_models.generation(
+                    self.host.settings, unit["builder"], {}
+                )
             # what its lines say now, and when a person last made one say something else
             lines = [said.get(str(frame)) or {} for frame in unit["frames"]]
             unit["words_now"] = _said(lines)
@@ -2128,7 +2185,7 @@ class EpisodeDesk:
         }
         if isinstance(worker, LocalWorker):
             if worker.reported_model:
-                generation["model"] = worker.reported_model
+                generation["model"] = episode_models.named(worker.id, worker.reported_model)
             if worker.reported_effort:
                 generation["effort"] = worker.reported_effort
         if level == units.RICH:

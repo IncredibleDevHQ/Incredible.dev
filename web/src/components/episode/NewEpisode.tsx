@@ -11,6 +11,7 @@ import { Select } from "../Select";
 import { SegmentedControl } from "../SegmentedControl";
 import { TextArea } from "../TextArea";
 import { TextField } from "../TextField";
+import { AgentModel, offersPicks, type ModelPick } from "./AgentModel";
 
 // What the notes can be read from, by name: a dragged Markdown file often says no type at all.
 const TEXT_FILE = /\.(md|markdown|mdx|txt|rst|json|csv|html?)$/i;
@@ -29,6 +30,8 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
   const [theme, setTheme] = useState("corner-window");
   const [voice, setVoice] = useState<EpisodeSettings["voice"] | null>(null);
   const [writer, setWriter] = useState<WriterId | null>(null);
+  // the model the writer runs on and how hard it thinks; neither picked is the writer's default
+  const [pick, setPick] = useState<ModelPick>({ model: "", effort: "" });
   const [busy, setBusy] = useState(false);
   // The layout can be changed after planning.
   const [more, setMore] = useState(false);
@@ -78,7 +81,14 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
         files: files.map((f) => f.id),
         from_frame: start.frame,
         resolve_links: text !== start.notes,
-        settings: { seconds: auto ? "auto" : range, presenter, theme: presenter === "off" ? "voice-only" : theme, writer, voice },
+        settings: {
+          seconds: auto ? "auto" : range,
+          presenter,
+          theme: presenter === "off" ? "voice-only" : theme,
+          writer,
+          voice,
+          ...(pick.model || pick.effort ? { writer_model: pick.model, writer_effort: pick.effort } : {}),
+        },
       });
       startEpisode(null);
       useHouse.getState().setMode("canvas");
@@ -203,10 +213,16 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
               label="Episode writer"
               value={writer}
               placeholder="Choose a writer"
-              onChange={(id) => setWriter(options?.writers.find((w) => w.id === id && w.ready)?.id ?? null)}
+              onChange={(id) => {
+                setWriter(options?.writers.find((w) => w.id === id && w.ready)?.id ?? null);
+                setPick({ model: "", effort: "" });
+              }}
               options={(options?.writers ?? []).map((w) => ({value: w.id, label: w.title, disabled: !w.ready}))}
               hint={writer === "demo" ? "Uses the fixed HTTP caching example. Your notes are ignored." : writer ? "Uses your notes and the selected writer’s model allowance." : nobody ? "Set up a writer to plan from your notes." : undefined}
             />
+            {writer && writer !== "demo" && offersPicks(options?.generation_models[writer]) && (
+              <AgentModel models={options?.generation_models[writer] ?? []} pick={pick} onChange={setPick} />
+            )}
             {presenter === "on" && (more ? (
               <div className="ep-new-row">
                 <span>Look</span>

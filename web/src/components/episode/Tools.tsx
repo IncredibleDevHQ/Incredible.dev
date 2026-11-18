@@ -10,7 +10,9 @@ import { api, type EpisodeChoices, type EpisodeUnit, type EpisodeView } from "..
 import { keepWriter, LEVEL_NAMES, linesOf, LOOKS, pictureCount, PICTURES, pictureState, voiceName } from "../../episode";
 import { Popover } from "../Popover";
 import { Tooltip } from "../Tooltip";
+import { AgentModel, offersPicks } from "./AgentModel";
 import { turning, type Run } from "./Ask";
+import { pickLabel } from "./models";
 import { WRITERS } from "./Film";
 import { againCost } from "./Picture";
 import { LayoutThumb } from "./Stage";
@@ -318,25 +320,40 @@ function RedrawList({ view, units }: { view: EpisodeView; units: EpisodeUnit[] }
 function AgentTool({ view, run, busy }: Props) {
   const ready = view.options.writers.filter((w) => w.ready);
   const now = view.options.writers.find((w) => w.id === view.settings.writer);
-  if (ready.length < 2) return null;
+  const models = view.options.generation_models[view.settings.writer] ?? [];
+  const pick = { model: view.settings.writer_model ?? "", effort: view.settings.writer_effort ?? "" };
+  const picks = offersPicks(models);
+  if (ready.length < 2 && !picks) return null;
+  // the bar names what the film's agent runs on, where that is picked or the agent says it
+  const on = pickLabel(models, pick);
   return (
-    <Tool icon={Bot} label="Agent" value={now?.title ?? "None"} width={380}>
+    <Tool icon={Bot} label="Agent" value={[now?.title ?? "None", on].filter(Boolean).join(" · ")} width={380}>
       {(close) => (
-        <Options
-          label="Agent"
-          value={view.settings.writer}
-          disabled={busy || turning(view)}
-          onChange={(writer) => {
-            close();
-            keepWriter(writer);
-            void choose(view, run, { writer });
-          }}
-          options={ready.map((w) => ({
-            value: w.id,
-            label: w.title,
-            note: w.local ? "A coding agent on this computer, signed in as you are." : "The engine's own agent, on the model it is set up with.",
-          }))}
-        />
+        <>
+          {ready.length > 1 && (
+            <Options
+              label="Agent"
+              value={view.settings.writer}
+              disabled={busy || turning(view)}
+              onChange={(writer) => {
+                close();
+                keepWriter(writer);
+                void choose(view, run, { writer });
+              }}
+              options={ready.map((w) => ({
+                value: w.id,
+                label: w.title,
+                note: w.local ? "A coding agent on this computer, signed in as you are." : "The engine's own agent, on the model it is set up with.",
+              }))}
+            />
+          )}
+          {picks && (
+            <div className="ep-agent-pick">
+              <AgentModel models={models} pick={pick} disabled={busy || turning(view)} onChange={(next) => void choose(view, run, { writer_model: next.model, writer_effort: next.effort })} />
+              <small>What {now?.title ?? "the agent"} runs on for this film: the changes you ask for, and every picture without a pick of its own.</small>
+            </div>
+          )}
+        </>
       )}
     </Tool>
   );

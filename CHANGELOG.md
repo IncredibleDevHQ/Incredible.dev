@@ -110,6 +110,12 @@
     agent in the bar (it writes the changes asked for and draws the pictures from then on), a
     chapter's in its head (for its pictures), and a picture's own when it was not made and is
     tried again. A new episode starts with the agent picked last on that computer.
+  - Each agent runs on a model and an effort a person picks: for the film in the bar's Agent
+    menu and the new-episode sheet, and for one beat in its picker, which inherits the film's
+    choice until it has its own. Kimi Code's models and the efforts each takes are read from
+    its own settings (K3.1 Pro, K3, K2.7 and the rest, low to max); Claude Code offers Fable,
+    Opus, Sonnet and Haiku with its efforts. A made picture names the agent, model and effort
+    that made it.
   - Each picture is one HyperFrames sub-composition built by an agent, in the channel's
     brand: its colours by role and its type, staged on the thread's computer. Every time in it
     comes from a clock block code rewrites, so a recording never sends a picture back to its

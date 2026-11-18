@@ -2,7 +2,8 @@ import { ChevronDown, Sparkles } from "lucide-react";
 import { Popover } from "../Popover";
 import { editModel, editTriggerText, pictureProvider, writerName } from "./pictureProvider";
 import { useId, useRef, useState } from "react";
-import { api, type EpisodeUnit, type EpisodeView, type WriterId } from "../../api";
+import { api, type EpisodeUnit, type EpisodeView, type ModelOption, type WriterId } from "../../api";
+import { effortName, optionLabel, pickLabel } from "./models";
 import { AgentMark } from "../../ui";
 import { Select } from "../Select";
 import { TextArea } from "../TextArea";
@@ -11,13 +12,15 @@ import type { Run } from "./Ask";
 const title = (id: string) => id.replaceAll("-", " ").replace(/^./, (c) => c.toUpperCase());
 type Props = { view: EpisodeView; unit: EpisodeUnit; busy: boolean; run: Run };
 
-function EffortSlider({ efforts, value, onChange, disabled, automatic = "Automatic" }: {
-  efforts: string[]; value: string; onChange: (value: string) => void; disabled?: boolean; automatic?: string;
+// How hard the model thinks, among the levels this model takes. The first stop is its default,
+// named where the agent says what that is (`usual`).
+export function EffortSlider({ efforts, value, onChange, disabled, automatic = "Automatic", usual }: {
+  efforts: string[]; value: string; onChange: (value: string) => void; disabled?: boolean; automatic?: string; usual?: string;
 }) {
   const ticks = useId();
   const index = Math.max(0, efforts.indexOf(value) + 1);
   const level = efforts[index - 1];
-  const label = level === "xhigh" ? "Extra high" : level ? title(level) : efforts.length ? "Default" : automatic;
+  const label = level ? effortName(level) : efforts.length ? (usual ? `Default · ${effortName(usual)}` : "Default") : automatic;
   return (
     <label className="ep-size-range ep-effort">
       <span>Effort <output>{label}</output></span>
@@ -33,6 +36,22 @@ function EffortSlider({ efforts, value, onChange, disabled, automatic = "Automat
     </label>
   );
 }
+
+// What a beat that picks nothing of its own is built on: the film's model and effort, while the
+// film's agent builds it.
+function filmChoice(view: EpisodeView, writer: string | null): { model: string; effort: string } | null {
+  const chosen = view.settings;
+  if (!writer || writer !== chosen.writer || !(chosen.writer_model || chosen.writer_effort)) return null;
+  return { model: chosen.writer_model ?? "", effort: chosen.writer_effort ?? "" };
+}
+
+// A beat's models: the first row is what it inherits, said as the film's choice where there is one.
+const modelChoices = (models: ModelOption[], film: { model: string; effort: string } | null) =>
+  models.map((m) => ({ value: m.id, label: !m.id && film ? `Film's choice · ${pickLabel(models, film) || "its default"}` : optionLabel(m) }));
+
+// The row whose efforts hold for a pick: the model picked, else the film's, else the agent's own.
+const effortRow = (models: ModelOption[], model: string, film: { model: string; effort: string } | null) =>
+  models.find((m) => m.id === (model || film?.model || ""));
 
 function providers(view: EpisodeView, unit: EpisodeUnit) {
   const inherited = view.builders[unit.chapter] || view.writer;
@@ -53,7 +72,11 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
   const edit = editModel(unit, writers, view.options.generation_models);
   const availableModels = view.options.generation_models;
   const modelName = edit.writer ? availableModels[edit.writer]?.find(m => m.id === edit.model)?.name : undefined;
-  const caption = editTriggerText(edit.writer, modelName);
+  const now = unit.model_now ?? { ...unit.model_pick, from: "" };
+  // what the beat is built on now: its own pick, else the film's, else the agent's default
+  const caption = !edit.suggested && edit.writer && edit.writer !== "demo"
+    ? pickLabel(availableModels[edit.writer], now) || writerName(edit.writer)
+    : editTriggerText(edit.writer, modelName);
   const details = edit.writer && edit.writer !== "demo" && caption !== writerName(edit.writer)
     ? `${writerName(edit.writer)} · ${caption}` : caption;
   const accessibleLabel = `${edit.suggested && edit.writer ? "Suggested edit model" : "Edit model"}: ${details}`;
@@ -63,7 +86,9 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState("");
   const models = writer ? availableModels[writer] ?? [] : [];
-  const efforts = models.find(m => m.id === model)?.efforts ?? [];
+  const film = filmChoice(view, writer);
+  const row = effortRow(models, model, film);
+  const efforts = row?.efforts ?? [];
   const ready = writers.some(w => w.id === writer && w.ready);
   const inspect = (writer: WriterId | null) => {
     setWriter(writer);
@@ -79,7 +104,8 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
   const save = async (builder: WriterId | null) => {
     if (
       await run(() =>
-        api.chooseEpisode(view.id, { units: { [unit.id]: { builder, model: builder ? model : "", effort: builder ? effort : "" } } }),
+        // an effort picked over the film's choice keeps the film's model, as its own pick
+        api.chooseEpisode(view.id, { units: { [unit.id]: { builder, model: builder ? model || (effort ? film?.model ?? "" : "") : "", effort: builder ? effort : "" } } }),
       )
     )
       setOpen(false);
@@ -100,6 +126,7 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
         }}
       >
         {edit.suggested && edit.writer && <Sparkles aria-hidden="true" />}
+        {!edit.suggested && edit.writer && edit.writer !== "demo" && <AgentMark mark={edit.writer} size="sm" />}
         <span>{caption}</span><ChevronDown aria-hidden="true" />
       </button>
       <Popover
@@ -128,22 +155,17 @@ export function GenerationSettings({ view, unit, busy, run }: Props) {
           <div className="ep-provider-fields">
             <Select
               size="sm" label="Model" value={model} disabled={!ready || models.length <= 1}
-              options={models.map(m => ({value: m.id, label: m.name}))}
+              options={modelChoices(models, film)}
               onChange={v => { setModel(v); setEffort(""); }}
             />
-            <EffortSlider efforts={efforts} value={effort} onChange={setEffort} disabled={!ready} />
+            <EffortSlider efforts={efforts} value={effort} onChange={setEffort} disabled={!ready}
+              usual={(!model && film?.effort) || row?.default_effort} />
           </div>
         )}
-        {unit.picture.generation && (
-          <p className="ep-provider-used">
-            Last picture · {used === "demo" ? "Local preview" :
-              [writerName(used), unit.picture.generation.model, unit.picture.generation.effort].join(" · ")}
-          </p>
-        )}
         <div className="ep-provider-footer">
-          {unit.builder_pick && (
+          {(unit.builder_pick || now.from === "beat") && (
             <button className="linkish" type="button" disabled={busy} onClick={() => void save(null)}>
-              Use chapter default
+              {film ? "Use the film's choice" : "Use chapter default"}
             </button>
           )}
           <button type="button" className="btn primary" disabled={busy || !ready} onClick={() => void save(writer)}>
@@ -165,13 +187,16 @@ export function SettingsForm({ view, unit, run, busy }: Props) {
   const [effort, setEffort] = useState(unit.model_pick.effort);
   const options = view.options;
   const models = options.generation_models[writer] ?? [];
-  const efforts = models.find((m) => m.id === model)?.efforts ?? [];
+  const film = filmChoice(view, writer);
+  const row = effortRow(models, model, film);
+  const efforts = row?.efforts ?? [];
   const demoCustom = writer === "demo" && !!direction.trim();
   const save = async (generate: boolean) => {
     const fields = {
       builder: providerPick || null,
       direction: direction.trim(),
-      model,
+      // an effort picked over the film's choice keeps the film's model, as its own pick
+      model: model || (effort ? film?.model ?? "" : ""),
       effort,
     };
     const ok = await run(() => api.chooseEpisode(view.id, { units: { [unit.id]: fields } }));
@@ -195,14 +220,15 @@ export function SettingsForm({ view, unit, run, busy }: Props) {
         label="Model"
         value={model}
         disabled={models.length <= 1}
-        options={models.map((m) => ({ value: m.id, label: m.name }))}
+        options={modelChoices(models, film)}
         onChange={(v) => {
           setModel(v);
           setEffort("");
         }}
       />
       <EffortSlider efforts={efforts} value={effort} onChange={setEffort}
-        automatic={writer === "demo" ? "Not applicable" : "Provider default"} />
+        automatic={writer === "demo" ? "Not applicable" : "Provider default"}
+        usual={(!model && film?.effort) || row?.default_effort} />
       <TextArea
         label="Custom visual direction"
         minRows={2}

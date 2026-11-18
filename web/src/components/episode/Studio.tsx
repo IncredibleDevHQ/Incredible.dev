@@ -40,6 +40,7 @@ import { Script, type ScriptHandle } from "./Script";
 import { Stills } from "./Picture";
 import { FILM, Slides } from "./Slides";
 import { LinePlayer } from "./LinePlayer";
+import { MadeWith } from "./MadeWith";
 import { FrameCanvas } from "./FrameCanvas";
 import { spanAt } from "./chapterSeek";
 import { spansOf, Timeline } from "./Timeline";
@@ -591,6 +592,7 @@ function Chapter({
                 <b>Chapter {number}</b>
                 <span className="ep-chapter-kind">{chapterName(chapter)}</span>
                 <small>{mmss(total)}</small>
+                {unit?.kind === "picture" && <MadeWith view={view} unit={unit} />}
                 <span className="ep-gap" />
                 {!recording && <div className="ep-preview-actions"><FilmDownload view={view} />
                   <Tooltip content="Bring a recording of this chapter: pick a video or audio file, or drop one on the frame" side="bottom">
