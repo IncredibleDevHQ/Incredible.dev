@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from design_agent.episode import catalog, geometry
+from design_agent.episode import catalog, geometry, illustrations
 from design_agent.episode import questions as Q
 
 Row = dict[str, Any]
@@ -319,6 +319,7 @@ def brief(
                 "shows_when_finished": f.get("shows")
                 or "(holds the picture; adds what its cues say)",
                 "focal": f.get("focal", ""),
+                **illustrations.direction(f),
                 "objects": [
                     {
                         k: o[k]
@@ -326,6 +327,7 @@ def brief(
                             "id",
                             "what",
                             "words",
+                            "asset",
                             "state",
                             "type",
                             "value",
@@ -355,6 +357,7 @@ def brief(
     layout = LAYOUTS.get(str(unit.get("layout")), LAYOUTS[geometry.FALLBACK])
     clear = unit.get("keep_clear", geometry.keep_clear(unit.get("layout")))
     return {
+        "illustrations": {"assets": illustrations.ASSETS, "cameras": illustrations.CAMERAS},
         "layout": {"id": layout["id"], "presence": layout["presence"], "use": layout["reads_as"]},
         "file": f"pictures/{comp}.html",
         "composition_id": comp,
@@ -572,7 +575,7 @@ def label_probe(html: str, unit: Row, own: Row) -> str:
     return f"""<!doctype html><meta charset="utf-8"><style>
     html,body {{margin:0;position:relative;width:{width}px;height:{height}px}}
     [data-composition-id="{comp}"] {{position:absolute;inset:0}}</style>
-    <script src="gsap.min.js"></script><script>window.__timelines={{}};</script>
+    <script src="gsap.min.js"></script>{illustrations.SCRIPT if "data-illustration" in html else ""}<script>window.__timelines={{}};</script>
     {content[1]}
     <script src="check-labels.js"></script><script>
     document.fonts.ready.then(() => {{
@@ -588,7 +591,23 @@ def label_probe(html: str, unit: Row, own: Row) -> str:
     </script>"""
 
 
-def stage(unit: Row, own: Row, *, ground: str = PALETTE["ground"]) -> str:
+def stage_files(
+    unit: Row, own: Row, html: str, *, ground: str = PALETTE["ground"]
+) -> dict[str, str]:
+    """The self-contained picture preview and its local runtime assets."""
+    illustrated = "data-illustration" in html
+    files = {
+        "index.html": stage(unit, own, ground=ground, illustrated=illustrated),
+        f"{FOLDER}/{composition_id(unit['id'])}.html": html,
+    }
+    if illustrated:
+        files[illustrations.FILENAME] = illustrations.library()
+    return files
+
+
+def stage(
+    unit: Row, own: Row, *, ground: str = PALETTE["ground"], illustrated: bool = False
+) -> str:
     """A page that shows this picture alone, at its own size, for posing stills and a draft
     clip of it."""
     comp = composition_id(unit["id"])
@@ -599,7 +618,7 @@ def stage(unit: Row, own: Row, *, ground: str = PALETTE["ground"]) -> str:
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width={width}, height={height}" />
-    <script src="gsap.min.js"></script>
+    <script src="gsap.min.js"></script>{illustrations.SCRIPT if illustrated else ""}
     <style>
       html, body {{ margin: 0; width: {width}px; height: {height}px; overflow: hidden; background: {ground}; }}
       #root {{ position: relative; width: 100%; height: 100%; overflow: hidden; background: {ground}; }}

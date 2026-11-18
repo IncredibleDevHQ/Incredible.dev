@@ -38,6 +38,7 @@ import { useRecorder, type Recording } from "./recorder";
 import { FilmPage, type Open } from "./Film";
 import { Script, type ScriptHandle } from "./Script";
 import { Stills } from "./Picture";
+import { RegenerateChapter } from "./RegenerateChapter";
 import { FILM, Slides } from "./Slides";
 import { LinePlayer } from "./LinePlayer";
 import { MadeWith } from "./MadeWith";
@@ -235,18 +236,19 @@ function Chapter({
 }) {
   const plan = view.plan!;
   const lines = useMemo(() => linesOf(chapter), [chapter]);
-  const missingVoice = view.settings.voice === "local" ? lines.filter(line => {
+  const voice = view.settings.voice;
+  const missingVoice = voice === "local" || voice === "narrator" ? lines.filter(line => {
     const clock = clockLine(view, line.id);
     return line.vo.trim() && clock && clock.source.kind !== "take" && !clock.audio_url;
   }).map(line => line.id + "/" + line.vo).join("\n") : "";
   useEffect(() => {
-    if (!missingVoice) return;
+    if (voice !== "local" || !missingVoice) return;
     let active = true;
     api.previewVoice(view.id, chapter.id).then(next => {
       if (active) useHouse.getState().setEpisode(next);
     }).catch(error => { if (active) useHouse.getState().say(error.message); });
     return () => { active = false; };
-  }, [view.id, chapter.id, missingVoice]);
+  }, [view.id, chapter.id, voice, missingVoice]);
   const number = plan.chapters.indexOf(chapter) + 1;
   const [picked, setPicked] = useState(() => (opening && lines.some((l) => l.id === opening) ? opening : lines[0].id));
   const [progress, setProgress] = useState<number | null>(null);
@@ -521,11 +523,12 @@ function Chapter({
     setChapterCue({ offset, play: play && time < total });
     setChapterRun(run => run + 1);
   };
-  const startChapter = () => {
+  const startChapter = async () => {
+    if (voice === "narrator" && missingVoice && !await run(() => api.previewVoice(view.id, chapter.id))) return;
     seekChapter(0, true);
     if (!full) toggleEditor(true);
   };
-  const playChapter = <button className="btn" type="button" disabled={recording} onClick={startChapter}><Play />Play chapter</button>;
+  const playChapter = <button className="btn" type="button" disabled={recording || busy} onClick={() => void startChapter()}><Play />Play chapter</button>;
   const chapterActions = (
     <div className="ep-doc-top">
       {full ? (
@@ -552,6 +555,8 @@ function Chapter({
             {take ? "Retake" : `Record chapter ${number}`}
           </button>
         </Tooltip>
+        {pics.all > 0 && <RegenerateChapter view={view} chapter={chapter.id} count={pics.all}
+          disabled={busy || recording || working || pics.making > 0 || view.film_state.status === "rendering"} run={run} />}
         {onward}
       </div>
     </div>
@@ -840,7 +845,8 @@ function Chapter({
               <Tooltip content={selected ? "Opens the frame with its choices and the recorder" : "Play every beat in this chapter"} side="bottom">
                 <button ref={peekRef} type="button" className="ep-peek-stage ep-float-frame"
                   aria-label={selected ? "Open the frame, its choices and the recorder" : `Play chapter ${number}`}
-                  onClick={selected ? () => toggleEditor(true) : startChapter}>
+                  disabled={!selected && busy}
+                  onClick={selected ? () => toggleEditor(true) : () => void startChapter()}>
                   {selected
                     ? cameraPoster ?? <FrameCanvas view={view} frame={line} unit={unit} take={previewTake} label={`The frame for line ${at + 1}`} />
                     : chapterPoster}

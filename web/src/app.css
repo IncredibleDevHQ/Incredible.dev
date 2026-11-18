@@ -2243,6 +2243,10 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-effort input { margin: 0; }
 .ep-edit-picker .ep-provider-fields { margin-top: 12px; gap: 10px; }
 .ep-edit-picker .ep-provider-footer { margin-top: 12px; padding-top: 12px; }
+.ep-regenerate-form { display: grid; gap: 10px; }
+.ep-regenerate-form small { color: var(--muted); }
+.ep-regenerate-form .ep-provider-footer { justify-content: flex-end; margin-top: 2px; }
+.ep-regenerate-form .ep-provider-footer .btn { margin-left: 0; }
 
 .ep-line-foot { justify-content: flex-end; }
 .ep-history-trigger { padding: 3px 8px; font-size: 12px; gap: 5px; }

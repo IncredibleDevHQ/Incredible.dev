@@ -653,6 +653,8 @@ export const api = {
   previewVoice: (id: string, chapter: string) => call<EpisodeView>("POST", `/api/episodes/${id}/chapters/${chapter}/preview-voice`, {}),
   previewPicture: (id: string, unit: string) => call<FileView>("POST", `/api/episodes/${id}/pictures/${unit}/preview`, {}),
   makePictures: (id: string, which: { units?: string[]; chapter?: string; level?: Level } = {}) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures`, which),
+  regenerateChapter: (id: string, chapter: string, generation?: { provider: Exclude<WriterId, "demo">; model: string }) =>
+    call<EpisodeView>("POST", `/api/episodes/${id}/chapters/${encodeURIComponent(chapter)}/regenerate`, generation ?? {}),
   pictureGo: (id: string, unit: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/go`),
   pictureNote: (id: string, unit: string, text: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/note`, { text }),
   addTake: (id: string, take: { chapter: string; frame?: string; marks: { frame: string; t: number }[]; file: Blob; name: string }) => {

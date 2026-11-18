@@ -14,6 +14,8 @@ If the material is a how-to with steps to follow, a product launch or a news dig
 your reply and stop: an episode is the wrong thing to make from it.
 
 Studio can assign a model to a beat. Its line-edit requests and picture builds go to that model. Chapter and film edits use the episode writer.
+Regenerating a chapter sends its existing plan to picture generation. A provider chosen for
+that run handles every visual in the chapter. The script remains the source for each brief.
 
 ## The one rule
 

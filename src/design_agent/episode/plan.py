@@ -248,7 +248,9 @@ def _designed_as(f: Row) -> Row:
     return {
         "hold": bool(f.get("hold")) and not f.get("_auto_hold"),
         "shows": f.get("shows") or "",
-        "objects": [(o.get("id"), o.get("what")) for o in f.get("objects", [])],
+        "objects": [(o.get("id"), o.get("what"), o.get("asset")) for o in f.get("objects", [])],
+        "camera": f.get("camera"),
+        "visible": f.get("visible"),
         "cues": [(c.get("object"), c.get("does")) for c in f.get("cues", [])],
     }
 

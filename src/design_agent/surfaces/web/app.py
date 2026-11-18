@@ -272,6 +272,11 @@ class PicturesIn(BaseModel):
     level: Literal["simple", "rich"] | None = None
 
 
+class RegenerateChapterIn(BaseModel):
+    provider: Literal["", "claude", "codex", "kimi", "builtin"] = ""
+    model: str = Field(default="", max_length=100)
+
+
 class LineIn(BaseModel):
     """A line a person adds to a chapter's script: after a line (or first in the chapter
     named), going on in that line's block, said to camera, or with a picture of a type."""
@@ -855,6 +860,19 @@ def create_app(
         return episode_call(
             lambda: host.episodes.make(
                 episode_id, by=me, only=asked.units, chapter=asked.chapter, level=asked.level or ""
+            )
+        )
+
+    @app.post("/api/episodes/{episode_id}/chapters/{chapter}/regenerate")
+    async def regenerate_chapter(
+        episode_id: str,
+        chapter: str,
+        body: RegenerateChapterIn,
+        me: str = Depends(person),
+    ) -> dict[str, Any]:
+        return episode_call(
+            lambda: host.episodes.regenerate_chapter(
+                episode_id, chapter, by=me, provider=body.provider, model=body.model
             )
         )
 

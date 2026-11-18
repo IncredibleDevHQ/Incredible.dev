@@ -13,7 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from design_agent.episode import catalog, picture
+from design_agent.episode import catalog, illustrations, picture
 
 Row = dict[str, Any]
 
@@ -100,17 +100,19 @@ _ADAPTERS = {
     "comparison": "comparison",
     "code-block": "code",
     "custom": "custom",
+    "illustration": "illustration",
 }
 
 
-@lru_cache(maxsize=12)
+@lru_cache(maxsize=16)
 def _scene_script(adapter: str) -> str:
     folder = Path(__file__).with_name("components")
     scripts = ["stage"]
-    if adapter in ("graph", "sequence"):
+    if adapter in ("graph", "sequence", "illustration"):
         scripts.append("participants")
     scripts.append(adapter)
-    return "\n".join((folder / f"{name}.js").read_text(encoding="utf8") for name in scripts)
+    source = "\n".join((folder / f"{name}.js").read_text(encoding="utf8") for name in scripts)
+    return source
 
 
 def component_scene(brief: Row) -> str:
@@ -126,8 +128,22 @@ def component_scene(brief: Row) -> str:
     scene["lines"] = [
         {
             "frame": line["frame"],
-            "objects": [obj for obj in line["objects"] if not chart or catalog.measured(obj)],
-            "cues": [{"key": c["key"], "object": c.get("object", "")} for c in line["cues"]],
+            "focal": line.get("focal", ""),
+            **illustrations.direction(line),
+            "objects": [
+                {**obj, "asset": illustrations.asset_for(obj)}
+                for obj in line["objects"]
+                if not chart or catalog.measured(obj)
+            ],
+            "cues": [
+                {
+                    "key": c["key"],
+                    "object": c.get("object", ""),
+                    "move": c.get("move", ""),
+                    "does": c.get("does", ""),
+                }
+                for c in line["cues"]
+            ],
         }
         for line in brief["lines"]
     ]
@@ -139,7 +155,7 @@ font-family: '{brief["look"]["fonts"]["text"]}', sans-serif; font-weight: 600; }
 <div id="root" data-composition-id="{comp}" data-width="{canvas["width"]}" data-height="{canvas["height"]}" data-variant="{visual["variant"]}">
 <script type="application/json" id="{comp}-clock">{{"seconds":0,"lines":{{}},"cues":{{}}}}</script>
 <script type="application/json" data-episode-theme>{theme}</script>
-<svg id="{comp}-art" width="{canvas["width"]}" height="{canvas["height"]}" viewBox="0 0 {canvas["width"]} {canvas["height"]}"></svg></div>
+<svg id="{comp}-art" {"data-illustration" if visual["component"] == "illustration" else ""} width="{canvas["width"]}" height="{canvas["height"]}" viewBox="0 0 {canvas["width"]} {canvas["height"]}"></svg></div>
 <script>(() => {{
 const comp={json.dumps(comp)}, brief={payload};
 const clock=JSON.parse(document.getElementById(comp+"-clock").textContent);

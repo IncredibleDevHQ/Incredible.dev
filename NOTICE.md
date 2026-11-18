@@ -30,6 +30,7 @@ that code's MIT notice is preserved in [licenses/managed-deepagents-sdk-MIT.txt]
 | HyperFrames CLI | installed in the sandbox image, not redistributed here | Apache-2.0 |
 | Geist, Fragment Mono, Inter, IBM Plex Mono, Fira Code, Fraunces | `fonts/` | SIL Open Font License 1.1, [fonts/licenses/](fonts/licenses/) |
 | Apache ECharts | installed in the sandbox image | Apache-2.0 |
+| SVG.js 3.2.8 | `src/design_agent/episode/vendor/` | MIT, [SVG-LICENSE.txt](src/design_agent/episode/vendor/SVG-LICENSE.txt) |
 | sharp, puppeteer-core | installed in the sandbox image | Apache-2.0 |
 | GSAP | installed in the sandbox image, never vendored | GSAP Standard "no charge" license |
 | D2 | binary installed in the sandbox image | MPL-2.0 |

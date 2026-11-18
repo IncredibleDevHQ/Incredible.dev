@@ -472,7 +472,7 @@ def stage_design(plan: Row, out: list[str], fresh: bool, ask: Ask) -> None:
                 and f["component_sig"] != sig
             ):
                 component_q["component"] = Q.choice(
-                    "What should the viewer understand here? Choose timeline for chronology, stepper for progress, sequence-diagram for exchanges, flowchart for decisions, and a chart for measured values.",
+                    "What should the viewer understand here? Choose illustration for recognizable people, places and objects, timeline for chronology, stepper for progress, sequence-diagram for exchanges, flowchart for decisions, and a chart for measured values.",
                     {
                         key: catalog.COMPONENTS[key].purpose
                         for key in catalog.available(objects, connections.resolve(scene))

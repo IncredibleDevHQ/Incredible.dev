@@ -731,6 +731,10 @@ app's canvas, from a channel's material or a research frame's notes.
   Applying cue anchor edits preserves object classifications and the existing drawing.
   Transcript edits preserve the encoded animation's original beat spans during preview.
   A cue whose word was removed keeps its original proportional timing on the revised line.
+- **Illustrations.** A local SVG.js scene composes reusable subject assets on the GSAP cue
+  clock. The writer names assets, visible subjects and overview, focus or reset intent.
+  Placement keeps a measured presenter exclusion area and readable captions. Focus enlarges
+  artwork inside its own slot, and supporting subjects give way before captions become small.
 - **Beat history.** History appears on beats with retained changes. Open it to see transcript, visual direction,
   objects and cue changes, newest first. Each comparison comes from the retained history of
   the last 12 applied episode edits. An undone edit disappears until it is redone.
@@ -950,6 +954,7 @@ app's canvas, from a channel's material or a research frame's notes.
 - Chapter playback uses a single elapsed time and seek bar across beats. Replay starts from the chapter opening. The sidebar previews the whole chapter by default, with chapter actions below its cover. Choosing a beat switches to its frame. Opening the preview places the player above the script. Playback uses the
   current export when available. For a changed film the editor plays the selected take or
   the cached narration for that text and voice, with the draft picture on the same clock.
+  Play chapter prepares any missing ElevenLabs narration for that chapter on demand.
   Before playback, an unrecorded camera line shows chapter artwork or the chapter title.
   The player supports line seeking, playback speed, volume and optional transcripts. The Picture panel
   chooses the component and variant. Layout offers a video box shape dropdown and two presenter portraits, Mira and June. It changes the size and shape of the presenter window
@@ -962,6 +967,9 @@ app's canvas, from a channel's material or a research frame's notes.
   A made picture says what made it: the agent's mark with the model and effort, over the
   frame in the open chapter, and on its card where that is no longer what the beat is set to
   (the card's picker names the beat's own choice).
+  **Regenerate chapter** rebuilds every visual in the selected chapter from its existing plan.
+  Studio confirms the visual count and offers the saved generation settings or a provider and
+  model for this run. The chapter's script, takes and saved beat settings are retained.
   A picture’s Motion graphics switch opens a confirmation beneath the switch.
   The Picture panel keeps its generation status and change request below the choices. The Others
   tab accepts custom direction. Open Studio menus retain their position when focus moves to a

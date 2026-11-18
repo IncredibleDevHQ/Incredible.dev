@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from design_agent.episode import geometry, picture
+from design_agent.episode import geometry, illustrations, picture
 from design_agent.episode import questions as Q
 from design_agent.episode.plan import transition_of
 from design_agent.episode.timeline import line_of
@@ -316,7 +316,10 @@ def project(
                 f"{start + 0.6:.3f});"
             )
 
-    files["index.html"] = _page(colours, look, clock["total"], body, script, portrait)
+    illustrated = any("data-illustration" in html for html in files.values())
+    if illustrated:
+        files[illustrations.FILENAME] = illustrations.library()
+    files["index.html"] = _page(colours, look, clock["total"], body, script, portrait, illustrated)
     return files
 
 
@@ -374,6 +377,7 @@ def _page(
     body: list[str],
     script: list[str],
     portrait: str,
+    illustrated: bool,
 ) -> str:
     ground, muted = colours["ground"], colours["muted"]
     accent, on_accent, line = colours["accent"], colours["accent_ink"], colours["line"]
@@ -385,7 +389,7 @@ def _page(
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width={geometry.FRAME_W}, height={geometry.FRAME_H}" />
-    <script src="gsap.min.js"></script>
+    <script src="gsap.min.js"></script>{illustrations.SCRIPT if illustrated else ""}
     <style>
       {look.faces()}
       html, body {{ margin: 0; width: {geometry.FRAME_W}px; height: {geometry.FRAME_H}px; overflow: hidden; background: {ground}; }}

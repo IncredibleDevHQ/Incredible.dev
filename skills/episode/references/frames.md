@@ -147,3 +147,17 @@ point give its numeric `value`, common measurement `unit`, and optional `series`
 message names its participants in `from` and `to`. A directed edge uses the same fields;
 a child node may name its parent's ID in `parent`, and a step its lane in `owner`. Only
 supply measurements, relationships, and message directions supported by the source.
+
+
+## Illustrated scenes
+
+Use the reusable illustration component for recognizable subjects. Set each object's `asset`
+to phone, satellite, cloud, pin, browser, server, storage, document, person, shop, bank or
+object. Keep the same ID when a subject returns. Write a compact `words` label.
+On a frame use `camera: "overview"` for relationships, `"focus"` to inspect its `focal`
+object, and `"reset"` to return to context. `visible` lists the supporting object IDs the
+shot needs. Include the target of every cue. Omit background detail when it adds clutter.
+The renderer measures the presenter exclusion area and label bounds, uses a readable grid
+or a hero with supporting subjects, and limits artwork scaling inside each slot.
+Zoom should answer a visual question, with a reset before another overview or comparison.
+Choose another frame or a content-only layout when a readable scene cannot fit.

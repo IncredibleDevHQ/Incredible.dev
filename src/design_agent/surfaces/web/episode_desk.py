@@ -46,6 +46,7 @@ from design_agent.episode import (
     derive,
     film,
     geometry,
+    illustrations,
     layouts,
     override,
     picture,
@@ -1306,7 +1307,15 @@ class EpisodeDesk:
                 f"Available layouts for this look:\n{kit}\n\n"
                 "On each new shot, set `layout_intent` to the layout ID that fits who is "
                 "on screen and what the viewer needs to see. Compose the picture for that "
-                "space. Keep the same framing on a hold. "
+                "space. For illustrated objects choose an `asset` from "
+                f"{', '.join(illustrations.ASSETS)}. Set a frame's `camera` to overview, "
+                "focus or reset and its `focal` to one object ID. Use `visible` for the "
+                "IDs needed in this shot, including held objects. Keep a compact label in "
+                "`words`. Zoom only when one detail needs inspection, then reset for the "
+                "next comparison or relationship. Code fits the assets into measured slots "
+                "and limits their scale, keeping labels readable. When the frame is crowded, "
+                "show fewer supporting objects or choose a content-only layout. "
+                "Keep the same framing on a hold unless the explanation moves to a detail. "
                 f"Read {skill}/references/frames.md and {skill}/references/motion.md. For every "
                 "frame marked NEEDS A PICTURE, write its `shows`, `focal`, `objects` and `cues` "
                 f"in {root}/plan.json; let a picture grow across beats with `hold`. Change no "
@@ -1969,7 +1978,9 @@ class EpisodeDesk:
 
     # -- pictures: built by the writer, posed on the thread's computer -------------------------
 
-    def _queue_pictures(self, episode_id: str) -> None:
+    def _queue_pictures(
+        self, episode_id: str, *, generation_for: Mapping[str, Row] | None = None
+    ) -> None:
         """Start the pictures that were asked for and wait their turn (a row that says
         "queued"). Nothing starts a picture by itself: one whose plan changed after it was made
         stays as it is, out of date, until a person applies their changes or asks for it again."""
@@ -2001,7 +2012,8 @@ class EpisodeDesk:
                 level=unit["level"],
             )
             self._builds[(episode_id, unit["id"])] = asyncio.get_running_loop().create_task(
-                self._built(episode_id, unit["id"]), name=f"picture {episode_id} {unit['id']}"
+                self._built(episode_id, unit["id"], (generation_for or {}).get(unit["id"])),
+                name=f"picture {episode_id} {unit['id']}",
             )
         self._changed(episode_id)
 
@@ -2089,18 +2101,24 @@ class EpisodeDesk:
             self._queue_pictures(episode_id)
         return asked
 
-    async def _built(self, episode_id: str, unit_id: str) -> None:
+    async def _built(
+        self, episode_id: str, unit_id: str, generation_pick: Row | None = None
+    ) -> None:
         episode = self._episode(episode_id)
         unit = next(
             (u for u in self._units(episode, self._full(episode) or {}) if u["id"] == unit_id),
             None,
         )
-        builder = str((unit or {}).get("builder") or episode["settings"].get("writer") or "")
+        builder = str(
+            (generation_pick or unit or {}).get("builder")
+            or episode["settings"].get("writer")
+            or ""
+        )
         at_once = 1 if builder == BUILTIN else PICTURES_AT_ONCE
         gate = self._gates.setdefault(f"{episode_id}:{builder}", asyncio.Semaphore(at_once))
         try:
             async with gate:
-                await self._build(episode_id, unit_id)
+                await self._build(episode_id, unit_id, generation_pick=generation_pick)
         except asyncio.CancelledError:
             self.store.set_picture(episode_id, unit_id, status="failed", failure="Stopped.")
         except Exception as error:  # one picture failing must not stop the others
@@ -2117,7 +2135,9 @@ class EpisodeDesk:
             with contextlib.suppress(KeyError, RuntimeError):
                 self._queue_pictures(episode_id)
 
-    async def _build(self, episode_id: str, unit_id: str, note: str = "") -> None:
+    async def _build(
+        self, episode_id: str, unit_id: str, note: str = "", *, generation_pick: Row | None = None
+    ) -> None:
         episode = self._episode(episode_id)
         full = self._full(episode)
         unit = next((u for u in self._units(episode, full or {}) if u["id"] == unit_id), None)
@@ -2127,6 +2147,8 @@ class EpisodeDesk:
         self._began[key] = time.time()
         self._steered.pop(key, None)
         self._last_turn.discard(key)
+        if generation_pick is not None:
+            unit = {**unit, **generation_pick}
         worker = self._builder(episode, unit)
         if isinstance(worker, DemoWorker) and unit["visual"]["direction"]:
             raise ValueError("Select a live provider to generate from a custom description.")
@@ -2385,19 +2407,12 @@ class EpisodeDesk:
                 return {}
             computer = self._ready(episode)
             folder = self._pose_dir(episode, unit)
-            comp = picture.composition_id(unit["id"])
             look = self._look(episode)
+            files = picture.stage_files(
+                unit, own, picture.dressed(html, own, look), ground=look.palette["ground"]
+            )
             computer.put(
-                [
-                    (
-                        f"{folder}/index.html",
-                        picture.stage(unit, own, ground=look.palette["ground"]).encode(),
-                    ),
-                    (
-                        f"{folder}/{picture.FOLDER}/{comp}.html",
-                        picture.dressed(html, own, look).encode(),
-                    ),
-                ]
+                [(f"{folder}/{path}", content.encode()) for path, content in files.items()]
             )
             times = ",".join(f"{at:.3f}".rstrip("0").rstrip(".") for _, at in wanted)
             computer.run(
@@ -2426,6 +2441,8 @@ class EpisodeDesk:
     ) -> list[str]:
         folder = f"{folder}-measure"
         check = Path(picture.__file__).with_name("check_labels.js").read_bytes()
+        if "data-illustration" in dressed:
+            computer.put([(f"{folder}/{illustrations.FILENAME}", illustrations.library().encode())])
         computer.put(
             [
                 (f"{folder}/check-labels.js", check),
@@ -2464,18 +2481,8 @@ class EpisodeDesk:
         label_faults = self._label_faults(computer, folder, unit, own, dressed)
         if label_faults:
             return label_faults, {}
-        computer.put(
-            [
-                (
-                    f"{folder}/index.html",
-                    picture.stage(unit, own, ground=look.palette["ground"]).encode(),
-                ),
-                (
-                    f"{folder}/{picture.FOLDER}/{comp}.html",
-                    dressed.encode(),
-                ),
-            ]
-        )
+        files = picture.stage_files(unit, own, dressed, ground=look.palette["ground"])
+        computer.put([(f"{folder}/{path}", content.encode()) for path, content in files.items()])
         times = picture.still_times(own)
         wanted = ",".join(f"{t:.3f}".rstrip("0").rstrip(".") for t in times.values())
         ran = computer.run(
@@ -2677,6 +2684,53 @@ class EpisodeDesk:
         self._set(episode_id, status=self._status(episode_id))
         self._queue_pictures(episode_id)
         self._say(episode, "Asked for pictures to be made.", by=by, quiet=True)
+        self._settle(episode_id)
+        return self.view(episode_id)
+
+    def regenerate_chapter(
+        self, episode_id: str, chapter: str, *, by: str, provider: str = "", model: str = ""
+    ) -> Row:
+        """Rebuild a chapter's pictures from the standing plan with an optional model for this run."""
+        episode = self._episode(episode_id)
+        full = self._full(episode)
+        if full is None or self.planning(episode_id):
+            raise ValueError("Wait for the plan before regenerating a chapter.")
+        if f"film:{episode_id}" in self._jobs:
+            raise ValueError("Wait for the film to finish rendering.")
+        wanted = {
+            str(unit["id"]): unit
+            for unit in self._units(episode, full)
+            if unit["kind"] == "picture" and unit["chapter"] == chapter
+        }
+        if not wanted:
+            raise ValueError("This chapter has no visuals to regenerate.")
+        if any(
+            key[0] == episode_id and key[1] in wanted and not task.done()
+            for key, task in self._builds.items()
+        ):
+            raise ValueError("This chapter's visuals are already being made.")
+        generation_for = None
+        if provider:
+            if provider == DEMO or not self._can_write(provider):
+                raise ValueError("That provider isn't ready for chapter regeneration.")
+            pick = {"model": model, "effort": ""}
+            generation_for = dict.fromkeys(
+                wanted,
+                {
+                    "builder": provider,
+                    "model_now": pick,
+                    "generation": episode_models.generation(self.host.settings, provider, pick),
+                },
+            )
+        elif model:
+            raise ValueError("Choose a provider for the model.")
+        for unit_id, unit in wanted.items():
+            self.store.set_picture(
+                episode_id, unit_id, status="queued", sig="", failure="", level=unit["level"]
+            )
+        self._set(episode_id, status=self._status(episode_id))
+        self._queue_pictures(episode_id, generation_for=generation_for)
+        self._say(episode, "Asked to regenerate a chapter's visuals.", by=by, quiet=True)
         self._settle(episode_id)
         return self.view(episode_id)
 
@@ -3132,7 +3186,7 @@ class EpisodeDesk:
         episode = self._episode(episode_id)
         full = self._full(episode)
         mode = episode["settings"].get("voice")
-        if full is None or mode not in ("narrator", "local") or (chapter and mode != "local"):
+        if full is None or mode not in ("narrator", "local"):
             return
         if mode == "narrator" and not self._speaks():
             raise ValueError("Narration needs ELEVENLABS_API_KEY.")

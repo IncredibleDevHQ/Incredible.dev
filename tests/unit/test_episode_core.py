@@ -788,7 +788,7 @@ def test_a_film_wears_the_brands_colours_and_type(full: Row) -> None:
 def test_catalog_choices_bind_to_brand_and_cue_clock(full: Row) -> None:
     from design_agent.episode import catalog
 
-    assert len(catalog.COMPONENTS) == 13
+    assert len(catalog.COMPONENTS) == 14
     unit = units.units(full)[0]
     look = picture.Look(palette={**picture.PALETTE, "accent": "#ff0077"}, text="Inter")
     for variant in ("horizontal", "vertical", "grid"):

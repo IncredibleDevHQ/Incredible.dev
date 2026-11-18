@@ -50,8 +50,10 @@ You see the second and third only through the report each turn opens with.
               "layout_intent": "split", // optional layout ID from the chosen theme for that presence
               "hold": false,          // true: keeps the picture of the frame before, and may add to it
               "shows": "...",         // what the viewer sees when the frame has finished
+              "camera": "overview",   // overview | focus | reset, for illustrated shots
+              "visible": ["o1"],       // optional object IDs required in this shot
               "focal": "o1",          // the one object the eye follows
-              "objects": [{"id": "o1", "what": "a box for the agent", "words": "Agent", "state": "active"}],
+              "objects": [{"id": "o1", "asset": "server", "what": "a box for the agent", "words": "Agent", "state": "active"}],
               "cues": [{"at": "agent", "object": "o1", "does": "draws its outline and fills"}]
             }
           ]

@@ -50,12 +50,12 @@ def test_a_picture_is_posed_and_the_film_renders_to_its_clock(tmp_path: Path) ->
 
     # one picture alone, as the studio poses it
     unit = found[0]
-    comp = picture.composition_id(unit["id"])
     own = picture.clock(unit, timeline.schedule(full))
     pose = tmp_path / "pose"
     (pose / picture.FOLDER).mkdir(parents=True)
-    (pose / "index.html").write_text(picture.stage(unit, own))
-    (pose / picture.FOLDER / f"{comp}.html").write_text(picture.dressed(pictures[unit["id"]], own))
+    dressed = picture.dressed(pictures[unit["id"]], own)
+    for path, content in picture.stage_files(unit, own, dressed).items():
+        (pose / path).write_text(content)
     at = ",".join(str(t) for t in picture.still_times(own).values())
 
     project = tmp_path / "film"

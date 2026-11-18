@@ -30,6 +30,11 @@ class Component:
 
 
 COMPONENTS = {
+    "illustration": Component(
+        "Reusable illustrated objects composed for a spoken scene",
+        ("balanced", "focused"),
+        "Reveal each asset on its cue, focus the named subject and restore context at the next overview.",
+    ),
     "detail-card": Component(
         "Fields or status for one subject",
         ("stacked", "split", "compact"),
@@ -149,7 +154,7 @@ def select(first: Row, frames: list[Row], pick: Row, kind: str, width: int) -> R
             "chips": "list",
             "typeset-code": "code-block",
             "slide": "detail-card",
-            "illustration": "custom",
+            "illustration": "illustration",
         }.get(
             kind,
             {
@@ -163,7 +168,7 @@ def select(first: Row, frames: list[Row], pick: Row, kind: str, width: int) -> R
         )
         if first.get("arrangement") == "timeline" and kind in ("diagram", "illustration"):
             suggested = "timeline"
-        elif edges and kind in ("diagram", "illustration"):
+        elif edges and kind in ("diagram", "illustration") and suggested != "illustration":
             if (
                 any(o.get("type") == "lifeline" for o in objects)
                 and sum(bool(e["label"]) for e in edges) > 1
@@ -210,7 +215,7 @@ def select(first: Row, frames: list[Row], pick: Row, kind: str, width: int) -> R
         "direction": pick.get("direction", ""),
         "options": options,
         "connections": edges
-        if chosen in ("sequence-diagram", "relationship-diagram", "flowchart")
+        if chosen in ("sequence-diagram", "relationship-diagram", "flowchart", "illustration")
         else [],
         "automatic": not pick.get("component"),
     }

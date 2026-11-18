@@ -123,6 +123,7 @@ def _drawn_from(f: Row) -> Row:
         "id": f["id"],
         "shows": f.get("shows", ""),
         "focal": f.get("focal", ""),
+        **({k: f[k] for k in ("camera", "visible") if f.get(k)}),
         "objects": [
             {
                 k: o.get(k)
@@ -130,6 +131,7 @@ def _drawn_from(f: Row) -> Row:
                     "id",
                     "what",
                     "words",
+                    "asset",
                     "state",
                     "type",
                     "value",

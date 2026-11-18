@@ -60,3 +60,11 @@ Confirm each URL still resolves when you move a pin forward; the docs site renam
 ## Skills format
 
 - Agent Skills specification: <https://agentskills.io/specification>
+
+
+## Episode illustrations
+
+- SVG.js documentation: <https://svgjs.dev/docs/3.2/>. The episode renderer embeds the
+  MIT-licensed npm bundle at 3.2.8. Its package source, checksum and license are kept under
+  `src/design_agent/episode/vendor/`; rendered compositions run offline.
+- GSAP timelines: <https://gsap.com/docs/v3/GSAP/Timeline/>.

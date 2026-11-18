@@ -370,6 +370,83 @@ async def test_a_picture_is_made_by_name_before_the_rest_and_a_chapters_together
     assert {u["picture"]["status"] for u in desk.view(episode_id)["units"]} == {"made"}
 
 
+async def test_regenerate_chapter_rebuilds_current_visuals_with_an_optional_model(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    eid = await planned(house)
+    desk = house.episodes
+    desk.approve(eid, by="you")
+    await settle(lambda: not desk._busy(eid))
+    existing = {row["unit"]: row for row in house.store.pictures(eid)}
+    found = [u for u in desk.view(eid)["units"] if u["kind"] == "picture"]
+    chapter = found[0]["chapter"]
+    wanted = {u["id"] for u in found if u["chapter"] == chapter}
+    before = house.store.episode(eid)
+    assert before is not None and wanted and existing.keys() - wanted
+
+    desk.regenerate_chapter(eid, chapter, by="you")
+    await settle(lambda: not desk._busy(eid))
+    rebuilt = {row["unit"]: row for row in house.store.pictures(eid)}
+    for key, row in rebuilt.items():
+        if key in wanted:
+            assert row["updated_at"] > existing[key]["updated_at"]
+            assert row["status"] == "made" and row["level"] == existing[key]["level"]
+            assert row["generation"]["model"] == "demo"
+        else:
+            assert row == existing[key]
+
+    monkeypatch.setattr(house.research, "ready", lambda provider: provider == "codex")
+    actual: dict[str, tuple[str, str, str]] = {}
+
+    async def draw(worker: LocalWorker, episode: dict[str, Any], *, lane: str, **more: Any) -> Told:
+        unit_id = lane.removeprefix("picture:")
+        actual[unit_id] = (worker.id, worker.model, worker.effort)
+        comp = picture.composition_id(unit_id)
+        folder = worker.folder(episode)
+        brief = json.loads((folder / f"pictures/{comp}.brief.json").read_text())
+        (folder / brief["file"]).write_text((folder / f"pictures/{comp}.starter.html").read_text())
+        return Told()
+
+    monkeypatch.setattr(LocalWorker, "turn", draw)
+    model = "gpt-6.1-sol"
+    desk.regenerate_chapter(eid, chapter, by="you", provider="codex", model=model)
+    await settle(lambda: not desk._busy(eid))
+    assert actual == {key: ("codex", model, "") for key in wanted}
+    after = desk.view(eid)
+    assert {u["picture"]["generation"]["model"] for u in after["units"] if u["id"] in wanted} == {
+        model
+    }
+    saved = house.store.episode(eid)
+    assert saved is not None
+    assert (saved["plan"], saved["picks"]) == (before["plan"], before["picks"])
+    assert all(house.store.picture(eid, key) == existing[key] for key in existing.keys() - wanted)
+
+
+async def test_regenerate_chapter_validates_before_queueing(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    eid = await planned(house)
+    desk = house.episodes
+    chapter = desk.view(eid)["units"][0]["chapter"]
+    monkeypatch.setattr(house.research, "ready", lambda provider: provider == "codex")
+    with pytest.raises(ValueError, match="chapter has no visuals"):
+        desk.regenerate_chapter(eid, "missing", by="you")
+    with pytest.raises(ValueError, match="isn't ready"):
+        desk.regenerate_chapter(eid, chapter, by="you", provider="claude")
+    with pytest.raises(ValueError, match="supported model"):
+        desk.regenerate_chapter(eid, chapter, by="you", provider="codex", model="invalid")
+    with pytest.raises(ValueError, match="provider"):
+        desk.regenerate_chapter(eid, chapter, by="you", model="gpt-6.1-sol")
+    assert house.store.pictures(eid) == []
+
+    desk.regenerate_chapter(eid, chapter, by="you")
+    queued = house.store.pictures(eid)
+    with pytest.raises(ValueError, match="already being made"):
+        desk.regenerate_chapter(eid, chapter, by="you")
+    assert house.store.pictures(eid) == queued
+    await settle(lambda: not desk._busy(eid))
+
+
 async def test_one_picture_is_stopped_and_the_others_go_on(
     tmp_path: Path, house: AgentHost
 ) -> None:
@@ -2702,6 +2779,12 @@ def test_the_app_serves_an_episode_at_every_address(tmp_path: Path) -> None:
         # nothing stopped, so there is nothing to make again
         assert client.post(f"/api/episodes/{episode_id}/pictures").status_code == 422
         assert client.post("/api/episodes/ep_missing/pictures").status_code == 404
+        unit_chapter = view["units"][0]["chapter"]
+        regen = f"/api/episodes/{episode_id}/chapters/{unit_chapter}/regenerate"
+        assert client.post(regen, json={"provider": "unknown"}).status_code == 422
+        assert client.post(regen, json={"model": "gpt-6.1-sol"}).status_code == 422
+        no_chapter = client.post(f"/api/episodes/{episode_id}/chapters/missing/regenerate", json={})
+        assert no_chapter.status_code == 422 and "chapter has no visuals" in no_chapter.text
         assert client.post(f"/api/episodes/{episode_id}/stop").json() == {"ok": True}
         # nothing waits to be applied while no picture was asked for
         nothing = client.post(f"/api/episodes/{episode_id}/apply")
@@ -3514,6 +3597,44 @@ async def test_local_chapter_preview_caches_only_its_lines_and_serializes_reques
     with pytest.raises(KeyError):
         await desk.preview_voice(ep, "unknown")
     assert not desk.view(ep)["film_state"]["file"]
+
+
+async def test_cloned_voice_narrates_only_the_requested_chapter(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pydantic import SecretStr
+
+    from design_agent.tools import media
+
+    house.settings = house.settings.model_copy(update={"elevenlabs_api_key": SecretStr("test")})
+    ep = await planned(house)
+    desk = house.episodes
+    chapter = desk.view(ep)["plan"]["chapters"][0]["id"]
+    voice_id = "voice1234567890"
+    said: list[tuple[str, str]] = []
+
+    async def clone(keys, name, samples, **unused):
+        assert name == "My test voice" and samples == [("sample.wav", b"sample")]
+        return media.Cloned(voice_id, False)
+
+    async def speak(keys, words, selected, **unused):
+        said.append((words, selected))
+        return media.Spoken(b"mp3", 2.0, [])
+
+    monkeypatch.setattr(media, "clone_voice", clone)
+    monkeypatch.setattr(media, "speak", speak)
+    await desk.clone(
+        ep, by="you", name="My test voice", consent=True, sample=("sample.wav", b"sample")
+    )
+    view = await desk.preview_voice(ep, chapter)
+    assert view["settings"]["cloned_voice"]["id"] == voice_id
+    lines = view["clock"]["lines"]
+    assert len(said) == sum(line["chapter"] == chapter for line in lines)
+    assert all(voice == voice_id for _, voice in said)
+    assert all(bool(line.get("audio_url")) == (line["chapter"] == chapter) for line in lines)
+    await desk.preview_voice(ep, chapter)
+    assert len(said) == sum(line["chapter"] == chapter for line in lines)
+    assert not view["film_state"]["file"]
 
 
 def test_motion_plan_rejects_two_shots_for_one_frame():

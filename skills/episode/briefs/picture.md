@@ -235,3 +235,16 @@ Reply in two lines: the file you wrote, and anything in the brief you could not 
 When a turn opens with faults or a person's note on a still, change only what it names.
 
 Use the supplied look’s ground and texture throughout the composition. Keep the texture behind the artwork. For diagrams, give recognizable actors distinct silhouettes and place labels beside them. Trace messages between their named endpoints on the supplied cues.
+
+
+## SVG.js illustrations
+
+The local render page supplies pinned SVG.js for an illustration starter.
+Keep the starter’s SVG.js calls and reusable local asset drawings. Draw additional parts with its SVG groups
+and paths, and animate them on the registered GSAP timeline. Retain the compact labels
+and measured presenter exclusion area. Reuse object IDs across cues and held frames.
+The `camera`, `focal` and `visible` fields carry the shot's intent. Focus enlarges the
+hero within its measured slot, while overview and reset restore context. Keep text at its
+readable size. Hide unnecessary supporting detail before reducing the number of visible
+subjects or choosing a larger layout. Inspect both focus and reset poses and the transitions
+between them, checking that artwork, captions and presenter never cover one another.
