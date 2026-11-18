@@ -23,12 +23,34 @@ stage.setAttribute("data-readable-area", JSON.stringify(area));
 
 const relationships = brief.connections || [];
 const edgeObjects = new Set(relationships.filter(e=>e.object!==e.from && e.object!==e.to).map(e=>e.object));
+const heatTargets = new Map();
+const heatTrail = item => /\b(?:heat|warm|bowl|handle|transfer)\b/i.test(item.what || "") &&
+  /\b(?:trail|path|flow)\b/i.test(item.what || "");
+const spoons = [...new Map(items.filter(item=>!heatTrail(item) &&
+  ["metal-spoon", "wooden-spoon"].includes(item.asset)).map(item=>[item.id,item])).values()];
+for (const item of items) {
+  const description = String(item.what || "");
+  if (edgeObjects.has(item.id) || !heatTrail(item)) continue;
+  const material = /\bwood(?:en)?\b/i.test(description) ? "wooden-spoon"
+    : /\b(?:metal|steel)\b/i.test(description) ? "metal-spoon" : "";
+  const matches = spoons.filter(spoon=>spoon.id!==item.id && (!material || spoon.asset===material));
+  const local = matches.filter(spoon=>spoon.frame===item.frame);
+  const target = matches.length === 1 ? matches[0] : local.length === 1 ? local[0] : null;
+  if (target) heatTargets.set(item.id, {
+    target: target.id,
+    fromHand: /\b(?:from|leav(?:es|ing))\b[^.,]+\bhand\b/i.test(description),
+  });
+}
 const registry = new Map();
 for (const item of items)
-  if (!item.from && !item.to && !edgeObjects.has(item.id) && !registry.has(item.id)) registry.set(item.id,item);
+  if (!item.from && !item.to && !["connector", "cross"].includes(item.type) &&
+      !edgeObjects.has(item.id) && !heatTargets.has(item.id) && !registry.has(item.id)) registry.set(item.id,item);
 const connectorLayer = drawing.group();
 const connectors = relationships.map((edge,i)=>({
-  edge, path:connectorLayer.path("").fill("none").stroke({color:colors.accent,width:3,linecap:"round"}).attr({"data-connection":i,opacity:0}),
+  edge,
+  path:connectorLayer.path("").fill("none").stroke({color:colors.accent,width:5,linecap:"round"}).attr({"data-connection":i,opacity:0}),
+  pulse:connectorLayer.circle(fontSize * 0.48).fill(colors.accent).attr({"data-transfer":i,opacity:0}),
+  shown: false,
 }));
 const groups = new Map();
 const measure = drawing.text("").font({family: brief.look.fonts.text, size: fontSize}).opacity(0);
@@ -59,6 +81,15 @@ function glyph(container, item) {
   const g = container.group().attr({"data-asset": asset});
   const pen = {color: colors.ink, width: 3, linecap: "round", linejoin: "round"};
   const line = d => g.path(d).fill("none").stroke(pen);
+  const local = document.getElementById(comp + "-local-artwork");
+  const custom = [...(local?.children || [])].find(el => el.getAttribute("data-episode-object") === item.id);
+  if (custom) {
+    const copy = custom.cloneNode(true);
+    copy.removeAttribute("data-episode-object");
+    g.node.append(copy);
+    return g;
+  }
+  if (physicalGlyph(g, asset)) return g;
   if (asset === "phone") {
     g.rect(66, 108).move(31, 10).radius(12).fill(colors.panel).stroke(pen);
     g.rect(52, 78).move(38, 24).radius(5).fill(colors.ground);
@@ -102,6 +133,20 @@ for (const [id, item] of registry) {
   groups.set(id, {item,group,art,caption});
 }
 
+const heatPaths = new Map();
+function traceHeat(source, time, value) {
+  const direction = source.fromHand ? "M10 64 H111" : "M111 64 H10";
+  const key = value.item.id + direction;
+  if (!heatPaths.has(key)) heatPaths.set(key, value.art.path(direction).fill("none")
+    .stroke({color:"#a73210",width:4,linecap:"round"}).attr({opacity:0,"data-heat-trail":""}));
+  const path = heatPaths.get(key);
+  const duration = Math.min(value.item.asset==="wooden-spoon" ? 1.3 : 0.64, clock.seconds-time);
+  if (duration <= 0) return;
+  tl.set(path.node,{opacity:1},time);
+  tl.fromTo(path.node,{attr:{"stroke-dasharray":101,"stroke-dashoffset":101}},
+    {attr:{"stroke-dashoffset":0},duration,ease:"none",immediateRender:false},time);
+}
+
 function boxes(count, focused) {
   if (focused && count > 1 && area.width >= area.height * 1.2) {
     const heroWidth = area.width * 0.6 - gap / 2, sideWidth = area.width - heroWidth - gap;
@@ -137,27 +182,52 @@ function compose(candidates, focal, focused, time, moveCamera) {
   if (!fits(selected,focused)) throw new Error("Illustration caption needs a shorter label or a larger content area.");
   const slots = boxes(count, focused);
   const visible = new Set(selected.filter(id => introduced.has(id)));
-  for (const {edge,path} of connectors) {
+  for (const connector of connectors) {
+    const {edge,path,pulse} = connector;
     if (!visible.has(edge.from) || !visible.has(edge.to)) {
       tl.set(path.node,{opacity:0},time);
+      tl.set(pulse.node,{opacity:0},time);
+      connector.shown = false;
       continue;
     }
+    const cueAt = clock.cues[edge.cue] ?? clock.lines[edge.frame]?.[0] ?? time;
+    if (time < cueAt) continue;
     const a = slots[selected.indexOf(edge.from)], b = slots[selected.indexOf(edge.to)];
-    const horizontal = Math.abs(a.x-b.x)>Math.abs(a.y-b.y);
-    const direction = horizontal ? Math.sign(b.x-a.x) : Math.sign(b.y-a.y);
-    const x1 = a.x+a.width/2+(horizontal?direction*a.width*0.36:0);
-    const y1 = a.y+a.height*0.35+(horizontal?0:direction*a.height*0.26);
-    const x2 = b.x+b.width/2-(horizontal?direction*b.width*0.36:0);
-    const y2 = b.y+b.height*0.35-(horizontal?0:direction*b.height*0.26);
-    const head = fontSize*0.25;
-    const d = horizontal
-      ? `M${x1} ${y1} L${x2} ${y2} M${x2-direction*head} ${y2-head} L${x2} ${y2} L${x2-direction*head} ${y2+head}`
-      : `M${x1} ${y1} L${x2} ${y2} M${x2-head} ${y2-direction*head} L${x2} ${y2} L${x2+head} ${y2-direction*head}`;
+    const point = (box, id) => {
+      const lines = captionLines(registry.get(id), box.width-gap);
+      const artHeight = box.height-lines.length*fontSize*1.25-gap;
+      const artSize = Math.min(box.width-gap,artHeight) * (focused && id===focal ? 0.96 : 0.82);
+      return {x:box.x+box.width/2, y:box.y+artHeight/2, radius:artSize*0.43};
+    };
+    const from = point(a,edge.from), to = point(b,edge.to);
+    const horizontal = Math.abs(from.x-to.x) > Math.abs(from.y-to.y);
+    const dir = horizontal ? Math.sign(to.x-from.x) : Math.sign(to.y-from.y);
+    const x1 = from.x + (horizontal ? dir*from.radius : -from.radius);
+    const y1 = from.y + (horizontal ? 0 : dir*from.radius);
+    const x2 = to.x + (horizontal ? -dir*to.radius : -to.radius);
+    const y2 = to.y + (horizontal ? 0 : -dir*to.radius);
+    const head = fontSize*0.27;
+    const arrow = horizontal
+      ? `M${x2-dir*head} ${y2-head} L${x2} ${y2} L${x2-dir*head} ${y2+head}`
+      : `M${x2-head} ${y2-dir*head} L${x2} ${y2} L${x2+head} ${y2-dir*head}`;
+    const crossed = edge.blocked
+      ? ` M${(x1+x2)/2-head} ${(y1+y2)/2-head} l${2*head} ${2*head} m${-2*head} 0 l${2*head} ${-2*head}`
+      : "";
+    const d = `M${x1} ${y1} L${x2} ${y2} ${arrow}${crossed}`;
     tl.set(path.node,{attr:{d}},time);
-    const start = clock.cues[edge.cue] ?? clock.lines[edge.frame]?.[0] ?? time;
-    tl.set(path.node,{opacity:time>start?1:0},time);
-    if (time === start) {
-      tl.fromTo(path.node, {opacity:0}, {opacity:1, duration:0.3, immediateRender:false}, start);
+    if (connector.shown) continue;
+    connector.shown = true;
+    tl.set(path.node,{opacity:1},time);
+    const speed = /slow/i.test(edge.label || "") ? 1.1 : 0.55;
+    const duration = Math.min(speed, (clock.seconds-time)*0.85);
+    if (duration <= 0) continue;
+    const length = Math.hypot(x2-x1,y2-y1) + 4*head;
+    tl.fromTo(path.node, {attr:{"stroke-dasharray":length,"stroke-dashoffset":length}},
+      {attr:{"stroke-dashoffset":0},duration,ease:"none",immediateRender:false},time);
+    if (!edge.blocked) {
+      tl.fromTo(pulse.node,{attr:{cx:x1,cy:y1},opacity:1},
+        {attr:{cx:x2,cy:y2},duration,ease:"none",immediateRender:false},time);
+      tl.to(pulse.node,{opacity:0,duration:Math.min(0.16,duration)},time+duration*0.8);
     }
   }
   for (const [id, value] of groups) {
@@ -217,15 +287,24 @@ for (const line of brief.lines) {
   if (!introduced.size && registry.has(focus)) introduced.add(focus);
   const start = clock.lines[line.frame]?.[0] ?? 0;
   compose(requests,focus,focused,start,line.camera==="focus" || line.camera==="reset");
+  for (const object of line.objects) {
+    const heat = heatTargets.get(object.id);
+    if (heat && !cued.has(object.id) && lastVisible.has(heat.target)) {
+      traceHeat(heat,start,groups.get(heat.target));
+    }
+  }
   for (const cue of [...line.cues].sort((a,b)=>(clock.cues[a.key]??start)-(clock.cues[b.key]??start))) {
     const time = clock.cues[cue.key] ?? start;
-    const target = registry.has(cue.object) ? cue.object : null;
+    const heat = heatTargets.get(cue.object);
+    const target = heat?.target ?? (registry.has(cue.object) ? cue.object : null);
     if (target) introduced.add(target);
     const shot = target && !requests.includes(target) ? [target, ...requests] : requests;
     compose(shot, focused ? focus : target, focused, time, false);
     const value = groups.get(target);
     if (!value || cue.move==="hold") continue;
-    if (cue.move==="emphasise" || cue.move==="count") {
+    if (heat) {
+      traceHeat(heat,time,value);
+    } else if (cue.move==="emphasise" || cue.move==="count") {
       tl.fromTo(value.art.node,{opacity:0.45},{opacity:1,duration:0.45,ease:"power1.inOut",immediateRender:false},time);
     } else {
       const strokes = [...value.art.node.querySelectorAll("path[fill='none']")];

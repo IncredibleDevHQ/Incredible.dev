@@ -151,9 +151,13 @@ supply measurements, relationships, and message directions supported by the sour
 
 ## Illustrated scenes
 
-Use the reusable illustration component for recognizable subjects. Set each object's `asset`
-to phone, satellite, cloud, pin, browser, server, storage, document, person, shop, bank or
-object. Keep the same ID when a subject returns. Write a compact `words` label.
+Use the reusable illustration component for recognizable subjects, including comparisons of
+physical objects. Choose a matching `asset`, such as `hand`, `metal-spoon`, `wooden-spoon`,
+`thermometer`, or `cup`. For a concrete object with no match, give it `type: "illustration"`
+and describe its distinguishing shape in `what` so the picture writer can draw it. Use
+`object` for an abstract placeholder. Keep the same ID when a subject returns. Write a compact
+`words` label. For heat, liquid or another transfer, add one `connector` with `from` and `to`
+set to the exact object IDs and cue the connector on the spoken word where the transfer begins.
 On a frame use `camera: "overview"` for relationships, `"focus"` to inspect its `focal`
 object, and `"reset"` to return to context. `visible` lists the supporting object IDs the
 shot needs. Include the target of every cue. Omit background detail when it adds clutter.

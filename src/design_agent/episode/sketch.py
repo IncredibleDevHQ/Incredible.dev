@@ -9,6 +9,7 @@ from __future__ import annotations
 import html as html_lib
 import json
 import math
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -104,12 +105,55 @@ _ADAPTERS = {
 }
 
 
+def uses_illustration(component: str, objects: list[Row]) -> bool:
+    if component == "illustration":
+        return True
+    return component in (
+        "comparison",
+        "custom",
+        "flowchart",
+        "relationship-diagram",
+    ) and illustrations.has_subjects(objects)
+
+
+def artwork_faults(html: str, brief: Row) -> list[str]:
+    """Keep concrete objects illustrated when the writer replaces the starter."""
+    objects = [obj for line in brief["lines"] for obj in line["objects"]]
+    if not uses_illustration(brief["visual"].get("component", ""), objects):
+        return []
+    template = re.search(r"<template\b[^>]*>(.*)</template>", html, re.S)
+    inside = template[1] if template else ""
+    required = illustrations.custom_objects(objects)
+    if "data-illustration" not in inside or "physicalGlyph(g, asset)" not in inside:
+        required.extend(
+            str(obj["id"])
+            for obj in objects
+            if obj.get("id") and illustrations.asset_for(obj) in illustrations.PHYSICAL
+        )
+    drawn = {
+        html_lib.unescape(match[2])
+        for match in re.finditer(
+            r"<g\b[^>]*\bdata-episode-object\s*=\s*(['\"])([^'\"]+)\1[^>]*>"
+            r"(?:(?!</g>).)*?<(?:path|ellipse|circle|polygon|polyline|rect|line)\b",
+            inside,
+            re.S,
+        )
+    }
+    return [
+        f'Draw "{key}" inside an inline SVG group with data-episode-object="{key}" and real shapes.'
+        for key in dict.fromkeys(required)
+        if key not in drawn
+    ]
+
+
 @lru_cache(maxsize=16)
 def _scene_script(adapter: str) -> str:
     folder = Path(__file__).with_name("components")
     scripts = ["stage"]
     if adapter in ("graph", "sequence", "illustration"):
         scripts.append("participants")
+    if adapter == "illustration":
+        scripts.append("objects")
     scripts.append(adapter)
     source = "\n".join((folder / f"{name}.js").read_text(encoding="utf8") for name in scripts)
     return source
@@ -120,6 +164,9 @@ def component_scene(brief: Row) -> str:
     comp = brief["composition_id"]
     canvas = brief["canvas"]
     visual = brief["visual"]
+    objects = [obj for line in brief["lines"] for obj in line["objects"]]
+    if visual["component"] != "illustration" and uses_illustration(visual["component"], objects):
+        visual = {**visual, "component": "illustration", "variant": "balanced"}
     scene = {key: brief[key] for key in ("canvas", "keep_clear", "look")}
     scene["connections"] = brief.get("connections", [])
     scene["subject"] = brief.get("picture", {}).get("shows", "")
@@ -133,7 +180,12 @@ def component_scene(brief: Row) -> str:
             "objects": [
                 {**obj, "asset": illustrations.asset_for(obj)}
                 for obj in line["objects"]
-                if not chart or catalog.measured(obj)
+                if (not chart or catalog.measured(obj))
+                and not (
+                    visual["component"] == "statement"
+                    and obj.get("type") == "logo"
+                    and not obj.get("words")
+                )
             ],
             "cues": [
                 {
@@ -155,7 +207,7 @@ font-family: '{brief["look"]["fonts"]["text"]}', sans-serif; font-weight: 600; }
 <div id="root" data-composition-id="{comp}" data-width="{canvas["width"]}" data-height="{canvas["height"]}" data-variant="{visual["variant"]}">
 <script type="application/json" id="{comp}-clock">{{"seconds":0,"lines":{{}},"cues":{{}}}}</script>
 <script type="application/json" data-episode-theme>{theme}</script>
-<svg id="{comp}-art" {"data-illustration" if visual["component"] == "illustration" else ""} width="{canvas["width"]}" height="{canvas["height"]}" viewBox="0 0 {canvas["width"]} {canvas["height"]}"></svg></div>
+<svg id="{comp}-art" {"data-illustration" if visual["component"] == "illustration" else ""} width="{canvas["width"]}" height="{canvas["height"]}" viewBox="0 0 {canvas["width"]} {canvas["height"]}"><defs id="{comp}-local-artwork"></defs></svg></div>
 <script>(() => {{
 const comp={json.dumps(comp)}, brief={payload};
 const clock=JSON.parse(document.getElementById(comp+"-clock").textContent);

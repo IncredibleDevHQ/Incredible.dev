@@ -6,7 +6,7 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-from design_agent.episode import connections
+from design_agent.episode import connections, illustrations
 
 Row = dict[str, Any]
 CATALOG_VERSION = 2
@@ -139,9 +139,11 @@ def available(objects: list[Row], edges: list[Row] | None = None) -> dict[str, l
 
 def select(first: Row, frames: list[Row], pick: Row, kind: str, width: int) -> Row:
     objects = [o for frame in frames for o in frame.get("objects", [])]
+    physical = illustrations.has_subjects(objects)
     edges = (
         connections.resolve(frames)
         if kind in ("diagram", "illustration")
+        or physical
         or pick.get("component") in ("sequence-diagram", "relationship-diagram", "flowchart")
         or first.get("component") in ("sequence-diagram", "relationship-diagram", "flowchart")
         else []
@@ -216,6 +218,7 @@ def select(first: Row, frames: list[Row], pick: Row, kind: str, width: int) -> R
         "options": options,
         "connections": edges
         if chosen in ("sequence-diagram", "relationship-diagram", "flowchart", "illustration")
+        or (physical and chosen in ("comparison", "custom"))
         else [],
         "automatic": not pick.get("component"),
     }

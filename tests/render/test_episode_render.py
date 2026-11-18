@@ -325,3 +325,115 @@ def test_diagram_background_and_participant_art_survive_capture(tmp_path: Path) 
     for actor in (left, right):
         assert len(actor.getcolors(actor.width * actor.height) or []) > 12
     assert ImageChops.difference(left, right).getbbox()
+
+
+@pytest.mark.parametrize("custom", [False, True])
+def test_physical_scene_draws_real_objects_and_animates_transfer(
+    tmp_path: Path, custom: bool
+) -> None:
+    from PIL import Image, ImageChops
+
+    unit = {"id": "f", "canvas": [800, 450]}
+    comp = picture.composition_id("f")
+    own = {"seconds": 3, "lines": {"f": [0, 3]}, "cues": {"f/0": 1}}
+    brief = {
+        "composition_id": comp,
+        "canvas": {"width": 800, "height": 450},
+        "keep_clear": {"left": 650, "top": 305, "width": 150, "height": 145},
+        "visual": {"component": "comparison", "variant": "side-by-side"},
+        "look": picture.Look().tokens(),
+        "connections": [{"from": "hand", "to": "spoon", "object": "heat", "cue": "f/0"}],
+        "lines": [
+            {
+                "frame": "f",
+                "objects": [
+                    {"id": "hand", "what": "warm hand", "type": "illustration"},
+                    {
+                        "id": "spoon",
+                        "what": "a gyroscope" if custom else "wooden spoon",
+                        "type": "illustration",
+                    },
+                    {"id": "heat", "words": "Heat", "type": "connector"},
+                ],
+                "cues": [{"key": "f/0", "object": "heat", "move": "trace"}],
+            }
+        ],
+    }
+    source = sketch.built(brief)
+    if custom:
+        assert sketch.artwork_faults(source, brief)
+        source = source.replace(
+            "</defs>",
+            '<g data-episode-object="spoon"><ellipse cx="64" cy="64" rx="52" ry="22" '
+            'fill="#327a9b"/><circle cx="64" cy="64" r="10" fill="#fff"/></g></defs>',
+        )
+        assert not sketch.artwork_faults(source, brief)
+    for rel, value in picture.stage_files(unit, own, picture.dressed(source, own)).items():
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(value)
+
+    proc = run(
+        tmp_path,
+        f"cp {GSAP} . && hyperframes snapshot . --at 0.8,1.2,1.7 --no-end --keep "
+        "-o stills --describe false",
+    )
+    assert proc.returncode == 0, proc.stdout[-2000:] + proc.stderr[-2000:]
+    assert len(list((tmp_path / "stills").glob("*.png"))) == 3
+    before, moving, after = [
+        Image.open(tmp_path / "stills" / f"at-{at}s.png").convert("RGB")
+        for at in ("0.8", "1.2", "1.7")
+    ]
+    before_colors = {pixel for _, pixel in before.getcolors(1_000_000)}
+    assert (223, 155, 117) in before_colors  # the hand's warm skin fill
+    assert ((50, 122, 155) if custom else (216, 164, 108)) in before_colors
+    # Between the two objects, the transfer advances after its cue.
+    between = (275, 140, 365, 240)
+    assert ImageChops.difference(before.crop(between), moving.crop(between)).getbbox()
+    assert ImageChops.difference(moving.crop(between), after.crop(between)).getbbox()
+
+
+def test_heat_cue_traces_the_spoon_when_the_plan_names_a_trail(tmp_path: Path) -> None:
+    from PIL import Image, ImageChops
+
+    unit = {"id": "f", "canvas": [800, 450]}
+    comp = picture.composition_id("f")
+    own = {"seconds": 3, "lines": {"f": [0, 3]}, "cues": {"f/0": 1}}
+    brief = {
+        "composition_id": comp,
+        "canvas": {"width": 800, "height": 450},
+        "keep_clear": None,
+        "visual": {"component": "comparison", "variant": "side-by-side"},
+        "look": picture.Look().tokens(),
+        "lines": [
+            {
+                "frame": "f",
+                "objects": [
+                    {"id": "cup", "what": "a cup of tea"},
+                    {"id": "metal", "what": "a metal spoon", "words": "Metal spoon"},
+                    {"id": "heat", "what": "a heat-transfer trail from tea along the metal spoon"},
+                ],
+                "cues": [{"key": "f/0", "object": "heat", "move": "trace"}],
+            }
+        ],
+    }
+    source = sketch.built(brief)
+    for rel, value in picture.stage_files(unit, own, picture.dressed(source, own)).items():
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(value)
+
+    proc = run(
+        tmp_path,
+        f"cp {GSAP} . && hyperframes snapshot . --at 0.8,1.2,2 --no-end --keep "
+        "-o stills --describe false",
+    )
+    assert proc.returncode == 0, proc.stdout[-2000:] + proc.stderr[-2000:]
+    before, moving, after = [
+        Image.open(tmp_path / "stills" / f"at-{at}s.png").convert("RGB")
+        for at in ("0.8", "1.2", "2")
+    ]
+    spoon = (410, 160, 760, 280)
+    assert ImageChops.difference(before.crop(spoon), moving.crop(spoon)).getbbox()
+    assert ImageChops.difference(moving.crop(spoon), after.crop(spoon)).getbbox()
+    assert (167, 50, 16) in {pixel for _, pixel in after.crop(spoon).getcolors(100_000)}

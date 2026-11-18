@@ -2198,13 +2198,25 @@ class EpisodeDesk:
             )
             planned = " Its `motion_plan` is the plan this picture is built to, shot by shot."
         starter = f"pictures/{comp}.starter.html"
+        seed = sketch.built(brief)
+        illustrated = "data-illustration" in seed
         if not isinstance(worker, DemoWorker):
-            await worker.prepare(episode, {starter: sketch.built(brief), str(brief["file"]): ""})
+            await worker.prepare(
+                episode, {starter: seed, str(brief["file"]): seed if illustrated else ""}
+            )
+        edit = (
+            f" Edit the existing {brief['file']} in place. Keep its template, clock and timeline. "
+            f"For an unfamiliar illustrated object, add its 128×128 inline SVG group to "
+            f'<defs id="{comp}-local-artwork"> using data-episode-object with the planned object ID. '
+            "The starter places and animates that group automatically."
+            if illustrated
+            else ""
+        )
         prompt = (
             f"Stage: picture.\n\nBuild one picture of the episode. Your folder is {root}. Read "
             f"{skill}/briefs/picture.md and the HyperFrames guides it names in "
             f"{_guides(skill)}/, then the brief at {root}/{brief_file}, "
-            f"and adapt the themed starting scene at {root}/{starter}. Write {root}/{brief['file']}.{planned} Deliver nothing: the house reads the "
+            f"and adapt the themed starting scene at {root}/{starter}. Write {root}/{brief['file']}.{edit}{planned} Deliver nothing: the house reads the "
             "file from your folder." + (f"\n\nThe person's note on it: {note}" if note else "")
         )
         html = ""
@@ -2223,7 +2235,7 @@ class EpisodeDesk:
                 raise ValueError(told.failure)
             html = await worker.read(self._episode(episode_id), str(brief["file"])) or ""
             faults = (
-                picture.faults(html, unit, full, look)
+                picture.faults(html, unit, full, look) + sketch.artwork_faults(html, brief)
                 if html
                 else [f"{brief['file']} was not written"]
             )
@@ -2243,12 +2255,12 @@ class EpisodeDesk:
                 f"Stage: picture.\n\n{root}/{brief['file']} can't be used yet:\n\n{listed}\n\n"
                 f"Use the brief at {root}/{brief_file}. Change only what these name, and reply with what you changed."
             )
-        layout_source = "writer"
+        layout_source = "brief" if illustrated and html == seed else "writer"
         if faults and not isinstance(worker, DemoWorker):
             layout_source = "brief"
             # An invalid drawing never gets published. Try the cue-driven layout from this brief.
-            html = sketch.built(brief)
-            faults = picture.faults(html, unit, full, look)
+            html = seed
+            faults = picture.faults(html, unit, full, look) + sketch.artwork_faults(html, brief)
             if not faults:
                 faults, stills = await asyncio.to_thread(
                     self._pose, episode, unit, full, html, False

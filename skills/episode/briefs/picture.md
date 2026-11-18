@@ -243,6 +243,11 @@ The local render page supplies pinned SVG.js for an illustration starter.
 Keep the starter’s SVG.js calls and reusable local asset drawings. Draw additional parts with its SVG groups
 and paths, and animate them on the registered GSAP timeline. Retain the compact labels
 and measured presenter exclusion area. Reuse object IDs across cues and held frames.
+Edit the seeded output file in place. For an unfamiliar subject, put a group with
+`data-episode-object="the-planned-id"` inside the starter's `*-local-artwork` SVG defs.
+Draw the actual silhouette and distinguishing details as inline SVG shapes in its 128×128
+view box. The starter positions that group and animates it on the object's cues. Keep group
+contents self-contained and use IDs prefixed by the composition and object IDs when needed.
 The `camera`, `focal` and `visible` fields carry the shot's intent. Focus enlarges the
 hero within its measured slot, while overview and reset restore context. Keep text at its
 readable size. Hide unnecessary supporting detail before reducing the number of visible
