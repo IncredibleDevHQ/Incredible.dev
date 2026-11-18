@@ -60,6 +60,26 @@ NOTES = "Notes on one idea.\n\nA second paragraph of the notes."
 PNG = b"\x89PNG\r\n\x1a\nstill"
 
 
+@pytest.fixture(autouse=True)
+def codex_catalog(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(episode_models, "CODEX_HOME", tmp_path)
+    monkeypatch.setattr(
+        episode_models,
+        "codex_model_list",
+        lambda: tuple(
+            {
+                "model": model,
+                "supportedReasoningEfforts": [
+                    {"reasoningEffort": effort}
+                    for effort in ("low", "medium", "high", "xhigh", "max")
+                ],
+            }
+            for model in ("gpt-6.1-sol", "gpt-6-sol", "gpt-5.6-sol", "account-model")
+        ),
+        raising=False,
+    )
+
+
 async def settle(done: Any, *, seconds: float = 5.0) -> None:
     """Wait for a background job the desk started."""
     for _ in range(int(seconds / 0.01)):
@@ -109,6 +129,34 @@ async def planned(host: AgentHost, **settings: Any) -> str:
     )
     await settle(lambda: not host.episodes.planning(view["id"]))
     return str(view["id"])
+
+
+async def test_stopped_plan_retries_the_same_stage_with_a_different_supported_model(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    eid = await planned(house)
+    desk = house.episodes
+    desk._worker_called("codex")
+    episode = desk._episode(eid)
+    house.store.update_episode(
+        eid,
+        status="failed",
+        stage={"name": "script", "state": "failed"},
+        settings={**episode["settings"], "writer": "codex", "writer_model": "gpt-6.1-terra"},
+    )
+    started = []
+    monkeypatch.setattr(desk, "_start_plan", lambda eid, *, stage: started.append((eid, stage)))
+    with pytest.raises(ValueError, match="supported model"):
+        desk.again(eid, model="gpt-6.1-terra")
+    assert not started
+    retried = desk.again(eid, model="gpt-5.6-sol", effort="low")
+    assert started == [(eid, "script")]
+    assert retried["settings"]["writer_model"] == "gpt-5.6-sol"
+    assert retried["settings"]["writer_effort"] == "low"
+    assert desk._episode(eid)["material"] == episode["material"]
+    reset = desk.again(eid, model="", effort="")
+    assert not {"writer_model", "writer_effort"} & reset["settings"].keys()
+    assert started == [(eid, "script"), (eid, "script")]
 
 
 # -- starting and planning ------------------------------------------------------------------------
@@ -3538,7 +3586,9 @@ async def test_the_films_agent_runs_on_the_model_and_effort_picked_for_the_film(
 ) -> None:
     eid = await planned(house)
     desk = house.episodes
-    desk._worker_called("codex")
+    default_worker = desk._worker_called("codex")
+    assert isinstance(default_worker, LocalWorker)
+    before = (default_worker.model, default_worker.effort)
     # only what the agent offers is kept
     for pick in (
         {"writer_model": "gpt-nope"},
@@ -3560,7 +3610,7 @@ async def test_the_films_agent_runs_on_the_model_and_effort_picked_for_the_film(
     assert isinstance(worker, LocalWorker)
     assert (worker.id, worker.model, worker.effort) == ("codex", "gpt-6.1-sol", "low")
     # the agent kept for the next film is left as it was
-    assert (desk.workers["codex"].model, desk.workers["codex"].effort) == ("", "")
+    assert (default_worker.model, default_worker.effort) == before
     # every picture the film's agent builds is built on it, and says so
     mine, other = view["units"][0], view["units"][1]
     assert mine["builder"] == "codex" and mine["model_pick"] == {"model": "", "effort": ""}
@@ -3619,16 +3669,12 @@ async def test_a_pick_the_agent_no_longer_offers_falls_back_to_its_default(
     unit = view["units"][0]
     desk.choose(eid, by="you", change={"units": {unit["id"]: {"model": "gpt-6-sol"}}})
     # the agent's models are its own to change: these two are gone the next time it is asked
-    offered = episode_models.options
-
-    def fewer(settings: Settings, writer: str) -> list[dict[str, Any]]:
-        return [o for o in offered(settings, writer) if o["id"] not in ("gpt-6.1-sol", "gpt-6-sol")]
-
-    monkeypatch.setattr(episode_models, "options", fewer)
+    monkeypatch.setattr(episode_models, "codex_model_list", lambda: ({"model": "gpt-5.6-sol"},))
     view = desk.view(eid)
     assert all(u["model_now"] == {"model": "", "effort": "", "from": ""} for u in view["units"])
-    assert view["units"][0]["generation"]["model"] == "CLI default"
-    assert desk._worker(desk._episode(eid)) is desk.workers["codex"]
+    assert view["units"][0]["generation"]["model"] == "gpt-5.6-sol"
+    worker = desk._worker(desk._episode(eid))
+    assert isinstance(worker, LocalWorker) and worker.model == "gpt-5.6-sol"
 
 
 async def test_local_chapter_preview_caches_only_its_lines_and_serializes_requests(

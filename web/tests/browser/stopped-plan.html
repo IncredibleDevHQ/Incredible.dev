@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><body><div id="root"></div>
+<script type="module">
+  import React from 'react';
+  import { createRoot } from 'react-dom/client';
+  import { PlanRun } from '/src/components/episode/PlanRun.tsx';
+  import '/src/app.css';
+
+  const view = {
+    id: 'test-episode', title: 'A stopped episode', status: 'failed', writer: 'codex',
+    stage: {name: 'brief', state: 'failed', said: 'The stored model is unavailable', at: 1},
+    plan_stages: [], runs: [], steps: [{id: 'brief', label: 'Read the notes'}],
+    written: {material: 0, chapters: []},
+    settings: {writer: 'codex', writer_model: 'gpt-6.1-terra', voice: 'local', level: 'simple', seconds: 'auto'},
+    options: {themes: [], writers: [{id: 'codex', title: 'Codex', ready: true, local: true}],
+      generation_models: {codex: [
+        {id: '', name: 'CLI default', resolves: 'gpt-5.6-sol', efforts: ['low']},
+        {id: 'gpt-5.6-sol', name: 'gpt-5.6-sol', efforts: ['low']},
+        {id: 'gpt-5.6-terra', name: 'gpt-5.6-terra', efforts: ['medium']}
+      ]}}
+  };
+  createRoot(document.querySelector('#root')).render(React.createElement(PlanRun, {
+    view, busy: false, run: async action => { await action(); return true; }
+  }));
+</script></body></html>

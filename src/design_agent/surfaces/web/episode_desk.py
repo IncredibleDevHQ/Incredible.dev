@@ -366,11 +366,18 @@ class EpisodeDesk:
         """The film's agent, on the model and effort picked for the film (its own otherwise)."""
         worker = self._worker_called(str(episode["settings"].get("writer") or ""))
         pick = self._film_pick(episode)
-        if (pick["model"] or pick["effort"]) and isinstance(worker, LocalWorker | BuiltinWorker):
-            scoped = copy.copy(worker)
-            scoped.model, scoped.effort = pick["model"] or worker.model, pick["effort"]
-            return scoped
+        if isinstance(worker, LocalWorker | BuiltinWorker):
+            model = pick["model"] or self._default_model(worker)
+            if model != worker.model or pick["effort"]:
+                scoped = copy.copy(worker)
+                scoped.model, scoped.effort = model, pick["effort"]
+                return scoped
         return worker
+
+    def _default_model(self, worker: LocalWorker | BuiltinWorker) -> str:
+        if worker.id == "codex":
+            return episode_models.codex_default_model(self.host.settings)
+        return worker.model
 
     def _film_pick(self, episode: Row) -> Row:
         """The model and effort picked for the film's agent, while that agent still offers them
@@ -398,7 +405,7 @@ class EpisodeDesk:
             and (model or effort)
         ):
             scoped = copy.copy(worker)
-            scoped.model, scoped.effort = model or worker.model, effort
+            scoped.model, scoped.effort = model or self._default_model(worker), effort
             return scoped
         return worker
 
@@ -421,7 +428,7 @@ class EpisodeDesk:
                 writer, store=self.store, data_dir=self.data_dir, project_root=self.project_root
             )
             if writer == "codex":
-                made.model = self.host.settings.episode_codex_model
+                made.model = self._default_model(made)
         else:
             raise ValueError(f"There is no writer called {writer}.")
         self.workers[writer] = made
@@ -1389,16 +1396,32 @@ class EpisodeDesk:
             if owner == episode_id and unit_id in ("", unit) and not build.done():
                 build.cancel()
 
-    def again(self, episode_id: str, *, writer: str = "", from_start: bool = False) -> Row:
-        """Pick the planning up where it stopped, with another writer if one is named: the
-        files and the house's record of the turns carry over."""
+    def again(
+        self,
+        episode_id: str,
+        *,
+        writer: str = "",
+        model: str | None = None,
+        effort: str | None = None,
+        from_start: bool = False,
+    ) -> Row:
+        """Pick up planning with the chosen writer and model, carrying its prior work over."""
         episode = self._episode(episode_id)
         if self.planning(episode_id):
             raise ValueError("The writer is already planning this episode.")
         if from_start and (episode["approved"] or episode["status"] != "failed"):
             raise ValueError("Only a stopped or failed draft can restart from the source.")
-        if writer:
-            chosen = self._settings({"writer": writer}, episode["settings"])
+        changes = {
+            key: value
+            for key, value in {
+                "writer": writer or None,
+                "writer_model": model,
+                "writer_effort": effort,
+            }.items()
+            if value is not None
+        }
+        if changes:
+            chosen = self._settings(changes, episode["settings"])
             self.store.update_episode(episode_id, settings=chosen)
         stage = str((episode["stage"] or {}).get("name") or "brief")
         self._start_plan(

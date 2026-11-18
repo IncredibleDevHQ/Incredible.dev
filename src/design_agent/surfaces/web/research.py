@@ -20,12 +20,17 @@ import contextlib
 import json
 import os
 import re
+import select
 import shutil
 import signal
+import subprocess
+import threading
+import time
 from collections.abc import AsyncGenerator, Callable, Mapping, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import IO, Any, Literal
 
 #: How the house asks, whichever agent answers.
 GUIDE = (
@@ -136,6 +141,77 @@ def clean_env(environ: Mapping[str, str] = os.environ) -> dict[str, str]:
     env["TERM"] = "dumb"
     env["NO_COLOR"] = "1"
     return env
+
+
+_codex_catalog_lock = threading.Lock()
+
+
+def codex_model_list() -> tuple[dict[str, Any], ...]:
+    """Ask the same local Codex sign-in Studio runs with, without creating a thread or turn."""
+    binary = HARNESSES["codex"].binary()
+    if binary is None:
+        return ()
+    with _codex_catalog_lock:
+        return _codex_catalog(binary, int(time.monotonic() // 120))
+
+
+@lru_cache(maxsize=2)
+def _codex_catalog(binary: str, window: int) -> tuple[dict[str, Any], ...]:  # noqa: ARG001 - cache window
+    argv = [binary, "app-server", "--listen", "stdio://"]
+    try:
+        with subprocess.Popen(  # noqa: S603 - the known local Codex binary, without a shell
+            argv,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=clean_env(),
+        ) as process:
+            try:
+                assert process.stdin is not None and process.stdout is not None  # noqa: S101
+                return _listed_codex_models(process.stdin, process.stdout)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+    except (OSError, ValueError, TimeoutError):
+        return ()
+
+
+def _listed_codex_models(stdin: IO[bytes], stdout: IO[bytes]) -> tuple[dict[str, Any], ...]:
+    deadline = time.monotonic() + 5
+
+    def send(message: dict[str, Any]) -> None:
+        stdin.write(json.dumps(message).encode() + b"\n")
+        stdin.flush()
+
+    def receive(request: int) -> dict[str, Any]:
+        pending = b""
+        while time.monotonic() < deadline and len(pending) < 2 * 1024 * 1024:
+            ready, _, _ = select.select([stdout], [], [], max(0.0, deadline - time.monotonic()))
+            if not ready or not (chunk := os.read(stdout.fileno(), 65536)):
+                break
+            pending += chunk
+            while b"\n" in pending:
+                line, _, pending = pending.partition(b"\n")
+                message = json.loads(line)
+                if isinstance(message, dict) and message.get("id") == request:
+                    result = message.get("result")
+                    if isinstance(result, dict):
+                        return result
+                    raise ValueError("Codex did not return a model catalog.")
+        raise TimeoutError("Codex model catalog did not respond.")
+
+    send(
+        {
+            "method": "initialize",
+            "id": 1,
+            "params": {"clientInfo": {"name": "studio", "version": "1.0"}},
+        }
+    )
+    receive(1)
+    send({"method": "initialized"})
+    send({"method": "model/list", "id": 2, "params": {"includeHidden": False, "limit": 100}})
+    rows = receive(2).get("data")
+    return tuple(row for row in rows if isinstance(row, dict)) if isinstance(rows, list) else ()
 
 
 def run_env(

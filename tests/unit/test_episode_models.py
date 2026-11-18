@@ -66,6 +66,15 @@ def test_codex_names_its_configured_default_without_changing_the_pick(
 ) -> None:
     monkeypatch.setattr(episode_models, "CODEX_HOME", tmp_path)
     path = tmp_path / "config.toml"
+    monkeypatch.setattr(
+        episode_models,
+        "codex_model_list",
+        lambda: (
+            {"model": "gpt-6.1-sol", "supportedReasoningEfforts": [{"reasoningEffort": "low"}]},
+            {"model": "gpt-6.2-sol", "supportedReasoningEfforts": [{"reasoningEffort": "high"}]},
+        ),
+        raising=False,
+    )
     path.write_text('model = "gpt-6.1-sol"\n', encoding="utf8")
     rows = episode_models.options(settings(), "codex")
     assert rows[0]["id"] == ""
@@ -76,7 +85,37 @@ def test_codex_names_its_configured_default_without_changing_the_pick(
     path.write_text('model = "gpt-6.2-sol"\n', encoding="utf8")
     assert episode_models.options(settings(), "codex")[0]["resolves"] == "gpt-6.2-sol"
     path.write_text("model = [broken", encoding="utf8")
-    assert "resolves" not in episode_models.options(settings(), "codex")[0]
+    assert episode_models.options(settings(), "codex")[0]["resolves"] == "gpt-6.1-sol"
+
+
+def test_codex_uses_account_models_and_efforts_instead_of_the_api_registry(tmp_path, monkeypatch):
+    monkeypatch.setattr(episode_models, "CODEX_HOME", tmp_path)
+    monkeypatch.setattr(
+        episode_models,
+        "codex_model_list",
+        lambda: (
+            {"model": "gpt-5.6-sol", "isDefault": True},
+            {"model": "gpt-6.1-terra", "hidden": True},
+            {
+                "model": "gpt-5.6-terra",
+                "defaultReasoningEffort": "medium",
+                "supportedReasoningEfforts": [
+                    {"reasoningEffort": "medium"},
+                    {"reasoningEffort": "ultra"},
+                ],
+            },
+        ),
+        raising=False,
+    )
+    s = settings().model_copy(update={"episode_codex_model": "gpt-6.1-terra"})
+    rows = episode_models.options(s, "codex")
+    assert [r["id"] for r in rows] == ["", "gpt-5.6-sol", "gpt-5.6-terra"]
+    assert rows[0]["resolves"] == "gpt-5.6-sol"
+    assert rows[2]["efforts"] == ["medium", "ultra"]
+    with pytest.raises(ValueError, match="supported model"):
+        episode_models.generation(s, "codex", {"model": "gpt-6.1-terra"})
+    monkeypatch.setattr(episode_models, "codex_model_list", lambda: ())
+    assert [row["id"] for row in episode_models.options(s, "codex")] == [""]
 
 
 def test_kimi_offers_the_models_its_own_settings_list_newest_first(kimi_home: Path) -> None:

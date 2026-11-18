@@ -341,6 +341,8 @@ class WordsIn(BaseModel):
 class AgainIn(BaseModel):
     from_start: bool = False
     writer: str = Field(default="", pattern=r"^(claude|codex|kimi|builtin|demo|)$")
+    model: str | None = Field(default=None, max_length=120)
+    effort: str | None = Field(default=None, pattern=r"^[a-z]{0,12}$")
 
 
 class PictureNoteIn(BaseModel):
@@ -828,7 +830,13 @@ def create_app(
         me: str = Depends(person),  # noqa: ARG001
     ) -> dict[str, Any]:
         return episode_call(
-            lambda: host.episodes.again(episode_id, writer=body.writer, from_start=body.from_start)
+            lambda: host.episodes.again(
+                episode_id,
+                writer=body.writer,
+                model=body.model,
+                effort=body.effort,
+                from_start=body.from_start,
+            )
         )
 
     @app.post("/api/episodes/{episode_id}/stop")

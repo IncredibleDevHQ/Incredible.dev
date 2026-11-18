@@ -18,6 +18,7 @@ import { useHouse } from "../../store";
 import { AgentMark } from "../../ui";
 import { Tooltip } from "../Tooltip";
 import { Elapsed, type Run } from "./Ask";
+import { AgentModel, type ModelPick } from "./AgentModel";
 import { WRITERS } from "./Film";
 import { AgentTrail, type TrailStage, type TrailState } from "../agent/AgentTrail";
 
@@ -298,18 +299,34 @@ function LiveTurn({ turn, n, lit, onLight }: { turn: EpisodeRun; n: number; lit:
 
 function Stopped({ view, run, busy }: { view: EpisodeView; run: Run; busy: boolean }) {
   const writers = view.options.writers.filter((w) => w.ready);
-  const [writer, setWriter] = useState<WriterId>(view.writer);
+  const [writer, setWriter] = useState<WriterId>(writers.find(w => w.id === view.writer)?.id ?? writers[0]?.id ?? view.writer);
+  const models = view.options.generation_models[writer] ?? [];
+  const ready = writers.some(w => w.id === writer);
+  const [pick, setPick] = useState<ModelPick>(() => {
+    const row = writer === view.writer ? models.find(m => m.id === (view.settings.writer_model ?? "")) : undefined;
+    const effort = view.settings.writer_effort ?? "";
+    return { model: row?.id ?? "", effort: row?.efforts.includes(effort) ? effort : "" };
+  });
   return (
     <div className="ep-run-fail">
       <p>{view.stage.said || "The writer stopped before the plan was done."}</p>
       <div className="ep-row">
-        <WriterPick writers={writers} value={writer} onChange={setWriter} />
-        <button type="button" className="btn primary" disabled={busy} onClick={() => void run(() => api.planAgain(view.id, writer === view.writer ? "" : writer))}>
+        <WriterPick writers={writers} value={writer} onChange={next => {
+          if (next !== writer) {
+            setWriter(next);
+            setPick({ model: "", effort: "" });
+          }
+        }} />
+      </div>
+      {writer !== "demo" && models.length > 0 &&
+        <AgentModel models={models} pick={pick} onChange={setPick} disabled={busy} />}
+      <div className="ep-row">
+        <button type="button" className="btn primary" disabled={busy || !ready} onClick={() => void run(() => api.planAgain(view.id, writer === view.writer ? "" : writer, pick))}>
           <RotateCcw />
           Pick it up
         </button>
       </div>
-      <p className="faint">It carries on from the stage it stopped at. Another agent picks up the same files and the record of what was said.</p>
+      <p className="faint">Continue from this stage with your notes and the work already done.</p>
     </div>
   );
 }

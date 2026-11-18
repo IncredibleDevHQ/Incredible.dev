@@ -1038,7 +1038,9 @@ app's canvas, from a channel's material or a research frame's notes.
 - In the new-episode dialog, a ready writer plans from the supplied notes, including when the
   rest of Studio runs in demo mode. The fixed HTTP caching sample requires explicit selection.
   Existing sample episodes can start a new plan from their saved source. Set
-  `DESIGN_AGENT_EPISODE_CODEX_MODEL` to override the Codex CLI model for the episode writer and reader.
+  `DESIGN_AGENT_EPISODE_CODEX_MODEL` to choose a default from the signed-in Codex catalog for the
+  episode writer and reader. Studio lists the account’s available models and lets a stopped plan
+  resume from the same stage with a different writer, model or effort.
 - Export waits for requested picture builds to finish and needs a built picture or a kept take.
   Studio shows the render stage, frame counts when available, and elapsed time. An interrupted
   renderer leaves a failed, retryable attempt. A finished attempt retains its duration.

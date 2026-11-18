@@ -12,10 +12,11 @@ from typing import Any
 from design_agent.config import Settings
 from design_agent.models.factory import resolve_model
 from design_agent.models.registry import CAPABILITY_REGISTRY
+from design_agent.surfaces.web.research import codex_model_list
 
 Row = dict[str, Any]
 PROVIDERS = {"codex": "OpenAI", "claude": "Anthropic", "kimi": "Kimi Code", "demo": "Scripted"}
-ORDER = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
+ORDER = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 
 #: Claude Code's models by the names its `--model` takes, as a person knows them, with the
 #: levels its `--effort` takes. Its small model takes none.
@@ -38,6 +39,8 @@ def options(settings: Settings, writer: str) -> list[Row]:
     the agent says what that is, the row says so (`resolves`, `default_effort`)."""
     if writer == "demo":
         return [{"id": "", "name": "demo", "efforts": []}]
+    if writer == "codex":
+        return _codex_options(settings)
     if writer == "kimi":
         return _kimi(KIMI_HOME.expanduser())
     if writer == "claude":
@@ -45,7 +48,7 @@ def options(settings: Settings, writer: str) -> list[Row]:
             {"id": "", "name": "CLI default", "efforts": list(CLAUDE_EFFORTS)},
             *({"id": i, "name": name, "efforts": list(e)} for i, name, e in CLAUDE_CODE),
         ]
-    prefix = {"codex": "openai"}.get(writer)
+    prefix = None
     if writer == "builtin":
         resolved = resolve_model(settings)
         prefix = resolved.spec.upstream.provider
@@ -59,11 +62,6 @@ def options(settings: Settings, writer: str) -> list[Row]:
             return [default]
     else:
         default = {"id": "", "name": "CLI default", "efforts": []}
-        if writer == "codex" and (model := _codex_default(CODEX_HOME.expanduser())):
-            default["resolves"] = model
-            caps = CAPABILITY_REGISTRY.get(f"openai:{model}")
-            if caps is not None:
-                default["efforts"] = [e for e in ORDER if e in caps.efforts]
     choices = [default]
     for spec, caps in CAPABILITY_REGISTRY.items():
         provider, name = spec.split(":", 1)
@@ -72,6 +70,47 @@ def options(settings: Settings, writer: str) -> list[Row]:
                 {"id": name, "name": name, "efforts": [e for e in ORDER if e in caps.efforts]}
             )
     return choices
+
+
+def _codex_options(settings: Settings) -> list[Row]:
+    catalog: dict[str, Row] = {}
+    account_default = ""
+    for item in codex_model_list():
+        model = item.get("model")
+        if (
+            item.get("hidden")
+            or not isinstance(model, str)
+            or not re.fullmatch(r"[\w./:-]{1,120}", model)
+        ):
+            continue
+        raw = item.get("supportedReasoningEfforts")
+        available = (
+            [entry.get("reasoningEffort") for entry in raw if isinstance(entry, dict)]
+            if isinstance(raw, list)
+            else []
+        )
+        efforts = [effort for effort in ORDER if effort in available]
+        row: Row = {"id": model, "name": model, "efforts": efforts}
+        if (effort := item.get("defaultReasoningEffort")) in efforts:
+            row["default_effort"] = effort
+        catalog[model] = row
+        if item.get("isDefault"):
+            account_default = model
+    default: Row = {"id": "", "name": "CLI default", "efforts": []}
+    if catalog:
+        configured = (settings.episode_codex_model, _codex_default(CODEX_HOME.expanduser()))
+        selected = next(
+            (model for model in configured if model in catalog),
+            account_default or next(iter(catalog)),
+        )
+        default.update(resolves=selected, efforts=catalog[selected]["efforts"])
+    return [default, *catalog.values()]
+
+
+def codex_default_model(settings: Settings) -> str:
+    """Honor a configured default when it is offered, otherwise use the account's default."""
+    selected = _codex_options(settings)[0].get("resolves")
+    return str(selected or settings.episode_codex_model)
 
 
 def _codex_default(home: Path) -> str:

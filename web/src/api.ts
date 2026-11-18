@@ -670,7 +670,8 @@ export const api = {
     call<EpisodeView>("DELETE", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/steer/${encodeURIComponent(note)}`),
   undoEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/undo`),
   redoEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/redo`),
-  planAgain: (id: string, writer: WriterId | "" = "") => call<EpisodeView>("POST", `/api/episodes/${id}/again`, { writer }),
+  planAgain: (id: string, writer: WriterId | "" = "", pick?: { model: string; effort: string }) =>
+    call<EpisodeView>("POST", `/api/episodes/${id}/again`, { writer, ...pick }),
   // Stops everything under way for the episode, or the one picture named.
   stopEpisode: (id: string, unit = "") => call<{ ok: boolean }>("POST", `/api/episodes/${id}/stop`, { unit }),
   // Runs what the picks and changes wait on: the writer's part, then the pictures out of date.
