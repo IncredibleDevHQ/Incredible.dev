@@ -162,6 +162,12 @@ ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("pictures", "builder", "TEXT NOT NULL DEFAULT ''"),
     ("pictures", "generation", "TEXT NOT NULL DEFAULT '{}'"),
     ("pictures", "motion", "TEXT NOT NULL DEFAULT '{}'"),
+    # How long its latest build took, kept with the beat: when it began and ended, in all, and
+    # each of its stages with its own times.
+    ("pictures", "timing", "TEXT NOT NULL DEFAULT '{}'"),
+    # The versions made before it was asked for again, newest first (each one's stills and clip,
+    # how and by whom it was made, when and how long it took), kept to look back at.
+    ("pictures", "versions", "TEXT NOT NULL DEFAULT '[]'"),
 )
 
 #: Columns that hold JSON, decoded on the way out.
@@ -186,6 +192,7 @@ JSON_COLUMNS = frozenset(
         "marks",
         "motion",
         "generation",
+        "timing",
     }
 )
 #: Columns that hold a SQLite boolean.

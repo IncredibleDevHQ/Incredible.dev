@@ -108,6 +108,8 @@ MOTION_TRIES = 2
 #: Pictures built at once by a local agent. The built-in agent builds one at a time: its
 #: thread holds one turn.
 PICTURES_AT_ONCE = 2
+#: Earlier versions of a picture kept to look back at; the oldest is dropped past this.
+VERSIONS = 12
 MATERIAL_CHARS = 200_000
 TEXT_FILES = (".md", ".markdown", ".txt", ".rst", ".json", ".csv", ".html", ".htm")
 #: The lengths a person can ask for, in seconds: the limits (the lengths this kind of film
@@ -1023,7 +1025,11 @@ class EpisodeDesk:
 
     def _stage(self, episode_id: str, **change: Any) -> None:
         episode = self._episode(episode_id)
-        stage = {**(episode["stage"] or {}), **change}
+        was = dict(episode["stage"] or {})
+        stage = {**was, **change}
+        if "name" in change and change["name"] != was.get("name"):
+            # when each stage began, so the plan's page times them one by one
+            stage["log"] = [*(stage.get("log") or []), {"name": change["name"], "at": time.time()}]
         self.store.update_episode(episode_id, stage=stage)
         self._changed(episode_id)
 
@@ -1062,8 +1068,15 @@ class EpisodeDesk:
             # a plan being written takes the studio's place; a change to one that stands does not
             status = "planning" if self._status(episode_id) == "plan" else episode["status"]
             self._set(episode_id, status=status)
+        began = time.time()
         self._stage(
-            episode_id, name=start, round=0, state="working", said="Getting ready", at=time.time()
+            episode_id,
+            name=start,
+            round=0,
+            state="working",
+            said="Getting ready",
+            at=began,
+            log=[{"name": start, "at": began}],
         )
         asked = (episode["stage"] or {}).get("asked") or {}
         unit = None
@@ -1166,7 +1179,7 @@ class EpisodeDesk:
             # planned again for their words: drawn again, whatever the writer changed
             planned = {u["id"] for u in self._units(episode, full) if u["kind"] == "picture"}
             for unit_id in again & planned:
-                self.store.set_picture(episode_id, unit_id, status="queued", sig="", failure="")
+                self._set_queued(episode_id, unit_id, sig="", failure="")
             self._set(episode_id, status=self._status(episode_id))
             self._queue_pictures(episode_id)
 
@@ -1405,9 +1418,7 @@ class EpisodeDesk:
         full = self._full(episode)
         for unit in self._units(episode, full or {}):
             if unit["kind"] == "picture" and self.store.picture(episode_id, unit["id"]) is None:
-                self.store.set_picture(
-                    episode_id, unit["id"], status="queued", sig="", level=unit["level"]
-                )
+                self._set_queued(episode_id, unit["id"], sig="", level=unit["level"])
         self._queue_pictures(episode_id)
         self._settle(episode_id)
         return self.view(episode_id)
@@ -2021,10 +2032,9 @@ class EpisodeDesk:
                 continue
             if running is not None and not running.done():
                 continue
-            self.store.set_picture(
+            self._set_queued(
                 episode_id,
                 unit["id"],
-                status="queued",
                 failure="",
                 sig=unit["sig"],
                 level=unit["level"],
@@ -2110,9 +2120,7 @@ class EpisodeDesk:
             if (have is None and episode["approved"]) or (
                 have is not None and _outdated(have, unit)
             ):
-                self.store.set_picture(
-                    episode_id, unit["id"], status="queued", sig="", failure="", level=unit["level"]
-                )
+                self._set_queued(episode_id, unit["id"], sig="", failure="", level=unit["level"])
                 asked += 1
         if asked:
             self._set(episode_id, status=self._status(episode_id))
@@ -2145,6 +2153,7 @@ class EpisodeDesk:
                 episode_id, unit_id, status="failed", failure=_clean(str(error), 240)
             )
         finally:
+            self._record_timing(episode_id, unit_id)
             self._builds.pop((episode_id, unit_id), None)
             self._steer.pop((episode_id, unit_id), None)
             self._last_turn.discard((episode_id, unit_id))
@@ -2184,6 +2193,8 @@ class EpisodeDesk:
             level=level,
             builder=worker.id,
             motion={},
+            # dated on the beat's record, so its clock holds across a restart
+            timing={"started_at": self._began[key]},
         )
         self._changed(episode_id)
         brief_file = f"pictures/{comp}.brief.json"
@@ -2708,9 +2719,7 @@ class EpisodeDesk:
                 or (have["status"] == "failed" and (named or not chapter))
                 or (named and (again or _outdated(have, unit) or _reworded(have, unit)))
             ):
-                self.store.set_picture(
-                    episode_id, unit_id, status="queued", sig="", failure="", level=unit["level"]
-                )
+                self._set_queued(episode_id, unit_id, sig="", failure="", level=unit["level"])
         self._set(episode_id, status=self._status(episode_id))
         self._queue_pictures(episode_id)
         self._say(episode, "Asked for pictures to be made.", by=by, quiet=True)
@@ -2755,9 +2764,7 @@ class EpisodeDesk:
         elif model:
             raise ValueError("Choose a provider for the model.")
         for unit_id, unit in wanted.items():
-            self.store.set_picture(
-                episode_id, unit_id, status="queued", sig="", failure="", level=unit["level"]
-            )
+            self._set_queued(episode_id, unit_id, sig="", failure="", level=unit["level"])
         self._set(episode_id, status=self._status(episode_id))
         self._queue_pictures(episode_id, generation_for=generation_for)
         self._say(episode, "Asked to regenerate a chapter's visuals.", by=by, quiet=True)
@@ -2784,7 +2791,7 @@ class EpisodeDesk:
     def _rebuild(self, episode_id: str, unit_id: str, note: str) -> None:
         """Start one picture again with a person's note for its builder."""
         note = note.strip()[:600]
-        self.store.set_picture(episode_id, unit_id, status="queued", note=note)
+        self._set_queued(episode_id, unit_id, note=note)
         self._builds[(episode_id, unit_id)] = asyncio.get_running_loop().create_task(
             self._rebuilt(episode_id, unit_id, note), name=f"picture {episode_id} {unit_id}"
         )
@@ -2801,10 +2808,45 @@ class EpisodeDesk:
                 episode_id, unit_id, status="failed", failure=_clean(str(error), 240)
             )
         finally:
+            self._record_timing(episode_id, unit_id)
             self._builds.pop((episode_id, unit_id), None)
             self._steer.pop((episode_id, unit_id), None)
             self._last_turn.discard((episode_id, unit_id))
             self._settle(episode_id)
+
+    def _set_queued(self, episode_id: str, unit_id: str, **values: Any) -> None:
+        """A picture asked for again. The version made before joins the ones kept to look back
+        at, newest first, the oldest dropped past `VERSIONS`; one that was not made leaves the
+        kept ones as they are."""
+        have = self.store.picture(episode_id, unit_id)
+        kept = _kept_version(have)
+        extra: Row = (
+            {"versions": [kept, *((have or {}).get("versions") or [])][:VERSIONS]} if kept else {}
+        )
+        self.store.set_picture(episode_id, unit_id, status="queued", **values, **extra)
+
+    def _record_timing(self, episode_id: str, unit_id: str) -> None:
+        """Keeps with the beat how long its picture's build took, in all and stage by stage,
+        once the build ends, however it ends. Only the build this house began is recorded, and
+        only once: a build stopped before it began leaves the record of the one before as it
+        is."""
+        have = self.store.picture(episode_id, unit_id)
+        kept = dict((have or {}).get("timing") or {})
+        began = kept.get("started_at")
+        if (
+            have is None
+            or not began
+            or kept.get("ended_at")
+            or self._began.get((episode_id, unit_id)) != began
+        ):
+            return
+        thread_id = str(self._episode(episode_id)["thread_id"])
+        turns = self.store.runs(thread_id, f"picture:{unit_id}")
+        level = str(have.get("level") or units.SIMPLE)
+        stages, _ = _stages(turns, have, level, float(began))
+        self.store.set_picture(
+            episode_id, unit_id, timing=_timing(float(began), time.time(), stages)
+        )
 
     # -- takes -----------------------------------------------------------------------------------
 
@@ -3928,6 +3970,9 @@ class EpisodeDesk:
             else [],
             "settings": episode["settings"],
             "steps": [{"id": key, "label": label} for key, label in STEPS],
+            "plan_stages": _plan_stages(
+                episode["stage"] or {}, [r for r in every if r["lane"] == "plan"]
+            ),
             "plan": full,
             "sample_notes": episode["material"]
             if episode["settings"].get("writer") == DEMO
@@ -4009,14 +4054,16 @@ class EpisodeDesk:
     def _build_view(
         self, episode_id: str, unit: Row, have: Row | None, turns: Sequence[Row]
     ) -> Row:
-        """A picture's latest build as the studio follows it: its stages, what its builder said
-        when it reviewed the picture, and the notes the person left the builder, waiting or
-        taken in."""
+        """A picture's latest build as the studio follows it: its stages, how long it has taken
+        in all, what its builder said when it reviewed the picture, and the notes the person
+        left the builder, waiting or taken in."""
         key = (episode_id, str(unit["id"]))
         level = str((have or {}).get("level") or unit["level"])
-        stages, reviewed = _stages(turns, have, level, self._began.get(key))
+        began = self._began.get(key) or _started(have)
+        stages, reviewed = _stages(turns, have, level, began)
         return {
             "stages": stages,
+            "timing": _timing_view(have, began),
             "reviewed": reviewed,
             "queued": [dict(note) for note in self._steer.get(key, [])],
             "steered": [dict(note) for note in self._steered.get(key, [])],
@@ -4039,6 +4086,8 @@ class EpisodeDesk:
                 "made_for": {},
                 "failure": "",
                 "note": "",
+                "version": 1,
+                "versions": [],
             }
         return {
             "status": have["status"],
@@ -4062,6 +4111,28 @@ class EpisodeDesk:
             "made_for": _made_for(have, unit, lines or {}) if reworded else {},
             "failure": have["failure"],
             "note": have["note"],
+            # which version it is (or will be, while it is made), and the ones made before it
+            # was asked for again, newest first, to look back at
+            "version": _version_number(have.get("versions")) + 1,
+            "versions": [self._version_view(kept) for kept in have.get("versions") or []],
+        }
+
+    def _version_view(self, kept: Row) -> Row:
+        """A version kept to look back at, as the studio shows it: its number, its stills and
+        its clip as files, how and by whom it was made, when, and how long its build took."""
+        return {
+            "n": kept["n"],
+            "stills": {
+                frame: view
+                for frame, file_id in (kept.get("stills") or {}).items()
+                if (view := self._file(file_id)) is not None
+            },
+            "clip": self._file(kept.get("clip")),
+            "level": kept.get("level") or "",
+            "builder": kept.get("builder") or "",
+            "generation": kept.get("generation") or None,
+            "made_at": kept.get("made_at"),
+            "seconds": kept.get("seconds"),
         }
 
     def _take_view(self, take: Row) -> dict[str, Any]:
@@ -4304,6 +4375,120 @@ def _stages(
         said = re.sub(r"\*\*|__|`", "", str(spans["review"][-1]["answer"] or ""))
         reviewed = _clean(said, 400)
     return out, reviewed
+
+
+#: The stages a plan is written in, as its page times them.
+PLAN_STAGES = ("brief", "script", "frames")
+
+
+def _plan_stages(stage: Row, turns: Sequence[Row]) -> list[Row]:
+    """The plan's stages as its page follows them, each with when it began and ended and how
+    it stands. A stage begins when the house moves to it and ends when the next one begins;
+    checking the plan is the house's own reading after the writer's last turn. A plan written
+    before the house logged its stages has none."""
+    began: dict[str, float] = {}
+    order: list[str] = []
+    for entry in stage.get("log") or []:
+        name = str(entry.get("name") or "")
+        if name in (*PLAN_STAGES, "done") and name not in began:
+            began[name] = float(entry["at"])
+            order.append(name)
+    if not any(name in began for name in PLAN_STAGES):
+        return []
+    stopped = stage.get("state") == "stopped"
+    out: list[Row] = []
+    for key in PLAN_STAGES:
+        row: Row = {"id": key, "state": "pending", "started_at": began.get(key), "ended_at": None}
+        if key in began:
+            after = order[order.index(key) + 1 :]
+            row["ended_at"] = began[after[0]] if after else None
+            row["state"] = "done" if after else "failed" if stopped else "running"
+        out.append(row)
+    check: Row = {"id": "check", "state": "pending", "started_at": None, "ended_at": None}
+    if "done" in began and "frames" in began:
+        ends = [
+            float(t["ended_at"])
+            for t in turns
+            if t.get("ended_at") and float(t["started_at"] or 0.0) >= began["frames"]
+        ]
+        # the writer's frames end with its last turn; the house's checks run on from there
+        last = min(max(ends), began["done"]) if ends else began["done"]
+        out[-1]["ended_at"] = last
+        check.update(state="done", started_at=last, ended_at=began["done"])
+    out.append(check)
+    return out
+
+
+def _version_number(kept: Sequence[Row] | None) -> int:
+    """The number of the newest version kept: versions count up from 1 over a picture's life,
+    whichever of them are still kept."""
+    return int(kept[0]["n"]) if kept else 0
+
+
+def _kept_version(have: Row | None) -> Row | None:
+    """A made picture as a version to look back at: its number, its stills and clip, how and by
+    whom it was made, when its build ended and how long that took. None for a picture that was
+    not made."""
+    if have is None or have["status"] not in ("made", "go") or not (have["stills"] or have["clip"]):
+        return None
+    timing = have.get("timing") or {}
+    return {
+        "n": _version_number(have.get("versions")) + 1,
+        "stills": dict(have["stills"] or {}),
+        "clip": have["clip"] or "",
+        "level": have["level"],
+        "builder": have["builder"],
+        "generation": have.get("generation") or {},
+        "made_at": timing.get("ended_at") or have["updated_at"],
+        "seconds": timing.get("seconds"),
+    }
+
+
+def _started(have: Row | None) -> float | None:
+    """When a picture's latest build began, as its beat's record dates it."""
+    began = ((have or {}).get("timing") or {}).get("started_at")
+    return float(began) if began else None
+
+
+def _timing(began: float, ended: float, stages: Sequence[Row]) -> Row:
+    """A build's times as the beat keeps them: when it began and ended, how long it took in
+    all, and each of its own stages (the go is the person's) with its times and how long it
+    took."""
+
+    def took(stage: Row) -> float | None:
+        start, end = stage.get("started_at"), stage.get("ended_at")
+        return round(float(end) - float(start), 1) if start and end else None
+
+    return {
+        "started_at": began,
+        "ended_at": ended,
+        "seconds": round(ended - began, 1),
+        "stages": [
+            {
+                "id": s["id"],
+                "state": s["state"],
+                "started_at": s["started_at"],
+                "ended_at": s["ended_at"],
+                "seconds": took(s),
+            }
+            for s in stages
+            if s["id"] != "go"
+        ],
+    }
+
+
+def _timing_view(have: Row | None, began: float | None) -> Row | None:
+    """How long a picture's latest build has taken in all: while it runs, the time it began, so
+    the clock runs on from stage to stage; once it ends, as the beat's record keeps it."""
+    status = str((have or {}).get("status") or "none")
+    if status in ("none", "queued"):
+        return None
+    if status in ("making", "posing"):
+        return {"started_at": began, "ended_at": None, "seconds": None} if began else None
+    kept = (have or {}).get("timing") or {}
+    if not kept.get("ended_at"):
+        return None
+    return {key: kept[key] for key in ("started_at", "ended_at", "seconds")}
 
 
 def _live(run: Row) -> Row:

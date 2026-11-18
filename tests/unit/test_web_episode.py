@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from design_agent.config import Settings
 from design_agent.episode import picture
 from design_agent.episode import plan as plans
-from design_agent.surfaces.web import catalog, episode_models
+from design_agent.surfaces.web import catalog, episode_desk, episode_models
 from design_agent.surfaces.web.agent import AgentHost
 from design_agent.surfaces.web.app import create_app
 from design_agent.surfaces.web.episode_desk import (
@@ -28,6 +28,7 @@ from design_agent.surfaces.web.episode_desk import (
     _changed,
     _craft_notes,
     _guides,
+    _plan_stages,
     _shape,
     _stages,
 )
@@ -145,6 +146,44 @@ async def test_the_persons_facts_win_over_the_writers(house: AgentHost) -> None:
     # the demo's script is five minutes long: under the least asked for, and said so
     (length,) = [c for c in view["checks"] if c["rule"] == "length"]
     assert length["level"] == "must" and "add at least" in length["text"]
+
+
+async def test_the_plans_page_times_each_stage_from_when_the_house_moved_to_it(
+    house: AgentHost,
+) -> None:
+    episode_id = await planned(house)
+    stages = house.episodes.view(episode_id)["plan_stages"]
+    assert [(s["id"], s["state"]) for s in stages] == [
+        ("brief", "done"),
+        ("script", "done"),
+        ("frames", "done"),
+        ("check", "done"),
+    ]
+    # one after another, each ending where the next begins
+    times = [t for s in stages for t in (s["started_at"], s["ended_at"])]
+    assert all(t is not None for t in times) and times == sorted(times)
+    assert all(a["ended_at"] == b["started_at"] for a, b in zip(stages, stages[1:], strict=False))
+
+
+def test_a_plans_stages_run_and_stop_where_the_house_is() -> None:
+    log = [{"name": "brief", "at": 10.0}, {"name": "script", "at": 20.0}]
+    running = _plan_stages({"name": "script", "state": "working", "log": log}, [])
+    assert [(s["id"], s["state"]) for s in running] == [
+        ("brief", "done"),
+        ("script", "running"),
+        ("frames", "pending"),
+        ("check", "pending"),
+    ]
+    assert running[0]["ended_at"] == 20.0 == running[1]["started_at"]
+    stopped = _plan_stages({"name": "script", "state": "stopped", "log": log}, [])
+    assert stopped[1]["state"] == "failed" and stopped[1]["ended_at"] is None
+    # the checks after the writer's last framing turn are the house's own stage
+    done = [*log, {"name": "frames", "at": 30.0}, {"name": "done", "at": 50.0}]
+    turns = [{"started_at": 31.0, "ended_at": 44.0}]
+    framed, checked = _plan_stages({"name": "done", "state": "done", "log": done}, turns)[2:]
+    assert (framed["ended_at"], checked["started_at"], checked["ended_at"]) == (44.0, 44.0, 50.0)
+    # a plan written before the house logged its stages has none to time
+    assert _plan_stages({"name": "done", "state": "done"}, []) == []
 
 
 def test_a_length_is_a_least_and_a_most_with_room_between(house: AgentHost) -> None:
@@ -392,6 +431,10 @@ async def test_regenerate_chapter_rebuilds_current_visuals_with_an_optional_mode
             assert row["updated_at"] > existing[key]["updated_at"]
             assert row["status"] == "made" and row["level"] == existing[key]["level"]
             assert row["generation"]["model"] == "demo"
+            # the version each picture was is kept, to look back at
+            assert [(v["n"], v["stills"]) for v in row["versions"]] == [
+                (1, existing[key]["stills"])
+            ]
         else:
             assert row == existing[key]
 
@@ -507,6 +550,19 @@ async def test_a_rich_picture_is_planned_shot_by_shot_before_it_is_drawn(
     assert stages[2]["started_at"] == stages[1]["ended_at"]
     assert stages[2]["ended_at"] == stages[3]["started_at"]
     assert made["reviewed"] == "Nothing to change." and not made["steerable"]
+    # the build's times are kept with the beat: in all, and stage by stage without the go,
+    # which is the person's
+    kept = house.store.picture(episode_id, unit["id"])["timing"]
+    assert kept["ended_at"] >= kept["started_at"] == made["timing"]["started_at"]
+    assert kept["seconds"] == made["timing"]["seconds"] >= 0
+    assert [(s["id"], s["state"]) for s in kept["stages"]] == [
+        (s["id"], s["state"]) for s in stages[:4]
+    ]
+    assert all(s["seconds"] is not None for s in kept["stages"])
+    # a restart forgets the build the house held in memory; the beat's record still dates it
+    desk._began.clear()
+    after = next(u for u in desk.view(episode_id)["units"] if u["id"] == unit["id"])["picture"]
+    assert after["stages"] == stages and after["timing"] == made["timing"]
     # the plan came first, the picture was built to it, and its builder then looked at it
     thread_id = desk.view(episode_id)["thread_id"]
     turns = [str(r["prompt"]) for r in house.store.runs(thread_id, f"picture:{unit['id']}")]
@@ -564,6 +620,8 @@ async def test_a_note_left_while_a_picture_is_built_goes_in_with_the_builders_ne
         ("motion", "running"),
         ("draw", "pending"),
     ]
+    # the build's own clock runs from when it began, whichever stage it is on
+    assert seen[1]["timing"]["started_at"] and seen[1]["timing"]["ended_at"] is None
     # the note went in with the builder's next turn, the drawing, and with no other
     thread_id = desk.view(episode_id)["thread_id"]
     turns = [str(r["prompt"]) for r in house.store.runs(thread_id, f"picture:{unit['id']}")]
@@ -3881,3 +3939,50 @@ async def test_applying_cue_word_changes_preserves_classified_artwork(
     after = desk.view(eid)
     assert next(u for u in after["units"] if u["id"] == unit["id"])["sig"] == unit["sig"]
     assert [c["move"] for c in new["cues"]] == [c["move"] for c in old["cues"]]
+
+
+async def test_a_picture_made_again_keeps_the_versions_before_to_look_back_at(
+    tmp_path: Path, house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    desk = house.episodes
+    desk.workers[DEMO] = DemoWorker(data_dir=tmp_path, script=SCRIPT, pause=0, store=house.store)
+    episode_id = await planned(house)
+
+    def picture_now(unit_id: str) -> dict[str, Any]:
+        return next(u for u in desk.view(episode_id)["units"] if u["id"] == unit_id)["picture"]
+
+    async def again(level: str) -> dict[str, Any]:
+        desk.make(episode_id, by="you", only=[unit["id"]], level=level)
+        await settle(lambda: not desk._busy(episode_id))
+        return picture_now(unit["id"])
+
+    def stills(version: dict[str, Any]) -> dict[str, str]:
+        return {frame: still["id"] for frame, still in version["stills"].items()}
+
+    unit = next(u for u in desk.view(episode_id)["units"] if u["kind"] == "picture")
+    desk.make(episode_id, by="you", only=[unit["id"]])
+    await settle(lambda: not desk._busy(episode_id))
+    first = picture_now(unit["id"])
+    # a picture made once is its first version, with nothing before it
+    assert first["status"] == "made" and first["stills"]
+    assert first["version"] == 1 and first["versions"] == []
+    second = await again(first["level"] or "simple")
+    # made again, it is the second version and keeps the first: its stills as they were, how
+    # and by whom it was made, when, and how long its build took
+    assert second["status"] == "made" and second["version"] == 2
+    (kept,) = second["versions"]
+    assert kept["n"] == 1 and stills(kept) == stills(first)
+    assert kept["level"] == first["level"] and kept["builder"] == first["builder"]
+    assert kept["made_at"] and kept["seconds"] == first["timing"]["seconds"]
+    third = await again(second["level"])
+    # the versions before stand newest first, each under the number it was made as
+    assert third["version"] == 3 and [v["n"] for v in third["versions"]] == [2, 1]
+    assert stills(third["versions"][0]) == stills(second)
+    # one stopped before it was made again keeps no version of what was not made
+    house.store.set_picture(episode_id, unit["id"], status="failed", failure="Stopped.")
+    fourth = await again(third["level"])
+    assert fourth["version"] == 3 and [v["n"] for v in fourth["versions"]] == [2, 1]
+    # past what is kept, the oldest is dropped and the numbers run on
+    monkeypatch.setattr(episode_desk, "VERSIONS", 2)
+    fifth = await again(fourth["level"])
+    assert fifth["version"] == 4 and [v["n"] for v in fifth["versions"]] == [3, 2]
