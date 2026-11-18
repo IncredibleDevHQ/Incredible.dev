@@ -29,6 +29,7 @@ from design_agent.surfaces.web.episode_desk import (
     _craft_notes,
     _guides,
     _shape,
+    _stages,
 )
 from design_agent.surfaces.web.episode_workers import (
     BUILTIN,
@@ -415,6 +416,20 @@ async def test_a_rich_picture_is_planned_shot_by_shot_before_it_is_drawn(
     assert motion["device"] in picture.DEVICES and motion["world"]
     assert [shot["frame"] for shot in motion["shots"]] == unit["frames"]
     assert all(shot["shot"] and shot["hero"] and shot["still"] for shot in motion["shots"])
+    # the build stage by stage, each with when it began and ended: the stills are the house's,
+    # taken between the drawing and the review, and the go waits for the person
+    stages = made["stages"]
+    assert [(s["id"], s["state"]) for s in stages] == [
+        ("motion", "done"),
+        ("draw", "done"),
+        ("pose", "done"),
+        ("review", "done"),
+        ("go", "waiting"),
+    ]
+    assert all(s["started_at"] and s["ended_at"] for s in stages[:4])
+    assert stages[2]["started_at"] == stages[1]["ended_at"]
+    assert stages[2]["ended_at"] == stages[3]["started_at"]
+    assert made["reviewed"] == "Nothing to change." and not made["steerable"]
     # the plan came first, the picture was built to it, and its builder then looked at it
     thread_id = desk.view(episode_id)["thread_id"]
     turns = [str(r["prompt"]) for r in house.store.runs(thread_id, f"picture:{unit['id']}")]
@@ -431,6 +446,131 @@ async def test_a_rich_picture_is_planned_shot_by_shot_before_it_is_drawn(
     assert (folder / f"{comp}.motion" / f"{moving}.png").read_bytes() == PNG
     assert "What the renderer measured:\n- dead_stretch: 4.2 s with nothing changing" in turns[2]
     assert (episode_id, unit["id"]) not in desk._craft
+
+
+async def test_a_note_left_while_a_picture_is_built_goes_in_with_the_builders_next_turn(
+    tmp_path: Path, house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    desk = house.episodes
+    episode_id = await planned(house)
+    unit = next(u for u in desk.view(episode_id)["units"] if len(u["frames"]) > 1)
+    monkeypatch.setattr(desk, "_motion_frames", lambda episode, unit, full, html: {})
+    desk.choose(episode_id, by="you", change={"units": {unit["id"]: {"level": "rich"}}})
+    seen: list[dict[str, Any]] = []
+
+    class Steered(DemoWorker):
+        async def turn(self, episode: Any, *, lane: str, prompt: str, heard: Any) -> Told:
+            if prompt.startswith("Stage: motion plan.\n\nPlan how"):
+                # the person writes while the shots are being planned, and takes one back
+                desk.steer(episode_id, unit["id"], "Drop this one", by="you")
+                view = desk.steer(
+                    episode_id, unit["id"], " Use a stockroom,\n not boxes. ", by="you"
+                )
+                seen.append(next(u for u in view["units"] if u["id"] == unit["id"])["picture"])
+                desk.unsteer(episode_id, unit["id"], seen[0]["queued"][0]["id"], by="you")
+                live = next(u for u in desk.view(episode_id)["units"] if u["id"] == unit["id"])
+                seen.append(live["picture"])
+            return await super().turn(episode, lane=lane, prompt=prompt, heard=heard)
+
+    desk.workers[DEMO] = Steered(data_dir=tmp_path, script=SCRIPT, pause=0, store=house.store)
+    desk.make(episode_id, by="you", only=[unit["id"]])
+    await settle(lambda: not desk._busy(episode_id))
+    # while the plan was made, the notes waited, said once, and the build stood at its plan
+    assert [n["text"] for n in seen[0]["queued"]] == [
+        "Drop this one",
+        "Use a stockroom, not boxes.",
+    ]
+    assert seen[0]["steerable"] and [n["text"] for n in seen[1]["queued"]] == [
+        "Use a stockroom, not boxes."
+    ]
+    assert [(s["id"], s["state"]) for s in seen[1]["stages"][:2]] == [
+        ("motion", "running"),
+        ("draw", "pending"),
+    ]
+    # the note went in with the builder's next turn, the drawing, and with no other
+    thread_id = desk.view(episode_id)["thread_id"]
+    turns = [str(r["prompt"]) for r in house.store.runs(thread_id, f"picture:{unit['id']}")]
+    assert turns[1].startswith("Stage: picture.\n\nBuild one picture")
+    assert turns[1].endswith("Take them in:\n- Use a stockroom, not boxes.")
+    assert sum("Use a stockroom" in t for t in turns) == 1
+    assert not any("Drop this one" in t for t in turns)
+    made = next(u for u in desk.view(episode_id)["units"] if u["id"] == unit["id"])["picture"]
+    assert made["queued"] == []
+    assert [(n["text"], n["stage"]) for n in made["steered"]] == [
+        ("Use a stockroom, not boxes.", "draw")
+    ]
+    # a made picture, a simple one and a note already given have no turn left to take it
+    assert not made["steerable"]
+    with pytest.raises(ValueError, match="none to come"):
+        desk.steer(episode_id, unit["id"], "Bigger", by="you")
+    other = next(
+        u
+        for u in desk.view(episode_id)["units"]
+        if u["kind"] == "picture" and u["id"] != unit["id"]
+    )
+    with pytest.raises(ValueError, match="none to come"):
+        desk.steer(episode_id, other["id"], "Bigger", by="you")
+    with pytest.raises(ValueError, match="already gone"):
+        desk.unsteer(episode_id, unit["id"], made["steered"][0]["id"], by="you")
+
+
+def test_a_build_reads_its_stages_from_how_each_turn_opens() -> None:
+    def turn(prompt: str, start: float, end: float | None, state: str = "done") -> dict[str, Any]:
+        return {
+            "prompt": prompt,
+            "started_at": start,
+            "ended_at": end,
+            "state": state,
+            "answer": "",
+        }
+
+    old = turn("Stage: picture.\n\nBuild one picture of the episode.", 1.0, 5.0)
+    plan = turn("Stage: motion plan.\n\nPlan how one picture moves.", 10.0, 20.0)
+    fixed = turn("Stage: motion plan.\n\npics/p.motion.json can't be used yet", 20.0, 22.0)
+    draw = turn("Stage: picture.\n\nBuild one picture of the episode.", 22.0, None, "working")
+    asked = turn("Stage: change.\n\nSomething else on the lane.", 23.0, 24.0)
+    making = {"status": "making"}
+    # only the latest build counts, a plan put right counts as planning, and any other turn on
+    # the lane is not a stage
+    stages, reviewed = _stages([old, plan, fixed, draw, asked], making, "rich", None)
+    assert [(s["id"], s["state"], s["started_at"], s["ended_at"]) for s in stages] == [
+        ("motion", "done", 10.0, 22.0),
+        ("draw", "running", 22.0, None),
+        ("pose", "pending", None, None),
+        ("review", "pending", None, None),
+        ("go", "pending", None, None),
+    ]
+    assert reviewed == ""
+    # between turns the house works on its own: the stills after a drawing is done
+    drawn = {**draw, "state": "done", "ended_at": 30.0}
+    posing = _stages([plan, drawn], {"status": "posing"}, "rich", None)[0]
+    assert [(s["id"], s["state"]) for s in posing][1:3] == [("draw", "done"), ("pose", "running")]
+    assert posing[2]["started_at"] == 30.0
+    # the review's words are kept as plain words, without the marks of its markdown
+    looked = turn("Stage: picture.\n\nLook at how pics/p.html came out", 31.0, 40.0)
+    looked["answer"] = "I fixed **two** things in `pics/p.html`: the __label__ and pic_1."
+    seen = _stages([plan, drawn, looked], {"status": "go"}, "rich", None)
+    assert seen[1] == "I fixed two things in pics/p.html: the label and pic_1."
+    assert [s["state"] for s in seen[0]] == ["done", "done", "done", "done", "waiting"]
+    # a build that stopped is marked where it stopped; a waiting one has no turns yet
+    stopped = {**draw, "state": "stopped", "ended_at": 25.0}
+    failed = _stages([plan, stopped], {"status": "failed"}, "rich", None)[0]
+    assert [s["state"] for s in failed] == ["done", "failed", "pending", "pending", "pending"]
+    queued = _stages([plan, drawn], {"status": "queued"}, "rich", None)[0]
+    assert {s["state"] for s in queued} == {"pending"}
+    # while a build is under way, turns from before it began are not its own
+    began = _stages([old, plan], making, "simple", 8.0)[0]
+    assert [(s["id"], s["state"]) for s in began] == [("draw", "running"), ("pose", "pending")]
+    assert _stages([plan], None, "rich", None) == ([], "")
+    # an agent without a session of its own is retold the earlier turns first: its turn's stage
+    # is read from what it was asked now
+    told = [{"prompt": plan["prompt"], "answer": "Planned it."}]
+    retold_draw = {**drawn, "prompt": retold(told, str(draw["prompt"]))}
+    assert retold_draw["prompt"].startswith("Earlier turns of this work")
+    stages = _stages([plan, retold_draw], {"status": "made"}, "rich", None)[0]
+    assert [(s["id"], s["state"]) for s in stages][:2] == [("motion", "done"), ("draw", "done")]
+    simple = _stages([old, retold_draw], {"status": "made"}, "simple", None)[0]
+    assert simple[0]["started_at"] == 22.0
 
 
 def test_a_pictures_motion_is_looked_at_inside_its_moves_and_its_quiet_stretches() -> None:

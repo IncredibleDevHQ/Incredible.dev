@@ -97,7 +97,12 @@
     still shows), code holds it to its shape, the studio shows it on the picture's lines, and
     the picture is built to it. Its builder then reviews frames from inside its moves and what
     the renderer's craft pass measured, beside the stills, before they wait for the person's
-    go. Switching a
+    go. The block follows the build stage by stage with each stage's time, the builder's
+    tool calls and words, and a line when it has gone quiet; a note left while a
+    motion-graphics picture is made goes in with the builder's next turn without stopping
+    it; and a made picture says how its build went (its stages as a bar, what the review
+    said, the notes it took in), from components of the house's own agent library
+    (`web/src/components/agent`). Switching a
     made picture to the other level asks first (the stages to come, the go among them, what it
     costs, and which agent makes it) and Start makes it again that way (`POST …/pictures` with
     a `level`); while it is made, its block follows the build stage by stage with its builder's

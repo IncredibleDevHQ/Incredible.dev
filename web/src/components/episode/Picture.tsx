@@ -22,7 +22,7 @@ import type { Run } from "./Ask";
 import { blockName, KindIcon, type Block } from "./Blocks";
 import { Changed } from "./Diff";
 import { WRITERS } from "./Film";
-import { BUILD, PictureTrail } from "./Work";
+import { BUILD, PictureSummary, PictureTrail } from "./Work";
 import { GenerationSettings } from "./GenerationSettings";
 import { MadeWith, madeOtherwise } from "./MadeWith";
 import { KindArt } from "./PictureArt";
@@ -193,6 +193,8 @@ export function PictureCard({
             {p.motion && <MotionPlan motion={p.motion} lines={lines} />}
           </div>
           {unit.shows && <p className="ep-block-shows">{unit.shows}</p>}
+          {/* how a made picture's build went: its stages' times and what its builder found looking it over */}
+          {designed && (state === "go" || state === "made") && <PictureSummary unit={unit} />}
           <Popover open={Boolean(toLevel)} anchor={levelAnchor} onClose={() => setToLevel(null)}
             side="bottom" align="end" width={296} title={toLevel === "rich" ? "Make it as motion graphics?" : "Make it simple?"}>
             {toLevel && <div className="ep-level-confirm">
@@ -316,8 +318,8 @@ export function PictureCard({
             )
           ) : state === "making" ? (
             <div className="ep-figure-build">
-              {/* the build stage by stage, its builder's steps under the one it is on */}
-              <PictureTrail unit={unit} builder={WRITERS[p.builder || unit.builder] ?? unit.builder} />
+              {/* the build stage by stage, its builder's steps under the one it is on, and a note for its next turn */}
+              <PictureTrail view={view} unit={unit} builder={WRITERS[p.builder || unit.builder] ?? unit.builder} run={run} />
               <button type="button" className="btn" onClick={() => void api.stopEpisode(view.id, unit.id).catch(() => undefined)}>
                 <Square />
                 Stop

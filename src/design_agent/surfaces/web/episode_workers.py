@@ -116,6 +116,16 @@ class Worker(Protocol):
         Blocking; called off the event loop."""
 
 
+#: How a retold turn opens, and the line before the turn's own prompt (`retold`).
+RETOLD_OPENING = "Earlier turns of this work, from the house's record"
+RETOLD_NOW = "\n\n---\n\nNow:\n"
+
+
+def asked_now(prompt: str) -> str:
+    """What a turn itself asked, without the earlier turns `retold` put before it."""
+    return prompt.rsplit(RETOLD_NOW, 1)[-1] if prompt.startswith(RETOLD_OPENING) else prompt
+
+
 def retold(runs: list[Row], prompt: str) -> str:
     """A turn's prompt opened with what was said in its lane so far: the newest turns that fit,
     each cut to its first lines."""
@@ -132,8 +142,8 @@ def retold(runs: list[Row], prompt: str) -> str:
         return prompt
     history = "\n\n---\n\n".join(told)
     return (
-        "Earlier turns of this work, from the house's record (the files in your folder are as "
-        f"those turns left them):\n\n{history}\n\n---\n\nNow:\n{prompt}"
+        f"{RETOLD_OPENING} (the files in your folder are as those turns left them):\n\n"
+        f"{history}{RETOLD_NOW}{prompt}"
     )
 
 

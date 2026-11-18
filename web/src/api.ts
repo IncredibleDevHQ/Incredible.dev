@@ -362,8 +362,28 @@ export type EpisodeUnit = {
     note: string;
     doing: string;
     live: { harness: string; since: number; events: WorkEvent[] } | null;
+    // its latest build stage by stage, what its builder said when it reviewed it, and the notes
+    // the person left the builder while it worked: waiting for its next turn, or taken in; and
+    // whether a note would still reach it (a motion-graphics picture before its review)
+    stages: BuildStage[];
+    reviewed: string;
+    queued: SteerNote[];
+    steered: SteerNote[];
+    steerable: boolean;
   };
 };
+// One stage of a picture's build: the builder's turns (plan, draw, review), the stills the house
+// takes between the drawing and the review, and a motion-graphics picture's go, which is the
+// person's. Times are seconds since the epoch.
+export type BuildStageId = "motion" | "draw" | "pose" | "review" | "go";
+export type BuildStage = {
+  id: BuildStageId;
+  state: "pending" | "running" | "done" | "failed" | "waiting";
+  started_at: number | null;
+  ended_at: number | null;
+};
+// A note a person left a picture's builder while it worked; one taken in says the stage it went to.
+export type SteerNote = { id: string; text: string; at: number; stage?: BuildStageId; given_at?: number };
 export type EpisodeTake = {
   id: string;
   chapter: string;
@@ -616,6 +636,11 @@ export const api = {
   replanPictures: (id: string, units: string[]) => call<EpisodeView>("POST", `/api/episodes/${id}/replan`, { units }),
   // A picture made for other words, kept as it is for the words its lines say now.
   keepPicture: (id: string, unit: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/keep`),
+  // a note for a picture's builder while it works, for its next turn, and taking one back
+  steerPicture: (id: string, unit: string, text: string) =>
+    call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/steer`, { text }),
+  unsteerPicture: (id: string, unit: string, note: string) =>
+    call<EpisodeView>("DELETE", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/steer/${encodeURIComponent(note)}`),
   undoEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/undo`),
   redoEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/redo`),
   planAgain: (id: string, writer: WriterId | "" = "") => call<EpisodeView>("POST", `/api/episodes/${id}/again`, { writer }),

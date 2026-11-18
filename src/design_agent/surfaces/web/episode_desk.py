@@ -31,6 +31,7 @@ import copy
 import json
 import logging
 import re
+import secrets
 import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
@@ -64,6 +65,7 @@ from design_agent.surfaces.web.episode_workers import (
     LocalWorker,
     Told,
     Worker,
+    asked_now,
 )
 from design_agent.surfaces.web.hub import Hub
 from design_agent.surfaces.web.store import Row, Store, new_id
@@ -162,6 +164,27 @@ BREAKING = ("Lint", "Runtime")
 #: the builder's review, never faults; a picture has no sound of its own, so that one is dropped.
 CRAFT_NOTE = re.compile(r"[⚠ℹ]\s*([a-z_]+):\s*(.+)")
 CRAFT_SKIPPED = frozenset({"film_silent"})
+#: How each of a picture builder's turns opens, by the stage it belongs to. Code writes every
+#: prompt, so a turn's stage is read back from its first words. A build begins with the turn
+#: that plans it (motion graphics; its drawing turn opens like a simple picture's first) or the
+#: one that draws it (a simple picture).
+TURN_STAGES: tuple[tuple[str, str], ...] = (
+    ("Stage: motion plan.", "motion"),
+    ("Stage: picture.\n\nLook at how", "review"),
+    ("Stage: picture.", "draw"),
+)
+BUILD_OPENINGS: dict[str, str] = {
+    units.RICH: "Stage: motion plan.\n\nPlan how",
+    units.SIMPLE: "Stage: picture.\n\nBuild one picture",
+}
+#: A build's stages in order: the builder's turns, the stills the house takes between the
+#: drawing and the review, and a motion-graphics picture's go, which is the person's.
+BUILD_STAGES: dict[str, tuple[str, ...]] = {
+    units.RICH: ("motion", "draw", "pose", "review", "go"),
+    units.SIMPLE: ("draw", "pose"),
+}
+#: The longest note a person can leave a picture's builder while it works.
+NOTE_CHARS = 600
 GENERIC = ("system-ui", "sans-serif", "serif", "monospace", "ui-monospace", "ui-sans-serif")
 LINT_ERROR = re.compile(r"✗\s*(?:\[[^\]]*\]\s*)?(.+)")
 
@@ -235,6 +258,13 @@ class EpisodeDesk:
         #: What the renderer's craft pass said of each picture as it was last posed, kept for
         #: its builder's review.
         self._craft: dict[tuple[str, str], list[str]] = {}
+        #: Notes a person left a picture's builder while it worked, waiting for its next turn on
+        #: the picture; the ones the build took in, each with the stage it went to; when each
+        #: build began; and the builds whose last turn (the review) has begun.
+        self._steer: dict[tuple[str, str], list[Row]] = {}
+        self._steered: dict[tuple[str, str], list[Row]] = {}
+        self._began: dict[tuple[str, str], float] = {}
+        self._last_turn: set[tuple[str, str]] = set()
         self._closing = False
         #: The brand pack a thread's channel wears (the app's brand shelf), or None for the
         #: configured one.
@@ -2080,6 +2110,8 @@ class EpisodeDesk:
             )
         finally:
             self._builds.pop((episode_id, unit_id), None)
+            self._steer.pop((episode_id, unit_id), None)
+            self._last_turn.discard((episode_id, unit_id))
             self._settle(episode_id)
             # a pick made while it was building asks for it again
             with contextlib.suppress(KeyError, RuntimeError):
@@ -2091,6 +2123,10 @@ class EpisodeDesk:
         unit = next((u for u in self._units(episode, full or {}) if u["id"] == unit_id), None)
         if full is None or unit is None:
             return
+        key = (episode_id, unit_id)
+        self._began[key] = time.time()
+        self._steered.pop(key, None)
+        self._last_turn.discard(key)
         worker = self._builder(episode, unit)
         if isinstance(worker, DemoWorker) and unit["visual"]["direction"]:
             raise ValueError("Select a live provider to generate from a custom description.")
@@ -2138,7 +2174,7 @@ class EpisodeDesk:
             told: Told = await worker.turn(
                 self._episode(episode_id),
                 lane=f"picture:{unit_id}",
-                prompt=prompt,
+                prompt=self._with_notes(episode_id, unit_id, "draw", prompt),
                 heard=self._seen(episode_id),
             )
             if told.stopped:
@@ -2244,7 +2280,7 @@ class EpisodeDesk:
             told = await worker.turn(
                 self._episode(episode_id),
                 lane=f"picture:{unit_id}",
-                prompt=prompt,
+                prompt=self._with_notes(episode_id, unit_id, "motion", prompt),
                 heard=self._seen(episode_id),
             )
             if told.stopped:
@@ -2313,14 +2349,17 @@ class EpisodeDesk:
         told = await worker.turn(
             episode,
             lane=f"picture:{unit['id']}",
-            prompt=(
+            prompt=self._with_notes(
+                episode_id,
+                str(unit["id"]),
+                "review",
                 f"Stage: picture.\n\nLook at how {root}/{brief['file']} came out, as someone "
                 "seeing it once at full speed will. Its stills, one taken at the end of each "
                 f"line, in line order, are in {root}/pictures/{comp}.stills/.{frames} Open "
                 f"every one and review them the way {_guides(skill)}/review.md says "
                 f"({skill}/briefs/picture.md, “Reviewing it”). Fix what breaks the read and "
                 "what weakens the picture, in the file, and nothing else. If it holds up, "
-                f"change nothing and reply “Nothing to change.”{notes}"
+                f"change nothing and reply “Nothing to change.”{notes}",
             ),
             heard=self._seen(episode_id),
         )
@@ -2498,6 +2537,70 @@ class EpisodeDesk:
             self.host.save_file(str(episode["thread_id"]), name, content, origin="episode")["id"]
         )
 
+    def steer(self, episode_id: str, unit_id: str, text: str, *, by: str) -> Row:
+        """A note for a picture's builder while it works, without stopping it: the note waits
+        for the builder's next turn on the picture and goes in with it. Only a motion-graphics
+        picture whose review, the builder's last turn on it, has not begun has one to come."""
+        episode = self._episode(episode_id)
+        said = " ".join(text.split())[:NOTE_CHARS]
+        if not said:
+            raise ValueError("Write the note first.")
+        if not self._steerable(episode_id, unit_id):
+            raise ValueError(
+                "A note goes in with the builder's next turn on the picture, and this one has "
+                "none to come."
+            )
+        note = {"id": f"sn_{secrets.token_hex(4)}", "text": said, "at": time.time()}
+        self._steer.setdefault((episode_id, unit_id), []).append(note)
+        self._say(episode, "Left a note for a picture's builder.", by=by, quiet=True)
+        self._changed(episode_id)
+        return self.view(episode_id)
+
+    def unsteer(self, episode_id: str, unit_id: str, note_id: str, *, by: str) -> Row:
+        """Take back a note the builder has not had yet."""
+        queued = self._steer.get((episode_id, unit_id), [])
+        kept = [n for n in queued if n["id"] != note_id]
+        if len(kept) == len(queued):
+            raise ValueError("That note has already gone to the builder.")
+        if kept:
+            self._steer[(episode_id, unit_id)] = kept
+        else:
+            self._steer.pop((episode_id, unit_id), None)
+        self._say(self._episode(episode_id), "Took back a note.", by=by, quiet=True)
+        self._changed(episode_id)
+        return self.view(episode_id)
+
+    def _steerable(self, episode_id: str, unit_id: str, have: Row | None = None) -> bool:
+        """Whether a note to a picture's builder would reach it: a motion-graphics picture on
+        its way whose review has not begun."""
+        have = have if have is not None else self.store.picture(episode_id, unit_id)
+        return (
+            have is not None
+            and have["status"] in ("queued", "making", "posing")
+            and have["level"] == units.RICH
+            and (episode_id, unit_id) not in self._last_turn
+        )
+
+    def _with_notes(self, episode_id: str, unit_id: str, stage: str, prompt: str) -> str:
+        """A builder's next turn on a picture, with the notes the person left it while it
+        worked: they leave the queue and are kept as given to this stage."""
+        key = (episode_id, unit_id)
+        if stage == "review":
+            self._last_turn.add(key)
+        queued = self._steer.pop(key, [])
+        if not queued:
+            return prompt
+        given = time.time()
+        self._steered.setdefault(key, []).extend(
+            {**note, "stage": stage, "given_at": given} for note in queued
+        )
+        self._changed(episode_id)
+        listed = "\n".join(f"- {note['text']}" for note in queued)
+        return (
+            f"{prompt}\n\nWhile you worked on this picture, the person left notes for this "
+            f"turn. Take them in:\n{listed}"
+        )
+
     def go(self, episode_id: str, unit_id: str, *, by: str) -> Row:
         """The person's go on a rich picture's stills: it counts as made."""
         have = self.store.picture(episode_id, unit_id)
@@ -2615,6 +2718,8 @@ class EpisodeDesk:
             )
         finally:
             self._builds.pop((episode_id, unit_id), None)
+            self._steer.pop((episode_id, unit_id), None)
+            self._last_turn.discard((episode_id, unit_id))
             self._settle(episode_id)
 
     # -- takes -----------------------------------------------------------------------------------
@@ -3644,8 +3749,11 @@ class EpisodeDesk:
         )
         doing: dict[str, str] = {}
         building: dict[str, Row] = {}
+        turns: dict[str, list[Row]] = {}
         for r in every:
             lane = str(r["lane"])
+            if lane.startswith("picture:"):
+                turns.setdefault(lane.removeprefix("picture:"), []).append(r)
             if lane.startswith("picture:") and r["state"] == "working":
                 last = next((e for e in reversed(r["steps"] or []) if e.get("text")), None)
                 doing[lane.removeprefix("picture:")] = (
@@ -3686,6 +3794,9 @@ class EpisodeDesk:
                         **self._picture_view(pictures.get(unit["id"]), unit, said_now),
                         "doing": doing.get(unit["id"], ""),
                         "live": building.get(unit["id"]),
+                        **self._build_view(
+                            episode_id, unit, pictures.get(unit["id"]), turns.get(unit["id"], [])
+                        ),
                     },
                     "kind_of_picture": unit["picture"],
                 }
@@ -3736,6 +3847,23 @@ class EpisodeDesk:
     def _file(self, file_id: Any) -> dict[str, Any] | None:
         row = self.store.file(str(file_id)) if file_id else None
         return self.host.file_view(row) if row is not None else None
+
+    def _build_view(
+        self, episode_id: str, unit: Row, have: Row | None, turns: Sequence[Row]
+    ) -> Row:
+        """A picture's latest build as the studio follows it: its stages, what its builder said
+        when it reviewed the picture, and the notes the person left the builder, waiting or
+        taken in."""
+        key = (episode_id, str(unit["id"]))
+        level = str((have or {}).get("level") or unit["level"])
+        stages, reviewed = _stages(turns, have, level, self._began.get(key))
+        return {
+            "stages": stages,
+            "reviewed": reviewed,
+            "queued": [dict(note) for note in self._steer.get(key, [])],
+            "steered": [dict(note) for note in self._steered.get(key, [])],
+            "steerable": self._steerable(episode_id, str(unit["id"]), have),
+        }
 
     def _picture_view(
         self, have: Row | None, unit: Row, lines: Mapping[str, Row] | None = None
@@ -3943,6 +4071,81 @@ def _follow(merged: Row, frames: Sequence[str]) -> None:
             settled = "new-topic", str(WAYS_BY_RELATION["new-topic"])
         if settled is not None:
             f["relation"], f["transition"] = settled
+
+
+def _turn_stage(prompt: str) -> str:
+    """The stage of a picture builder's turn, read from how its own prompt opens (after the
+    earlier turns an agent without a session of its own is retold)."""
+    asked = asked_now(prompt)
+    return next((stage for opening, stage in TURN_STAGES if asked.startswith(opening)), "")
+
+
+def _stages(
+    turns: Sequence[Row], have: Row | None, level: str, began: float | None
+) -> tuple[list[Row], str]:
+    """A picture's latest build, stage by stage, from its builder's turns on it: when each
+    stage began and ended, how it stands (pending, running, done, failed, or waiting on the
+    person), and what the builder said when it reviewed the picture. The stills between the
+    drawing and the review are the house's own: they begin when the drawing ends. While a build
+    is under way only the turns since it began count; otherwise the build is the one opened by
+    the latest turn that plans or draws the picture."""
+    status = str((have or {}).get("status") or "none")
+    if status == "none":
+        return [], ""
+    own = sorted(
+        (r for r in turns if _turn_stage(str(r["prompt"]))),
+        key=lambda r: float(r["started_at"] or 0.0),
+    )
+    if status == "queued":
+        own = []
+    elif began is not None:
+        own = [r for r in own if float(r["started_at"] or 0.0) >= began]
+    else:
+        opening = BUILD_OPENINGS.get(level, BUILD_OPENINGS[units.SIMPLE])
+        opened = [i for i, r in enumerate(own) if asked_now(str(r["prompt"])).startswith(opening)]
+        own = own[opened[-1] :] if opened else []
+    spans: dict[str, list[Row]] = {}
+    for r in own:
+        spans.setdefault(_turn_stage(str(r["prompt"])), []).append(r)
+    out: list[Row] = []
+    for stage in BUILD_STAGES.get(level, BUILD_STAGES[units.SIMPLE]):
+        runs = spans.get(stage, [])
+        row: Row = {"id": stage, "state": "pending", "started_at": None, "ended_at": None}
+        if runs:
+            row["started_at"] = runs[0]["started_at"]
+            if any(r["state"] == "working" for r in runs):
+                row["state"] = "running"
+            else:
+                row["ended_at"] = runs[-1]["ended_at"]
+                failed = runs[-1]["state"] in ("failed", "stopped")
+                row["state"] = "failed" if failed else "done"
+        out.append(row)
+    by_id = {r["id"]: r for r in out}
+    draw, pose, review, go = (by_id.get(k) for k in ("draw", "pose", "review", "go"))
+    if draw is not None and pose is not None and draw["state"] == "done":
+        pose["started_at"] = draw["ended_at"]
+        if review is not None and review["started_at"] is not None:
+            pose["state"], pose["ended_at"] = "done", review["started_at"]
+        elif status in ("go", "made"):
+            pose["state"] = "done"
+    if go is not None:
+        go["state"] = "waiting" if status == "go" else "done" if status == "made" else "pending"
+    if status in ("making", "posing") and not any(r["state"] == "running" for r in out):
+        # between two turns the house works on its own: the first stage not done is under way
+        upcoming = next((r for r in out if r["state"] == "pending" and r["id"] != "go"), None)
+        if upcoming is not None:
+            upcoming["state"] = "running"
+    if status == "failed" and not any(r["state"] == "failed" for r in out):
+        # the build stopped in the first stage it did not finish
+        stopped = next((r for r in out if r["state"] in ("running", "pending")), None)
+        if stopped is not None:
+            stopped["state"] = "failed"
+    reviewed = ""
+    if review is not None and review["state"] == "done":
+        # said as markdown; shown as plain words
+        said = re.sub(r"\*\*|__|`", "", str(spans["review"][-1]["answer"] or ""))
+        reviewed = _clean(said, 400)
+    return out, reviewed
 
 
 def _live(run: Row) -> Row:

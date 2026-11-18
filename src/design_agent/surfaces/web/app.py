@@ -864,6 +864,18 @@ def create_app(
     ) -> dict[str, Any]:
         return episode_call(lambda: host.episodes.go(episode_id, unit_id, by=me))
 
+    @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/steer")
+    async def steer_picture(
+        episode_id: str, unit_id: str, body: PictureNoteIn, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.steer(episode_id, unit_id, body.text, by=me))
+
+    @app.delete("/api/episodes/{episode_id}/pictures/{unit_id}/steer/{note_id}")
+    async def unsteer_picture(
+        episode_id: str, unit_id: str, note_id: str, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.unsteer(episode_id, unit_id, note_id, by=me))
+
     @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/note")
     async def picture_note(
         episode_id: str, unit_id: str, body: PictureNoteIn, me: str = Depends(person)

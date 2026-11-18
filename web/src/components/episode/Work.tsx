@@ -2,32 +2,35 @@
 // agent-progress components behave; no other component's source is in it.
 //
 // - `PictureTrail`: one picture's build as a trail, its builder's steps and notes under the
-//   stage it is on, newest last, the older ones folded away. (The plan's own stages are drawn
-//   across the whole screen by `PlanRun`.)
+//   stage it is on, newest last, the older ones folded away, built on the agent library
+//   (`components/agent`); `PictureSummary` says how a made one's build went. (The plan's own
+//   stages are drawn across the whole screen by `PlanRun`.)
 // - `WorkPill`: the pictures in the bar, as one pill with a ring that fills as they are made. It
 //   opens onto every picture as a cell, filtered by state, each saying what its builder is on or
 //   why it stopped; a cell opens its chapter.
 import { Check, ChevronDown, RotateCcw, Square, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { api, type EpisodeUnit, type EpisodeView, type Level, type WorkEvent } from "../../api";
+import { api, type BuildStageId, type EpisodeUnit, type EpisodeView, type Level } from "../../api";
 import { PICTURES, pictureState, type PictureState } from "../../episode";
 import { useHouse } from "../../store";
+import { AgentTrail, type TrailStage } from "../agent/AgentTrail";
+import { RunSummary, type SummaryStage } from "../agent/RunSummary";
+import { Steer } from "../agent/Steer";
 import { Popover } from "../Popover";
-import { Elapsed, type Run } from "./Ask";
+import { type Run } from "./Ask";
 import { KindArt } from "./PictureArt";
 import { Swap } from "./Tiles";
 
-// How many of the writer's latest steps and notes show before the older ones fold away.
-const SHOWN = 5;
-
 // How a picture is made, stage by stage, as the yes to making it lists them before it starts:
-// motion graphics have each line planned as a shot first and wait for the person's go on a still
-// of each line at the end (the stage that is theirs); a simple one is drawn and checked.
-export const BUILD: Record<Level, { id: string; label: string; yours?: boolean }[]> = {
+// motion graphics have each line planned as a shot first, are looked over by their builder once
+// their stills are taken, and wait for the person's go on a still of each line (the stage that is
+// theirs); a simple one is drawn and checked.
+export const BUILD: Record<Level, { id: BuildStageId; label: string; yours?: boolean }[]> = {
   rich: [
     { id: "motion", label: "Plan each shot" },
     { id: "draw", label: "Draw it" },
     { id: "pose", label: "Take a still of each line" },
+    { id: "review", label: "Look it over" },
     { id: "go", label: "Your go", yours: true },
   ],
   simple: [
@@ -35,98 +38,75 @@ export const BUILD: Record<Level, { id: string; label: string; yours?: boolean }
     { id: "pose", label: "Check it" },
   ],
 };
+// The stages that are the builder's own turns, and when a note left now reaches it.
+const TURNS: BuildStageId[] = ["motion", "draw", "review"];
+const REACHES: Partial<Record<BuildStageId, string>> = {
+  motion: "as it starts planning",
+  draw: "as it starts drawing",
+  review: "as it looks the picture over",
+};
 
-// One picture being made, as a trail: the stage it is on opens onto its builder's steps and
-// notes as they happen, the older ones folded away. One that waits for its builder (another
-// picture of the builder's is being made) says so on its first stage.
-export function PictureTrail({ unit, builder }: { unit: EpisodeUnit; builder: string }) {
+// One picture being made, as a trail: each stage with how long it took, the one it is on with its
+// builder's steps and words as they come, and the person's notes under the stage that took them
+// in. A motion-graphics picture takes a note for its builder's next turn without stopping.
+export function PictureTrail({ view, unit, builder, run }: { view: EpisodeView; unit: EpisodeUnit; builder: string; run: Run }) {
   const p = unit.picture;
   const level: Level = p.level || unit.level;
-  const steps = BUILD[level];
-  const stage = p.status === "posing" ? "pose" : p.status === "go" ? "go" : level === "rich" && !p.motion ? "motion" : "draw";
+  const order = BUILD[level];
   const waiting = p.status === "queued";
-  const at = waiting
-    ? 0
-    : Math.max(
-        0,
-        steps.findIndex((s) => s.id === stage),
-      );
-  const events = waiting ? [] : (p.live?.events ?? []);
-  const [all, setAll] = useState(false);
-  const folded = all ? 0 : Math.max(0, events.length - SHOWN);
-  const shown = events.slice(folded);
-
-  // What a screen reader hears: a stage that finishes, said once.
-  const [heard, setHeard] = useState("");
-  const was = useRef(at);
-  useEffect(() => {
-    if (at > was.current) setHeard(`${steps[at - 1]?.label ?? "A stage"}: done`);
-    was.current = at;
-  }, [at, steps]);
-
+  const kept = new Map(p.stages.map((s) => [s.id, s]));
+  // a build from before the house kept its stages says which one it is on by its state alone
+  const guessed = p.stages.length ? -1 : guessStage(p, level);
+  const steps: TrailStage[] = order.map((s, i) => {
+    const got = kept.get(s.id);
+    const state = got ? got.state : i < guessed ? "done" : i === guessed && !waiting ? "running" : "pending";
+    const turn = TURNS.includes(s.id);
+    return {
+      id: s.id,
+      label: s.label,
+      state,
+      startedAt: got?.started_at ?? (state === "running" && turn ? p.live?.since : null),
+      endedAt: got?.ended_at ?? null,
+      // between two turns the house works on its own: it renders the stills, or readies the next turn
+      doing: state === "running" ? (turn ? builder : s.id === "pose" ? "Rendering" : undefined) : undefined,
+      working: state === "running" && turn && p.live !== null,
+      word: waiting && i === 0 ? `Waiting for ${builder}` : s.yours && state === "pending" ? "Yours" : undefined,
+      taken: p.steered.filter((n) => n.stage === s.id).map((n) => ({ id: n.id, text: n.text })),
+    };
+  });
+  // a note reaches the builder at its next turn: the first of its turns after the stage under way
+  const at = steps.findIndex((s) => s.state === "running");
+  const next = waiting ? order[0]?.id : order.slice(at + 1).find((s) => TURNS.includes(s.id))?.id;
   return (
-    <div className="ep-trail ep-build-trail">
-      <ol aria-label="How the picture is being made">
-        {steps.map((s, i) => {
-          const state = i < at ? "done" : i === at ? (waiting ? "next" : "running") : "next";
-          const open = state === "running" && shown.length > 0;
-          return (
-            <li key={s.id} className="ep-trail-step" data-state={state} data-open={open || undefined} aria-current={i === at ? "step" : undefined}>
-              <span className="ep-trail-row">
-                <span className="ep-trail-mark" aria-hidden="true">
-                  {state === "done" ? <Check /> : null}
-                </span>
-                <span className="ep-trail-title">{s.label}</span>
-                <span className="ep-trail-meta">
-                  {i === at && waiting && `Waiting for ${builder}`}
-                  {state === "running" &&
-                    (p.live ? (
-                      <>
-                        <span className="ep-trail-doing">{builder}</span>
-                        <Elapsed since={p.live.since} />
-                      </>
-                    ) : (
-                      // between the builder's turns the house renders and checks on its own
-                      <span className="ep-trail-doing">{s.id === "pose" ? "Rendering" : builder}</span>
-                    ))}
-                </span>
-              </span>
-              {open && (
-                <div className="ep-trail-branch" aria-label={`What ${builder} is doing`}>
-                  {events.length > SHOWN && (
-                    <button type="button" className="ep-trail-fold" aria-expanded={all} onClick={() => setAll((a) => !a)}>
-                      {all ? "Show fewer" : `+${folded} earlier`}
-                    </button>
-                  )}
-                  <ol>
-                    {shown.map((e, n) => (
-                      <TrailEvent key={`${e.at}-${n + folded}`} event={e} latest={n === shown.length - 1} />
-                    ))}
-                  </ol>
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-      <span className="sr-only" role="status" aria-live="polite">
-        {heard}
-      </span>
-    </div>
+    <>
+      <AgentTrail label="How the picture is being made" steps={steps} events={waiting ? [] : (p.live?.events ?? [])} turnSince={p.live?.since ?? null} />
+      {p.steerable && next && (
+        <Steer
+          queued={p.queued}
+          reaches={`${builder} ${REACHES[next] ?? "at its next turn"}`}
+          onQueue={(text) => run(() => api.steerPicture(view.id, unit.id, text))}
+          onTakeBack={(id) => run(() => api.unsteerPicture(view.id, unit.id, id))}
+        />
+      )}
+    </>
   );
 }
 
-function TrailEvent({ event, latest }: { event: WorkEvent; latest: boolean }) {
-  // a step is what the writer did (a file read, an edit); a note is the writer in its own words
-  return event.kind === "note" ? (
-    <li className="ep-trail-note" data-latest={latest || undefined}>
-      <q>{event.text}</q>
-    </li>
-  ) : (
-    <li className="ep-trail-sub" data-latest={latest || undefined} title={event.text}>
-      <span>{event.text}</span>
-    </li>
-  );
+// Which stage a build is on, from the picture's state alone.
+function guessStage(p: EpisodeUnit["picture"], level: Level): number {
+  const stage = p.status === "posing" ? "pose" : p.status === "go" ? "go" : level === "rich" && !p.motion ? "motion" : "draw";
+  return Math.max(0, BUILD[level].findIndex((s) => s.id === stage));
+}
+
+// How a made picture's build went: each of its stages that has a time (the go is the person's
+// and has none), what its builder said when it looked the picture over, and the notes it took in.
+export function PictureSummary({ unit }: { unit: EpisodeUnit }) {
+  const p = unit.picture;
+  const stages: SummaryStage[] = BUILD[p.level || unit.level].flatMap((s) => {
+    const got = p.stages.find((x) => x.id === s.id);
+    return got?.state === "done" && got.started_at && got.ended_at ? [{ id: s.id, label: s.label, seconds: got.ended_at - got.started_at }] : [];
+  });
+  return <RunSummary stages={stages} reviewed={p.reviewed} notes={p.steered} />;
 }
 
 const STATE_WORDS: Record<PictureState, string> = {

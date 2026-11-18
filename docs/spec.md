@@ -858,7 +858,19 @@ app's canvas, from a channel's material or a research frame's notes.
   middle of each quiet stretch, and what the renderer's craft pass measured (a stretch with
   nothing changing, a line too brief to read, type under the floor), which are questions for
   the review and never faults. It fixes what breaks the read and what weakens the picture,
-  and the stills wait for the person's go. The picture is built and moving
+  and the stills wait for the person's go. While a picture is made its block follows the
+  build stage by stage (plan each shot, draw it, take a still of each line, look it over,
+  your go; a simple picture is drawn and checked), each done stage with how long it took.
+  The stages are read from the builder's own turns on the picture, which the house keeps, so
+  they hold across a restart. Under the stage under way are the builder's steps, each tool
+  call with its kind and what it touched, and its own words; when it has said nothing for
+  20 seconds (it thinks, or writes a long file) the block says it is still at work and for
+  how long. While a motion-graphics picture is made, until its builder begins to look it
+  over, the person can leave a note without stopping it: the note waits for the builder's
+  next turn on the picture and goes in with it, can be taken back until then, and stays
+  under the stage that took it in. A made picture says how its build went, folded: its
+  stages as a bar, each as wide as its time, what its builder said when it looked it over,
+  and the notes it took in. The picture is built and moving
   before its stills are taken, so the go makes nothing more: it puts the picture in the film as
   built, and the block says so where the stills were. Any made picture plays in its block once
   its draft clip is rendered, and a clip rendered for what was drawn before is dropped the

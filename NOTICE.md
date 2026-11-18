@@ -42,7 +42,9 @@ tiles, the planning trail, the pictures pill, the script's blocks and lines, the
 prompt at the caret, the frame drawn on a canvas and the chapter's timeline
 (`web/src/components/episode/Ask.tsx`, `Diff.tsx`, `Tiles.tsx`, `Work.tsx`, `Script.tsx`,
 `Slash.tsx`, `AskHere.tsx`, `FrameCanvas.tsx`, `Timeline.tsx`, `web/src/components/FileDrop.tsx`),
-are written here and carry this project's license.
+and the agent library (the trail of an agent's work, the note for its next turn and how a run
+went, `web/src/components/agent/`), are written here from notes on how such components behave
+and carry this project's license.
 
 The sample brand in [examples/brands/example-studio/](examples/brands/example-studio/) is original
 work released under CC0-1.0.
