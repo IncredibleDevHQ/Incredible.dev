@@ -50,6 +50,9 @@ runtime), the store of channels, messages and boards, and this API:
   `GET /api/voices` (the voices a narrator can speak in), `POST /api/episodes/{id}/voice` (a
   clone of the person's voice, from their takes or a recording, after they say it is theirs),
   `POST /api/episodes/{id}/film` (render it)
+- the production board: `GET /api/production` (every episode's jobs, the agents and how busy
+  each is, in one read), `POST /api/production/assign` (pictures of any episodes handed to an
+  agent and started)
 - what the agent works with: `GET /api/brand` (a channel's with `?channel=`), `GET /api/skills`,
   `GET /api/computer`
 - brands (`brands.py`): `GET /api/brands`, `POST /api/brands` (read one from a website),
@@ -351,6 +354,25 @@ class PictureNoteIn(BaseModel):
 
 class KeepIn(BaseModel):
     keep: bool = True
+
+
+class JobIn(BaseModel):
+    """A picture as the production board names it: its episode, and its unit there."""
+
+    episode: str = Field(min_length=1, max_length=64)
+    unit: str = Field(min_length=1, max_length=80)
+
+
+class AssignIn(BaseModel):
+    """Pictures handed to an agent and started. A model or an effort the agent offers goes with
+    every one of them; with neither, a picture already with that agent keeps what it runs on.
+    With no agent each keeps the one it is set to."""
+
+    jobs: list[JobIn] = Field(min_length=1, max_length=400)
+    agent: str = Field(default="", pattern=r"^(claude|codex|kimi|builtin|demo|)$")
+    model: str = Field(default="", max_length=100)
+    effort: str = Field(default="", max_length=16)
+    start: bool = True
 
 
 class BrandReadIn(BaseModel):
@@ -1071,6 +1093,26 @@ def create_app(
     @app.post("/api/episodes/{episode_id}/film")
     async def render_episode(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
         return episode_call(lambda: host.episodes.render(episode_id, by=me))
+
+    # -- the production board: every episode's jobs, and handing them to agents ---------------
+
+    @app.get("/api/production")
+    async def production(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        # Off the event loop: it reads every episode, and may wait on an agent's list of models.
+        return await asyncio.to_thread(host.episodes.production)
+
+    @app.post("/api/production/assign")
+    async def assign_jobs(body: AssignIn, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(
+            lambda: host.episodes.assign(
+                [(job.episode, job.unit) for job in body.jobs],
+                by=me,
+                agent=body.agent,
+                model=body.model,
+                effort=body.effort,
+                start=body.start,
+            )
+        )
 
     # -- research: questions about the person's repositories, asked on this computer --------
 

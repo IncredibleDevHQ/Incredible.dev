@@ -440,7 +440,7 @@ class ResearchDesk:
                         show()
                     elif event.kind == "answer":
                         answer = event.text
-                    else:
+                    elif event.kind == "error":
                         failure = event.text
         except asyncio.CancelledError:
             stopped = True

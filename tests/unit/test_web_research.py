@@ -21,6 +21,7 @@ from design_agent.surfaces.web.research import (
     GUIDE,
     HARNESSES,
     Event,
+    Watch,
     clean_env,
     command,
     find_repos,
@@ -167,6 +168,130 @@ def test_codex_and_kimi_streams_are_read_too(tmp_path: Path) -> None:
         Event("session", "session_6e0e"),
     ]
     assert parse("kimi", "not json", tmp_path) == []
+
+
+def _part(event: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "stream_event", "event": event}
+
+
+def _delta(**delta: Any) -> dict[str, Any]:
+    return _part({"type": "content_block_delta", "delta": delta})
+
+
+def test_claude_code_is_watched_between_its_steps(tmp_path: Path) -> None:
+    """Thinking, a file being written and its own words each give a pulse as they go (one a
+    second at most), a thought is told once it ends, and a request made again is a step."""
+    now = [100.0]
+    watch = Watch("claude", tmp_path, clock=lambda: now[0])
+
+    def read(record: dict[str, Any], after: float = 0.0) -> list[Event]:
+        now[0] += after
+        return watch.read(record)
+
+    opened = _part({"type": "content_block_start", "content_block": {"type": "thinking"}})
+    assert read(opened) == [Event("pulse", "thinking")]
+    # more of the same thought within the second is held back
+    assert (
+        read(_delta(type="thinking_delta", thinking="**The order** matters", estimated_tokens=50))
+        == []
+    )
+    assert read(_delta(type="thinking_delta", thinking=" most.", estimated_tokens=120), 1.2) == [
+        Event("pulse", "thinking", detail="The order matters most.", amount=120)
+    ]
+    tick = {"type": "system", "subtype": "thinking_tokens", "estimated_tokens": 900}
+    assert read(tick, 1.0) == [
+        Event("pulse", "thinking", detail="The order matters most.", amount=900)
+    ]
+    assert read(_part({"type": "content_block_stop"}), 30.0) == [
+        Event("thought", "The order matters most.", amount=900, seconds=32.2)
+    ]
+
+    call = {"type": "tool_use", "name": "Write", "input": {}}
+    assert read(_part({"type": "content_block_start", "content_block": call})) == [
+        Event("pulse", "step", detail="Writing a file")
+    ]
+    start = json.dumps({"file_path": f"{tmp_path}/pictures/a.html", "content": "<html>"})[:-2]
+    assert read(_delta(type="input_json_delta", partial_json=start), 1.5) == [
+        Event("pulse", "step", detail="Writing pictures/a.html", amount=len(start))
+    ]
+    assert read(_part({"type": "content_block_stop"})) == [Event("pulse", "")]
+
+    assert read(_part({"type": "content_block_start", "content_block": {"type": "text"}})) == [
+        Event("pulse", "writing")
+    ]
+    assert read(_delta(type="text_delta", text="Done."), 2.0) == [
+        Event("pulse", "writing", amount=5)
+    ]
+    retry = {
+        "type": "system",
+        "subtype": "api_retry",
+        "attempt": 2,
+        "max_retries": 10,
+        "error": "overloaded",
+    }
+    assert read(retry) == [Event("step", "Asking again: the model's service is busy (try 2 of 10)")]
+
+
+def test_other_agents_give_a_pulse_for_any_line_and_codex_its_reasoning(tmp_path: Path) -> None:
+    now = [5.0]
+    kimi = Watch("kimi", tmp_path, clock=lambda: now[0])
+    assert kimi.read({"role": "tool", "content": "1\tA note"}) == [Event("pulse", "")]
+    assert kimi.read({"role": "tool", "content": "more"}) == []
+    now[0] += 2
+    assert kimi.read({"role": "meta", "type": "system.version"}) == [Event("pulse", "")]
+
+    codex = Watch("codex", tmp_path, clock=lambda: now[0])
+    reasoning = {"type": "reasoning", "text": "**Weighing the headers**\n\nmax-age first."}
+    assert codex.read({"type": "item.completed", "item": reasoning}) == [
+        Event("thought", "Weighing the headers max-age first.")
+    ]
+    assert codex.read({"type": "turn.started"}) == [Event("pulse", "")]
+
+
+@pytest.mark.asyncio
+async def test_claude_code_runs_watched_and_without_summaries_where_it_refuses_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from design_agent.surfaces.web import research
+
+    profile = tmp_path / "researcher.md"
+    plain, _ = command(
+        HARNESSES["claude"], "claude", repo=tmp_path, prompt="why?", session="", profile=profile
+    )
+    assert "--include-partial-messages" not in plain and research.CLAUDE_THOUGHTS not in plain
+    watched, _ = command(
+        HARNESSES["claude"],
+        "claude",
+        repo=tmp_path,
+        prompt="why?",
+        session="",
+        profile=profile,
+        watched=True,
+        thoughts=True,
+    )
+    assert "--include-partial-messages" in watched
+    assert watched[watched.index(research.CLAUDE_THOUGHTS) + 1] == "summarized"
+
+    # a CLI from before that option: it ends at once, and the same run goes again without it
+    binary = tmp_path / "claude"
+    binary.write_text(
+        "#!/bin/sh\ncat >/dev/null\n"
+        'case "$*" in *--thinking-display*)\n'
+        """  echo "error: unknown option '--thinking-display'" >&2; exit 1;; esac\n"""
+        """echo '{"type":"system","subtype":"init","session_id":"s-9"}'\n"""
+        """echo '{"type":"result","subtype":"success","is_error":false,"result":"It renews."}'\n"""
+    )
+    binary.chmod(0o755)
+    monkeypatch.setattr(type(HARNESSES["claude"]), "binary", lambda self: str(binary))
+    monkeypatch.setattr(research, "_without_thoughts", set())
+    events = [
+        event
+        async for event in research.run(
+            "claude", repo=tmp_path, prompt="why?", session="", profile=profile
+        )
+    ]
+    assert events == [Event("session", "s-9"), Event("answer", "It renews.")]
+    assert research._without_thoughts == {str(binary)}
 
 
 def test_every_agent_runs_read_only_with_the_prompt_kept_out_of_its_options(

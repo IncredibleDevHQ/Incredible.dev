@@ -9,6 +9,13 @@ house, so it runs as the person's own install does, on their own plan. It stream
 `parse` turns each into what the canvas shows: a step ("Reading src/session.go"), a note on the
 way, the answer, or the session a follow-up resumes and a branch forks.
 
+Between two steps a model may think for many minutes, or write one long file. `Watch` reads what
+a stream says meanwhile, so the house can tell a run at work from one that has gone quiet: a
+`pulse` (the model is thinking, and how much so far; the file or the words it is writing), a
+`thought` once a stretch of thinking ends, and a step when the model's service has to be asked
+again. Claude Code says all of these as it goes; Codex and Kimi Code tell only of whole steps,
+so for them a pulse is a line of any kind.
+
 The same agents write an episode (`episode_workers.py`): there a run is given one folder of its
 own and may change files in it and nothing else (`writes`), under a guide of the caller's.
 """
@@ -63,6 +70,25 @@ BIN_DIRS = ("~/.local/bin", "~/.kimi-code/bin", "/opt/homebrew/bin", "/usr/local
 RUN_SECONDS = 20 * 60
 #: Claude Code's lines carry whole files it read.
 LINE_LIMIT = 32 * 1024 * 1024
+#: Seconds between two pulses of one run: the studio is told at most this often.
+PULSE_EVERY = 1.0
+#: How much of a thought's summary is kept, from its end: where the thinking has got to.
+THOUGHT_KEPT = 600
+#: How much of a tool call's arguments is read for what the call acts on (its file comes first).
+CALL_HEAD = 4096
+#: Claude Code's option for summaries of its thinking. It is the Agent SDK's own (`thinking.display`
+#: there) and not in the CLI's reference, so a CLI that refuses it is run without (`run`).
+CLAUDE_THOUGHTS = "--thinking-display"
+#: Binaries that refused that option, for as long as the house runs.
+_without_thoughts: set[str] = set()
+#: Why Claude Code is asking the model's service again, by the error it names.
+RETRY_WHY = {
+    "rate_limit": "the plan's limit was reached",
+    "overloaded": "the model's service is busy",
+    "server_error": "the model's service had an error",
+    "authentication_failed": "the sign-in was refused",
+    "billing_error": "the account's billing stopped it",
+}
 #: Folders never searched for repositories.
 SKIP_DIRS = frozenset({"node_modules", "venv", "dist", "build", "target", "vendor"})
 
@@ -84,6 +110,10 @@ class Harness:
     #: read and said while the parent's own stays as it was; otherwise it starts again, told the
     #: answer it branched from.
     forks: bool
+    #: Whether its stream says what the model is doing between steps (`Watch`): thinking, and
+    #: the file it is writing. From one that does, a long silence means something is wrong;
+    #: the others say nothing while they think.
+    tells: bool = False
 
     def binary(self) -> str | None:
         for candidate in self.candidates:
@@ -100,7 +130,12 @@ class Harness:
 
 HARNESSES: dict[str, Harness] = {
     "claude": Harness(
-        "claude", "Claude Code", ("claude", "~/.claude/local/claude"), resumes=True, forks=True
+        "claude",
+        "Claude Code",
+        ("claude", "~/.claude/local/claude"),
+        resumes=True,
+        forks=True,
+        tells=True,
     ),
     "codex": Harness(
         "codex",
@@ -119,10 +154,18 @@ HARNESSES: dict[str, Harness] = {
 
 @dataclass(frozen=True)
 class Event:
-    """What a run said, as the canvas shows it."""
+    """What a run said, as the canvas shows it. A `pulse` is a sign of life between steps: its
+    text is what the model is at ("thinking", "writing" its own words, "step" for a tool call it
+    is writing, or nothing known), `detail` the newest words of the thought or the step the call
+    will be, `amount` how much so far (tokens of thought, characters written). A `thought` is a
+    stretch of thinking that ended: its summary where the CLI gives one, the tokens it took and
+    how long it lasted."""
 
-    kind: Literal["session", "step", "note", "answer", "error"]
+    kind: Literal["session", "step", "note", "answer", "error", "pulse", "thought"]
     text: str
+    detail: str = ""
+    amount: int = 0
+    seconds: float = 0.0
 
 
 #: How a research run is started; tests hand in their own.
@@ -238,14 +281,21 @@ def command(
     writes: bool = False,
     model: str = "",
     effort: str = "",
+    watched: bool = False,
+    thoughts: bool = False,
 ) -> tuple[list[str], str | None]:
     """The CLI's arguments for one run, and what goes in on stdin (so a prompt that starts with a
     dash is never read as an option). With `fork`, the run continues a copy of `session` under a
     new id and leaves the original as it was. With `writes`, the run may change files in `repo`
     (its own folder) and still has no shell and no network; `profile` is then Kimi Code's
-    writing profile."""
+    writing profile. With `watched`, Claude Code says what its model is doing as it goes, not
+    only once a step is whole, and with `thoughts` it sends summaries of its thinking too."""
     if harness.id == "claude":
         argv = [binary, "-p", "--output-format", "stream-json", "--verbose"]
+        if watched:
+            argv += ["--include-partial-messages"]
+        if thoughts:
+            argv += [CLAUDE_THOUGHTS, "summarized"]
         if model:
             argv += ["--model", model]
         if effort:
@@ -316,87 +366,109 @@ async def run(
     report_model: Callable[[str, str], None] | None = None,
 ) -> AsyncGenerator[Event, None]:
     """One run: the CLI in the repository (or, for a run that writes, in its own folder), its
-    stream read as it comes. Closing the iterator early (a stop) ends the CLI and anything it
-    started."""
+    stream read as it comes, with what it says between its steps (`Watch`). Closing the iterator
+    early (a stop) ends the CLI and anything it started."""
     harness = HARNESSES[harness_id]
     binary = harness.binary()
     if binary is None:
         raise ResearchError(f"{harness.title} isn't installed on this computer.")
     if not repo.is_dir():
         raise ResearchError(f"{repo} isn't on this computer any more.")
-    argv, stdin = command(
-        harness,
-        binary,
-        repo=repo,
-        prompt=prompt,
-        session=session,
-        profile=profile,
-        fork=fork,
-        guide=guide,
-        writes=writes,
-        model=model,
-        effort=effort,
-    )
-    process = await asyncio.create_subprocess_exec(
-        *argv,
-        cwd=str(repo),
-        env=run_env(harness.id, effort),
-        stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        limit=LINE_LIMIT,
-        start_new_session=True,
-    )
-    reported_error = False
-    said: list[str] = []
-    drain = asyncio.create_task(_tail(process.stderr, said))
-    try:
-        if stdin is not None and process.stdin is not None:
-            process.stdin.write(stdin.encode())
-            await process.stdin.drain()
-            process.stdin.close()
-        if process.stdout is None:
-            raise ResearchError(f"{harness.title} gave nothing to read.")
-        async with asyncio.timeout(timeout):
-            while True:
-                try:
-                    line = await process.stdout.readline()
-                except ValueError:  # one line over the limit: skip it, keep reading
-                    continue
-                if not line:
-                    break
-                if report_model:
-                    with contextlib.suppress(ValueError):
-                        record = json.loads(line)
-                        if isinstance(record, dict) and record.get("type") in (
-                            "system",
-                            "turn.started",
-                            "session_meta",
-                        ):
-                            metadata = record.get("payload", record)
-                            if isinstance(metadata, dict) and isinstance(
-                                metadata.get("model"), str
-                            ):
-                                used_effort = metadata.get("reasoning_effort") or metadata.get(
-                                    "effort"
-                                )
-                                report_model(
-                                    metadata["model"][:100],
-                                    used_effort[:16] if isinstance(used_effort, str) else "",
-                                )
-                for event in parse(harness_id, line, repo):
-                    if event.kind == "error":
-                        reported_error = True
-                    yield event
-            code = await process.wait()
-        if code and not reported_error:
-            last = next((s for s in reversed(said) if s.strip()), "")
-            yield Event("error", last.strip()[:300] or f"{harness.title} stopped (exit {code}).")
-    except TimeoutError:
-        yield Event("error", f"{harness.title} took longer than {timeout // 60:.0f} minutes.")
-    finally:
-        _end(process)
-        drain.cancel()
+    while True:
+        thoughts = harness.id == "claude" and binary not in _without_thoughts
+        argv, stdin = command(
+            harness,
+            binary,
+            repo=repo,
+            prompt=prompt,
+            session=session,
+            profile=profile,
+            fork=fork,
+            guide=guide,
+            writes=writes,
+            model=model,
+            effort=effort,
+            watched=True,
+            thoughts=thoughts,
+        )
+        process = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=str(repo),
+            env=run_env(harness.id, effort),
+            stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            limit=LINE_LIMIT,
+            start_new_session=True,
+        )
+        reported_error = said_anything = False
+        said: list[str] = []
+        watch = Watch(harness_id, repo)
+        drain = asyncio.create_task(_tail(process.stderr, said))
+        try:
+            if stdin is not None and process.stdin is not None:
+                process.stdin.write(stdin.encode())
+                await process.stdin.drain()
+                process.stdin.close()
+            if process.stdout is None:
+                raise ResearchError(f"{harness.title} gave nothing to read.")
+            async with asyncio.timeout(timeout):
+                while True:
+                    try:
+                        line = await process.stdout.readline()
+                    except ValueError:  # one line over the limit: skip it, keep reading
+                        continue
+                    if not line:
+                        break
+                    record = _record(line)
+                    if record is None:
+                        continue
+                    if report_model and record.get("type") in (
+                        "system",
+                        "turn.started",
+                        "session_meta",
+                    ):
+                        metadata = record.get("payload", record)
+                        if isinstance(metadata, dict) and isinstance(metadata.get("model"), str):
+                            used_effort = metadata.get("reasoning_effort") or metadata.get("effort")
+                            report_model(
+                                metadata["model"][:100],
+                                used_effort[:16] if isinstance(used_effort, str) else "",
+                            )
+                    # what the line says of the model at work first, then what it carries; a
+                    # line that carries something is its own sign of life
+                    told = _events(harness_id, record, repo)
+                    signs = [
+                        e for e in watch.read(record) if e.text or e.kind != "pulse" or not told
+                    ]
+                    for event in (*signs, *told):
+                        if event.kind == "error":
+                            reported_error = True
+                        said_anything = True
+                        yield event
+                code = await process.wait()
+            if code and not reported_error:
+                # the last of what it wrote to stderr says why
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(asyncio.shield(drain), 1.0)
+                if thoughts and not said_anything and _refused(said, CLAUDE_THOUGHTS):
+                    _without_thoughts.add(binary)
+                    continue  # an older CLI: the same run, without summaries of its thinking
+                last = next((s for s in reversed(said) if s.strip()), "")
+                yield Event(
+                    "error", last.strip()[:300] or f"{harness.title} stopped (exit {code})."
+                )
+        except TimeoutError:
+            yield Event("error", f"{harness.title} took longer than {timeout // 60:.0f} minutes.")
+        finally:
+            _end(process)
+            drain.cancel()
+        return
+
+
+def _refused(said: Sequence[str], option: str) -> bool:
+    """Whether a CLI ended at once because it does not know one of the options it was given."""
+    return any("unknown option" in line and option in line for line in said)
 
 
 async def _tail(stream: asyncio.StreamReader | None, said: list[str]) -> None:
@@ -429,18 +501,166 @@ def _end(process: asyncio.subprocess.Process) -> None:
 
 
 def parse(harness_id: str, line: bytes | str, repo: Path) -> list[Event]:
-    """One line of a CLI's JSON stream, as zero or more events."""
+    """One line of a CLI's JSON stream, as zero or more events: its steps, notes and answer.
+    What it says between steps is `Watch`'s to read."""
+    record = _record(line)
+    return _events(harness_id, record, repo) if record is not None else []
+
+
+def _record(line: bytes | str) -> dict[str, Any] | None:
     try:
         record = json.loads(line)
     except (ValueError, TypeError):
-        return []
-    if not isinstance(record, dict):
-        return []
+        return None
+    return record if isinstance(record, dict) else None
+
+
+def _events(harness_id: str, record: Mapping[str, Any], repo: Path) -> list[Event]:
     if harness_id == "claude":
         return _claude(record, repo)
     if harness_id == "codex":
         return _codex(record)
     return _kimi(record, repo)
+
+
+class Watch:
+    """One run's stream, read for what the model is doing between its steps.
+
+    Claude Code sends partial messages: a block of thinking, of its own words or of a tool call
+    opens, grows and closes. While one is open the watch gives a `pulse` (at most one each
+    `PULSE_EVERY` seconds, and one at once when what the model is at changes): thinking with the
+    tokens so far and the newest words of its summary, writing with the characters so far, or the
+    step a tool call will be ("Writing plan.json") with how much of it is written. A block of
+    thinking that closes is a `thought`, and a request the CLI has to make again is a step that
+    says why. Codex tells of a stretch of reasoning once it is whole (a `thought`); every other
+    line, from any CLI, is a pulse that says only that something was heard."""
+
+    def __init__(
+        self, harness_id: str, repo: Path, clock: Callable[[], float] = time.monotonic
+    ) -> None:
+        self.harness = harness_id
+        self.repo = repo
+        self.clock = clock
+        self._pulsed = float("-inf")
+        self._said = ""
+        #: the block the model is writing (thinking, text, tool_use), when it opened, and so far
+        #: its tokens or characters, the end of a thought's summary, and a tool call's start
+        self._block = ""
+        self._opened = 0.0
+        self._amount = 0
+        self._summary = ""
+        self._tool = ""
+        self._head = ""
+
+    def read(self, record: Mapping[str, Any]) -> list[Event]:
+        if self.harness == "claude":
+            return self._claude(record)
+        if self.harness == "codex":
+            item = record.get("item")
+            if (
+                record.get("type") == "item.completed"
+                and isinstance(item, dict)
+                and item.get("type") == "reasoning"
+            ):
+                return [Event("thought", _plain(str(item.get("text") or ""))[-THOUGHT_KEPT:])]
+        return self._pulse()
+
+    def _claude(self, record: Mapping[str, Any]) -> list[Event]:
+        kind = record.get("type")
+        if kind == "system" and record.get("subtype") == "api_retry":
+            return [Event("step", _retry(record))]
+        if kind == "system" and record.get("subtype") == "thinking_tokens":
+            if self._block != "thinking":
+                self._open("thinking")
+            self._amount = max(self._amount, _count(record.get("estimated_tokens")))
+            return self._pulse()
+        event = record.get("event") if kind == "stream_event" else None
+        if not isinstance(event, dict):
+            return self._pulse()
+        what = event.get("type")
+        if what == "content_block_start":
+            block = event.get("content_block")
+            block = block if isinstance(block, dict) else {}
+            self._open(str(block.get("type") or ""), str(block.get("name") or ""))
+            return self._pulse(now=True)
+        if what == "content_block_delta":
+            delta = event.get("delta")
+            delta = delta if isinstance(delta, dict) else {}
+            if delta.get("type") == "thinking_delta":
+                self._summary = (self._summary + str(delta.get("thinking") or ""))[-THOUGHT_KEPT:]
+                self._amount = max(self._amount, _count(delta.get("estimated_tokens")))
+            elif delta.get("type") == "text_delta":
+                self._amount += len(str(delta.get("text") or ""))
+            elif delta.get("type") == "input_json_delta":
+                part = str(delta.get("partial_json") or "")
+                self._amount += len(part)
+                self._head = (self._head + part)[:CALL_HEAD]
+            return self._pulse()
+        if what == "content_block_stop":
+            thought = self._block == "thinking"
+            done = Event(
+                "thought",
+                _plain(self._summary),
+                amount=self._amount,
+                seconds=round(self.clock() - self._opened, 1),
+            )
+            self._open("")
+            return [done] if thought else self._pulse(now=True)
+        return self._pulse()
+
+    def _open(self, block: str, tool: str = "") -> None:
+        self._block, self._tool = block, tool
+        self._opened = self.clock()
+        self._amount, self._summary, self._head = 0, "", ""
+
+    def _pulse(self, *, now: bool = False) -> list[Event]:
+        saying = {"thinking": "thinking", "text": "writing", "tool_use": "step"}.get(
+            self._block, ""
+        )
+        at = self.clock()
+        if not now and saying == self._said and at - self._pulsed < PULSE_EVERY:
+            return []
+        self._pulsed, self._said = at, saying
+        detail = ""
+        if saying == "thinking":
+            detail = _plain(self._summary)
+        elif saying == "step":
+            detail = describe(self._tool, _started(self._head), self.repo)
+        return [Event("pulse", saying, detail=detail, amount=self._amount if saying else 0)]
+
+
+def _count(value: Any) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
+
+
+def _plain(text: str) -> str:
+    """A model's own words on one line, without the marks it sets headings and stress in."""
+    return " ".join(re.sub(r"[*_`#]+", "", text).split())
+
+
+#: A whole string value near the start of a tool call's arguments, as they are being written.
+_ARGUMENT = re.compile(
+    r'"(file_path|path|notebook_path|pattern|query|command|url|description)"'
+    r'\s*:\s*"((?:[^"\\]|\\.)*)"'
+)
+
+
+def _started(head: str) -> dict[str, str]:
+    """What a tool call acts on, read from as much of its arguments as has been written."""
+    found: dict[str, str] = {}
+    for name, value in _ARGUMENT.findall(head):
+        with contextlib.suppress(ValueError):
+            found.setdefault(name, json.loads(f'"{value}"'))
+    return found
+
+
+def _retry(record: Mapping[str, Any]) -> str:
+    """Claude Code asking the model's service again, as a step that says why and which try."""
+    why = RETRY_WHY.get(str(record.get("error") or ""), "the request did not go through")
+    tries = ""
+    if _count(record.get("attempt")) and _count(record.get("max_retries")):
+        tries = f" (try {record['attempt']} of {record['max_retries']})"
+    return f"Asking again: {why}{tries}"
 
 
 def _claude(record: Mapping[str, Any], repo: Path) -> list[Event]:

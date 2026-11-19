@@ -253,6 +253,9 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         self._lock = threading.Lock()
+        #: What each turn under way is doing between its steps (`pulse`), by run. In memory
+        #: only: a restart ends the turns it was about.
+        self.pulses: dict[str, Row] = {}
         self._db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self._db.row_factory = sqlite3.Row
         with self._lock:
@@ -649,6 +652,27 @@ class Store:
 
     def working_runs(self) -> list[Row]:
         return self._all("SELECT * FROM runs WHERE state = 'working' ORDER BY started_at")
+
+    def pulse(
+        self, run_id: str, lane: str, doing: str = "", text: str = "", amount: int = 0
+    ) -> Row:
+        """A sign of life from a turn between two of its steps: what its model is at
+        ("thinking", "writing" its own words, "step" for a tool call it is writing, or nothing
+        known), the newest words of the thought or the step the call will be, and how much so
+        far (tokens of thought, characters written). `since` is when it began what it is at."""
+        now = time.time()
+        was = self.pulses.get(run_id)
+        going_on = was is not None and bool(doing) and was["doing"] == doing
+        row: Row = {
+            "lane": lane,
+            "at": now,
+            "doing": doing,
+            "text": text,
+            "amount": amount,
+            "since": was["since"] if was is not None and going_on else now,
+        }
+        self.pulses[run_id] = row
+        return row
 
     # -- episodes: the plan, the pictures built for it, the takes recorded ----------------------
 

@@ -33,6 +33,7 @@ import logging
 import re
 import secrets
 import time
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any
@@ -79,6 +80,9 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+#: Says what an agent builds on for a pick of model and effort, as a made picture's record
+#: keeps it; a ValueError when the agent does not offer them (`EpisodeDesk._generation`).
+Generation = Callable[[str, Row], Row]
 #: An episode's own task thread, and its asset on the canvas.
 EPISODE = "episode"
 #: Fix rounds a stage gets before the plan goes on with what the checks still flag.
@@ -108,6 +112,9 @@ MOTION_TRIES = 2
 #: Pictures built at once by a local agent. The built-in agent builds one at a time: its
 #: thread holds one turn.
 PICTURES_AT_ONCE = 2
+#: Pictures one agent builds at once across every episode, so many episodes handed to it wait
+#: their turn. The built-in agent builds one, as it does within an episode.
+HOUSE_AT_ONCE = 4
 #: Earlier versions of a picture kept to look back at and to put back; past this, the
 #: oldest made is dropped.
 VERSIONS = 12
@@ -202,6 +209,19 @@ BUILD_STAGES: dict[str, tuple[str, ...]] = {
     units.RICH: ("motion", "draw", "pose", "review", "go"),
     units.SIMPLE: ("draw", "pose"),
 }
+#: Where a picture stands as a job on the production board, by its record's status ("none" for
+#: one never asked for). A made one that is out of date is to make again, whatever this says.
+JOB_STATES: dict[str, str] = {
+    "none": "todo",
+    "queued": "waiting",
+    "making": "running",
+    "posing": "running",
+    "go": "go",
+    "made": "done",
+    "failed": "failed",
+}
+#: How many of an agent's newest made pictures say how long one takes it to build.
+BUILDS_MEANT = 20
 #: The longest note a person can leave a picture's builder while it works.
 NOTE_CHARS = 600
 GENERIC = ("system-ui", "sans-serif", "serif", "monospace", "ui-monospace", "ui-sans-serif")
@@ -268,11 +288,16 @@ class EpisodeDesk:
         self.reader: classifier.Ask | None = None
         self._jobs: dict[str, asyncio.Task[None]] = {}
         self._builds: dict[tuple[str, str], asyncio.Task[None]] = {}
+        #: When each picture on its way was asked for.
+        self._asked: dict[tuple[str, str], float] = {}
         #: Episodes whose applied picks are with the writer: their pictures follow its turn.
         self._then_draw: set[str] = set()
         # pictures a person asked to have planned again: drawn again once the writer has
         self._redraw: dict[str, set[str]] = {}
+        #: A builder's turns within an episode (`PICTURES_AT_ONCE`), and across every episode
+        #: (`HOUSE_AT_ONCE`).
         self._gates: dict[str, asyncio.Semaphore] = {}
+        self._house: dict[str, asyncio.Semaphore] = {}
         self._said_at: dict[str, float] = {}
         #: What the renderer's craft pass said of each picture as it was last posed, kept for
         #: its builder's review.
@@ -395,14 +420,18 @@ class EpisodeDesk:
             return episode_models.codex_default_model(self.host.settings)
         return worker.model
 
-    def _film_pick(self, episode: Row) -> Row:
+    def _generation(self, builder: str, pick: Row) -> Row:
+        """What an agent builds on for a pick of model and effort (see `Generation`)."""
+        return episode_models.generation(self.host.settings, builder, pick)
+
+    def _film_pick(self, episode: Row, generation: Generation | None = None) -> Row:
         """The model and effort picked for the film's agent, while that agent still offers them
         (an agent's models are its own to change): nothing picked is the agent's default."""
         chosen = episode["settings"]
         pick = {k: str(chosen.get(f"writer_{k}") or "") for k in ("model", "effort")}
         if pick["model"] or pick["effort"]:
             try:
-                episode_models.generation(self.host.settings, str(chosen.get("writer") or ""), pick)
+                (generation or self._generation)(str(chosen.get("writer") or ""), pick)
             except ValueError:
                 return {"model": "", "effort": ""}
         return pick
@@ -772,14 +801,23 @@ class EpisodeDesk:
         full["title"] = episode["title"]
         return full
 
-    def _units(self, episode: Row, full: Row, look: picture.Look | None = None) -> list[Row]:
+    def _units(
+        self,
+        episode: Row,
+        full: Row,
+        look: picture.Look | None = None,
+        generation: Generation | None = None,
+    ) -> list[Row]:
+        """The plan's units, each with who builds it and on what. A read of many episodes hands
+        in the look and the `generation` it already has, so neither is read again for each."""
         found = units.units(
             full, episode["picks"] or {}, level=str(episode["settings"].get("level", "simple"))
         )
         chosen = (episode["picks"] or {}).get("units", {})
         by_chapter = self._chapter_builders(episode)
         writer = str(episode["settings"].get("writer") or "")
-        film_pick = self._film_pick(episode)
+        generation = generation or self._generation
+        film_pick = self._film_pick(episode, generation)
         said = {str(f["id"]): f for _, _, f in plans.frames_of(full)}
         if not found:
             return []
@@ -812,15 +850,11 @@ class EpisodeDesk:
             else:
                 unit["model_now"] = {"model": "", "effort": "", "from": ""}
             try:
-                unit["generation"] = episode_models.generation(
-                    self.host.settings, unit["builder"], unit["model_now"]
-                )
+                unit["generation"] = generation(unit["builder"], unit["model_now"])
             except ValueError:
                 # the agent no longer offers what was picked: its default builds it
                 unit["model_now"] = {"model": "", "effort": "", "from": ""}
-                unit["generation"] = episode_models.generation(
-                    self.host.settings, unit["builder"], {}
-                )
+                unit["generation"] = generation(unit["builder"], {})
             # what its lines say now, and when a person last made one say something else
             lines = [said.get(str(frame)) or {} for frame in unit["frames"]]
             unit["words_now"] = _said(lines)
@@ -1041,9 +1075,18 @@ class EpisodeDesk:
         self.store.update_episode(episode_id, stage=stage)
         self._changed(episode_id)
 
+    def _pulsed(self, episode_id: str, run_id: str) -> None:
+        """A turn gave a sign of life between its steps: the studio is told that alone, so a
+        model's long thought costs it no reading of the whole episode."""
+        pulse = self.store.pulses.get(run_id)
+        if pulse is not None:
+            self.hub.publish("episode.pulse", id=episode_id, pulse=pulse)
+
     def _heard(self, episode_id: str) -> Any:
         def heard(kind: str, text: str) -> None:
-            if kind not in ("step", "note"):
+            if kind == "pulse":
+                self._pulsed(episode_id, text)
+            if kind not in ("step", "note", "thought"):
                 return
             now = time.time()
             if kind == "step":
@@ -1060,9 +1103,12 @@ class EpisodeDesk:
     def _seen(self, episode_id: str) -> Any:
         """A picture's builder is at a new step: the studio hears of it, once a second at most."""
 
-        def heard(kind: str, _text: str) -> None:
+        def heard(kind: str, text: str) -> None:
+            if kind == "pulse":
+                self._pulsed(episode_id, text)
             now = time.time()
-            if kind in ("step", "note") and now - self._said_at.get(episode_id, 0.0) >= 1.0:
+            told = kind in ("step", "note", "thought")
+            if told and now - self._said_at.get(episode_id, 0.0) >= 1.0:
                 self._said_at[episode_id] = now
                 self._changed(episode_id)
 
@@ -2093,6 +2139,7 @@ class EpisodeDesk:
                 sig=unit["sig"],
                 level=unit["level"],
             )
+            self._asked[(episode_id, unit["id"])] = time.time()
             self._builds[(episode_id, unit["id"])] = asyncio.get_running_loop().create_task(
                 self._built(episode_id, unit["id"], (generation_for or {}).get(unit["id"])),
                 name=f"picture {episode_id} {unit['id']}",
@@ -2196,8 +2243,13 @@ class EpisodeDesk:
         )
         at_once = 1 if builder == BUILTIN else PICTURES_AT_ONCE
         gate = self._gates.setdefault(f"{episode_id}:{builder}", asyncio.Semaphore(at_once))
+        in_house = 1 if builder == BUILTIN else HOUSE_AT_ONCE
+        house = self._house.setdefault(builder, asyncio.Semaphore(in_house))
         try:
-            async with gate:
+            # Its episode's turn first, so a picture waiting for that holds no place in the
+            # house's. Each gate lets in whoever asked first, and one stopped while it waits
+            # leaves the line.
+            async with gate, house:
                 await self._build(episode_id, unit_id, generation_pick=generation_pick)
         except asyncio.CancelledError:
             self._unmade(episode_id, unit_id, "Stopped.", stopped=True)
@@ -2207,6 +2259,7 @@ class EpisodeDesk:
         finally:
             self._record_timing(episode_id, unit_id)
             self._builds.pop((episode_id, unit_id), None)
+            self._asked.pop((episode_id, unit_id), None)
             self._steer.pop((episode_id, unit_id), None)
             self._last_turn.discard((episode_id, unit_id))
             self._settle(episode_id)
@@ -2842,6 +2895,7 @@ class EpisodeDesk:
         """Start one picture again with a person's note for its builder."""
         note = note.strip()[:600]
         self._set_queued(episode_id, unit_id, note=note)
+        self._asked[(episode_id, unit_id)] = time.time()
         self._builds[(episode_id, unit_id)] = asyncio.get_running_loop().create_task(
             self._rebuilt(episode_id, unit_id, note), name=f"picture {episode_id} {unit_id}"
         )
@@ -2858,6 +2912,7 @@ class EpisodeDesk:
         finally:
             self._record_timing(episode_id, unit_id)
             self._builds.pop((episode_id, unit_id), None)
+            self._asked.pop((episode_id, unit_id), None)
             self._steer.pop((episode_id, unit_id), None)
             self._last_turn.discard((episode_id, unit_id))
             self._settle(episode_id)
@@ -4052,11 +4107,10 @@ class EpisodeDesk:
             if lane.startswith("picture:"):
                 turns.setdefault(lane.removeprefix("picture:"), []).append(r)
             if lane.startswith("picture:") and r["state"] == "working":
-                last = next((e for e in reversed(r["steps"] or []) if e.get("text")), None)
-                doing[lane.removeprefix("picture:")] = (
-                    _clean(str(last["text"]), 120) if last else ""
+                doing[lane.removeprefix("picture:")] = _doing(r)
+                building[lane.removeprefix("picture:")] = _live(
+                    r, self.store.pulses.get(str(r["id"]))
                 )
-                building[lane.removeprefix("picture:")] = _live(r)
         return {
             **self.card(episode),
             "background": {
@@ -4153,7 +4207,7 @@ class EpisodeDesk:
                 for c in (full or {}).get("chapters", [])
             },
             "runs": runs[-40:],
-            "working": _live(live) if live else None,
+            "working": _live(live, self.store.pulses.get(str(live["id"]))) if live else None,
             "options": self.options(episode["settings"].get("writer")),
         }
 
@@ -4260,6 +4314,267 @@ class EpisodeDesk:
             "audio": self._file(take["audio"]),
             "created_at": take["created_at"],
         }
+
+    # -- the production board: every episode's jobs, and handing them to agents ----------------
+
+    def production(self) -> Row:
+        """Everything the production board draws, across every episode of every channel: the
+        agents (how busy each is, and how long a picture takes it), the episodes newest first,
+        and the jobs: a picture of a plan in the studio, or a script that is being written,
+        waits to be approved or stopped. It is read often and for the whole house, so it stays
+        light: what an agent offers is asked once, a brand is read once, and only a turn under
+        way has its runs read."""
+        options = self.options()
+        generation = _remembered(self._generation)
+        channels = {str(c["id"]): str(c["name"]) for c in self.store.channels()}
+        brands: dict[Path | None, picture.Look] = {}
+        episodes: list[Row] = []
+        jobs: list[Row] = []
+        made: list[tuple[str, float, float]] = []
+        for episode in reversed(self.store.all_episodes()):
+            episodes.append(self._board_episode(episode, channels))
+            pictures = self.store.pictures(str(episode["id"]))
+            made += [
+                (str(p["builder"]), float(timing["ended_at"]), float(timing["seconds"]))
+                for p in pictures
+                if p["status"] in ("made", "go")
+                and (timing := p["timing"] or {}).get("seconds") is not None
+            ]
+            script = self._script_job(episode, generation)
+            if script is not None:
+                jobs.append(script)
+            if episode["status"] == "studio":
+                jobs += self._picture_jobs(episode, pictures, brands, generation)
+        standing = Counter((job["agent"], job["state"]) for job in jobs)
+        return {
+            "agents": [
+                {
+                    "id": agent["id"],
+                    "title": agent["title"],
+                    "ready": agent["ready"],
+                    "models": options["generation_models"][agent["id"]],
+                    "running": standing[(agent["id"], "running")],
+                    "waiting": standing[(agent["id"], "waiting")],
+                    "seconds": _usual_seconds(made, agent["id"]),
+                }
+                for agent in options["picture_writers"]
+            ],
+            "episodes": episodes,
+            "jobs": jobs,
+        }
+
+    def _board_episode(self, episode: Row, channels: Mapping[str, str]) -> Row:
+        """An episode as the production board names it: its channel, where it stands, and its
+        chapters once its plan has them."""
+        thread = self.store.thread(str(episode["thread_id"])) or {}
+        channel_id = str(thread.get("channel_id") or "")
+        return {
+            "id": episode["id"],
+            "title": episode["title"],
+            "channel_id": channel_id,
+            "channel": channels.get(channel_id, ""),
+            "status": episode["status"],
+            "writer": str(episode["settings"].get("writer") or ""),
+            "chapters": [
+                {"id": c.get("id"), "n": n, "question": c.get("question", "")}
+                for n, c in enumerate((episode["plan"] or {}).get("chapters", []), 1)
+            ],
+        }
+
+    def _script_job(self, episode: Row, generation: Generation) -> Row | None:
+        """An episode's script as a job, while it needs showing: being written (a first plan,
+        or a turn on one that stands), written and waiting to be approved, or stopped. None for
+        a plan in the studio with nothing under way."""
+        episode_id = str(episode["id"])
+        under_way = episode["status"] == "planning" or self.planning(episode_id)
+        waits = {"plan": "go", "failed": "failed"}.get(str(episode["status"]))
+        state = "running" if under_way else waits
+        if state is None:
+            return None
+        stage = episode["stage"] or {}
+        said = str(stage.get("said") or "")
+        writer = str(episode["settings"].get("writer") or "")
+        turns = self.store.runs(str(episode["thread_id"]), "plan") if under_way else []
+        return _job(
+            episode_id,
+            "script",
+            what="script",
+            kind="script",
+            state=state,
+            agent=writer,
+            **self._film_pick(episode, generation),
+            failure=said if state == "failed" else "",
+            doing=said,
+            started_at=stage.get("at"),
+            **self._liveness(_working(turns), writer),
+        )
+
+    def _picture_jobs(
+        self,
+        episode: Row,
+        pictures: Sequence[Row],
+        brands: dict[Path | None, picture.Look],
+        generation: Generation,
+    ) -> list[Row]:
+        """A job for each picture of an episode's plan, in the film's order. `brands` keeps
+        each brand's look as it is first read, for the episodes that wear it too."""
+        full = self._full(episode)
+        if full is None:
+            return []
+        root = self._brand_root(str(episode["thread_id"]))
+        if root not in brands:
+            brands[root] = self._brand_look(episode)
+        look = self._look(episode, brands[root])
+        have = {str(p["unit"]): p for p in pictures}
+        # every line, with the number of its beat in its chapter
+        lines = {
+            str(f["id"]): (n, f)
+            for ch in full.get("chapters", [])
+            for n, b in enumerate(ch.get("beats", []), 1)
+            for f in b.get("frames", [])
+        }
+        return [
+            self._picture_job(episode, unit, have.get(str(unit["id"])), lines)
+            for unit in self._units(episode, full, look, generation)
+            if unit["kind"] == "picture"
+        ]
+
+    def _picture_job(
+        self, episode: Row, unit: Row, have: Row | None, lines: Mapping[str, tuple[int, Row]]
+    ) -> Row:
+        """One picture as a job: where it stands, who it is set to (or, once made, who made
+        it), and its latest build as the studio follows one."""
+        episode_id, unit_id = str(episode["id"]), str(unit["id"])
+        stale = have is not None and (_outdated(have, unit) or _reworded(have, unit))
+        state = "todo" if stale else JOB_STATES[str(have["status"]) if have else "none"]
+        on_its_way = state in ("waiting", "running")
+        # only a build under way has turns worth reading: they say which stage it is at
+        lane = f"picture:{unit_id}"
+        turns = self.store.runs(str(episode["thread_id"]), lane) if state == "running" else []
+        turn = _working(turns)
+        build = self._build_view(episode_id, unit, have, turns)
+        timing = build["timing"] or {}
+        agent, on = str(unit["builder"]), unit["model_now"]
+        if have is not None and state in ("go", "done"):
+            # one made before its builder was kept is shown as its beat is set
+            agent, on = str(have["builder"] or agent), have["generation"] or unit["generation"]
+        still = self._file(((have or {}).get("stills") or {}).get(unit["frames"][-1]))
+        return _job(
+            episode_id,
+            unit_id,
+            what="picture",
+            unit=unit_id,
+            chapter=unit["chapter"],
+            kind=unit["picture"],
+            shows=unit["shows"],
+            says=_clean(str(lines[unit["frames"][0]][1].get("vo") or ""), 160),
+            beats=list(dict.fromkeys(lines[frame][0] for frame in unit["frames"])),
+            lines=len(unit["frames"]),
+            level=unit["level"],
+            state=state,
+            stale=stale,
+            agent=agent,
+            model=on["model"],
+            effort=on["effort"],
+            picked=bool(unit["builder_pick"]),
+            failure=have["failure"] if have else "",
+            stage=next((s["id"] for s in build["stages"] if s["state"] == "running"), ""),
+            doing=_doing(turn) if turn else "",
+            asked_at=self._asked.get((episode_id, unit_id)) if on_its_way else None,
+            started_at=timing.get("started_at"),
+            ended_at=timing.get("ended_at"),
+            seconds=timing.get("seconds"),
+            still=still["url"] if still else None,
+            **self._liveness(turn, agent),
+        )
+
+    def _liveness(self, turn: Row | None, agent: str) -> Row:
+        """A job's signs of life: whether its agent says what its model is doing as it goes
+        and, while a turn of it is under way, the turn's pulse and when it was last heard from
+        (the newest of its start, its last event and its pulse). A turn that has said nothing
+        yet was heard from when it began, so a time is missing only when no turn is under way."""
+        if turn is None:
+            return {"tells": _tells(agent), "heard_at": None, "pulse": None}
+        live = _live(turn, self.store.pulses.get(str(turn["id"])))
+        heard = [float(live["since"])]
+        heard += [float(event["at"]) for event in live["events"][-1:] if event["at"]]
+        if live["pulse"]:
+            heard.append(float(live["pulse"]["at"]))
+        return {"tells": live["tells"], "heard_at": max(heard), "pulse": live["pulse"]}
+
+    def assign(
+        self,
+        jobs: Sequence[tuple[str, str]],
+        *,
+        by: str,
+        agent: str = "",
+        model: str = "",
+        effort: str = "",
+        start: bool = True,
+    ) -> Row:
+        """Hand pictures, each named by its episode and unit, to an agent, and start them.
+        With a model or an effort every picture gets the agent on those as its own pick. With
+        neither, one already with that agent keeps what it runs on, and one with another agent
+        moves to this one's default. With no agent each keeps the one it is set to. With
+        `start` they are then asked for by name, as `make` asks: one made and up to date is
+        left as it is. An episode that refuses says why and does not stop the others. Returns
+        the jobs this started and the refusals."""
+        if not jobs:
+            raise ValueError("There is no picture to hand over.")
+        if agent and not self._can_write(agent):
+            raise ValueError("That agent isn't ready on this computer.")
+        if agent and (model or effort):
+            # a pick the agent does not offer is refused here, once, not by every episode
+            self._generation(agent, {"model": model, "effort": effort})
+        named: dict[str, list[str]] = {}
+        for episode_id, unit_id in dict.fromkeys(jobs):
+            named.setdefault(episode_id, []).append(unit_id)
+        started: list[str] = []
+        refused: list[Row] = []
+        for episode_id, unit_ids in named.items():
+            try:
+                picks = self._handed(episode_id, unit_ids, agent, model, effort)
+                if picks:
+                    self.choose(episode_id, by=by, change={"units": picks})
+                if start:
+                    started += self._make_named(episode_id, unit_ids, by=by)
+            except KeyError:
+                refused.append({"episode": episode_id, "reason": "That episode is no longer here."})
+            except ValueError as refusal:
+                refused.append({"episode": episode_id, "reason": str(refusal)})
+        return {"started": started, "refused": refused}
+
+    def _handed(
+        self, episode_id: str, unit_ids: Sequence[str], agent: str, model: str, effort: str
+    ) -> Row:
+        """The picks that hand an episode's pictures to an agent (see `assign`), by unit."""
+        if not agent:
+            return {}
+        if model or effort:
+            return dict.fromkeys(unit_ids, {"builder": agent, "model": model, "effort": effort})
+        episode = self._episode(episode_id)
+        theirs = {
+            str(unit["id"])
+            for unit in self._units(episode, self._full(episode) or {})
+            if unit["builder"] == agent
+        }
+        return {unit_id: {"builder": agent} for unit_id in unit_ids if unit_id not in theirs}
+
+    def _make_named(self, episode_id: str, unit_ids: Sequence[str], *, by: str) -> list[str]:
+        """Ask for an episode's pictures by name (`make`). Returns, as jobs, the ones this
+        started: one already on its way was not, and neither was one `make` left as it is."""
+        before = {unit_id for unit_id in unit_ids if self._building(episode_id, unit_id)}
+        self.make(episode_id, by=by, only=list(unit_ids))
+        return [
+            f"{episode_id}:{unit_id}"
+            for unit_id in unit_ids
+            if unit_id not in before and self._building(episode_id, unit_id)
+        ]
+
+    def _building(self, episode_id: str, unit_id: str) -> bool:
+        """Whether a build of a picture is under way, one waiting its turn included."""
+        build = self._builds.get((episode_id, unit_id))
+        return build is not None and not build.done()
 
 
 def _outdated(have: Row, unit: Row) -> bool:
@@ -4598,21 +4913,105 @@ def _timing_view(have: Row | None, began: float | None) -> Row | None:
     return {key: kept[key] for key in ("started_at", "ended_at", "seconds")}
 
 
-def _live(run: Row) -> Row:
-    """A turn under way as the studio follows it: who runs it, since when, and its newest steps
-    and notes (the agent's own words), newest last."""
+def _live(run: Row, pulse: Row | None = None) -> Row:
+    """A turn under way as the studio follows it: who runs it, since when, its newest steps,
+    notes (the agent's own words) and stretches of thinking, newest last, and what its model is
+    doing now between two of them (`Store.pulse`). `tells` is whether this agent says that as
+    it goes: from one that does, a long silence is a sign that something is wrong."""
+    told = [e for e in (run["steps"] or []) if e.get("text") or e.get("kind") == "thought"]
     return {
         "harness": run["harness"],
         "since": run["started_at"],
+        "tells": _tells(str(run["harness"])),
+        "pulse": {k: v for k, v in pulse.items() if k != "lane"} if pulse else None,
         "events": [
             {
                 "kind": e.get("kind"),
                 "text": _clean(str(e.get("text") or ""), 400),
                 "at": e.get("at"),
+                **({"seconds": e.get("seconds") or 0} if e.get("kind") == "thought" else {}),
             }
-            for e in [e for e in (run["steps"] or []) if e.get("text")][-14:]
+            for e in told[-14:]
         ],
     }
+
+
+def _tells(agent: str) -> bool:
+    """Whether an agent says what its model is doing between its steps as it goes."""
+    harness = research.HARNESSES.get(agent)
+    return bool(harness and harness.tells) or agent == DEMO
+
+
+def _doing(run: Row) -> str:
+    """The step a turn under way is on: its newest step or note, never a stretch of thinking."""
+    last = next(
+        (e for e in reversed(run["steps"] or []) if e.get("text") and e.get("kind") != "thought"),
+        None,
+    )
+    return _clean(str(last["text"]), 120) if last else ""
+
+
+def _working(turns: Sequence[Row]) -> Row | None:
+    """The newest of a lane's turns that is under way, if one is."""
+    return next((r for r in reversed(turns) if r["state"] == "working"), None)
+
+
+def _job(episode_id: str, name: str, *, what: str, kind: str, state: str, **known: Any) -> Row:
+    """A job as the production board lists it: what this one says of itself, with everything
+    it does not say left empty, so every job has the same fields."""
+    return {
+        "id": f"{episode_id}:{name}",
+        "what": what,
+        "episode": episode_id,
+        "unit": "",
+        "chapter": "",
+        "kind": kind,
+        "shows": "",
+        "says": "",
+        "beats": [],
+        "lines": 0,
+        "level": "",
+        "state": state,
+        "stale": False,
+        "agent": "",
+        "model": "",
+        "effort": "",
+        "picked": False,
+        "failure": "",
+        "stage": "",
+        "doing": "",
+        "asked_at": None,
+        "started_at": None,
+        "ended_at": None,
+        "seconds": None,
+        "still": None,
+        "tells": False,
+        "heard_at": None,
+        "pulse": None,
+        **known,
+    }
+
+
+def _usual_seconds(made: Sequence[tuple[str, float, float]], agent: str) -> float | None:
+    """How long a picture takes an agent to build: the mean over its newest made ones, or None
+    when it has made none. `made` is every made picture's builder, when its build ended and how
+    long that took."""
+    newest = sorted((ended, took) for by, ended, took in made if by == agent)[-BUILDS_MEANT:]
+    return round(sum(took for _, took in newest) / len(newest), 1) if newest else None
+
+
+def _remembered(ask: Generation) -> Generation:
+    """`ask` with every answer kept, for one read of the whole house: an agent is asked what a
+    pick builds on once, however many pictures share the pick. A pick it refuses is not kept."""
+    known: dict[tuple[str, str, str], Row] = {}
+
+    def asked(builder: str, pick: Row) -> Row:
+        key = (builder, str(pick.get("model") or ""), str(pick.get("effort") or ""))
+        if key not in known:
+            known[key] = ask(builder, pick)
+        return dict(known[key])
+
+    return asked
 
 
 def _history_fields(plan: Row, frame: str | None = None) -> dict[str, dict[str, str]]:

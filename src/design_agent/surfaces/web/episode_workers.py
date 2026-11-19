@@ -80,8 +80,13 @@ RUN_EVENTS = 400
 BRIEF_FILE = re.compile(r"pictures/[A-Za-z0-9_-]+\.brief\.json")
 MOTION_FILE = re.compile(r"pictures/[A-Za-z0-9_-]+\.motion\.json")
 
-#: A turn's step or note, as it happens: its kind and its words.
+#: A turn's step, note or thought, as it happens: its kind and its words. A "pulse" is a sign
+#: of life between steps; its text is the run it is from, whose pulse the store keeps.
 Heard = Callable[[str, str], None]
+#: A stretch of thinking shorter than this is not worth a line of its own.
+THOUGHT_TOLD = 8.0
+#: In how many pieces the demo's writer says a thought as it thinks it.
+THINKS = 4
 
 
 @dataclass(frozen=True)
@@ -150,6 +155,15 @@ def retold(runs: list[Row], prompt: str) -> str:
 def _cut(text: str, limit: int) -> str:
     text = text.strip()
     return text if len(text) <= limit else text[:limit].rstrip() + " …"
+
+
+def thought(event: research.Event) -> Row | None:
+    """What a turn's record keeps of a stretch of thinking: how long it lasted and the tokens it
+    took, where the CLI says. One too short to mention is not kept; one with no time (a CLI
+    that tells of its reasoning only once it is whole) is kept for its words."""
+    if event.seconds >= THOUGHT_TOLD or (not event.seconds and event.text):
+        return {"seconds": event.seconds, "tokens": event.amount}
+    return None
 
 
 #: The HyperFrames guides the episode's briefs name, copied beside the skill for a coding agent.
@@ -280,6 +294,7 @@ class LocalWorker:
             prompt=prompt,
             session=session,
         )
+        run_id = str(record["id"])
         events: list[dict[str, Any]] = []
         notes: list[str] = []
         answer = failure = ""
@@ -304,16 +319,26 @@ class LocalWorker:
             async with contextlib.aclosing(stream):
                 async for event in stream:
                     if event.kind == "session":
-                        self.store.update_run(str(record["id"]), session=event.text)
-                    elif event.kind in ("step", "note"):
-                        events.append({"kind": event.kind, "text": event.text, "at": time.time()})
-                        self.store.update_run(str(record["id"]), steps=events[-RUN_EVENTS:])
+                        self.store.update_run(run_id, session=event.text)
+                    elif event.kind == "pulse":
+                        self.store.pulse(run_id, lane, event.text, event.detail, event.amount)
+                        heard("pulse", run_id)
+                    elif event.kind in ("step", "note", "thought"):
+                        # whatever it is, the model has moved on from what its pulse said
+                        self.store.pulse(run_id, lane)
+                        told = thought(event) if event.kind == "thought" else None
+                        if event.kind == "thought" and told is None:
+                            heard("pulse", run_id)
+                            continue
+                        entry = {"kind": event.kind, "text": event.text, "at": time.time()}
+                        events.append({**entry, **(told or {})})
+                        self.store.update_run(run_id, steps=events[-RUN_EVENTS:])
                         if event.kind == "note":
                             notes.append(event.text)
                         heard(event.kind, event.text)
                     elif event.kind == "answer":
                         answer = event.text
-                    else:
+                    elif event.kind == "error":
                         failure = event.text
         except asyncio.CancelledError:
             stopped = True
@@ -322,10 +347,12 @@ class LocalWorker:
         except Exception as error:  # a CLI that misbehaves must not take the house down
             _LOGGER.exception("episode turn failed on %s", episode["id"])
             failure = f"It stopped: {type(error).__name__}."
+        finally:
+            self.store.pulses.pop(run_id, None)
         if not answer and notes and not (failure or stopped):
             answer = notes[-1]
         self.store.update_run(
-            str(record["id"]),
+            run_id,
             answer=answer,
             failure=failure,
             state="stopped" if stopped else "failed" if failure and not answer else "done",
@@ -576,26 +603,53 @@ class DemoWorker:
             prompt=prompt,
             session="",
         )
+        run_id = str(record["id"])
         events: list[dict[str, Any]] = []
+        store = self.store
+        began = 0.0
 
         def kept(kind: str, text: str) -> None:
-            events.append({"kind": kind, "text": text, "at": time.time()})
-            assert self.store is not None  # noqa: S101 - set above
-            self.store.update_run(str(record["id"]), steps=events)
+            nonlocal began
+            if kind == "thinking":
+                # the words of a thought so far: a sign of life, not a step
+                began = began or time.time()
+                store.pulse(run_id, lane, "thinking", text, len(text) // 4)
+                heard("pulse", run_id)
+                return
+            entry: dict[str, Any] = {"kind": kind, "text": text, "at": time.time()}
+            if kind == "thought":
+                entry |= {"seconds": round(time.time() - began, 1), "tokens": len(text) // 4}
+                began = 0.0
+            store.pulse(run_id, lane)
+            events.append(entry)
+            store.update_run(run_id, steps=events)
             heard(kind, text)
 
         told = Told(stopped=True)
         try:
             told = await self._turn(episode, lane=lane, prompt=prompt, heard=kept)
         finally:
-            self.store.update_run(
-                str(record["id"]),
+            store.pulses.pop(run_id, None)
+            store.update_run(
+                run_id,
                 answer=told.answer,
                 failure=told.failure,
                 state="stopped" if told.stopped else "failed" if told.failure else "done",
                 ended_at=time.time(),
             )
         return told
+
+    async def _think(self, heard: Heard, words: str) -> None:
+        """A pause as a model's thinking shows from outside: its words as they come, then the
+        thought as a whole. Only the studio (a demo with the house's store) is told."""
+        if self.store is None:
+            await asyncio.sleep(self.pause)
+            return
+        said = words.split()
+        for n in range(1, THINKS + 1):
+            heard("thinking", " ".join(said[: max(1, len(said) * n // THINKS)]))
+            await asyncio.sleep(self.pause)
+        heard("thought", words)
 
     async def _turn(self, episode: Row, *, lane: str, prompt: str, heard: Heard) -> Told:
         folder = self.folder(episode)
@@ -604,6 +658,9 @@ class DemoWorker:
         if lane.startswith("picture:") and "Stage: motion plan" in prompt:
             return await self._motion(folder, prompt, heard)
         if lane.startswith("picture:"):
+            await self._think(
+                heard, "Each object has to be on screen before the line that names it is said."
+            )
             heard("step", "Drawing the picture")
             await asyncio.sleep(self.pause)
             named = BRIEF_FILE.search(prompt)
@@ -624,7 +681,9 @@ class DemoWorker:
         plan: dict[str, Any] = dict(self.script["plan"])
         stage = next((s for s in ("brief", "script", "frames") if f"Stage: {s}" in prompt), "fix")
         heard("step", "Reading the material")
-        await asyncio.sleep(self.pause)
+        await self._think(
+            heard, "What does the viewer need first, and which example can carry the whole film?"
+        )
         chapters = self.script["plan"].get("chapters") or []
         heard(
             "note",
@@ -666,7 +725,9 @@ class DemoWorker:
             return Told(failure="The turn named no brief to plan from.")
         brief = json.loads((folder / named.group(0)).read_text("utf8"))
         heard("step", "Reading the picture's lines")
-        await asyncio.sleep(self.pause)
+        await self._think(
+            heard, "One move for each line: the thing the line is about arrives as it is said."
+        )
         plan = picture.brief_motion(brief)
         shots = plan["shots"]
         heard("step", f"Writing {Path(target.group(0)).name}")

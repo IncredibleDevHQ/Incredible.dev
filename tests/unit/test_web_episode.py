@@ -2274,9 +2274,29 @@ async def test_the_studio_sees_the_writers_steps_and_each_builders_step_as_they_
     assert pictures[unit["id"]]["live"] == {
         "harness": "kimi",
         "since": built["started_at"],
+        # Kimi Code says nothing while it thinks, and nothing has been heard between steps
+        "tells": False,
+        "pulse": None,
         "events": [{"kind": "step", "text": "Editing compositions/p.html", "at": 1.0}],
     }
     assert all(p["live"] is None for i, p in pictures.items() if i != unit["id"])
+    # between two steps: what the builder's model is doing now, and a stretch of thinking that
+    # ended, which is a line of its turn and never the step it is on
+    store.pulse(str(built["id"]), f"picture:{unit['id']}", "thinking", "Which way round?", 300)
+    thought = {"kind": "thought", "text": "The cache box first.", "at": 2.0, "seconds": 41.5}
+    store.update_run(str(built["id"]), steps=[*store.run(str(built["id"]))["steps"], thought])
+    live = house.episodes.view(episode_id)["units"]
+    live = next(u["picture"] for u in live if u["id"] == unit["id"])
+    assert live["doing"] == "Editing compositions/p.html"
+    assert live["live"]["events"][-1] == thought
+    pulse = live["live"]["pulse"]
+    assert (pulse["doing"], pulse["text"], pulse["amount"]) == ("thinking", "Which way round?", 300)
+    assert pulse["since"] == pulse["at"] and "lane" not in pulse
+    # Claude Code is one that says what its model is doing as it goes
+    told = store.add_run(thread_id=thread, lane="plan", harness="claude", prompt="p", session="")
+    assert house.episodes.view(episode_id)["working"]["tells"] is True
+    store.update_run(str(told["id"]), state="done")
+    store.pulses.clear()
     # a turn that ends is no longer under way
     store.update_run(str(plan["id"]), state="done")
     store.update_run(str(built["id"]), state="done")
@@ -2297,9 +2317,36 @@ async def test_the_demos_writer_keeps_each_turn_in_the_record_as_a_writer_does(
     assert turns and all(t["state"] == "done" and t["harness"] == DEMO for t in turns)
     kinds = [e["kind"] for t in turns for e in t["steps"]]
     assert "step" in kinds and "note" in kinds
+    # it reads, thinks (said to the studio as it goes, kept as one line once it ends), then notes
     first = turns[0]["steps"]
-    assert first[0]["text"] == "Reading the material" and first[1]["kind"] == "note"
+    assert [e["kind"] for e in first[:3]] == ["step", "thought", "note"]
+    assert first[0]["text"] == "Reading the material" and "example" in first[1]["text"]
     assert house.episodes.view(episode_id)["working"] is None
+    assert house.store.pulses == {}, "a turn that is over has no pulse"
+
+
+async def test_the_studio_is_told_what_a_turn_is_doing_between_its_steps(
+    house: AgentHost, tmp_path: Path
+) -> None:
+    """A sign of life is its own small event, so a model's long thought costs the studio no
+    reading of the whole episode."""
+    house.episodes.workers[DEMO] = DemoWorker(
+        data_dir=tmp_path, script=SCRIPT, pause=0, store=house.store
+    )
+    house.hub.bind(asyncio.get_running_loop())
+    told = house.hub.open()
+    episode_id = await planned(house)
+    pulses = []
+    while not told.empty():
+        event = told.get_nowait()
+        if event["type"] == "episode.pulse":
+            pulses.append(event)
+    house.hub.close(told)
+    assert pulses and all(e["id"] == episode_id for e in pulses)
+    thinking = [e["pulse"] for e in pulses if e["pulse"]["doing"] == "thinking"]
+    assert thinking and all(p["lane"] == "plan" and p["text"] for p in thinking)
+    # the thought grows as it is thought
+    assert len(thinking[0]["text"]) < len(thinking[-1]["text"]) or len(thinking) == 1
 
 
 # -- takes and the film ---------------------------------------------------------------------------
@@ -2693,6 +2740,44 @@ async def test_a_local_writer_works_in_the_episodes_own_folder_with_the_skill(
     assert [s["text"] for s in run["steps"]] == ["Writing plan.json"]
     assert await worker.read(episode, "material/notes.md") == NOTES
     assert await worker.read(episode, "nothing.json") is None
+
+
+async def test_a_turn_says_what_its_model_is_doing_between_its_steps(tmp_path: Path) -> None:
+    """A pulse is kept in memory for the studio and never in the record; a long stretch of
+    thinking is a line of the record with how long it took, a short one is not."""
+    seen: list[dict[str, Any]] = []
+    worker: LocalWorker
+    store: Store
+
+    def heard(kind: str, text: str) -> None:
+        if kind == "pulse":
+            seen.append(dict(store.pulses[text]))
+
+    runner = Runner(
+        [
+            [
+                Event("pulse", "thinking", detail="Which example carries it?", amount=400),
+                Event("thought", "Which example carries it?", amount=2100, seconds=95.0),
+                Event("thought", "A glance.", amount=40, seconds=1.2),
+                Event("pulse", "step", detail="Writing plan.json", amount=1200),
+                Event("step", "Writing plan.json"),
+                Event("answer", "Done."),
+            ]
+        ]
+    )
+    worker, store, episode = local(tmp_path, runner)
+    await worker.turn(episode, lane="plan", prompt="Stage: brief.", heard=heard)
+    assert [(p["lane"], p["doing"], p["text"], p["amount"]) for p in seen] == [
+        ("plan", "thinking", "Which example carries it?", 400),
+        ("plan", "", "", 0),  # the short thought ended: nothing known until the next sign
+        ("plan", "step", "Writing plan.json", 1200),
+    ]
+    run = store.runs("th_1", "plan")[0]
+    assert [(s["kind"], s["text"], s.get("seconds")) for s in run["steps"]] == [
+        ("thought", "Which example carries it?", 95.0),
+        ("step", "Writing plan.json", None),
+    ]
+    assert run["steps"][0]["tokens"] == 2100 and store.pulses == {}
 
 
 async def test_its_own_session_is_a_shortcut_the_record_is_what_carries_on(tmp_path: Path) -> None:
@@ -4291,3 +4376,560 @@ async def test_named_recordings_persist_and_can_be_selected_without_losing_versi
             source=io.BytesIO(b"recording"),
         )
     assert len(house.store.takes(episode_id)) == 2
+
+
+# -- the production board -------------------------------------------------------------------------
+
+
+class Held(DemoWorker):
+    """The demo's writer, holding the turns named (an episode and a lane) until it is let go:
+    each says the step it is on and begins a thought, as a slow model would."""
+
+    def __init__(self, **given: Any) -> None:
+        super().__init__(**given)
+        self.held: set[tuple[str, str]] = set()
+        self.holding: list[tuple[str, str]] = []
+        self.release = asyncio.Event()
+
+    async def _turn(self, episode: Any, *, lane: str, prompt: str, heard: Any) -> Told:
+        turn = (str(episode["id"]), lane)
+        if turn in self.held:
+            heard("step", "Reading the brief")
+            heard("thinking", "What comes first?")
+            self.holding.append(turn)
+            await self.release.wait()
+        return await super()._turn(episode, lane=lane, prompt=prompt, heard=heard)
+
+
+def jobs_of(board: dict[str, Any], episode_id: str) -> dict[str, dict[str, Any]]:
+    """An episode's jobs on the production board, by unit (its script under "")."""
+    return {j["unit"]: j for j in board["jobs"] if j["episode"] == episode_id}
+
+
+def pictures_of(house: AgentHost, episode_id: str) -> list[str]:
+    return [u["id"] for u in house.episodes.view(episode_id)["units"] if u["kind"] == "picture"]
+
+
+async def test_the_production_board_lists_every_picture_as_a_job_with_where_it_stands(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    desk = house.episodes
+    first = await made(house)
+    second = await planned(house)
+    posed, broken, drawn, other, queued, unasked = pictures_of(house, second)[:6]
+
+    class Uneven(Held):
+        async def _turn(self, episode: Any, *, lane: str, prompt: str, heard: Any) -> Told:
+            if lane == f"picture:{broken}":
+                return Told(failure="The model gave out.")
+            return await super()._turn(episode, lane=lane, prompt=prompt, heard=heard)
+
+    worker = Uneven(data_dir=tmp_path, script=SCRIPT, pause=0, store=house.store)
+    worker.held = {(second, f"picture:{drawn}"), (second, f"picture:{other}")}
+    desk.workers[DEMO] = worker
+    # in the first episode, a made picture whose beat is now set another way, and one made for
+    # words its line no longer says
+    before = desk.view(first)
+    old = before["units"][0]["id"]
+    desk.choose(first, by="you", change={"units": {old: {"level": "rich"}}})
+    said = next(u for u in before["units"][1:] if lines_of(before)[u["id"]].get("cues"))
+    line = lines_of(before)[said["id"]]
+    words = "Said my way: " + " and ".join(c["at"] for c in line["cues"]) + "."
+    desk.edit(first, by="you", frame=line["id"], text=words)
+    # in the second, one made as motion graphics, one that fails, two held while they are drawn
+    # and one behind them; the rest is never asked for
+    desk.choose(second, by="you", change={"units": {posed: {"level": "rich"}}})
+    desk.make(second, by="you", only=[posed, broken, drawn, other, queued])
+    await settle(lambda: len(worker.holding) == 2)
+    board = desk.production()
+    mine = jobs_of(board, second)
+    stands = {posed: "go", broken: "failed", drawn: "running", other: "running", queued: "waiting"}
+    assert {unit: mine[unit]["state"] for unit in stands} == stands
+    assert {job["state"] for unit, job in mine.items() if unit not in stands} == {"todo"}
+    # a plan in the studio with nothing of the writer's under way has no script to show
+    assert set(mine) == set(pictures_of(house, second))
+    never = mine[unasked]
+    assert (never["what"], never["level"], never["stale"], never["still"]) == (
+        "picture",
+        "simple",
+        False,
+        None,
+    )
+    assert (never["agent"], never["model"], never["effort"], never["picked"]) == (
+        DEMO,
+        "",
+        "",
+        False,
+    )
+    assert [never[k] for k in ("asked_at", "started_at", "ended_at", "seconds")] == [None] * 4
+    assert (never["tells"], never["heard_at"], never["pulse"]) == (True, None, None)
+    # one waiting its turn says when it was asked for; one being drawn says its stage, the step
+    # its builder is on and its turn's signs of life
+    assert mine[queued]["asked_at"] and mine[queued]["started_at"] is None
+    runs = mine[drawn]
+    assert (runs["stage"], runs["doing"]) == ("draw", "Reading the brief")
+    assert runs["asked_at"] <= runs["started_at"] and runs["ended_at"] is None
+    pulse = runs["pulse"]
+    assert (pulse["doing"], pulse["text"]) == ("thinking", "What comes first?")
+    assert runs["tells"] and runs["heard_at"] == pulse["at"] and "lane" not in pulse
+    # stills waiting on a go, and the one that stopped with why
+    stills = mine[posed]
+    assert stills["level"] == "rich" and stills["ended_at"] and stills["seconds"] is not None
+    assert stills["still"].startswith("/api/files/") and stills["stage"] == ""
+    assert (stills["agent"], stills["model"], stills["effort"]) == (DEMO, "demo", "Not applicable")
+    assert mine[broken]["failure"] == "The model gave out." and mine[broken]["ended_at"]
+    # the first episode's are made, but for the two that are out of date: those are to make again
+    theirs = jobs_of(board, first)
+    assert {unit for unit, job in theirs.items() if job["stale"]} == {old, said["id"]}
+    assert {job["state"] for unit, job in theirs.items() if job["stale"]} == {"todo"}
+    assert {job["state"] for unit, job in theirs.items() if not job["stale"]} == {"done"}
+    # a picture is named by its episode and unit, with the beats of its chapter it plays over
+    long = theirs["c2.b2.f1"]
+    assert (long["id"], long["chapter"], long["kind"]) == (f"{first}:c2.b2.f1", "c2", "diagram")
+    assert (long["beats"], long["lines"]) == ([2, 3, 4, 5], 4)
+    assert long["shows"].startswith("A pipeline left to right")
+    assert long["says"].startswith("A cache is a local store") and len(long["says"]) <= 160
+    row = house.store.picture(first, "c2.b2.f1")
+    assert row is not None and long["still"] == f"/api/files/{row['stills']['c2.b5.f1']}"
+    assert [long[k] for k in ("started_at", "ended_at", "seconds")] == [
+        row["timing"][k] for k in ("started_at", "ended_at", "seconds")
+    ]
+    # every episode, the newest first, with its channel and its chapters
+    channel = house.store.channels()[0]
+    assert [e["id"] for e in board["episodes"]] == [second, first]
+    episode = board["episodes"][0]
+    assert (episode["title"], episode["status"], episode["writer"]) == ("One idea", "studio", DEMO)
+    assert (episode["channel_id"], episode["channel"]) == (channel["id"], channel["name"])
+    asked = SCRIPT["plan"]["chapters"]
+    assert episode["chapters"] == [
+        {"id": c["id"], "n": n, "question": c["question"]} for n, c in enumerate(asked, 1)
+    ]
+    worker.release.set()
+    await settle(lambda: not desk._busy(second))
+
+
+async def test_the_production_board_shows_a_script_while_it_is_written_or_waits_on_the_person(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    class Moody(Held):
+        fails = False
+
+        async def _turn(self, episode: Any, *, lane: str, prompt: str, heard: Any) -> Told:
+            if self.fails and lane == "plan":
+                return Told(failure="It isn't signed in.")
+            return await super()._turn(episode, lane=lane, prompt=prompt, heard=heard)
+
+    desk = house.episodes
+    worker = Moody(data_dir=tmp_path, script=SCRIPT, pause=0, store=house.store)
+    desk.workers[DEMO] = worker
+    approved = await made(house)
+    ready = await planned(house)
+    worker.fails = True
+    stopped = await planned(house)
+    worker.fails = False
+    channel = house.store.channels()[0]["id"]
+    writing = str(desk.create(channel, by="you", text=NOTES, settings={"writer": DEMO})["id"])
+    worker.held = {(writing, "plan")}
+    await settle(lambda: len(worker.holding) == 1)
+    board = desk.production()
+    scripts = {j["episode"]: j for j in board["jobs"] if j["what"] == "script"}
+    # none for the plan that stands approved with nothing under way
+    assert {episode_id: job["state"] for episode_id, job in scripts.items()} == {
+        ready: "go",
+        stopped: "failed",
+        writing: "running",
+    }
+    waits = scripts[ready]
+    assert (waits["id"], waits["kind"], waits["unit"], waits["chapter"]) == (
+        f"{ready}:script",
+        "script",
+        "",
+        "",
+    )
+    assert (waits["agent"], waits["model"], waits["effort"]) == (DEMO, "", "")
+    assert waits["started_at"] == desk._episode(ready)["stage"]["at"]
+    assert (waits["heard_at"], waits["pulse"], waits["failure"]) == (None, None, "")
+    assert "signed in" in scripts[stopped]["failure"]
+    # the one being written says the step its writer is on, and its turn's signs of life
+    runs = scripts[writing]
+    assert (runs["doing"], runs["tells"]) == ("Reading the brief", True)
+    assert runs["pulse"]["doing"] == "thinking" and runs["heard_at"] == runs["pulse"]["at"]
+    # only a plan in the studio has pictures to make
+    assert {j["episode"] for j in board["jobs"] if j["what"] == "picture"} == {approved}
+    # every episode is listed, the newest first, with its chapters once its plan has them
+    assert [(e["id"], e["status"], len(e["chapters"])) for e in board["episodes"]] == [
+        (writing, "planning", 0),
+        (stopped, "failed", 0),
+        (ready, "plan", 7),
+        (approved, "studio", 7),
+    ]
+    # a change the writer makes to a plan that stands is its script under way, beside its pictures
+    worker.held.add((approved, "plan"))
+    desk.ask(approved, by="you", scope="film", text="Open faster.")
+    await settle(lambda: len(worker.holding) == 2)
+    changing = jobs_of(desk.production(), approved)
+    assert changing[""]["state"] == "running" and changing[""]["doing"] == "Reading the brief"
+    assert {job["what"] for unit, job in changing.items() if unit} == {"picture"}
+    worker.release.set()
+    await settle(lambda: not desk.planning(writing) and not desk.planning(approved))
+
+
+async def test_a_job_under_way_says_when_its_turn_was_last_heard_from(house: AgentHost) -> None:
+    desk = house.episodes
+    episode_id = await made(house)
+    unit = pictures_of(house, episode_id)[0]
+    lane = f"picture:{unit}"
+    thread = str(desk._episode(episode_id)["thread_id"])
+
+    def job() -> dict[str, Any]:
+        return jobs_of(desk.production(), episode_id)[unit]
+
+    # as a build leaves it between two turns: under way, with no turn to hear from
+    house.store.set_picture(episode_id, unit, status="making")
+    assert (job()["state"], job()["heard_at"], job()["tells"]) == ("running", None, True)
+    # a turn that has said nothing yet was heard from when it began
+    turn = house.store.add_run(
+        thread_id=thread, lane=lane, harness="kimi", prompt="Stage: picture.", session=""
+    )
+    began = turn["started_at"]
+    quiet = job()
+    assert (quiet["stage"], quiet["doing"], quiet["pulse"]) == ("draw", "", None)
+    assert quiet["heard_at"] == began and not quiet["tells"], "Kimi Code says nothing as it thinks"
+    # then at its newest event or its pulse, whichever is later
+    step = {"kind": "step", "text": "Editing compositions/p.html", "at": began + 5}
+    house.store.update_run(str(turn["id"]), steps=[step])
+    house.store.pulses[str(turn["id"])] = {
+        "lane": lane,
+        "at": began + 3,
+        "doing": "thinking",
+        "text": "Which way round?",
+        "amount": 300,
+        "since": began + 3,
+    }
+    assert (job()["doing"], job()["heard_at"]) == ("Editing compositions/p.html", began + 5)
+    house.store.pulses[str(turn["id"])]["at"] = began + 9
+    heard = job()
+    assert heard["heard_at"] == began + 9 and heard["pulse"] == {
+        "at": began + 9,
+        "doing": "thinking",
+        "text": "Which way round?",
+        "amount": 300,
+        "since": began + 3,
+    }
+    # a turn that ended is no longer heard from
+    house.store.update_run(str(turn["id"]), state="done")
+    assert (job()["heard_at"], job()["pulse"], job()["doing"]) == (None, None, "")
+
+
+async def test_the_production_board_counts_each_agents_jobs_and_says_how_long_its_pictures_take(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    desk = house.episodes
+    first, second = await made(house), await made(house)
+    # every made picture with how long its build took, each newer and slower than the one before
+    built = [
+        (episode_id, unit)
+        for episode_id in (first, second)
+        for unit in pictures_of(house, episode_id)
+    ]
+    for n, (episode_id, unit) in enumerate(built, 1):
+        timing = {"started_at": 1000.0 * n, "ended_at": 1000.0 * n + n, "seconds": float(n)}
+        house.store.set_picture(episode_id, unit, timing=timing)
+    # stills waiting on a go were built too; a build that failed made no picture
+    house.store.set_picture(*built[-2], status="go")
+    house.store.set_picture(*built[-1], status="failed")
+    # two pictures of a third episode held while they are drawn, three behind them, and a
+    # fourth episode's script being written
+    third = await planned(house)
+    units = pictures_of(house, third)
+    worker = Held(data_dir=tmp_path, script=SCRIPT, pause=0, store=house.store)
+    worker.held = {(third, f"picture:{unit}") for unit in units[:2]}
+    desk.workers[DEMO] = worker
+    desk.make(third, by="you", only=units[:5])
+    channel = house.store.channels()[0]["id"]
+    fourth = str(desk.create(channel, by="you", text=NOTES, settings={"writer": DEMO})["id"])
+    worker.held.add((fourth, "plan"))
+    await settle(lambda: len(worker.holding) == 3)
+    agents = {agent["id"]: agent for agent in desk.production()["agents"]}
+    assert list(agents) == ["claude", "codex", "kimi", DEMO], "every agent, ready here or not"
+    demo = agents[DEMO]
+    # its jobs across the house; and the mean of its newest twenty made pictures (8 to 27)
+    assert (demo["running"], demo["waiting"], demo["seconds"]) == (3, 3, 17.5)
+    assert demo["ready"] and demo["title"] == "HTTP caching sample"
+    assert demo["models"] == [{"id": "", "name": "demo", "efforts": []}]
+    offered = desk.options()["generation_models"]
+    for agent_id in ("claude", "codex", "kimi"):
+        idle = agents[agent_id]
+        assert (idle["running"], idle["waiting"], idle["seconds"]) == (0, 0, None)
+        assert idle["models"] == offered[agent_id] and idle["title"] == HARNESSES[agent_id].title
+    worker.release.set()
+    await settle(lambda: not desk._busy(third) and not desk.planning(fourth))
+
+
+async def test_the_production_board_is_one_light_read_however_many_pictures_there_are(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    desk = house.episodes
+    first, second = await made(house), await made(house)
+    asked: list[tuple[str, str]] = []
+    listed: list[None] = []
+    generation, options = desk._generation, desk.options
+
+    def one_pick(builder: str, pick: Any) -> Any:
+        asked.append((builder, pick.get("model", "")))
+        return generation(builder, pick)
+
+    def one_listing() -> Any:
+        listed.append(None)
+        return options()
+
+    def studio(episode_id: str) -> Any:
+        raise AssertionError("the board never reads an episode's whole studio")
+
+    monkeypatch.setattr(desk, "_generation", one_pick)
+    monkeypatch.setattr(desk, "options", one_listing)
+    monkeypatch.setattr(desk, "view", studio)
+    board = desk.production()
+    assert len(board["jobs"]) == len(house.store.pictures(first)) + len(
+        house.store.pictures(second)
+    )
+    # what the agents offer is listed once, and an agent is asked what a pick runs on once
+    assert len(listed) == 1 and asked == [(DEMO, "")]
+
+
+async def test_pictures_of_several_episodes_are_handed_to_an_agent_and_started(
+    tmp_path: Path, house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Other(DemoWorker):
+        id = "codex"
+        title = "Codex"
+
+    desk = house.episodes
+    desk.workers["codex"] = Other(data_dir=tmp_path, script=SCRIPT, pause=0)
+    one, two = await planned(house), await planned(house)
+    a, b, c, d = pictures_of(house, one)[:4]
+
+    def picks(episode_id: str) -> dict[str, Any]:
+        return dict(desk._episode(episode_id)["picks"].get("units", {}))
+
+    handed = desk.assign([(one, a), (one, b), (two, a)], by="you", agent="codex")
+    assert handed == {"started": [f"{one}:{a}", f"{one}:{b}", f"{two}:{a}"], "refused": []}
+    await settle(lambda: not desk._busy(one) and not desk._busy(two))
+    rows = {(e, str(p["unit"])): p for e in (one, two) for p in house.store.pictures(e)}
+    assert set(rows) == {(one, a), (one, b), (two, a)}, "the rest was never asked for"
+    assert {(p["status"], p["builder"]) for p in rows.values()} == {("made", "codex")}
+    # each took the agent alone as its own pick, so it runs on the agent's default
+    assert picks(one) == {a: {"builder": "codex"}, b: {"builder": "codex"}}
+    # made and up to date, a picture handed over again is left as it is
+    assert desk.assign([(one, a)], by="you", agent="codex") == {"started": [], "refused": []}
+    # an episode that refuses says why, and the others' pictures are started all the same
+    mixed = desk.assign([(one, "c9.b9.f9"), (two, b), ("ep_gone", a)], by="you", agent="codex")
+    assert mixed == {
+        "started": [f"{two}:{b}"],
+        "refused": [
+            {"episode": one, "reason": "That picture is no longer in this episode."},
+            {"episode": "ep_gone", "reason": "That episode is no longer here."},
+        ],
+    }
+    await settle(lambda: not desk._busy(two))
+    # with no agent each keeps the one it is set to, and is only started
+    assert desk.assign([(one, c)], by="you") == {"started": [f"{one}:{c}"], "refused": []}
+    await settle(lambda: not desk._busy(one))
+    assert house.store.picture(one, c)["builder"] == DEMO and c not in picks(one)  # type: ignore[index]
+    assert desk.assign([(one, "c9.b9.f9")], by="you") == {
+        "started": [],
+        "refused": [{"episode": one, "reason": "There is no picture to make there."}],
+    }
+    # a model and an effort picked on the board go with every picture handed over
+    on = {"model": "gpt-6.1-sol", "effort": "high"}
+    assert desk.assign([(one, d)], by="you", agent="codex", **on)["started"] == [f"{one}:{d}"]
+    await settle(lambda: not desk._busy(one))
+    assert picks(one)[d] == {"builder": "codex", **on}
+    job = jobs_of(desk.production(), one)[d]
+    assert (job["state"], job["agent"], job["picked"]) == ("done", "codex", True)
+    assert (job["model"], job["effort"]) == ("gpt-6.1-sol", "high"), "what it was made on"
+    # handed to the agent it is with and nothing picked, it keeps what it runs on: nothing to make
+    assert desk.assign([(one, d)], by="you", agent="codex") == {"started": [], "refused": []}
+    assert picks(one)[d] == {"builder": "codex", **on}
+    # handed over with another model, it takes that one and is made again on it
+    again = desk.assign([(one, d)], by="you", agent="codex", model="gpt-5.6-sol")
+    assert again["started"] == [f"{one}:{d}"]
+    await settle(lambda: not desk._busy(one))
+    assert picks(one)[d] == {"builder": "codex", "model": "gpt-5.6-sol"}
+    assert house.store.picture(one, d)["generation"]["model"] == "gpt-5.6-sol"  # type: ignore[index]
+    # handed to another agent with nothing picked, it runs on that agent's default
+    assert desk.assign([(one, d)], by="you", agent=DEMO, start=False)["started"] == []
+    assert picks(one)[d] == {"builder": DEMO}
+    # one handed over and not started is still to make, set to the agent on what was picked
+    assert desk.assign([(two, c)], by="you", agent="codex", start=False, **on)["started"] == []
+    todo = jobs_of(desk.production(), two)[c]
+    assert (todo["state"], todo["agent"], todo["picked"]) == ("todo", "codex", True)
+    assert (todo["model"], todo["effort"]) == ("gpt-6.1-sol", "high")
+    # nothing to hand over, an agent that is not set up here, a model the agent does not offer
+    monkeypatch.setattr(house.research, "ready", lambda name: False)
+    with pytest.raises(ValueError, match="no picture to hand over"):
+        desk.assign([], by="you", agent="codex")
+    with pytest.raises(ValueError, match="isn't ready on this computer"):
+        desk.assign([(one, a)], by="you", agent="kimi")
+    with pytest.raises(ValueError, match="supported model"):
+        desk.assign([(one, a)], by="you", agent="codex", model="gpt-0")
+    assert picks(one)[a] == {"builder": "codex"}, "a refusal changes nothing"
+
+
+async def test_one_agents_pictures_wait_their_turn_across_the_house_and_a_stopped_one_leaves_the_line(
+    tmp_path: Path, house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(episode_desk, "HOUSE_AT_ONCE", 1)
+    desk = house.episodes
+    one, two = await planned(house), await planned(house)
+    first, second, third = pictures_of(house, one)[:3]
+    worker = Held(data_dir=tmp_path, script=SCRIPT, pause=0, store=house.store)
+    worker.held = {(one, f"picture:{first}")}
+    desk.workers[DEMO] = worker
+    began: list[tuple[str, str]] = []
+    inside: set[tuple[str, str]] = set()
+    at_once: list[int] = []
+    build = desk._build
+
+    async def counted(episode_id: str, unit_id: str, note: str = "", **more: Any) -> None:
+        began.append((episode_id, unit_id))
+        inside.add((episode_id, unit_id))
+        at_once.append(len(inside))
+        try:
+            await build(episode_id, unit_id, note, **more)
+        finally:
+            inside.discard((episode_id, unit_id))
+
+    monkeypatch.setattr(desk, "_build", counted)
+
+    def row(job: tuple[str, str]) -> dict[str, Any]:
+        found = house.store.picture(*job)
+        assert found is not None
+        return found
+
+    for episode_id in (one, two):
+        desk.make(episode_id, by="you", only=[first, second, third])
+    await settle(lambda: len(worker.holding) == 1)
+    # one is being drawn; every other waits, whichever line it stands in, and says so
+    board = desk.production()
+    states = {(j["episode"], j["unit"]): j["state"] for j in board["jobs"]}
+    asked = [(e, u) for e in (one, two) for u in (first, second, third)]
+    assert [states[job] for job in asked] == ["running", *["waiting"] * 5]
+    assert all(row(job)["status"] == "queued" for job in asked[1:])
+    demo = next(agent for agent in board["agents"] if agent["id"] == DEMO)
+    assert (demo["running"], demo["waiting"]) == (1, 5)
+    # one stopped in the house's line, and one in its own episode's
+    stopped = [(two, first), (one, third)]
+    for job in stopped:
+        desk.stop(*job)
+    await settle(lambda: all(row(job)["status"] == "failed" for job in stopped))
+    worker.release.set()
+    await settle(lambda: not desk._busy(one) and not desk._busy(two))
+    # never two of the agent's at once, each begun in the order it came to the line: an
+    # episode's third joins it once one of its first two is out of the way
+    assert max(at_once) == 1
+    assert began == [(one, first), (one, second), (two, second), (two, third)]
+    assert all(row(job)["failure"] == "Stopped." for job in stopped)
+    assert all(row(job)["status"] == "made" for job in began)
+    # the line moves on behind the ones that left it: asked for again, they are built
+    for job in stopped:
+        desk.make(job[0], by="you", only=[job[1]])
+    await settle(lambda: not desk._busy(one) and not desk._busy(two))
+    assert all(row(job)["status"] == "made" for job in asked) and max(at_once) == 1
+
+
+def test_the_app_serves_the_production_board_and_hands_its_jobs_to_an_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = Settings(_env_file=None, workspace_root=tmp_path / "workspace", sandbox="host")
+    with TestClient(create_app(ROOT, settings, demo=True)) as client:
+        host = client.app.state.host  # type: ignore[attr-defined]
+        desk = host.episodes
+        # a writer that does not pause, pictures posed without a computer, and no coding agent
+        # counted as installed here
+        desk.workers[DEMO] = DemoWorker(
+            data_dir=desk.data_dir, script=SCRIPT, pause=0, store=host.store
+        )
+        monkeypatch.setattr(desk, "_pose", lambda episode, unit, full, html, strict=True: ([], {}))
+        monkeypatch.setattr(desk, "_clip", lambda episode, unit: "")
+        monkeypatch.setattr(host.research, "ready", lambda name: False)
+
+        def board(done: Any = None) -> dict[str, Any]:
+            """The board as it is, or as it is once `done` holds."""
+            until = time.time() + 30
+            while True:
+                read: dict[str, Any] = client.get("/api/production").json()
+                if done is None or done(read) or time.time() > until:
+                    return read
+                time.sleep(0.05)
+
+        empty = board()
+        assert (empty["episodes"], empty["jobs"]) == ([], [])
+        assert {a["id"]: a["ready"] for a in empty["agents"]} == {
+            "claude": False,
+            "codex": False,
+            "kimi": False,
+            DEMO: True,
+        }
+        channel = client.get("/api/channels").json()[0]
+        made = client.post(
+            f"/api/channels/{channel['id']}/episodes",
+            json={"title": "One idea", "text": NOTES, "settings": {"writer": DEMO}},
+        )
+        episode_id = made.json()["id"]
+        written = board(lambda read: jobs_of(read, episode_id).get("", {}).get("state") == "go")
+        assert [j["id"] for j in written["jobs"]] == [f"{episode_id}:script"]
+        (episode,) = written["episodes"]
+        assert (episode["id"], episode["channel"]) == (episode_id, channel["name"])
+        assert (episode["status"], len(episode["chapters"])) == ("plan", 7)
+        unit = client.get(f"/api/episodes/{episode_id}").json()["units"][0]["id"]
+        job = {"episode": episode_id, "unit": unit}
+        # nothing named, an agent that is not set up here or not one at all, a model not offered
+        hand = "/api/production/assign"
+        assert client.post(hand, json={"jobs": []}).status_code == 422
+        unready = client.post(hand, json={"jobs": [job], "agent": "kimi"})
+        assert unready.status_code == 422 and "isn't ready" in unready.json()["detail"]
+        assert client.post(hand, json={"jobs": [job], "agent": "gpt"}).status_code == 422
+        unknown = client.post(hand, json={"jobs": [job], "agent": DEMO, "model": "gpt-0"})
+        assert unknown.status_code == 422 and "supported model" in unknown.json()["detail"]
+        # a job is handed over and started; an episode that is gone is refused by name
+        handed = client.post(
+            hand, json={"jobs": [job, {"episode": "ep_gone", "unit": unit}], "agent": DEMO}
+        )
+        assert handed.status_code == 200, handed.text
+        assert handed.json() == {
+            "started": [f"{episode_id}:{unit}"],
+            "refused": [{"episode": "ep_gone", "reason": "That episode is no longer here."}],
+        }
+        drawn = board(lambda read: jobs_of(read, episode_id).get(unit, {}).get("state") == "done")
+        mine = jobs_of(drawn, episode_id)
+        assert mine[unit]["state"] == "done" and mine[unit]["agent"] == DEMO
+        # the studio is open, so the script is no job any more and the other pictures are to make
+        assert "" not in mine and {j["state"] for u, j in mine.items() if u != unit} == {"todo"}
+        assert drawn["episodes"][0]["status"] == "studio"
+
+
+async def test_the_built_in_agent_builds_one_picture_at_a_time_across_the_house(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    class BuiltIn(Held):
+        id = BUILTIN
+
+    desk = house.episodes
+    worker = BuiltIn(data_dir=tmp_path, script=SCRIPT, pause=0)
+    desk.workers[BUILTIN] = worker
+    one, two = await planned(house), await planned(house)
+    unit = pictures_of(house, one)[0]
+    worker.held = {(one, f"picture:{unit}")}
+    for episode_id in (one, two):
+        handed = desk.assign([(episode_id, unit)], by="you", agent=BUILTIN)
+        assert handed == {"started": [f"{episode_id}:{unit}"], "refused": []}
+    await settle(lambda: len(worker.holding) == 1)
+    # one at a time for this agent, whatever the house lets the others build at once
+    board = desk.production()
+    assert jobs_of(board, one)[unit]["state"] == "running"
+    assert jobs_of(board, two)[unit]["state"] == "waiting"
+    worker.release.set()
+    await settle(lambda: not desk._busy(one) and not desk._busy(two))
+    built = [house.store.picture(episode_id, unit) for episode_id in (one, two)]
+    assert [(p["status"], p["builder"]) for p in built if p] == [("made", BUILTIN)] * 2
