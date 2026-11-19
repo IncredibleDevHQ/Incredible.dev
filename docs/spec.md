@@ -883,9 +883,20 @@ app's canvas, from a channel's material or a research frame's notes.
   summary reads the kept times back. The stage under way says what it is doing, and its work
   branches off the line beside it: each step the builder takes as a dot, said as it happens
   while it is the newest and as done once another follows, with what it touched on the right,
-  and its own words; a light runs down the branch to the newest step, and when the builder has
-  said nothing for 20 seconds (it thinks, or writes a long file) the branch says it is still at
-  work and for how long. While a motion-graphics picture is made, until its builder begins to
+  and its own words; a light runs down the branch to the newest step. Between two steps the
+  branch says what the builder's model is at, as the agent's own stream says it (`pulse`
+  events, `research.Watch`): thinking, with the newest words of the thought (or the tokens so
+  far, from a CLI that gives no words); the file it is writing and how many characters so far;
+  or a request the agent is making again, and why. A stretch of thinking of 8 seconds or more
+  stays in the trail once it ends, with how long it took. Nothing in the trail moves on its
+  own: the stage's mark turns and the newest line's dot beats only while the agent is heard
+  from. An agent that says what its model is doing as it goes (Claude Code, heard from every
+  few seconds) and has said nothing for 20 seconds is waiting for its model; after 90 seconds
+  the trail says there is no sign of life, in amber, with Stop it beside. One that tells only
+  of whole steps (Codex, Kimi Code, the built-in agent) is quiet for as long, and the trail
+  says so and why; its warning comes after ten minutes. A pulse is kept in memory and told to
+  the studio as its own small event (`episode.pulse`), so a long thought costs no reading of
+  the episode. While a motion-graphics picture is made, until its builder begins to
   look it over, the person can leave a note without stopping it: the note waits for the
   builder's next turn on the picture and goes in with it, can be taken back until then, and
   stays under the stage that took it in. A made picture says how its build went, folded: its
@@ -955,6 +966,29 @@ app's canvas, from a channel's material or a research frame's notes.
   pick an agent no longer offers falls back to that agent's default and never stops the
   studio. A made picture records the model and the effort it ran on, the default by name
   where the agent says what it is.
+- **The production board** (`/production`, in the sidebar with a count of what waits on the
+  person) shows every episode's jobs in one place, in the order work moves. A job is one
+  picture (a run of beats of one chapter) or an episode's script. Four lanes: To make, what
+  is written and was never asked for, or is made and out of date, by episode and then
+  chapter; Agents, each agent with what it is running and what waits its turn; Needs you, a
+  go on stills, a plan to read, a job that stopped; and Done. A job, a chapter or a whole
+  episode is handed to an agent by dragging it onto the agent's row, with the row's number
+  key (1 to 9), or from the job's own details; while it is carried over a row, the row says
+  what taking it comes to ("+3 pictures · about 10 min", from how long that agent's last
+  pictures took). A model and an effort picked on an agent's row go with every job handed to
+  it; with none picked, a job keeps what it is set to. Start on a chapter or an episode
+  starts its jobs with the agents they are set to. One read gives the board
+  (`GET /api/production`) and one call hands jobs over across episodes
+  (`POST /api/production/assign`: the picks, then the makes, a refusal for one episode not
+  stopping the others). An agent builds at most four pictures at once across the whole house
+  (`HOUSE_AT_ONCE`), on top of each episode's own limit, so many episodes handed to one agent
+  queue. A running job says what its model is at, as its trail does. A job unfolds in place
+  (what it shows, the first words said over it, what can be done about it), opens its episode
+  as a peek, the studio in a sheet over the board on the job's chapter and line, which Escape
+  closes, and links to that place in the episode's own page
+  (`/c/<channel>/episode/<id>?at=<chapter>&line=<line>`; the studio's address names the
+  chapter it is on). The board is narrowed to an episode, one of its chapters or an agent,
+  and its address says so (`?episode=…&chapter=…&agent=…`).
 - **A take** per chapter is recorded in the browser or brought as a file (picked, or dropped
   on the chapter's frame). A chapter is said over its pictures, so it is recorded once they
   are made: asking to record one whose pictures nobody asked for yet makes them first, and

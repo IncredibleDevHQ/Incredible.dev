@@ -43,3 +43,34 @@ test("a step's words say which kind of tool it was and what it touched", () => {
   assert.equal(toolOf('Writing plan.json').did, 'Wrote');
   assert.equal(toolOf('Running hyperframes check .').did, 'Ran');
 });
+
+test('a turn between two steps is thinking, writing, waiting, quiet or lost by what was last heard', async () => {
+  const { nowOf, signalOf, tail, counted, QUIET, LOST_TELLING, LOST_SILENT } = await import('../src/components/agent/signal.ts');
+  const pulse = (over) => ({ at: 1000, since: 900, doing: 'thinking', text: 'Which example carries it?', amount: 400, ...over });
+  // heard from just now, with nothing known: the newest step says it all
+  assert.equal(nowOf(1005, 1000, null, true), null);
+  assert.equal(signalOf(null), 'live');
+  // thinking and writing are what the agent's own stream says, while it is newer than the last step
+  assert.deepEqual(nowOf(1002, 990, pulse(), true), { kind: 'thinking', since: 900, words: 'Which example carries it?', tokens: 400 });
+  assert.deepEqual(nowOf(1002, 990, pulse({ doing: 'step', text: 'Writing plan.json', amount: 1200 }), true), { kind: 'writing', since: 900, step: 'Writing plan.json', amount: 1200 });
+  assert.deepEqual(nowOf(1002, 990, pulse({ doing: 'writing', text: '', amount: 90 }), true), { kind: 'writing', since: 900, step: '', amount: 90 });
+  assert.equal(signalOf(nowOf(1002, 990, pulse(), true)), 'live');
+  // a pulse from before the newest step is about what came before it
+  assert.equal(nowOf(1012, 1010, pulse(), true), null);
+  // silent: an agent that tells is waiting on its model, one that does not is quiet as usual
+  assert.deepEqual(nowOf(1000 + QUIET, 1000, null, true), { kind: 'waiting', since: 1000 });
+  assert.deepEqual(nowOf(1000 + QUIET, 1000, null, false), { kind: 'quiet', since: 1000 });
+  assert.equal(signalOf({ kind: 'quiet', since: 1000 }), 'quiet');
+  // silent too long: sooner for an agent that is usually heard from every few seconds
+  assert.deepEqual(nowOf(1000 + LOST_TELLING, 990, pulse(), true), { kind: 'lost', since: 1000 });
+  assert.equal(nowOf(1000 + LOST_TELLING, 1000, null, false)?.kind, 'quiet');
+  assert.deepEqual(nowOf(1000 + LOST_SILENT, 1000, null, false), { kind: 'lost', since: 1000 });
+  assert.equal(signalOf({ kind: 'lost', since: 1000 }), 'lost');
+  // before a turn has a time to count from, nothing is said
+  assert.equal(nowOf(1000, null, pulse(), true), null);
+  // a thought is shown by its end, from a word's start
+  assert.equal(tail('short'), 'short');
+  const long = tail('one two three four five six seven eight nine ten eleven twelve', 20);
+  assert.ok(long.startsWith('…') && long.endsWith('eleven twelve') && long.length <= 21);
+  assert.equal(counted(96400), '96,400');
+});

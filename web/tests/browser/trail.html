@@ -1,0 +1,64 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Agent trail fixture</title>
+<body style="margin:0;padding:24px;background:var(--bg)"><div id="root" style="max-width:520px"></div>
+<script type="module">
+// The agent trail in each state of a turn between two steps, by `?<state>`: thinking (its words
+// arriving a second apart, as an agent that tells sends them), tokens (thinking with no words),
+// writing (a file growing), waiting, quiet (an agent that says nothing while it thinks), lost and
+// lost-silent. `&dark` wears the dark theme.
+import React, { useEffect, useState } from "react";
+import { createRoot } from "react-dom/client";
+import { AgentTrail } from "/src/components/agent/AgentTrail.tsx";
+import "/src/app.css";
+const q = new URLSearchParams(location.search);
+const state = [...q.keys()].find((k) => k !== "dark") ?? "thinking";
+if (q.has("dark")) document.documentElement.dataset.theme = "dark";
+const t0 = Date.now() / 1000;
+const ago = (s) => t0 - s;
+const THOUGHT = "The cache box has to appear before the server does, or the second line names a thing nobody has seen. I'm checking each cue against the word it lands on, and whether the path from the server back into the cache reads left to right.";
+const events = [
+  { kind: "step", text: "Reading plan.json", at: ago(700) },
+  { kind: "step", text: "Reading pictures/pic-c2-b2-f1.stills/2.png", at: ago(690) },
+  { kind: "thought", text: "Each object has to be on screen before the line that names it is said.", at: ago(400), seconds: 335 },
+  { kind: "step", text: "Searching for “font-size|stroke” in pictures/pic-c2-b2-f1.html", at: ago(395) },
+];
+const steps = [
+  { id: "motion", label: "Plan each shot", state: "running", startedAt: ago(720), doing: "Planning", working: true },
+  { id: "draw", label: "Draw it", state: "pending" },
+  { id: "pose", label: "Take a still of each line", state: "pending" },
+  { id: "review", label: "Look it over", state: "pending" },
+  { id: "go", label: "Your go", state: "pending", word: "Yours" },
+];
+const still = {
+  tokens: { tells: true, pulse: { at: ago(1), since: ago(380), doing: "thinking", text: "", amount: 96400 } },
+  waiting: { tells: true, pulse: { at: ago(42), since: ago(42), doing: "", text: "", amount: 0 }, last: 42 },
+  quiet: { tells: false, pulse: null, last: 252, agent: "Kimi Code" },
+  lost: { tells: true, pulse: { at: ago(131), since: ago(400), doing: "thinking", text: THOUGHT, amount: 0 }, last: 131 },
+  "lost-silent": { tells: false, pulse: null, last: 724, agent: "Kimi Code" },
+};
+function Fixture() {
+  const [n, setN] = useState(1);
+  const [stopped, setStopped] = useState(false);
+  const moving = state === "thinking" || state === "writing";
+  useEffect(() => {
+    if (!moving) return;
+    const tick = setInterval(() => setN((was) => was + 1), 1000);
+    return () => clearInterval(tick);
+  }, [moving]);
+  const now = Date.now() / 1000;
+  const words = THOUGHT.split(" ");
+  const given = still[state];
+  const pulse = state === "thinking"
+    ? { at: now, since: t0 - 380, doing: "thinking", text: words.slice(0, Math.min(words.length, 6 + n * 3)).join(" "), amount: 0 }
+    : state === "writing"
+      ? { at: now, since: t0 - 12, doing: "step", text: "Writing pictures/pic-c4-b2-f1.html", amount: 12400 + n * 310 }
+      : given.pulse;
+  const shown = given?.last ? events.map((e, i) => (i === events.length - 1 ? { ...e, at: ago(given.last) } : e)) : events;
+  return React.createElement(React.Fragment, null,
+    React.createElement(AgentTrail, {
+      label: "How the picture is being made", steps, events: shown, turnSince: ago(720), pulse, tells: given?.tells ?? true,
+      onStop: () => setStopped(true), agent: { name: given?.agent ?? "Claude Code" }, total: { since: ago(720) }, count: true,
+    }),
+    stopped && React.createElement("p", { role: "status", id: "stopped" }, "Stopped"));
+}
+createRoot(document.querySelector("#root")).render(React.createElement(Fixture));
+</script></body></html>

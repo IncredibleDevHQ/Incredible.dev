@@ -1,0 +1,142 @@
+/* The production board. Four lanes on the page's ground, each a soft panel that scrolls on its own;
+   jobs are paper cards on them, so they stand out in the dark as in the light. Colour says who has
+   to act: green is work under way and done, amber waits on the person, red stopped. Everything
+   else is ink and hairlines. Written for this house from notes on how boards for handing work to
+   agents, and inboxes of what agents need, behave; no other component's source is in it. */
+.pb-page { display: flex; flex-direction: column; gap: 16px; overflow: hidden; padding-bottom: 20px; container: pb / inline-size; }
+.pb-page[data-carrying] { cursor: grabbing; user-select: none; }
+.pb-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px 24px; flex-wrap: wrap; }
+.pb-head .lede { margin: 0; }
+.pb-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.pb-filters > * { width: 190px; }
+
+.pb-lanes { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.pb-lane { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.pb-lane-head { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; }
+.pb-lane-head h2 { margin: 0; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.pb-lane-head small { margin-left: auto; overflow: hidden; color: var(--faint); font-size: 11.5px; white-space: nowrap; text-overflow: ellipsis; }
+.pb-lane[data-tone="amber"] .pb-lane-head h2 { color: var(--amber); }
+.pb-count { display: inline-grid; place-items: center; min-width: 20px; height: 18px; padding: 0 6px; border-radius: 999px; background: var(--wash); box-shadow: inset 0 0 0 1px var(--line-soft); color: var(--ink-2); font-size: 11px; font-weight: 550; font-variant-numeric: tabular-nums; }
+.pb-lane[data-tone="amber"] .pb-lane-head .pb-count { background: var(--amber-soft); box-shadow: none; color: var(--amber); }
+.pb-lane-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; overscroll-behavior: contain; padding: 2px 6px 8px; scrollbar-width: thin; }
+.pb-none { margin: 0; padding: 18px 8px; color: var(--muted); font-size: 12.5px; text-align: center; }
+
+/* -- a job ---------------------------------------------------------------------------------- */
+.pb-card { flex: none; border-radius: 10px; background: var(--raised); box-shadow: 0 0 0 1px var(--line-soft); transition: box-shadow 160ms ease; animation: pb-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.pb-card:hover, .pb-card[data-open] { box-shadow: 0 0 0 1px var(--line), 0 6px 16px rgba(0, 0, 0, 0.12); }
+.pb-face { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 3px 9px; width: 100%; padding: 9px 11px; border: 0; border-radius: inherit; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.pb-name { min-width: 0; overflow: hidden; font-size: 13.5px; font-weight: 550; white-space: nowrap; text-overflow: ellipsis; }
+.pb-place, .pb-standing { grid-column: 2 / -1; min-width: 0; color: var(--muted); font-size: 12px; }
+.pb-place { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pb-standing { display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+.pb-standing > :first-child { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pb-standing em { font-style: normal; }
+.pb-standing :is(em, [data-tone="amber"]), .pb-standing[data-tone="amber"] { color: var(--amber); }
+.pb-standing[data-tone="red"] { color: var(--red); }
+.pb-standing .ag-clock { color: inherit; }
+.pb-who { display: inline-flex; align-items: center; gap: 5px; flex: none; max-width: 55%; margin-left: auto; overflow: hidden; color: var(--faint); font-size: 11.5px; white-space: nowrap; text-overflow: ellipsis; }
+.pb-who .mark { width: 14px; height: 14px; border-radius: 4px; padding: 0; }
+.pb-still { grid-row: 1 / span 3; grid-column: 3; width: 64px; aspect-ratio: 16 / 9; border-radius: 5px; object-fit: cover; box-shadow: 0 0 0 1px var(--line-soft); }
+.pb-card[data-state="todo"] .pb-face { cursor: grab; }
+
+/* the mark: a ring to make, an arc that turns only while the agent is heard from, a disc after */
+.pb-mark { position: relative; justify-self: center; box-sizing: border-box; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--line-strong); }
+/* to make, a job is there to be picked up: six faint dots, as a thing that can be dragged has */
+.pb-card[data-state="todo"] .pb-mark { width: 8px; height: 13px; border: 0; border-radius: 0; background: radial-gradient(circle, var(--line-strong) 1.1px, transparent 1.4px) 0 0 / 4px 4.5px; }
+.pb-card[data-state="todo"]:hover .pb-mark { background-image: radial-gradient(circle, var(--muted) 1.1px, transparent 1.4px); }
+.pb-card[data-stale] .pb-mark { background-image: radial-gradient(circle, var(--amber) 1.1px, transparent 1.4px); }
+.pb-card[data-state="waiting"] .pb-mark { border-style: dashed; }
+.pb-card[data-state="running"] .pb-mark { border-color: color-mix(in srgb, var(--green) 24%, var(--line)); }
+.pb-card[data-state="running"] .pb-mark::after { content: ""; position: absolute; inset: -1.5px; border-radius: inherit; border: 1.5px solid transparent; border-top-color: var(--green); }
+.pb-mark[data-signal="live"]::after { animation: pb-spin 900ms linear infinite; }
+.pb-mark[data-signal="quiet"]::after { animation: pb-breathe 2.4s ease-in-out infinite; }
+.pb-card[data-state="running"] .pb-mark[data-signal="lost"]::after { border-top-color: var(--amber); }
+.pb-card[data-state="go"] .pb-mark { border: 0; border-radius: 2px; background: var(--amber); clip-path: polygon(50% 8%, 100% 92%, 0 92%); }
+.pb-card[data-state="failed"] .pb-mark { border-color: var(--red); background: var(--red); }
+.pb-card[data-state="done"] .pb-mark { border-color: var(--green); background: var(--green); }
+
+/* -- a job unfolded ------------------------------------------------------------------------- */
+.pb-details { display: grid; gap: 8px; padding: 2px 11px 11px 36px; animation: pb-open 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.pb-details p, .pb-details q { margin: 0; color: var(--ink-2); font-size: 12.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.pb-shows { font-style: italic; }
+.pb-says, .pb-thought { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; color: var(--muted); quotes: none; }
+.pb-thought { font-style: italic; }
+.pb-doing { color: var(--muted); }
+.pb-doing[data-tone="amber"] { color: var(--amber); }
+.pb-still-wide { width: 100%; max-width: 320px; aspect-ratio: 16 / 9; border-radius: 8px; object-fit: cover; box-shadow: 0 0 0 1px var(--line-soft); }
+.pb-handover { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pb-handover > :first-child { flex: 1 1 140px; max-width: 200px; }
+.pb-handover small { color: var(--muted); font-size: 12px; }
+.pb-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pb-details .btn { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.pb-details .btn svg { width: 13px; height: 13px; }
+.pb-link { margin-left: auto; color: var(--muted); font-size: 12px; text-decoration: none; }
+.pb-link:hover { color: var(--ink); text-decoration: underline; }
+
+/* -- what is to make, by episode and chapter ------------------------------------------------ */
+.pb-group { display: grid; gap: 6px; }
+.pb-group + .pb-group { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
+.pb-chapter { display: grid; gap: 6px; padding-left: 10px; }
+.pb-group-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px; min-height: 28px; }
+.pb-group-name { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 4px; border: 0; border-radius: 7px; background: none; color: var(--ink-2); font: inherit; font-size: 12.5px; text-align: left; cursor: grab; }
+.pb-group-name:hover { background: var(--wash); }
+.pb-group-name svg { flex: none; width: 13px; height: 13px; color: var(--muted); transition: transform 200ms ease; }
+.pb-group-name[aria-expanded="true"] svg { transform: rotate(90deg); }
+.pb-group-name b { flex: none; max-width: 100%; overflow: hidden; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.pb-group-head[data-level="episode"] .pb-group-name b { color: var(--ink); font-size: 13px; }
+.pb-group-name span { min-width: 0; overflow: hidden; color: var(--muted); white-space: nowrap; text-overflow: ellipsis; }
+.pb-start { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--raised); color: var(--ink-2); font: inherit; font-size: 12px; font-weight: 550; cursor: pointer; opacity: 0; transition: opacity 140ms ease; }
+.pb-start svg { width: 11px; height: 11px; }
+.pb-group-head:is(:hover, :focus-within) .pb-start { opacity: 1; }
+.pb-start:hover { border-color: var(--line-strong); color: var(--ink); }
+
+/* -- the agents ----------------------------------------------------------------------------- */
+.pb-agents { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.pb-agent { display: grid; gap: 8px; padding: 10px; border-radius: 10px; box-shadow: inset 0 0 0 1px transparent; transition: background 180ms ease, box-shadow 180ms ease; }
+.pb-agent:not([data-ready]) { opacity: 0.55; }
+/* while something is carried, every agent that can take it is outlined, and the one under it lit */
+.pb-agent[data-target] { box-shadow: inset 0 0 0 1px var(--line); }
+.pb-agent[data-over] { background: color-mix(in srgb, var(--green) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--green) 45%, var(--line)); }
+.pb-agent-head { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.pb-agent-head .mark { width: 26px; height: 26px; border-radius: 8px; }
+.pb-agent-head b { min-width: 0; overflow: hidden; font-size: 13.5px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.pb-key { display: none; place-items: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); font: inherit; font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.pb-page:focus-within .pb-key { display: inline-grid; }
+.pb-load { margin-left: auto; padding: 2px 8px; border-radius: 6px; background: var(--wash); color: var(--muted); font-size: 11.5px; font-weight: 550; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pb-load[data-free] { background: var(--green-soft); color: var(--green); }
+.pb-load[data-preview] { background: var(--raised); box-shadow: 0 0 0 1px color-mix(in srgb, var(--green) 45%, var(--line)); color: var(--green); animation: pb-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.pb-agent-pick { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 6px; }
+.pb-queue { display: grid; gap: 6px; }
+.pb-more { justify-self: start; padding: 2px 4px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.pb-more:hover { color: var(--ink); }
+
+/* what is carried, under the pointer */
+.pb-ghost { position: fixed; left: 0; top: 0; z-index: 60; max-width: 300px; padding: 8px 12px; overflow: hidden; border-radius: 10px; background: var(--raised); box-shadow: 0 0 0 1px var(--line), 0 14px 34px rgba(0, 0, 0, 0.3); color: var(--ink); font-size: 13px; font-weight: 550; white-space: nowrap; text-overflow: ellipsis; pointer-events: none; rotate: 1.5deg; }
+
+:is(.pb-face, .pb-group-name, .pb-start, .pb-more, .pb-link):focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+@keyframes pb-in { from { opacity: 0; transform: translateY(3px); } }
+@keyframes pb-open { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes pb-spin { to { transform: rotate(360deg); } }
+@keyframes pb-breathe { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) {
+  .pb-page *, .pb-page *::before, .pb-page *::after { animation: none !important; transition: none !important; }
+  .pb-ghost { rotate: none; }
+}
+/* narrower: two lanes a row, then one, the page scrolling as a whole */
+@container pb (max-width: 1180px) {
+  .pb-lanes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-auto-rows: minmax(260px, 1fr); }
+}
+@container pb (max-width: 700px) {
+  .pb-lanes { flex: none; grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
+  .pb-lane-body { overflow: visible; }
+  .pb-filters > * { width: 100%; }
+  .pb-lane-head small { display: none; }
+}
+/* the page cannot ask its own width as a container: the window's stands in for it */
+@media (max-width: 860px) {
+  .pb-page { overflow: auto; }
+}
+@media (pointer: coarse) {
+  .pb-face { padding-block: 12px; }
+  .pb-start { opacity: 1; height: 30px; }
+}

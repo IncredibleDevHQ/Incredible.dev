@@ -81,6 +81,23 @@ export const mmss = (seconds: number) => {
 export const linesOf = (chapter: EpisodeChapter): EpisodeFrame[] => chapter.beats.flatMap((b) => b.frames);
 export const chapterName = (chapter: EpisodeChapter) => CHAPTERS[chapter.type ?? ""] ?? "Chapter";
 export const unitOf = (view: EpisodeView, frame: string): EpisodeUnit | undefined => view.units.find((u) => u.frames.includes(frame));
+// The beats a picture plays over, by their numbers in its chapter as the script shows them: a
+// picture is drawn once and stays up while each of its lines is said.
+export function beatsOf(view: EpisodeView, unit: EpisodeUnit): number[] {
+  const chapter = view.plan?.chapters.find((c) => c.id === unit.chapter);
+  return (chapter?.beats ?? []).flatMap((b, i) => (b.frames.some((f) => unit.frames.includes(f.id)) ? [i + 1] : []));
+}
+// Beats said in a few words: "Beat 2", "Beats 2–5", "Beats 2, 4–5".
+export function beatsSaid(numbers: number[]): string {
+  if (numbers.length === 0) return "";
+  const runs: [number, number][] = [];
+  for (const n of numbers) {
+    const last = runs[runs.length - 1];
+    if (last && n === last[1] + 1) last[1] = n;
+    else runs.push([n, n]);
+  }
+  return `${numbers.length === 1 ? "Beat" : "Beats"} ${runs.map(([from, to]) => (from === to ? `${from}` : `${from}–${to}`)).join(", ")}`;
+}
 export const allLines = (view: EpisodeView): { chapter: string; line: EpisodeFrame }[] => (view.plan?.chapters ?? []).flatMap((c) => linesOf(c).map((line) => ({ chapter: c.id, line })));
 // The lines a layout set for a chapter (or the whole film) reaches: the ones of that presence.
 export const linesIn = (view: EpisodeView, presence: Presence, chapter?: string) => allLines(view).filter((x) => x.line.presence === presence && (!chapter || x.chapter === chapter));

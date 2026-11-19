@@ -99,8 +99,15 @@
     the picture is built to it. Its builder then reviews frames from inside its moves and what
     the renderer's craft pass measured, beside the stills, before they wait for the person's
     go. The block follows the build stage by stage with each stage's time and the build's
-    total running on over them, the builder's tool calls and words, and a line when it has
-    gone quiet. Each build's times, in all and stage by stage, are kept with its beat in the
+    total running on over them, the builder's tool calls and words, and between two of them
+    what its model is at: thinking, with the newest words of the thought, the file it is
+    writing and how much of it, or a request made again. Claude Code says these as it goes
+    (`--include-partial-messages`, and summaries of its thinking), so the house hears from it
+    every few seconds and a silence of 90 seconds reads as no sign of life, in amber, with
+    Stop it; Codex and Kimi Code tell only of whole steps, so the trail says they are quiet
+    and why. The trail's marks turn only while the agent is heard from. A picture's card
+    names the beats it plays over ("Beats 2–5"), and asking for it says what that makes: one
+    picture for all of its lines. Each build's times, in all and stage by stage, are kept with its beat in the
     house's database (`pictures.timing`) once it ends. A note left while a
     motion-graphics picture is made goes in with the builder's next turn without stopping
     it; and a made picture says how its build went (its stages as a bar, what the review
@@ -133,6 +140,17 @@
     screen from a button on it (the studio's own, so it works in an app's browser pane);
     the stills ask the person to play it before the go, and the go, which makes nothing more,
     says so where the stills were.
+  - The production board (`/production`): every episode's jobs in one place. What is written
+    and not made, by episode and chapter; each agent with what it runs and what waits its
+    turn; what waits on the person (a go, a plan to read, a job that stopped); and what is
+    done. A job, a chapter or an episode is handed to an agent by dragging it onto the
+    agent's row (the row says what that comes to first), with the row's number key, or from
+    the job's details, on the model and effort picked on that row; an agent builds at most
+    four pictures at once across the house. A job opens its episode as a peek over the board
+    (Escape goes back) or as its own page, on the job's chapter and line
+    (`…/episode/<id>?at=<chapter>&line=<line>`), and the board is narrowed to an episode, a
+    chapter or an agent in its address (`GET /api/production`,
+    `POST /api/production/assign`).
   - Picks are free to try: a frame, a layout for the chapter or the film, a kind of picture, a
     level or an agent changes the plan and the preview and starts no agent (a made
     picture's level asks first, and its yes makes it again). A picture

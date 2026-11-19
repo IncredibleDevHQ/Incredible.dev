@@ -911,6 +911,13 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 
 /* -- an episode's studio: the plan and the studio in one place --------------------------------- */
 .ep { position: fixed; inset: 0; z-index: 40; display: grid; grid-template-rows: 56px minmax(0, 1fr); background: var(--ep-ground); color: var(--ink); }
+/* An episode open as a peek: the same studio in a sheet over the page it was opened from, which
+   is dimmed behind it and comes back on Escape. */
+.ep-scrim { position: fixed; inset: 0; z-index: 39; background: var(--scrim); animation: ep-scrim-in 180ms ease-out both; }
+.ep[data-peek] { inset: 3vh 2.5vw; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); animation: ep-peek-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes ep-scrim-in { from { opacity: 0; } }
+@keyframes ep-peek-in { from { opacity: 0; transform: translateY(10px) scale(0.985); } }
+@media (prefers-reduced-motion: reduce) { .ep-scrim, .ep[data-peek] { animation: none; } }
 .ep-wait { grid-row: 1 / -1; display: grid; place-items: center; }
 .ep-bar { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 14px 0 12px; background: var(--ep-ground); }
 .ep-now { display: flex; align-items: center; gap: 10px; flex: none; }
@@ -1275,6 +1282,8 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 .ep-figure .ep-stills-row button { width: clamp(148px, 20cqw, 212px); }
 /* a rich picture's motion plan, a click away from its block */
 .ep-figure .ep-block-head > span { flex: 0 1 auto; }
+/* the beats one picture plays over: it is drawn once for every line under it */
+.ep-figure .ep-block-head > .ep-figure-covers { flex: none; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ep-figure .ep-block-head > .ui-seg, .ep-figure-level { margin-left: auto; }
 .ep-plan-pop { max-height: min(72vh, 640px); overflow: auto; }
 .ep-plan-shots { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }

@@ -21,6 +21,7 @@ import { Elapsed, type Run } from "./Ask";
 import { AgentModel, type ModelPick } from "./AgentModel";
 import { WRITERS } from "./Film";
 import { AgentTrail, type TrailStage, type TrailState } from "../agent/AgentTrail";
+import { usePulse } from "./Work";
 
 // A pause between two turns shorter than this is the house handing over, not checking: no gap.
 const GAP = 2;
@@ -169,6 +170,7 @@ function PlanTrail({ view, at, since, turns }: { view: EpisodeView; at: number; 
   const failed = view.status === "failed";
   const stage = view.stage;
   const live = turns.find((t) => t.state === "working");
+  const pulse = usePulse(view.id, "plan", view.working);
   // between the writer's turns the house reads what was written, or readies the next turn
   const between = stage.state === "reading" ? "Checking" : (stage.round ?? 0) > 0 ? `Fixing · round ${stage.round}` : "Getting ready";
   const kept = new Map(view.plan_stages.map((s) => [s.id, s]));
@@ -196,7 +198,15 @@ function PlanTrail({ view, at, since, turns }: { view: EpisodeView; at: number; 
           {done}/{view.steps.length}
         </span>
       </header>
-      <AgentTrail label="The plan, stage by stage" steps={steps} events={live ? (view.working?.events ?? []) : []} turnSince={live?.started_at ?? null} />
+      <AgentTrail
+        label="The plan, stage by stage"
+        steps={steps}
+        events={live ? (view.working?.events ?? []) : []}
+        turnSince={live?.started_at ?? null}
+        pulse={live ? pulse : null}
+        tells={view.working?.tells ?? false}
+        onStop={() => void api.stopEpisode(view.id).catch((e: Error) => useHouse.getState().say(e.message))}
+      />
     </section>
   );
 }

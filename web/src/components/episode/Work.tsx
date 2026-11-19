@@ -11,8 +11,9 @@
 //   it: Running.tsx.)
 import { Check, ChevronDown, RotateCcw, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { api, type BuildStageId, type EpisodeUnit, type EpisodeView, type Level } from "../../api";
+import { api, type BuildStageId, type EpisodeUnit, type EpisodeView, type Level, type LiveTurn, type WorkPulse } from "../../api";
 import { DOING, PICTURES, pictureState, type PictureState } from "../../episode";
+import { useHouse } from "../../store";
 import { AgentMark } from "../../ui";
 import { AgentTrail, type TrailStage } from "../agent/AgentTrail";
 import { RunSummary, type SummaryStage } from "../agent/RunSummary";
@@ -47,11 +48,23 @@ const REACHES: Partial<Record<BuildStageId, string>> = {
   review: "as it looks the picture over",
 };
 
+// What a turn of an episode is doing between its steps: what the episode said when it was read,
+// or what the house has told since ("plan" for the writer's turn, "picture:<unit>" for a
+// picture's builder). Nothing once the turn is over.
+export function usePulse(episode: string, lane: string, live: LiveTurn | null | undefined): WorkPulse | null {
+  const told = useHouse((s) => s.pulses[`${episode}:${lane}`]);
+  if (!live) return null;
+  const read = live.pulse ?? null;
+  return told && (!read || told.at >= read.at) ? told : read;
+}
+
 // One picture being made, as a trail: each stage with how long it took, the one it is on with its
-// builder's steps and words as they come, and the person's notes under the stage that took them
-// in. A motion-graphics picture takes a note for its builder's next turn without stopping.
+// builder's steps, words and thinking as they come, what its model is at between two of them,
+// and the person's notes under the stage that took them in. A motion-graphics picture takes a
+// note for its builder's next turn without stopping.
 export function PictureTrail({ view, unit, builder, run }: { view: EpisodeView; unit: EpisodeUnit; builder: string; run: Run }) {
   const p = unit.picture;
+  const pulse = usePulse(view.id, `picture:${unit.id}`, p.live);
   const level: Level = p.level || unit.level;
   const order = BUILD[level];
   const waiting = p.status === "queued";
@@ -85,6 +98,9 @@ export function PictureTrail({ view, unit, builder, run }: { view: EpisodeView; 
         steps={steps}
         events={waiting ? [] : (p.live?.events ?? [])}
         turnSince={p.live?.since ?? null}
+        pulse={waiting ? null : pulse}
+        tells={p.live?.tells ?? false}
+        onStop={() => void api.stopEpisode(view.id, unit.id).catch((e: Error) => useHouse.getState().say(e.message))}
         // over it: who builds it, the build's own clock (which runs on from stage to stage) and
         // how many of its stages are done
         agent={{ name: builder.slice(0, 1).toUpperCase() + builder.slice(1), mark: <AgentMark mark={p.builder || unit.builder} size="sm" /> }}

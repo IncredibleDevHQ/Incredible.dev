@@ -1,7 +1,8 @@
 /* The agent library: a trail of an agent's work, a note for it while it works, and how a run
    went. Written for this house from notes on how agent components behave; no other component's
    source is in it. Colours are the house's tokens: green is the one accent (the way covered, a
-   check, the work under way), amber is the person's (a stage that needs them), red a stop. */
+   check, the work under way), amber is the person's (a stage that needs them, a turn that has
+   gone silent), red a stop. */
 
 /* -- the trail ----------------------------------------------------------------------------- */
 /* One axis 9 px in: every mark is centred on it, every row is 32 px, so the line between two
@@ -30,6 +31,11 @@
 .ag-step[data-state="done"] .ag-mark svg { stroke-dasharray: 24; stroke-dashoffset: 24; animation: ag-draw 360ms 120ms cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 .ag-step[data-state="running"] .ag-mark { border-color: color-mix(in srgb, var(--green) 24%, var(--line)); }
 .ag-step[data-state="running"] .ag-mark::after { content: ""; position: absolute; inset: -1.5px; border-radius: inherit; border: 1.5px solid transparent; border-top-color: var(--green); animation: ag-spin 900ms linear infinite; }
+/* an agent's turn turns only while it is heard from: silent, the arc stands and breathes; silent
+   too long, it stands in amber */
+.ag-step[data-signal="quiet"] .ag-mark::after { animation: ag-breathe 2.4s ease-in-out infinite; }
+.ag-step[data-signal="lost"] .ag-mark { border-color: color-mix(in srgb, var(--amber) 30%, var(--line)); }
+.ag-step[data-signal="lost"] .ag-mark::after { border-top-color: var(--amber); animation: none; }
 .ag-step[data-state="failed"] .ag-mark { border-color: transparent; background: color-mix(in srgb, var(--red) 15%, var(--raised)); color: var(--red); animation: ag-pop 380ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 .ag-step[data-state="waiting"] .ag-mark { border-color: transparent; background: var(--amber-soft); color: var(--amber); }
 .ag-step[data-state="waiting"] .ag-mark svg { width: 8px; height: 8px; fill: currentColor; stroke-width: 0; }
@@ -40,6 +46,9 @@
 .ag-meta { display: inline-flex; align-items: baseline; justify-content: flex-end; gap: 7px; min-width: 0; max-width: 220px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; animation: ag-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 /* what the stage under way is doing, with a slow light through the word */
 .ag-doing { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--green); font-weight: 500; background: linear-gradient(90deg, var(--green) 0 38%, color-mix(in srgb, var(--green) 40%, var(--ink)) 50%, var(--green) 62% 100%) 0 0 / 260% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: ag-shimmer 1.3s linear infinite; }
+.ag-step:is([data-signal="quiet"], [data-signal="lost"]) .ag-doing { background: none; -webkit-text-fill-color: currentColor; animation: none; }
+.ag-step[data-signal="quiet"] .ag-doing { color: var(--ink-2); }
+.ag-step[data-signal="lost"] .ag-doing { color: var(--amber); }
 .ag-took, .ag-word, .ag-clock { color: var(--muted); white-space: nowrap; }
 .ag-step[data-state="done"] .ag-took { color: var(--faint, var(--muted)); }
 .ag-failed { color: var(--red); font-weight: 500; white-space: nowrap; }
@@ -76,7 +85,24 @@
 .ag-sub[data-kind="taken"] { grid-template-columns: minmax(0, 1fr) auto; }
 .ag-sub[data-kind="taken"] > i { background: var(--raised); box-shadow: inset 0 0 0 1.5px var(--green); }
 .ag-sub[data-kind="taken"] q { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink-2); }
-.ag-sub[data-kind="quiet"] > i { animation: ag-breathe 2.4s ease-in-out infinite; }
+/* a stretch of thinking that ended: how long, and where it got to */
+.ag-sub[data-kind="thought"] > i { background: var(--raised); box-shadow: inset 0 0 0 1.25px var(--line-strong); }
+/* what the model is at now, between two steps. Its dot beats once each time the agent is heard
+   from, so a dot that stands still is an agent that is silent. */
+.ag-sub[data-kind="now"] { grid-template-columns: auto minmax(0, 1fr); align-content: center; row-gap: 1px; padding-block: 3px; color: var(--ink-2); }
+.ag-sub[data-kind="now"] > i { top: 12px; margin-top: 0; }
+.ag-sub[data-kind="now"] .ag-sub-title { display: inline-flex; align-items: baseline; gap: 7px; }
+.ag-sub[data-kind="now"] .ag-clock { font-size: 12px; font-variant-numeric: tabular-nums; }
+.ag-sub:is([data-now="thinking"], [data-now="writing"]) > i { background: var(--green); animation: ag-beat 900ms ease-out 1; }
+.ag-sub:is([data-now="thinking"], [data-now="writing"]) .ag-sub-title { color: var(--ink); font-weight: 500; }
+.ag-sub:is([data-now="waiting"], [data-now="quiet"]) > i { background: transparent; box-shadow: inset 0 0 0 1.25px var(--muted); animation: ag-breathe 2.4s ease-in-out infinite; }
+.ag-sub[data-now="lost"] > i { background: var(--amber); }
+.ag-sub[data-now="lost"] .ag-sub-title, .ag-sub[data-now="lost"] .ag-clock { color: var(--amber); font-weight: 500; }
+/* the newest words of the thought, under it: two lines at most, the whole of it on hover */
+.ag-thought { grid-column: 1 / -1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; color: var(--muted); font-size: 12.5px; font-style: italic; line-height: 1.45; quotes: none; overflow-wrap: anywhere; }
+.ag-now-note { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.ag-stop { height: 24px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--line)); border-radius: 7px; background: var(--amber-soft); color: var(--amber); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.ag-stop:hover { border-color: var(--amber); }
 .ag-fold { justify-self: start; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer; }
 .ag-fold:hover { color: var(--ink); }
 /* a light running down the branch to the newest step, which rings as it arrives */
@@ -130,7 +156,7 @@
 .ag-summary-notes ul { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
 
 /* -- shared --------------------------------------------------------------------------------- */
-:is(.ag-fold, .ag-send, .ag-queue li button, .ag-summary-head):focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+:is(.ag-fold, .ag-stop, .ag-send, .ag-queue li button, .ag-summary-head):focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 @keyframes ag-spin { to { transform: rotate(360deg); } }
 @keyframes ag-pop { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: none; } }
 @keyframes ag-draw { to { stroke-dashoffset: 0; } }
@@ -138,6 +164,7 @@
 @keyframes ag-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 @keyframes ag-shimmer { from { background-position: 100% 0; } to { background-position: -160% 0; } }
 @keyframes ag-breathe { 50% { opacity: 0.45; } }
+@keyframes ag-beat { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 55%, transparent); } 100% { box-shadow: 0 0 0 6px transparent; } }
 @keyframes ag-comet { 0% { transform: translateY(0); opacity: 0; } 10% { opacity: 1; } 60% { transform: translateY(var(--ag-run, 40px)); opacity: 1; } 76%, 100% { transform: translateY(var(--ag-run, 40px)); opacity: 0; } }
 @keyframes ag-ring { 0%, 56% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 45%, transparent); } 84%, 100% { box-shadow: 0 0 0 5px transparent; } }
 @keyframes ag-landed { 0%, 30% { background: color-mix(in srgb, var(--green) 24%, transparent); } 100% { background: color-mix(in srgb, var(--green) 9%, transparent); } }
@@ -154,5 +181,6 @@
   .ag-step[data-branching] > .ag-row::after { top: 28px; height: 12px; }
   .ag-step[data-branching]:not(:last-child) > .ag-branch::after { bottom: -12px; height: 12px; }
   .ag-send { width: 36px; height: 36px; }
+  .ag-stop { height: 32px; }
   .ag-queue li button { width: 32px; height: 32px; }
 }

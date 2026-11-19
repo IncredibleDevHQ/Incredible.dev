@@ -363,7 +363,7 @@ export type EpisodeUnit = {
     failure: string;
     note: string;
     doing: string;
-    live: { harness: string; since: number; events: WorkEvent[] } | null;
+    live: LiveTurn | null;
     // its latest build stage by stage, what its builder said when it reviewed it, and the notes
     // the person left the builder while it worked: waiting for its next turn, or taken in; and
     // whether a note would still reach it (a motion-graphics picture before its review)
@@ -484,9 +484,65 @@ export type EpisodeView = EpisodeCard & {
   // Lines reworded after they were recorded: the take still says the old words.
   rerecord: string[];
   // The writer's turn on the plan while it works: its steps and its own notes, newest last.
-  working: { harness: string; since: number; events: WorkEvent[] } | null;
+  working: LiveTurn | null;
 };
-export type WorkEvent = { kind: "step" | "note"; text: string; at: number };
+// A step an agent took, its own words, or a stretch of thinking that ended (`seconds` long,
+// `text` its summary where the agent gives one).
+export type WorkEvent = { kind: "step" | "note" | "thought"; text: string; at: number; seconds?: number };
+// What a turn's model is doing between two of its steps, as the agent's own stream says it:
+// "thinking" (`text` the newest words of the thought, `amount` its tokens so far), "writing" its
+// own words, or "step" for a tool call it is writing (`text` the step it will be, `amount` the
+// characters so far). `at` is when the turn was last heard from, `since` when it began this.
+export type WorkPulse = { at: number; since: number; doing: "" | "thinking" | "writing" | "step"; text: string; amount: number };
+// A turn under way: who runs it, since when, its newest events and its pulse. `tells` is
+// whether this agent says what its model is doing as it goes (a long silence from one that
+// does means something is wrong; the others say nothing while they think).
+export type LiveTurn = { harness: string; since: number; tells: boolean; pulse: WorkPulse | null; events: WorkEvent[] };
+// The production board: every job of every episode in one read. A job is a picture to draw (a
+// run of beats of one chapter) or an episode's script. `state` is where it stands: "todo" (its
+// lines are written and it was never asked for, or it is made and out of date, `stale`),
+// "waiting" its turn, "running", "go" (it waits on the person: a go on its stills, a plan to
+// approve), "failed" or "done". `agent`, `model` and `effort` are who it is set to, or who made
+// it. While its turn runs it carries that turn's liveness as a trail does (`LiveTurn`).
+export type JobState = "todo" | "waiting" | "running" | "go" | "failed" | "done";
+export type ProductionJob = {
+  id: string;
+  what: "picture" | "script";
+  episode: string;
+  unit: string;
+  chapter: string;
+  kind: string;
+  shows: string;
+  says: string;
+  beats: number[];
+  lines: number;
+  level: Level;
+  state: JobState;
+  stale: boolean;
+  agent: string;
+  model: string;
+  effort: string;
+  picked: boolean;
+  failure: string;
+  stage: string;
+  doing: string;
+  asked_at: number | null;
+  started_at: number | null;
+  ended_at: number | null;
+  seconds: number | null;
+  still: string | null;
+  tells: boolean;
+  heard_at: number | null;
+  pulse: WorkPulse | null;
+};
+// An agent the board hands work to: whether it is ready on this computer, what it can run on, how
+// many of its jobs run and wait across the house, and how long its pictures have taken (the mean
+// of its last builds, where it has made any).
+export type ProductionAgent = { id: string; title: string; ready: boolean; models: ModelOption[]; running: number; waiting: number; seconds: number | null };
+export type ProductionEpisode = { id: string; title: string; channel_id: string; channel: string; status: string; writer: string; chapters: { id: string; n: number; question: string }[] };
+export type ProductionView = { agents: ProductionAgent[]; episodes: ProductionEpisode[]; jobs: ProductionJob[] };
+export type HandOver = { jobs: { episode: string; unit: string }[]; agent: string; model: string; effort: string; start: boolean };
+export type HandedOver = { started: string[]; refused: { episode: string; reason: string }[] };
 export type AskScope = "film" | "chapter" | "line" | "picture";
 // What a line a person adds is: more of its block, said to camera, or a picture of a type.
 export type PictureKind = "diagram" | "list" | "typeset-code" | "chips" | "illustration" | "slide";
@@ -655,6 +711,8 @@ export const api = {
   newEpisode: (channelId: string, body: { title: string; text: string; files: string[]; from_frame?: string; resolve_links?: boolean; settings: Partial<EpisodeSettings> }) =>
     call<EpisodeView>("POST", `/api/channels/${channelId}/episodes`, body),
   episode: (id: string) => call<EpisodeView>("GET", `/api/episodes/${id}`),
+  production: () => call<ProductionView>("GET", "/api/production"),
+  handOver: (body: HandOver) => call<HandedOver>("POST", "/api/production/assign", body),
   approveEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/approve`),
   chooseEpisode: (id: string, body: EpisodeChoices) => call<EpisodeView>("POST", `/api/episodes/${id}/choices`, body),
   // A change asked for in words; the writer makes it (a note on how a picture is drawn goes to its builder).

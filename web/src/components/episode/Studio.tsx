@@ -59,6 +59,9 @@ import { PlanRun } from "./PlanRun";
 export function EpisodeStudio() {
   const view = useHouse((s) => s.episode);
   const openEpisode = useHouse((s) => s.openEpisode);
+  // opened as a peek, it sits over the page it was opened from, which Escape goes back to
+  const peek = useHouse((s) => s.episodePeek);
+  const landing = useHouse((s) => s.landing);
   const [at, setAt] = useState<string>(FILM);
   // The chapter that opens next is to be recorded at once: the run-through, once the choices are
   // made. It opens at a line when one was picked on the film's page.
@@ -90,6 +93,23 @@ export function EpisodeStudio() {
       setBusy(false);
     }
   }, []);
+  // A link or the board asked for a chapter, at a line: it opens there once, as soon as the plan
+  // is in. The chapter it is on is said back, so the address names it.
+  const planned = Boolean(view?.plan) && view?.status !== "planning" && view?.status !== "failed";
+  useEffect(() => {
+    if (!landing || !planned || !view?.plan) return;
+    if (view.plan.chapters.some((c) => c.id === landing.chapter)) go(landing.chapter, false, landing.line || undefined);
+    useHouse.setState({ landing: null });
+  }, [landing, planned, view?.plan, go]);
+  useEffect(() => {
+    useHouse.setState({ episodeChapter: at === FILM ? "" : at });
+  }, [at]);
+  // The whole page, from a peek: its channel comes to the front, and Back leads to the board.
+  const whole = useCallback(() => {
+    if (!view) return;
+    useHouse.setState({ episodePeek: false });
+    void useHouse.getState().openChannel(view.channel_id, "canvas");
+  }, [view]);
   const waiting = useWaiting(view);
   // What the last change did is marked in the script when it lands here, and not for a change
   // that was already there when the studio opened. `quiet` is the change whose marks are off.
@@ -127,43 +147,59 @@ export function EpisodeStudio() {
 
   if (!view) {
     return (
-      <div className="ep" role="dialog" aria-modal="true" aria-label="Episode">
-        <div className="ep-wait">
-          <span className="spin" />
+      <>
+        {peek && <div className="ep-scrim" aria-hidden="true" onClick={() => void openEpisode(null)} />}
+        <div className="ep" data-peek={peek || undefined} role="dialog" aria-modal="true" aria-label="Episode">
+          <div className="ep-wait">
+            <span className="spin" />
+          </div>
         </div>
-      </div>
+      </>
     );
   }
   const plan = view.plan;
   const chapter = plan?.chapters.find((c) => c.id === at);
   const ready = plan !== null && view.status !== "planning" && view.status !== "failed";
   return (
-    <div className="ep" role="dialog" aria-modal="true" aria-label={`Episode: ${view.title}`}>
-      <Bar view={view} ready={ready} onAt={go} onClose={() => void openEpisode(null)} run={run} busy={busy} />
-      {!ready || !plan ? (
-        <PlanRun view={view} run={run} busy={busy} />
-      ) : (
-        <main className={chapter ? "ep-chapter" : "ep-chapter ep-film-page"}>
-          <Slides view={view} at={chapter?.id ?? FILM} onAt={go} />
-          {chapter ? (
-            <Chapter key={chapter.id} view={view} chapter={chapter} run={run} busy={busy} record={recordNext} line={lineNext} pop={popNext} asked={asked} onAt={go} waiting={waiting} marks={marks} />
-          ) : <FilmPage view={view} run={run} busy={busy} onAt={go} waiting={waiting} />}
-        </main>
-      )}
-    </div>
+    <>
+      {peek && <div className="ep-scrim" aria-hidden="true" onClick={() => void openEpisode(null)} />}
+      <div className="ep" data-peek={peek || undefined} role="dialog" aria-modal="true" aria-label={`Episode: ${view.title}`}>
+        <Bar view={view} ready={ready} onAt={go} onClose={() => void openEpisode(null)} onWhole={peek ? whole : undefined} run={run} busy={busy} />
+        {!ready || !plan ? (
+          <PlanRun view={view} run={run} busy={busy} />
+        ) : (
+          <main className={chapter ? "ep-chapter" : "ep-chapter ep-film-page"}>
+            <Slides view={view} at={chapter?.id ?? FILM} onAt={go} />
+            {chapter ? (
+              <Chapter key={chapter.id} view={view} chapter={chapter} run={run} busy={busy} record={recordNext} line={lineNext} pop={popNext} asked={asked} onAt={go} waiting={waiting} marks={marks} />
+            ) : <FilmPage view={view} run={run} busy={busy} onAt={go} waiting={waiting} />}
+          </main>
+        )}
+      </div>
+    </>
   );
 }
 
 // The way back to the canvas, the film's choices, what runs now, its picture status, and light
 // or dark. The slides under it are the way between the film and its chapters.
-function Bar({ view, ready, onAt, onClose, run, busy }: { view: EpisodeView; ready: boolean; onAt: Open; onClose: () => void; run: Run; busy: boolean }) {
+// `onWhole` is there for an episode open as a peek: Back returns to the page under it, and the
+// whole page is one press away.
+function Bar({ view, ready, onAt, onClose, onWhole, run, busy }: { view: EpisodeView; ready: boolean; onAt: Open; onClose: () => void; onWhole?: () => void; run: Run; busy: boolean }) {
+  const back = onWhole ? "Back to the board" : "Back to the canvas";
   return (
     <header className="ep-bar">
-      <Tooltip content="Back to the canvas" shortcut="Esc" side="bottom" align="start">
-        <button type="button" className="btn ep-back" aria-label="Back to the canvas" onClick={onClose}>
+      <Tooltip content={back} shortcut="Esc" side="bottom" align="start">
+        <button type="button" className="btn ep-back" aria-label={back} onClick={onClose}>
           <ArrowLeft /> Back
         </button>
       </Tooltip>
+      {onWhole && (
+        <Tooltip content="Open the episode's own page" side="bottom" align="start">
+          <button type="button" className="btn ep-back" onClick={onWhole}>
+            <Maximize2 /> Open full page
+          </button>
+        </Tooltip>
+      )}
       {ready && <FilmTools view={view} run={run} busy={busy} />}
       <span className="ep-gap" />
       {ready && <Now view={view} run={run} busy={busy} onAt={onAt} />}

@@ -57,6 +57,14 @@ Confirm each URL still resolves when you move a pin forward; the docs site renam
 - sharp: <https://sharp.pixelplumbing.com>
 - Apache ECharts: <https://echarts.apache.org> · D2: <https://d2lang.com>
 
+## Coding agents on the person's computer
+
+- Claude Code run without a terminal (`claude -p`), its `stream-json` output, partial messages
+  and `system/api_retry`: <https://code.claude.com/docs/en/headless>
+- Claude Code's options: <https://code.claude.com/docs/en/cli-reference>
+- The Agent SDK's messages, among them partial messages and the thinking display
+  (`thinking.display`): <https://code.claude.com/docs/en/agent-sdk/typescript>
+
 ## Skills format
 
 - Agent Skills specification: <https://agentskills.io/specification>

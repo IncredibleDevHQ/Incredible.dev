@@ -1,7 +1,8 @@
 // A picture's card at the head of its block in a chapter's script: the picture itself, a
-// placeholder until it is made, beside what it is, how it is made and where it stands. A
-// picture is asked for here, on its own (or with its chapter's, by recording the chapter, or
-// with the whole film's, from the bar). It is simple (drawn at once from the plan) or motion
+// placeholder until it is made, beside what it is, the beats it plays over (one picture is drawn
+// once for every line under it), how it is made and where it stands. A picture is asked for
+// here, on its own (or with its chapter's, by recording the chapter, or with the whole film's,
+// from the bar), and the ask says what it makes: one picture for all of its lines. It is simple (drawn at once from the plan) or motion
 // graphics (each line planned as a shot, then drawn, with a still of each line for a go). A pick
 // never draws anything: a picture made before it is out of date until the person applies their
 // changes or draws it again here, and drawing a made picture again says what it costs first.
@@ -15,7 +16,7 @@
 import { Check, ChevronDown, Maximize2, Play, RotateCcw, Sparkles, Square, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type EpisodeFrame, type EpisodeUnit, type EpisodeView, type Level, type Motion } from "../../api";
-import { LEVEL_NAMES, madeLevel, PICTURES, pictureState, pictureWords } from "../../episode";
+import { beatsOf, beatsSaid, LEVEL_NAMES, madeLevel, PICTURES, pictureState, pictureWords } from "../../episode";
 import { Popover } from "../Popover";
 import { SegmentedControl } from "../SegmentedControl";
 import type { Run } from "./Ask";
@@ -27,11 +28,6 @@ import { againCost, levelCost } from "./costs";
 import { GenerationSettings } from "./GenerationSettings";
 import { MadeWith, madeOtherwise } from "./MadeWith";
 import { KindArt } from "./PictureArt";
-
-const LEVELS: Record<Level, string> = {
-  rich: "Each line is planned as a shot, then drawn. You play it and check a still of each line before your go.",
-  simple: "Drawn at once from the plan.",
-};
 
 // What planning a picture again costs: the writer's turn, then its builder's full run.
 export function planCost(unit: EpisodeUnit, writer: string): string {
@@ -69,6 +65,11 @@ export function PictureCard({
   const state = pictureState(unit, view);
   const designed = unit.kind === "picture";
   const name = blockName(block);
+  // one picture for every line under it: the beats it plays over, and what asking for it makes
+  const covers = beatsSaid(beatsOf(view, unit));
+  const makes =
+    (unit.frames.length > 1 ? `One picture for all ${unit.frames.length} lines` : "A picture for this one line") +
+    (unit.level === "rich" ? ": each line is planned as a shot, then drawn. You play it and check a still of each line before your go." : ", drawn at once from the plan.");
   // the picture as it ends: its last line's still
   const still = p.stills[unit.frames[unit.frames.length - 1]] ?? Object.values(p.stills).pop();
   // The picture moving, in its card: its draft clip, once one is rendered for it as made. What
@@ -153,6 +154,11 @@ export function PictureCard({
           <header className="ep-block-head" data-status={state}>
             <KindIcon block={block} />
             <b>{name}</b>
+            {covers && (
+              <span className="ep-figure-covers" title="One picture, drawn once, that stays up while these lines are said">
+                {covers}
+              </span>
+            )}
             {pictureWords(unit, view) !== "Made" && <span>{pictureWords(unit, view)}</span>}
             {/* what made it, where that is not what the beat is set to now (the picker below says that) */}
             {madeOtherwise(view, unit) && <MadeWith view={view} unit={unit} />}
@@ -175,7 +181,7 @@ export function PictureCard({
                 Generate
               </button>
               <small>
-                {LEVELS[unit.level]}
+                {makes}
                 {unit.level === "simple" && unit.suggest === "rich" ? " Motion graphics are suggested for this one." : ""}
               </small>
             </div>

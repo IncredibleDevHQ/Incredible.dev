@@ -9,6 +9,7 @@ import { ThreadPanel } from "./components/ThreadPanel";
 import { Viewer } from "./components/Viewer";
 import { connectLive } from "./live";
 import { Brand, Computer, NeedsYou, ReadBrand, Skills } from "./pages/Pages";
+import { Production } from "./pages/Production";
 import { followAddress, go, parse } from "./route";
 import { useHouse } from "./store";
 
@@ -47,6 +48,7 @@ export function App() {
       ) : (
         <main className="main">
           {page === "needs" && <NeedsYou />}
+          {page === "production" && <Production />}
           {page === "brand" && <Brand />}
           {page === "read-brand" && <ReadBrand />}
           {page === "skills" && <Skills />}
