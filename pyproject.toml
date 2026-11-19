@@ -1,6 +1,6 @@
 [project]
 name = "design-agent"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "On-brand design and motion from a chat thread. Built on Deep Agents."
 readme = "README.md"
 license = "Apache-2.0"

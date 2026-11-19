@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.0 — 2026-11-19
+
+The first release of the new Incredible.dev: episodes (notes to a rendered, presenter-led film in a
+studio of their own), live agent trails and the production board, on top of channels, threads, the
+canvas, research frames and brands. The release notes are in
+[docs/releases/0.1.0.md](docs/releases/0.1.0.md).
+
 ### Removed in this fork
 
 - Slack: MDA's Slack channel, the self-hosted Slack adapter (`design-agent slack`, `test slack`),
@@ -222,11 +229,21 @@
     a bucket (`tools/footage.py`, the `s3` extra): S3 in production, MinIO or another
     S3-compatible store in development (`DESIGN_AGENT_S3_ENDPOINT`, `deploy/dev/compose.yaml`).
     The host sends it; a take stands when the bucket is down, and the thread says so.
+  - Recording a chapter opens a workspace with a reading guide: the chapter's lines, the one
+    being said highlighted, after a three-second countdown. With a local or cloned narrator,
+    Follow narration plays it into headphones and records it with the camera, and beats follow
+    it. A take stays in review until Save take, can be named, and is kept if saving fails; the
+    History tab's Takes lists a chapter's takes and Use this take picks the one the film uses.
+    A cloned voice can be picked, or recorded and saved for the channel, in the new-episode
+    sheet.
   - With `ELEVENLABS_API_KEY`, the lines no take covers are narrated when a film's voice is
     the narrator: in a voice picked for the episode from the account's voices, in a clone of
     the person's own voice (made by ElevenLabs from the takes they kept or a recording they
     bring, after they say the voice is theirs to clone), or in the house's
     `DESIGN_AGENT_NARRATOR_VOICE_ID`.
+- README: episodes, the production board and the agents on your computer, with screenshots taken
+  from the demo; the release workflow takes a version's own notes (`docs/releases/<version>.md`)
+  where they are written, else its section of this changelog.
 - Every run of an agent is a row in the house's own store (`runs`): what it was told, each step
   and note on the way, what it said, and the session it ran under. A local agent's own session
   is a shortcut to that record: when one can no longer be resumed, research and episodes start

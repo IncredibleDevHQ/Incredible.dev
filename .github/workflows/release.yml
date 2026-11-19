@@ -19,13 +19,22 @@ jobs:
           DESIGN_AGENT_RELEASE_CHECK=1 uv run pytest -q tests/unit/test_public_hygiene.py
       - name: Build the wheel and sdist
         run: uv build
-      - name: Cut the release notes from CHANGELOG.md
+      - name: Cut the release notes
+        # This version's own notes (docs/releases/<version>.md) where they are written, else its
+        # section of CHANGELOG.md, else the changes not yet released.
         run: |
           python3 - <<'PY'
-          import re, pathlib
-          text = pathlib.Path("CHANGELOG.md").read_text()
-          match = re.search(r"^## Unreleased\n(.*?)(?=^## |\Z)", text, re.S | re.M)
-          pathlib.Path("RELEASE_NOTES.md").write_text(match.group(1).strip() if match else "See CHANGELOG.md.")
+          import os, re, pathlib
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          notes = pathlib.Path(f"docs/releases/{version}.md")
+          if notes.is_file():
+              body = notes.read_text()
+          else:
+              text = pathlib.Path("CHANGELOG.md").read_text()
+              section = re.search(rf"^## v?{re.escape(version)}\b.*?\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+              section = section or re.search(r"^## Unreleased\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+              body = section.group(1).strip() if section else "See CHANGELOG.md."
+          pathlib.Path("RELEASE_NOTES.md").write_text(body)
           PY
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
