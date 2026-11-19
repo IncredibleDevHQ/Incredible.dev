@@ -145,7 +145,11 @@ Workspace reads and writes, graph checkpoints and graph memory use bounded Postg
 Each new connection restores its workspace search path. A checkout checks for stale connections
 before executing a statement. An interrupted write is never automatically replayed.
 
-Root Compose uses `blobs.py` to keep delivered files and attachments in private MinIO S3
-objects under the verified account UUID. File metadata stays in its Postgres schema; downloads
-pass through the authenticated backend, never a public bucket. Native development retains the
-local backend. See [MinIO](../minio.md) for migration and the local working-data boundary.
+Root Compose uses `blobs.py` to keep delivered files, attachments and Episode Studio media
+in private MinIO S3 objects under the verified account UUID. The account's PostgreSQL schema
+keeps chat messages, replies, take records and file metadata. Downloads pass through the
+authenticated backend. Native development retains the local backend. See [MinIO](../minio.md) for migration and the local working-data boundary.
+
+Studio chapter links use `?at=<chapter>` with an optional `line`. A chapter recording link adds
+`record=1` and opens the recorder at that chapter. Capturing starts when the person presses
+Start recording.

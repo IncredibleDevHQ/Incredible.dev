@@ -2489,6 +2489,8 @@ async def test_a_recording_is_cut_for_what_is_in_it(
     loud = "Integrated loudness:\n    I:   -30.0 LUFS\n  True peak:\n    Peak:  -20.0 dBFS\n"
 
     class Computer:
+        renders = True
+
         def __init__(self, streams: list[dict[str, Any]], zscale: int = 1) -> None:
             self.streams, self.zscale = streams, zscale
             self.put_at = ""
@@ -2513,7 +2515,9 @@ async def test_a_recording_is_cut_for_what_is_in_it(
         made = house.episodes._cut(episode, name, io.BytesIO(b"recording"))
         assert made["seconds"] == 12.5 and made["video"] and made["audio"]
         assert computer.sent == b"recording"
-        return computer.ran[-1]
+        assert computer.put_at.startswith("/tmp/design-agent-take_")
+        assert computer.ran[-1].startswith("rm -f ")
+        return computer.ran[-2]
 
     # an iPhone's file: brought down to the film's range of light, size and rate, its sound up
     phone = Computer(
@@ -3873,9 +3877,9 @@ async def test_channel_clones_can_be_selected_and_sampled_once(house, monkeypatc
     await asyncio.gather(*(desk.preview_channel_voice(second, voice["id"]) for _ in range(2)))
     assert spoken == [voice["id"]]
     assert any(v.get("preview") for v in desk.view(second)["channel_voices"])
-    assert desk.channel_voice_audio(second, voice["id"]).read_bytes() == b"sample audio"
+    assert house.blobs.read(desk.channel_voice_file(second, voice["id"])) == b"sample audio"
     with pytest.raises(KeyError):
-        desk.channel_voice_audio(other, voice["id"])
+        desk.channel_voice_file(other, voice["id"])
     old = desk.view(second)
     legacy = {"id": "testoldvoice00", "name": "Legacy voice", "verify": True}
     house.store.update_episode(second, settings={**old["settings"], "cloned_voice": legacy})
@@ -4933,3 +4937,77 @@ async def test_the_built_in_agent_builds_one_picture_at_a_time_across_the_house(
     await settle(lambda: not desk._busy(one) and not desk._busy(two))
     built = [house.store.picture(episode_id, unit) for episode_id in (one, two)]
     assert [(p["status"], p["builder"]) for p in built if p] == [("made", BUILTIN)] * 2
+
+
+async def test_private_storage_keeps_original_take_under_its_account_and_refuses_failed_save(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from design_agent.surfaces.web.blobs import BlobFiles, StorageUnavailable
+
+    class Storage:
+        def __init__(self):
+            self.stored: dict[str, bytes] = {}
+            self.offline = False
+
+        def upload_fileobj(self, source, bucket, key, **kwargs):
+            assert bucket == "recordings"
+            if self.offline:
+                raise OSError("offline")
+            self.stored[key] = source.read()
+
+    client = Storage()
+    namespace = "a" * 32
+    house.blobs = BlobFiles(
+        Settings(_env_file=None, blob_backend="s3", s3_bucket="recordings"),
+        house.files_dir,
+        namespace,
+        client=client,
+    )
+    episode_id = await planned(house)
+    chapter = house.episodes.view(episode_id)["plan"]["chapters"][0]["id"]
+    monkeypatch.setattr(
+        house.episodes, "_cut", lambda *args: {"video": "", "audio": "", "seconds": 15}
+    )
+
+    async def record(data: bytes):
+        return await house.episodes.add_take(
+            episode_id, by="you", chapter=chapter, name="original.mp4", source=io.BytesIO(data)
+        )
+
+    await record(b"original take")
+    (take,) = house.store.takes(episode_id)
+    (key,) = client.stored
+    assert key.startswith(f"accounts/{namespace}/blobs/")
+    assert take["raw"] == f"s3://recordings/{key}"
+    assert client.stored[key] == b"original take"
+    assert not list(house.files_dir.rglob("*.mp4"))
+
+    client.offline = True
+    with pytest.raises(StorageUnavailable):
+        await record(b"failed retake")
+    assert house.store.takes(episode_id) == [take]
+
+
+async def test_episode_reads_material_and_take_audio_through_blob_storage(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    channel = house.store.channels()[0]["id"]
+    material = house.save_file("", "source.md", b"Useful material", origin="upload")
+    material_path = house.files_dir / material["rel_path"]
+    material_path.unlink()
+    monkeypatch.setattr(house.blobs, "read", lambda row: b"Useful material")
+    view = house.episodes.create(
+        channel, by="you", file_ids=[material["id"]], settings={"writer": DEMO}
+    )
+    assert "Useful material" in house.store.episode(view["id"])["material"]
+    house.store.add_take(
+        {
+            "episode_id": view["id"],
+            "chapter": "c1",
+            "frame": "",
+            "seconds": 8,
+            "audio": material["id"],
+            "added_by": "you",
+        }
+    )
+    assert house.episodes._samples(view["id"]) == ([("source.md", b"Useful material")], 8)

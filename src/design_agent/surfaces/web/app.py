@@ -709,12 +709,23 @@ def create_app(
         row = store.file(file_id)
         if row is None:
             raise HTTPException(status_code=404, detail="no such file")
+        return await file_response(row, range_header)
+
+    async def file_response(
+        row: dict[str, Any], range_header: str | None, *, inline: bool = False
+    ) -> Response:
+        disposition = "inline" if inline else "attachment"
         try:
             if row.get("storage", "local") == "local":
                 path = host.blobs.local_path(row["rel_path"])
                 if not path.is_file():
                     raise FileNotFoundError
-                return FileResponse(path, media_type=row["mime"], filename=row["name"])
+                return FileResponse(
+                    path,
+                    media_type=row["mime"],
+                    filename=row["name"],
+                    content_disposition_type=disposition,
+                )
             try:
                 start, end = byte_range(range_header, row["size"])
             except ValueError:
@@ -741,7 +752,7 @@ def create_app(
 
         headers = {
             "Content-Length": str(end - start + 1),
-            "Content-Disposition": f"attachment; filename*=utf-8''{quote(row['name'])}",
+            "Content-Disposition": f"{disposition}; filename*=utf-8''{quote(row['name'])}",
             "Accept-Ranges": "bytes",
             "ETag": f'"{row["sha256"]}"',
             "X-Content-Type-Options": "nosniff",
@@ -1177,13 +1188,16 @@ def create_app(
 
     @app.get("/api/episodes/{episode_id}/voice/{voice_id}/preview")
     async def clone_audio(
-        episode_id: str, voice_id: str, _me: str = Depends(person)
-    ) -> FileResponse:
+        episode_id: str,
+        voice_id: str,
+        _me: str = Depends(person),
+        range_header: str | None = Header(default=None, alias="Range"),
+    ) -> Response:
         try:
-            path = host.episodes.channel_voice_audio(episode_id, voice_id)
+            row = host.episodes.channel_voice_file(episode_id, voice_id)
         except KeyError:
             raise HTTPException(status_code=404, detail="No saved sample for this voice.") from None
-        return FileResponse(path, media_type="audio/mpeg")
+        return await file_response(row, range_header, inline=True)
 
     @app.post("/api/episodes/{episode_id}/voice")
     async def clone_voice(

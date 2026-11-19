@@ -62,23 +62,11 @@ export function EpisodeStudio() {
   // opened as a peek, it sits over the page it was opened from, which Escape goes back to
   const peek = useHouse((s) => s.episodePeek);
   const landing = useHouse((s) => s.landing);
-  const [at, setAt] = useState<string>(FILM);
-  // The chapter that opens next is to be recorded at once: the run-through, once the choices are
-  // made. It opens at a line when one was picked on the film's page.
-  const [recordNext, setRecordNext] = useState(false);
-  const [lineNext, setLineNext] = useState<string | null>(null);
-  // the frame's pop-up stays open when the carousel moves it to another chapter
-  const [popNext, setPopNext] = useState(false);
+  const record = useHouse((s) => s.episodeRecording);
+  const at = landing?.chapter ?? FILM;
+  const [popFor, setPopFor] = useState<typeof landing>(null);
   const [busy, setBusy] = useState(false);
-  // counts the times a place was asked for, so a chapter already open goes to the line asked for
-  const [asked, setAsked] = useState(0);
-  const go = useCallback<Open>((to, record = false, line, pop = false) => {
-    setRecordNext(record);
-    setLineNext(line ?? null);
-    setPopNext(pop);
-    setAt(to);
-    setAsked((n) => n + 1);
-  }, []);
+  const popNext = Boolean(landing && popFor === landing);
 
   // Every change goes to the server and comes back as the whole episode.
   const run = useCallback<Run>(async (call) => {
@@ -93,17 +81,22 @@ export function EpisodeStudio() {
       setBusy(false);
     }
   }, []);
-  // A link or the board asked for a chapter, at a line: it opens there once, as soon as the plan
-  // is in. The chapter it is on is said back, so the address names it.
+  const go = useCallback<Open>((to, record = false, line, pop = false) => {
+    const place = to === FILM ? null : { chapter: to, line: line ?? "" };
+    setPopFor(pop ? place : null);
+    useHouse.setState({ landing: place, episodeRecording: record });
+    // This is an explicit record action. Opening a link never starts a picture build.
+    const episode = useHouse.getState().episode;
+    if (record && episode && pictureCount(episode, to).planned > 0) {
+      void run(() => api.makePictures(episode.id, { chapter: to }));
+    }
+  }, [run]);
   const planned = Boolean(view?.plan) && view?.status !== "planning" && view?.status !== "failed";
   useEffect(() => {
-    if (!landing || !planned || !view?.plan) return;
-    if (view.plan.chapters.some((c) => c.id === landing.chapter)) go(landing.chapter, false, landing.line || undefined);
-    useHouse.setState({ landing: null });
-  }, [landing, planned, view?.plan, go]);
-  useEffect(() => {
-    useHouse.setState({ episodeChapter: at === FILM ? "" : at });
-  }, [at]);
+    if (landing && planned && !view?.plan?.chapters.some((chapter) => chapter.id === landing.chapter)) {
+      useHouse.setState({ landing: null, episodeRecording: false });
+    }
+  }, [landing, planned, view?.plan]);
   // The whole page, from a peek: its channel comes to the front, and Back leads to the board.
   const whole = useCallback(() => {
     if (!view) return;
@@ -171,7 +164,7 @@ export function EpisodeStudio() {
           <main className={chapter ? "ep-chapter" : "ep-chapter ep-film-page"}>
             <Slides view={view} at={chapter?.id ?? FILM} onAt={go} />
             {chapter ? (
-              <Chapter key={chapter.id} view={view} chapter={chapter} run={run} busy={busy} record={recordNext} line={lineNext} pop={popNext} asked={asked} onAt={go} waiting={waiting} marks={marks} />
+              <Chapter key={chapter.id} view={view} chapter={chapter} run={run} busy={busy} record={record} line={landing?.line || null} pop={popNext} asked={landing} onAt={go} waiting={waiting} marks={marks} />
             ) : <FilmPage view={view} run={run} busy={busy} onAt={go} waiting={waiting} />}
           </main>
         )}
@@ -279,7 +272,7 @@ function Chapter({
   line: string | null;
   pop: boolean;
   // counts the times a place was asked for: this chapter asked for again goes to that line
-  asked: number;
+  asked: { chapter: string; line: string } | null;
   onAt: Open;
   waiting: Waiting;
   marks: Marks;
@@ -402,18 +395,30 @@ function Chapter({
   const episode = view.id;
   const begin = useCallback(() => {
     setChapterCue(null);
-    if (pics.planned > 0) return void run(() => api.makePictures(episode, { chapter: chapter.id }));
-    if (pics.making > 0) return;
-    setFull(true);
-    void arm();
-  }, [pics.planned, pics.making, run, episode, chapter.id, arm]);
-  // Opened to be recorded (the chapter before was just recorded): the camera comes up at once.
+    useHouse.setState({ episodeRecording: true });
+    if (pics.planned > 0) void run(() => api.makePictures(episode, { chapter: chapter.id }));
+  }, [pics.planned, run, episode, chapter.id]);
   const opened = useRef(false);
+  const stop = recorder.stop;
   useEffect(() => {
-    if (!record || opened.current) return;
-    opened.current = true;
-    begin();
-  }, [record, begin]);
+    if (!record) {
+      if (opened.current && recording) stop(false);
+      opened.current = false;
+    } else if (!opened.current && !waits) {
+      // The initial effect can be cleaned up before the chapter mounts for good.
+      let current = true;
+      queueMicrotask(() => {
+        if (!current) return;
+        opened.current = true;
+        setChapterCue(null);
+        setFull(true);
+        void arm();
+      });
+      return () => { current = false; };
+    } else if (opened.current && !recording) {
+      useHouse.setState({ episodeRecording: false });
+    }
+  }, [record, waits, recording, arm, stop]);
   useEffect(() => {
     if (!solo || !arming.current) return;
     arming.current = false;
@@ -528,7 +533,7 @@ function Chapter({
     if (askedAt.current === asked) return;
     askedAt.current = asked;
     if (recording) return;
-    if (opening && lines.some((l) => l.id === opening)) pick(opening);
+    pick(opening && lines.some((l) => l.id === opening) ? opening : lines[0].id);
     if (pop && !full) toggleEditor(true);
   }, [asked]);
   useEffect(() => {

@@ -79,6 +79,7 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
   const marks = useRef<Mark[]>([]);
   const began = useRef(0);
   const live = useRef<MediaStream | null>(null);
+  const deviceRequest = useRef(0);
   const kept = useRef(true);
   const guide = useRef<NarrationGuide | null>(null);
   const [lineElapsed, setLineElapsed] = useState(0);
@@ -153,6 +154,7 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
   const arm = useCallback(
     async (want: DevicePick = picked) => {
       if (saving.current) return;
+      const request = ++deviceRequest.current;
       clearReview();
       setProblem("");
       setState((was) => (was === "ready" ? was : "asking"));
@@ -164,14 +166,21 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
         } catch (error) {
           // the one picked before is not plugged in today: the browser's own choice, then
           if (!["OverconstrainedError", "NotFoundError"].includes((error as Error).name) || !(want.camera || want.mic)) throw error;
+          if (request !== deviceRequest.current) return;
           const rest: DevicePick = want.clean === undefined ? {} : { clean: want.clean };
           got = await open(rest);
-          setPicked(rest);
-          try {
-            localStorage.setItem(PICKED, JSON.stringify(rest));
-          } catch {
-            // nothing was kept
+          if (request === deviceRequest.current) {
+            setPicked(rest);
+            try {
+              localStorage.setItem(PICKED, JSON.stringify(rest));
+            } catch {
+              // nothing was kept
+            }
           }
+        }
+        if (request !== deviceRequest.current) {
+          got.getTracks().forEach((track) => track.stop());
+          return;
         }
         live.current?.getTracks().forEach((t) => t.stop());
         live.current = got;
@@ -182,6 +191,7 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
         setState("ready");
         void list();
       } catch (error) {
+        if (request !== deviceRequest.current) return;
         const named = (error as Error).name;
         setProblem(
           named === "NotAllowedError"
@@ -295,6 +305,7 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
 
   const stop = useCallback((keep: boolean) => {
     if (saving.current) return;
+    deviceRequest.current += 1;
     kept.current = keep;
     if (!keep) clearReview();
     if (recorder.current && recorder.current.state !== "inactive") recorder.current.stop();
@@ -320,6 +331,7 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
   }, [state, frames, stop]);
 
   useEffect(() => () => {
+    deviceRequest.current += 1;
     kept.current = false;
     if (reviewObjectUrl.current) URL.revokeObjectURL(reviewObjectUrl.current);
     if (recorder.current?.state === "recording") recorder.current.stop();

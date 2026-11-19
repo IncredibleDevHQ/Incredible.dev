@@ -607,7 +607,7 @@ class EpisodeDesk:
             for file_id in file_ids:
                 row = self.store.file(file_id)
                 if row is not None and str(row["name"]).lower().endswith(TEXT_FILES):
-                    body = (self.host.files_dir / row["rel_path"]).read_text("utf8", "replace")
+                    body = self.host.blobs.read(row).decode("utf8", "replace")
                     material.append(f"# {row['name']}\n\n{body}")
             if not material:
                 raise ValueError("An episode starts from material: paste notes or add a text file.")
@@ -2491,9 +2491,7 @@ class EpisodeDesk:
         for n, frame_id in enumerate(unit["frames"], start=1):
             row = self.store.file(stills.get(frame_id, ""))
             if row is not None:
-                images[f"pictures/{comp}.stills/{n}.png"] = (
-                    self.host.files_dir / row["rel_path"]
-                ).read_bytes()
+                images[f"pictures/{comp}.stills/{n}.png"] = self.host.blobs.read(row)
         if not images:
             return html, stills
         moving = await asyncio.to_thread(self._motion_frames, episode, unit, full, html)
@@ -3036,11 +3034,19 @@ class EpisodeDesk:
             for f in lines:
                 given.append({"frame": f["id"], "t": round(at / total * seconds, 3)})
                 at += float(f["seconds"])
+        take_id = new_id("tk")
+        private = self.host.blobs.backend == "s3"
+        raw = ""
+        if private:
+            raw = await asyncio.to_thread(
+                self.host.blobs.save_recording, f"{take_id}.{_ending(name)}", source
+            )
         for other in self.store.takes(episode_id):
             if other["chapter"] == chapter and other["frame"] == frame and other["kept"]:
                 self.store.update_take(str(other["id"]), kept=False)
         take = self.store.add_take(
             {
+                "id": take_id,
                 "episode_id": episode_id,
                 "chapter": chapter,
                 "label": label,
@@ -3049,6 +3055,7 @@ class EpisodeDesk:
                 "marks": given,
                 "video": made["video"],
                 "audio": made["audio"],
+                "raw": raw,
                 "kept": True,
                 "added_by": by,
             }
@@ -3059,7 +3066,8 @@ class EpisodeDesk:
             by=by,
             quiet=True,
         )
-        await self._keep_footage(episode, take, name, source, by=by)
+        if not private:
+            await self._keep_footage(episode, take, name, source, by=by)
         self._settle(episode_id)
         return self.view(episode_id)
 
@@ -3096,71 +3104,97 @@ class EpisodeDesk:
         that sound beside it. The recording is copied across as a file, never held in memory:
         a camera's own runs to gigabytes."""
         computer = self._computer(episode)
+        stem = new_id("take")
+        # The Docker sandbox's /tmp is outside its durable /workspace volume.
         folder = f"{PROJECTS}/{episode['id']}/takes"
-        stem = f"take-{int(time.time() * 1000)}"
+        if computer.renders:
+            folder = f"/tmp/design-agent-{stem}"  # noqa: S108 - random, private sandbox directory
+            if not computer.run(f"mkdir -m 700 {folder}").ok:
+                raise ValueError("Could not create scratch space for the recording.")
         src = f"{folder}/{stem}.src.{_ending(name)}"
-        computer.put_stream(src, source)
-        # What is in it, how loud its sound is, and whether this computer can bring a bright
-        # picture down to the film's range.
-        looked = computer.run(
-            f'cd {folder} && echo "streams: $(ffprobe -v error -show_entries '
-            f"stream=codec_type,color_transfer,channels -of json {src} 2>/dev/null "
-            "| tr -d ' \\n')\"; "
-            f"ffmpeg -hide_banner -nostats -i {src} -vn -af ebur128=peak=true:framelog=verbose "
-            "-f null - 2>&1 | tail -n 20; "
-            "echo \"zscale: $(ffmpeg -hide_banner -filters 2>/dev/null | grep -c ' zscale ')\"",
-            timeout=1800,
-        ).output
-        listed = re.search(r"^streams: (\{.*\})$", looked, re.M)
         try:
-            streams = json.loads(listed[1]).get("streams", []) if listed else []
-        except ValueError:
-            streams = []
-        video = [s for s in streams if s.get("codec_type") == "video"]
-        sound = [s for s in streams if s.get("codec_type") == "audio"]
-        bright = any(s.get("color_transfer") in HDR for s in video) and bool(
-            re.search(r"^zscale: [1-9]", looked, re.M)
-        )
-        level = _levelled(looked) if sound else ""
-        audio = (
-            (f'-af "{level}" ' if level else "")
-            # more channels than a film's two (a camera with four inputs) are mixed down
-            + ("-ac 2 " if any(int(s.get("channels") or 0) > 2 for s in sound) else "")
-            + "-c:a aac -b:a 160k -ar 48000"
-        )
-        if video:
-            picture = "fps=30,scale=-2:'min(1080,ih)':flags=lanczos" + (
-                f",{TONEMAP}" if bright else ""
+            computer.put_stream(src, source)
+            # What is in it, how loud its sound is, and whether this computer can bring a bright
+            # picture down to the film's range.
+            looked = computer.run(
+                f'cd {folder} && echo "streams: $(ffprobe -v error -show_entries '
+                f"stream=codec_type,color_transfer,channels -of json {src} 2>/dev/null "
+                "| tr -d ' \\n')\"; "
+                f"ffmpeg -hide_banner -nostats -i {src} -vn -af ebur128=peak=true:framelog=verbose "
+                "-f null - 2>&1 | tail -n 20; "
+                "echo \"zscale: $(ffmpeg -hide_banner -filters 2>/dev/null | grep -c ' zscale ')\"",
+                timeout=1800,
+            ).output
+            listed = re.search(r"^streams: (\{.*\})$", looked, re.M)
+            try:
+                streams = json.loads(listed[1]).get("streams", []) if listed else []
+            except ValueError:
+                streams = []
+            video = [s for s in streams if s.get("codec_type") == "video"]
+            sound = [s for s in streams if s.get("codec_type") == "audio"]
+            bright = any(s.get("color_transfer") in HDR for s in video) and bool(
+                re.search(r"^zscale: [1-9]", looked, re.M)
             )
-            colour = "-colorspace bt709 -color_primaries bt709 -color_trc bt709 " if bright else ""
-            cut = (
-                f'ffmpeg -v error -y -i {src} -vf "{picture}" -c:v libx264 -preset veryfast '
-                f"-crf 18 -g 15 -pix_fmt yuv420p {colour}{audio} -movflags +faststart {stem}.mp4 "
-                f"&& (ffmpeg -v error -y -i {stem}.mp4 -vn -c:a copy {stem}.m4a || true)"
+            level = _levelled(looked) if sound else ""
+            audio = (
+                (f'-af "{level}" ' if level else "")
+                # more channels than a film's two (a camera with four inputs) are mixed down
+                + ("-ac 2 " if any(int(s.get("channels") or 0) > 2 for s in sound) else "")
+                + "-c:a aac -b:a 160k -ar 48000"
             )
-        else:
-            cut = f"ffmpeg -v error -y -i {src} -vn {audio} {stem}.m4a"
-        ran = computer.run(
-            f"cd {folder} && {cut}; "
-            f'for f in {stem}.mp4 {stem}.m4a; do [ -s $f ] && echo "$f $(ffprobe -v error '
-            '-show_entries format=duration -of csv=p=0 $f)"; done; '
-            f"rm -f {src}",
-            timeout=3600,
-        )
-        lengths = dict(re.findall(rf"({stem}\.(?:mp4|m4a)) ([0-9.]+)", ran.output))
-        if not lengths:
-            raise ValueError(f"The recording couldn't be read: {_clean(ran.output[-200:])}")
-        out: Row = {"video": "", "audio": "", "seconds": max(float(v) for v in lengths.values())}
-        thread_id = str(episode["thread_id"])
-        for kind, suffix in (("video", "mp4"), ("audio", "m4a")):
-            data = (
-                computer.get(f"{folder}/{stem}.{suffix}") if f"{stem}.{suffix}" in lengths else None
-            )
-            if data:
-                out[kind] = str(
-                    self.host.save_file(thread_id, f"{stem}.{suffix}", data, origin="episode")["id"]
+            if video:
+                picture = "fps=30,scale=-2:'min(1080,ih)':flags=lanczos" + (
+                    f",{TONEMAP}" if bright else ""
                 )
-        return out
+                colour = (
+                    "-colorspace bt709 -color_primaries bt709 -color_trc bt709 " if bright else ""
+                )
+                cut = (
+                    f'ffmpeg -v error -y -i {src} -vf "{picture}" -c:v libx264 -preset veryfast '
+                    f"-crf 18 -g 15 -pix_fmt yuv420p {colour}{audio} -movflags +faststart {stem}.mp4 "
+                    f"&& (ffmpeg -v error -y -i {stem}.mp4 -vn -c:a copy {stem}.m4a || true)"
+                )
+            else:
+                cut = f"ffmpeg -v error -y -i {src} -vn {audio} {stem}.m4a"
+            ran = computer.run(
+                f"cd {folder} && {cut}; "
+                f'for f in {stem}.mp4 {stem}.m4a; do [ -s $f ] && echo "$f $(ffprobe -v error '
+                '-show_entries format=duration -of csv=p=0 $f)"; done',
+                timeout=3600,
+            )
+            lengths = dict(re.findall(rf"({stem}\.(?:mp4|m4a)) ([0-9.]+)", ran.output))
+            if not lengths:
+                raise ValueError(f"The recording couldn't be read: {_clean(ran.output[-200:])}")
+            out: Row = {
+                "video": "",
+                "audio": "",
+                "seconds": max(float(v) for v in lengths.values()),
+            }
+            thread_id = str(episode["thread_id"])
+            for kind, suffix in (("video", "mp4"), ("audio", "m4a")):
+                data = (
+                    computer.get(f"{folder}/{stem}.{suffix}")
+                    if f"{stem}.{suffix}" in lengths
+                    else None
+                )
+                if f"{stem}.{suffix}" in lengths and not data:
+                    raise ValueError(
+                        f"The converted {kind} couldn't be read. Try the recording again."
+                    )
+                if data:
+                    out[kind] = str(
+                        self.host.save_file(thread_id, f"{stem}.{suffix}", data, origin="episode")[
+                            "id"
+                        ]
+                    )
+            return out
+        finally:
+            with contextlib.suppress(Exception):
+                computer.run(
+                    f"rm -f {src} {folder}/{stem}.mp4 {folder}/{stem}.m4a"
+                    + (f"; rmdir {folder}" if computer.renders else ""),
+                    timeout=60,
+                )
 
     def keep_take(self, episode_id: str, take_id: str, *, keep: bool) -> Row:
         take = self.store.take(take_id)
@@ -3355,7 +3389,7 @@ class EpisodeDesk:
             row = self.store.file(fid)
             if not row or row["thread_id"] != episode["thread_id"]:
                 raise ValueError("A preview source is unavailable.")
-            return (self.host.files_dir / str(row["rel_path"])).read_bytes()
+            return self.host.blobs.read(row)
 
         files = [(f"{folder}/art.mp4", file_bytes(clip))]
         inputs = ["-i art.mp4"]
@@ -3535,19 +3569,12 @@ class EpisodeDesk:
             raise KeyError(voice_id)
         return voice
 
-    def _voice_audio(self, voice: Row) -> Path | None:
+    def channel_voice_file(self, episode_id: str, voice_id: str) -> Row:
+        voice = self._channel_voice(self._episode(episode_id), voice_id)
         file = self.store.file(voice["preview_file"]) if voice["preview_file"] else None
-        if file:
-            path = (self.host.files_dir / str(file["rel_path"])).resolve()
-            if self.host.files_dir.resolve() in path.parents and path.is_file():
-                return path
-        return None
-
-    def channel_voice_audio(self, episode_id: str, voice_id: str) -> Path:
-        path = self._voice_audio(self._channel_voice(self._episode(episode_id), voice_id))
-        if path is None:
+        if file is None:
             raise KeyError(voice_id)
-        return path
+        return file
 
     async def preview_channel_voice(self, episode_id: str, voice_id: str) -> Row:
         """Generate one reusable sample on request for a voice saved in the episode's channel."""
@@ -3556,7 +3583,7 @@ class EpisodeDesk:
         gate = self._gates.setdefault(f"voice-preview:{voice_id}", asyncio.Semaphore(1))
         async with gate:
             voice = self._channel_voice(episode, voice_id)
-            if self._voice_audio(voice) is None:
+            if not voice["preview_file"] or self.store.file(voice["preview_file"]) is None:
                 from design_agent.tools.media import MediaKeys, speak
 
                 said = await speak(
@@ -3588,7 +3615,7 @@ class EpisodeDesk:
             row = self.store.file(str(take["audio"])) if take["kept"] and take["audio"] else None
             if row is None or int(row["size"]) > CLONE_TAKE_BYTES:
                 continue
-            samples.append((str(row["name"]), (self.host.files_dir / row["rel_path"]).read_bytes()))
+            samples.append((str(row["name"]), self.host.blobs.read(row)))
             seconds += float(take["seconds"])
         return samples, seconds
 
@@ -3718,7 +3745,7 @@ class EpisodeDesk:
                 media.append(
                     (
                         f"{folder}/{voice[frame_id]}",
-                        (self.host.files_dir / row["rel_path"]).read_bytes(),
+                        self.host.blobs.read(row),
                     )
                 )
         takes: dict[str, Row] = {}
@@ -3729,9 +3756,7 @@ class EpisodeDesk:
                 if row is None:
                     continue
                 path = f"takes/{take['id']}.{suffix}"
-                media.append(
-                    (f"{folder}/{path}", (self.host.files_dir / row["rel_path"]).read_bytes())
-                )
+                media.append((f"{folder}/{path}", self.host.blobs.read(row)))
                 entry[kind] = path
             takes[str(take["id"])] = entry
         found = self._units(episode, full)

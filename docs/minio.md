@@ -1,7 +1,8 @@
 # Private S3 files with MinIO
 
-Root Compose stores uploaded attachments, linked source documents, generated deliverables and
-board/proof images in MinIO. Supabase PostgreSQL keeps file IDs, names, sizes, hashes and object
+Root Compose stores attachments, source documents, generated deliverables, board images, and
+Episode Studio media in MinIO. Episode media includes original chapter recordings, converted
+video and audio, previews, and rendered films. Supabase PostgreSQL keeps file IDs, names, sizes, hashes and object
 locations. Browser download URLs stay `/api/files/<id>`: the backend verifies the Supabase
 session and looks up the file in that account's private schema before accessing S3. No storage
 credential or public bucket URL is sent to the browser.
@@ -36,7 +37,11 @@ security maintenance. See the [official release](https://github.com/minio/minio/
 Object keys are `accounts/<verified-user-uuid>/blobs/<sha256>/<filename>`. Different contents
 never overwrite the same key. Every download checks the account namespace as well as the
 database record. Downloads stream through the backend and support single byte ranges for media.
-Storage failures return 503 without silently writing a new local copy.
+Original chapter recordings stream to `accounts/<verified-user-uuid>/blobs/recordings/`
+under the take ID. The take and its playback files are registered in PostgreSQL. A storage
+failure returns 503 and leaves the previous take selected. Temporary FFmpeg files are cleaned up
+after the conversion. Chat messages and replies stay in PostgreSQL and can be reopened from a
+fresh application workspace.
 
 When an existing account is first opened after enabling S3, its registered local files are
 uploaded and read back to verify the hash before their metadata pointers change. Migration is

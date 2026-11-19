@@ -7,7 +7,7 @@ import mimetypes
 import re
 from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
-from typing import Any, BinaryIO, cast
+from typing import IO, Any, BinaryIO, cast
 from urllib.parse import urlparse
 
 from design_agent.config import Settings
@@ -138,6 +138,19 @@ class BlobFiles:
             "rel_path": key,
             "sha256": digest,
         }
+
+    def save_recording(self, filename: str, source: IO[bytes]) -> str:
+        """Stream the original take to the account's private bucket."""
+        if self.client is None or not re.fullmatch(r"tk_[0-9a-f]{12}\.[a-z0-9]+", filename):
+            raise ValueError("Invalid private recording destination")
+        key = f"{self.prefix}recordings/{filename}"
+        mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        try:
+            source.seek(0)
+            self.client.upload_fileobj(source, self.bucket, key, ExtraArgs={"ContentType": mime})
+        except Exception:  # noqa: BLE001 - sanitize SDK/transport errors
+            raise StorageUnavailable() from None
+        return f"s3://{self.bucket}/{key}"
 
     def open(self, row: Mapping[str, Any], start: int = 0, end: int | None = None) -> BinaryIO:
         key = str(row["rel_path"])

@@ -6,6 +6,7 @@
 //   /c/lily/canvas/th_…/as_…      a card in that frame (a conversation's opens with its chat)
 //   /c/lily/episode/ep_…          an episode's studio, over the channel
 //   …/episode/ep_…?at=c2&line=…   on one of its chapters, at one of its lines
+//   …/episode/ep_…?at=c2&record=1 open that chapter’s recorder
 //   …?thread=th_…                 with that thread open beside it
 //   /production                   every episode's jobs on one board
 //   …?episode=ep_…&chapter=c2&agent=claude   narrowed to an episode, a chapter of it, an agent
@@ -18,7 +19,7 @@ import type { CanvasTask } from "./api";
 import { useHouse, type Focus, type Mode, type State } from "./store";
 
 type Route =
-  | { page: "channel"; channel?: string; mode: Mode; task?: string; node?: string; thread?: string; episode?: string; at?: string; line?: string }
+  | { page: "channel"; channel?: string; mode: Mode; task?: string; node?: string; thread?: string; episode?: string; at?: string; line?: string; record?: boolean }
   | { page: "brand"; kit?: string }
   | { page: "read-brand"; for?: string }
   | { page: "production"; episode?: string; chapter?: string; agent?: string }
@@ -44,7 +45,7 @@ export function parse(path: string, search: string): Route {
   const query = new URLSearchParams(search);
   if (head === "c" && rest[0]) {
     const [channel, view, task, node] = rest;
-    if (view === "episode" && task) return { page: "channel", channel, mode: "canvas", episode: task, at: query.get("at") ?? undefined, line: query.get("line") ?? undefined };
+    if (view === "episode" && task) return { page: "channel", channel, mode: "canvas", episode: task, at: query.get("at") ?? undefined, line: query.get("line") ?? undefined, record: query.get("record") === "1" };
     if (view !== "canvas") return { page: "channel", channel, mode: "chat", thread: query.get("thread") ?? undefined };
     return { page: "channel", channel, mode: "canvas", task, node, thread: query.get("thread") ?? undefined };
   }
@@ -77,7 +78,13 @@ export function addressOf(s: State): string {
     case "channel": {
       const channel = s.channels.find((c) => c.id === s.channelId);
       if (!channel) return "/";
-      if (s.episodeId) return `/c/${q(channel.name)}/episode/${q(s.episodeId)}${s.episodeChapter ? `?at=${q(s.episodeChapter)}` : ""}`;
+      if (s.episodeId) {
+        const chapter = s.landing;
+        const query = chapter
+          ? `?at=${q(chapter.chapter)}${chapter.line ? `&line=${q(chapter.line)}` : ""}${s.episodeRecording ? "&record=1" : ""}`
+          : "";
+        return `/c/${q(channel.name)}/episode/${q(s.episodeId)}${query}`;
+      }
       const canvas = s.mode === "canvas";
       const spot = canvas && s.focus ? `/${q(s.focus.task)}${s.focus.node ? `/${q(s.focus.node)}` : ""}` : "";
       // A conversation's card is picked with its chat open, so its address needs no ?thread.
@@ -108,8 +115,12 @@ export function go(route: Route) {
       if (!channel) return;
       void house.openChannel(channel.id, route.mode);
       const landing = route.episode && route.at ? { chapter: route.at, line: route.line ?? "" } : null;
-      if ((route.episode ?? null) !== useHouse.getState().episodeId) void house.openEpisode(route.episode ?? null, landing);
-      else if (landing && landing.chapter !== useHouse.getState().episodeChapter) useHouse.setState({ landing });
+      const episodeRecording = Boolean(landing && route.record);
+      if ((route.episode ?? null) !== useHouse.getState().episodeId) {
+        void house.openEpisode(route.episode ?? null, landing, false, episodeRecording);
+      } else {
+        useHouse.setState({ landing, episodeRecording });
+      }
       const focus = route.mode === "canvas" && route.task ? { task: route.task, node: route.node ?? null, reveal: true } : null;
       house.focusOn(focus);
       const open = useHouse.getState().threadId;
@@ -162,7 +173,9 @@ export function followAddress() {
       s.channelId !== before.channelId ||
       s.mode !== before.mode ||
       s.brandSlug !== before.brandSlug ||
-      s.episodeId !== before.episodeId;
+      s.episodeId !== before.episodeId ||
+      s.landing?.chapter !== before.landing?.chapter ||
+      (s.episodeRecording && !before.episodeRecording);
     if (step) history.pushState(null, "", next);
     else history.replaceState(null, "", next);
   });
