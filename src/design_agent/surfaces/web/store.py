@@ -153,6 +153,7 @@ ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # Where a take's recording, as it arrived, is kept (`s3://bucket/key`); empty when there
     # is no bucket for footage.
     ("takes", "raw", "TEXT NOT NULL DEFAULT ''"),
+    ("takes", "label", "TEXT NOT NULL DEFAULT ''"),
     # What a picture was built as and by whom: its level (simple or rich), the agent that built
     # it, and for a rich one the motion plan its builder wrote before drawing it.
     ("pictures", "level", "TEXT NOT NULL DEFAULT ''"),

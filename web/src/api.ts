@@ -408,6 +408,7 @@ export type BuildStage = {
 export type SteerNote = { id: string; text: string; at: number; stage?: BuildStageId; given_at?: number };
 export type EpisodeTake = {
   id: string;
+  label?: string;
   chapter: string;
   frame: string;
   n: number;
@@ -698,10 +699,11 @@ export const api = {
     call<EpisodeView>("POST", `/api/episodes/${id}/chapters/${encodeURIComponent(chapter)}/regenerate`, generation ?? {}),
   pictureGo: (id: string, unit: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/go`),
   pictureNote: (id: string, unit: string, text: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/note`, { text }),
-  addTake: (id: string, take: { chapter: string; frame?: string; marks: { frame: string; t: number }[]; file: Blob; name: string }) => {
+  addTake: (id: string, take: { label?: string; chapter: string; frame?: string; marks: { frame: string; t: number }[]; file: Blob; name: string }) => {
     const form = new FormData();
     form.append("file", take.file, take.name);
     form.append("chapter", take.chapter);
+    form.append("label", take.label ?? "");
     form.append("frame", take.frame ?? "");
     form.append("marks", JSON.stringify(take.marks));
     return call<EpisodeView>("POST", `/api/episodes/${id}/takes`, form);

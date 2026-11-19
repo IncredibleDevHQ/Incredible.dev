@@ -1,0 +1,14 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><div id="root"></div>
+<script type="module">
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {TakeHistory} from '/src/components/episode/TakeHistory.tsx';
+import '/src/app.css';
+const takes=[
+ {id:'old',chapter:'c1',frame:'',n:1,label:'Calm delivery',seconds:10,created_at:1,kept:false,video:{url:'/old.webm'}},
+ {id:'new',chapter:'c1',frame:'',n:2,label:'More energy',seconds:12,created_at:2,kept:true,audio:{url:'/new.wav'}},
+ {id:'other',chapter:'c2',frame:'',n:1,label:'Other chapter',seconds:10,created_at:3,kept:true}];
+createRoot(document.querySelector('#root')).render(React.createElement(TakeHistory,{
+ view:{id:'fixture',takes},chapter:{id:'c1',beats:[]},busy:false,run:async fn=>{await fn();return true;}
+}));
+</script></html>

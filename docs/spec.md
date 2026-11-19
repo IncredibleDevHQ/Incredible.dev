@@ -1356,3 +1356,28 @@ pull request (not in the repository).
 | 7 | Repository name final (`design-agent` vs the internal codename), org, and whether to publish to PyPI | LangChain marketing / OSS | Slice 10 |
 | 8 | Legal review: fonts, sample brand, vendored skills, D2 binary in image, partner trademarks and logos in README | Legal | Slice 10 |
 | 9 | Release timing relative to the launch blog and webinar | Marketing | none (repo must not block the blog) |
+
+Recording a chapter opens a full workspace with a reading guide and compact device controls.
+For local or cloned narration, Follow narration loads the audio before the countdown, plays it
+through headphones, and records that audio with the camera. Beat marks and visuals follow
+the narration duration and the take ends automatically. The highlighted word is an approximate
+pacing guide. Turning Follow narration off records the microphone with manual beat advances.
+A visible three-second countdown precedes capture. Finished takes stay in local playback review
+until Save take is chosen; failed uploads keep the take available for retry. Record again and
+Back to chapter ask before discarding an unsaved take. Back to chapter lives in the reading panel.
+
+The recording reading panel lists every chapter line, highlights the current line and scrolls
+to it on beat changes, while letting the person scroll ahead between changes.
+
+Recording review offers an optional version name before Save take. Names persist with takes.
+History → Takes lists the chapter’s recordings with scope, duration, date and an In use badge.
+Previewing a take does not change the film; Use this take selects it while retaining the others.
+
+The script uses a fixed readable type size. Recording audio is selected from Follow narration
+or Record microphone. The countdown animates each second and respects reduced-motion preferences.
+Clicking the video surface toggles playback; player controls keep their separate actions.
+The chapter sidebar shows recording and Ask AI directly; regeneration stays under More actions.
+The next-chapter action is omitted from the recording toolbar and sidebar; chapter navigation
+remains in the chapter list and player header. Review pairs a dedicated playback area with
+version naming, explicit save/retake actions, duration, and the recorded script in the right panel.
+A failed save preserves the take and its name for retry.

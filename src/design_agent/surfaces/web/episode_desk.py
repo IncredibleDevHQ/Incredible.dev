@@ -2943,12 +2943,16 @@ class EpisodeDesk:
         chapter: str,
         frame: str = "",
         marks: Sequence[Mapping[str, Any]] = (),
+        label: str = "",
         name: str,
         source: IO[bytes],
     ) -> Row:
         """A recording of a chapter (or of one line of it): cut to the film's format on the
         thread's computer and kept as this chapter's take. `source` is the recording as an
         open file; it is read from there and never held in memory."""
+        label = label.strip()
+        if len(label) > 120:
+            raise ValueError("Version names must be 120 characters or fewer.")
         episode = self._episode(episode_id)
         full = self._full(episode)
         if full is None:
@@ -2984,6 +2988,7 @@ class EpisodeDesk:
             {
                 "episode_id": episode_id,
                 "chapter": chapter,
+                "label": label,
                 "frame": frame,
                 "seconds": seconds,
                 "marks": given,
@@ -4247,6 +4252,7 @@ class EpisodeDesk:
             "chapter": take["chapter"],
             "frame": take["frame"],
             "n": take["n"],
+            "label": take.get("label", ""),
             "seconds": take["seconds"],
             "marks": take["marks"],
             "kept": take["kept"],

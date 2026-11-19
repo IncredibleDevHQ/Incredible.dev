@@ -964,6 +964,9 @@ def create_app(
             if not isinstance(upload, FormFile) or not isinstance(chapter, str) or not chapter:
                 raise HTTPException(status_code=422, detail="a recording and its chapter")
             frame, marks = form.get("frame") or "", form.get("marks") or "[]"
+            label = form.get("label") or ""
+            if not isinstance(label, str):
+                raise HTTPException(status_code=422, detail="version name must be text")
             try:
                 given = json.loads(marks) if isinstance(marks, str) else None
                 if not isinstance(given, list) or not all(isinstance(m, dict) for m in given):
@@ -974,6 +977,7 @@ def create_app(
                     chapter=chapter,
                     frame=frame if isinstance(frame, str) else "",
                     marks=given,
+                    label=label,
                     name=upload.filename or "take.webm",
                     source=upload.file,
                 )

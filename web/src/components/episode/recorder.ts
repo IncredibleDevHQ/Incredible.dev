@@ -4,14 +4,15 @@
 // cues on the words as they were actually said. Which camera and microphone are used is the
 // person's pick, kept on this computer; without one the browser's own choice is used.
 //
-// A take is the film's source, not a call, so it is recorded as the camera and the microphone
-// give it: nothing plays while it is recorded, so no echo is cancelled; a microphone a person
+// A take is the film's source. Guided takes combine the camera with decoded narration;
+// manual takes capture the microphone. A microphone a person
 // set up for their voice is left as it is (the film sets every take's loudness when it cuts
 // it); and the picture is encoded well above a call's rate, since it is encoded again.
+import type { NarrationGuide } from "./narrationGuide";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type Mark = { frame: string; t: number };
-export type RecorderState = "off" | "asking" | "ready" | "count" | "recording" | "saving";
+export type RecorderState = "off" | "asking" | "ready" | "count" | "recording" | "review" | "saving";
 export type Recording = { blob: Blob; name: string; marks: Mark[] };
 
 export type Devices = { cameras: MediaDeviceInfo[]; mics: MediaDeviceInfo[] };
@@ -79,6 +80,32 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
   const began = useRef(0);
   const live = useRef<MediaStream | null>(null);
   const kept = useRef(true);
+  const guide = useRef<NarrationGuide | null>(null);
+  const [lineElapsed, setLineElapsed] = useState(0);
+  const pending = useRef<Recording | null>(null);
+  const reviewObjectUrl = useRef<string | null>(null);
+  const [reviewUrl, setReviewUrl] = useState<string | null>(null);
+  const saving = useRef(false);
+  const clearReview = useCallback(() => {
+    if (reviewObjectUrl.current) URL.revokeObjectURL(reviewObjectUrl.current);
+    reviewObjectUrl.current = null;
+    pending.current = null;
+    setReviewUrl(null);
+  }, []);
+  const save = useCallback(async () => {
+    if (!pending.current || saving.current) return;
+    saving.current = true;
+    setProblem("");
+    setState("saving");
+    try {
+      await onDone(pending.current);
+      clearReview();
+      setState("off");
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : "The take could not be saved. Please try again.");
+      setState("review");
+    } finally { saving.current = false; }
+  }, [onDone, clearReview]);
 
   const release = useCallback(() => {
     live.current?.getTracks().forEach((t) => t.stop());
@@ -125,6 +152,8 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
   // The camera and microphone, asked for once the person chooses to record.
   const arm = useCallback(
     async (want: DevicePick = picked) => {
+      if (saving.current) return;
+      clearReview();
       setProblem("");
       setState((was) => (was === "ready" ? was : "asking"));
       try {
@@ -148,6 +177,8 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
         live.current = got;
         setStream(got);
         setIndex(0);
+        setElapsed(0);
+        setLineElapsed(0);
         setState("ready");
         void list();
       } catch (error) {
@@ -163,7 +194,7 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
         setState("off");
       }
     },
-    [open, picked, list, release],
+    [open, picked, list, release, clearReview],
   );
 
   // Another camera or microphone, or the sound cleaned up or left as it is: kept for next
@@ -186,60 +217,98 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
   const begin = useCallback(() => {
     const source = live.current;
     if (!source) return;
-    const made = createRecorder(source, camera);
+    const capture = guide.current ? new MediaStream([...source.getVideoTracks(), ...guide.current.stream.getAudioTracks()]) : source;
+    let made: MediaRecorder;
+    try { made = createRecorder(capture, camera); }
+    catch (error) {
+      guide.current?.stop();
+      guide.current = null;
+      setProblem(error instanceof Error ? error.message : "Could not start recording.");
+      setState("ready");
+      return;
+    }
     chunks.current = [];
-    marks.current = [{ frame: frames[0], t: 0 }];
+    let offset = 0;
+    marks.current = guide.current ? frames.map((frame, i) => {
+      const mark = { frame, t: offset };
+      offset += guide.current!.durations[i];
+      return mark;
+    }) : [{ frame: frames[0], t: 0 }];
     kept.current = true;
     made.ondataavailable = (e) => e.data.size > 0 && chunks.current.push(e.data);
     made.onstop = () => {
+      const duration = (performance.now() - began.current) / 1000;
+      marks.current = marks.current.filter(mark => mark.t < duration);
       const blob = new Blob(chunks.current, { type: made.mimeType || (camera ? "video/webm" : "audio/webm") });
+      guide.current?.stop();
+      guide.current = null;
       release();
       if (!kept.current || blob.size === 0) return setState("off");
-      setState("saving");
       // H.264 in a WebM container is Matroska, and the browser says so
       const ext = blob.type.includes("mp4") ? "mp4" : blob.type.includes("matroska") ? "mkv" : "webm";
-      void onDone({ blob, name: `take.${ext}`, marks: marks.current })
-        .catch((error: Error) => setProblem(error.message))
-        .finally(() => setState("off"));
+      pending.current = { blob, name: `take.${ext}`, marks: marks.current };
+      reviewObjectUrl.current = URL.createObjectURL(blob);
+      setReviewUrl(reviewObjectUrl.current);
+      setState("review");
     };
     recorder.current = made;
     began.current = performance.now();
     setIndex(0);
     setElapsed(0);
+    setLineElapsed(0);
     made.start(1000);
+    guide.current?.start(() => { if (made.state === "recording") made.stop(); });
     setState("recording");
-  }, [camera, frames, onDone, release]);
+  }, [camera, frames, release]);
 
   // Three, two, one, then the take.
-  const start = useCallback(() => {
+  const start = useCallback((narration?: NarrationGuide) => {
+    if (state !== "ready") return;
+    setProblem("");
+    guide.current = narration ?? null;
     setCount(3);
     setState("count");
-  }, []);
+  }, [state]);
   useEffect(() => {
     if (state !== "count") return;
     if (count === 0) return begin();
-    const timer = window.setTimeout(() => setCount((c) => c - 1), 800);
+    const timer = window.setTimeout(() => setCount((c) => c - 1), 1000);
     return () => window.clearTimeout(timer);
   }, [state, count, begin]);
 
   useEffect(() => {
     if (state !== "recording") return;
-    const timer = window.setInterval(() => setElapsed((performance.now() - began.current) / 1000), 200);
+    const timer = window.setInterval(() => {
+      const elapsed = (performance.now() - began.current) / 1000;
+      setElapsed(elapsed);
+      if (guide.current) {
+        const index = marks.current.findLastIndex(mark => mark.t <= elapsed);
+        setIndex(Math.max(0, index));
+        setLineElapsed(elapsed - (marks.current[index]?.t ?? 0));
+        if (elapsed >= guide.current.durations.reduce((sum, duration) => sum + duration, 0)) {
+          if (recorder.current?.state === "recording") recorder.current.stop();
+        }
+      } else setLineElapsed(elapsed - (marks.current.at(-1)?.t ?? 0));
+    }, 50);
     return () => window.clearInterval(timer);
   }, [state]);
 
   const stop = useCallback((keep: boolean) => {
+    if (saving.current) return;
     kept.current = keep;
+    if (!keep) clearReview();
     if (recorder.current && recorder.current.state !== "inactive") recorder.current.stop();
     else {
+      guide.current?.stop();
+      guide.current = null;
       release();
       setState("off");
     }
-  }, [release]);
+  }, [release, clearReview]);
 
   // The next line starts now; after the last one, the take ends.
   const next = useCallback(() => {
-    if (state !== "recording") return;
+    if (state !== "recording" || guide.current) return;
     setIndex((i) => {
       if (i + 1 >= frames.length) {
         stop(true);
@@ -250,7 +319,13 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
     });
   }, [state, frames, stop]);
 
-  useEffect(() => () => live.current?.getTracks().forEach((t) => t.stop()), []);
+  useEffect(() => () => {
+    kept.current = false;
+    if (reviewObjectUrl.current) URL.revokeObjectURL(reviewObjectUrl.current);
+    if (recorder.current?.state === "recording") recorder.current.stop();
+    guide.current?.stop();
+    live.current?.getTracks().forEach((t) => t.stop());
+  }, []);
 
   const armNow = useCallback(() => arm(), [arm]);
   // What is in use: the picked devices, or whichever the browser opened, and what they give.
@@ -262,5 +337,5 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
     clean: heard?.noiseSuppression === true,
     picture: seen?.width && seen.height ? { width: seen.width, height: seen.height, rate: Math.round(seen.frameRate ?? 0) } : undefined,
   };
-  return { state, stream, index, count, elapsed, problem, devices, using, choose, arm: armNow, start, next, stop, clearProblem: () => setProblem("") };
+  return { state, stream, reviewUrl, save, index, count, elapsed, lineElapsed, problem, devices, using, choose, arm: armNow, start, next, stop, clearProblem: () => setProblem("") };
 }

@@ -1,0 +1,17 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><div id="root"></div>
+<script type="module">
+import React,{useState} from 'react';
+import {createRoot} from 'react-dom/client';
+import {TakeReviewDetails} from '/src/components/episode/TakeReviewDetails.tsx';
+import '/src/app.css';
+function App(){
+ const [label,setLabel]=useState(''),[saving,setSaving]=useState(false),[problem,setProblem]=useState(''),[retried,setRetried]=useState(false);
+ return React.createElement('section',{className:'ep-say ep-review-panel',style:{width:340}},
+  React.createElement(TakeReviewDetails,{title:'Why do materials feel different?',seconds:7,video:true,
+   lines:[{id:'a',vo:'Metal carries heat away faster.'},{id:'b',vo:'Both spoons start at the same temperature.'}],
+   label,onLabel:setLabel,saving,problem,
+   onSave:()=>{setSaving(true);setProblem('');setTimeout(()=>{setSaving(false);setProblem('Upload failed. Try again.');},350)},
+   onAgain:()=>setRetried(true)}),retried && React.createElement('p',null,'Retake requested'));
+}
+createRoot(document.querySelector('#root')).render(React.createElement(App));
+</script></html>

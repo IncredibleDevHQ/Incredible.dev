@@ -19,6 +19,7 @@ import { blockName, blocksOf, KindIcon, type Block } from "./Blocks";
 import { writerTitle } from "./Film";
 import { builtOn, madeOn } from "./models";
 import { KindArt } from "./PictureArt";
+import { TakeHistory } from "./TakeHistory";
 
 // A version of a beat picked to look back at, shown in the frame in place of the one that
 // stands: the beat, and the version's number.
@@ -120,10 +121,10 @@ export function HistoryPanel({
   run: Run;
   busy: boolean;
 }) {
-  const [scope, setScope] = useState<"beat" | "chapter">("beat");
+  const [scope, setScope] = useState<"beat" | "chapter" | "takes">("beat");
   const lines = linesOf(chapter);
   const beats = blocksOf(view, lines).filter((b): b is Block & { unit: EpisodeUnit } => b.unit?.kind === "picture");
-  const listed = scope === "beat" ? beats.filter((b) => b.unit.id === unit?.id) : beats;
+  const listed = scope === "takes" ? [] : scope === "beat" ? beats.filter((b) => b.unit.id === unit?.id) : beats;
   const said = (b: Block) => {
     const from = lines.indexOf(b.lines[0]) + 1;
     return b.lines.length === 1 ? `line ${from}` : `lines ${from} to ${from + b.lines.length - 1}`;
@@ -134,7 +135,7 @@ export function HistoryPanel({
   return (
     <>
       <h3>History</h3>
-      <SegmentedControl<"beat" | "chapter">
+      <SegmentedControl<"beat" | "chapter" | "takes">
         size="sm"
         fullWidth
         aria-label="Whose versions are listed"
@@ -143,9 +144,11 @@ export function HistoryPanel({
         options={[
           { value: "beat", label: "Beat" },
           { value: "chapter", label: "Chapter" },
+          { value: "takes", label: "Takes" },
         ]}
       />
-      {listed.length === 0 && <small>{scope === "beat" ? "This line has no picture, so it has no versions." : "This chapter has no pictures."}</small>}
+      {scope === "takes" && <TakeHistory view={view} chapter={chapter} run={run} busy={busy} />}
+      {scope !== "takes" && listed.length === 0 && <small>{scope === "beat" ? "This line has no picture, so it has no versions." : "This chapter has no pictures."}</small>}
       {listed.map((b) => {
         const rows = rowsOf(view, b.unit);
         const open = b.unit.id === unit?.id;

@@ -3022,13 +3022,18 @@ def test_a_take_is_read_from_disk_and_a_voice_needs_a_key_and_a_yes(tmp_path: Pa
         recording = b"\x1aE\xdf\xa3" + b"0" * (2 * 1024 * 1024)
         sent = client.post(
             url,
-            data={"chapter": chapter, "marks": "[]"},
+            data={"chapter": chapter, "marks": "[]", "label": "Clear delivery"},
             files={"file": ("C0001.MP4", recording, "video/mp4")},
         )
         assert sent.status_code == 200, sent.text
         assert sent.json()["takes"][0]["seconds"] == 20.0
+        assert sent.json()["takes"][0]["label"] == "Clear delivery"
         assert got == {"name": "C0001.MP4", "data": recording}
         clip = {"file": ("a.webm", b"x", "video/webm")}
+        assert (
+            client.post(url, data={"chapter": chapter, "label": "x" * 121}, files=clip).status_code
+            == 422
+        )
         assert client.post(url, data={"chapter": chapter}).status_code == 422
         assert client.post(url, data={"chapter": "c99"}, files=clip).status_code == 404
         assert (
@@ -4245,3 +4250,44 @@ async def test_taking_a_change_back_puts_back_the_picture_it_had_and_keeps_the_o
     again = row()
     assert (again["version"], again["html"]) == (2, second["html"])
     assert [k["n"] for k in again["versions"]] == [1]
+
+
+async def test_named_recordings_persist_and_can_be_selected_without_losing_versions(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    episode_id = await planned(house)
+    chapter = house.episodes.view(episode_id)["plan"]["chapters"][0]["id"]
+    monkeypatch.setattr(
+        house.episodes,
+        "_cut",
+        lambda *args: {"video": "", "audio": "", "seconds": 5.0},
+    )
+    for label in ("  Calm delivery  ", "More energy"):
+        view = await house.episodes.add_take(
+            episode_id,
+            by="you",
+            chapter=chapter,
+            label=label,
+            name="take.webm",
+            source=io.BytesIO(b"recording"),
+        )
+    first, second = view["takes"]
+    assert [first["label"], second["label"]] == ["Calm delivery", "More energy"]
+    reopened = Store(house.store.path)
+    assert reopened.take(first["id"])["label"] == "Calm delivery"
+    reopened.close()
+    view = house.episodes.keep_take(episode_id, first["id"], keep=True)
+    assert [t["kept"] for t in view["takes"]] == [True, False]
+    assert len(view["takes"]) == 2
+    with pytest.raises(KeyError):
+        house.episodes.keep_take("another-episode", first["id"], keep=True)
+    with pytest.raises(ValueError, match="120"):
+        await house.episodes.add_take(
+            episode_id,
+            by="you",
+            chapter=chapter,
+            label="x" * 121,
+            name="take.webm",
+            source=io.BytesIO(b"recording"),
+        )
+    assert len(house.store.takes(episode_id)) == 2

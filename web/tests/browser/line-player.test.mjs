@@ -80,3 +80,20 @@ test("an edited beat samples the original animation span in the stage", async t 
   await video.dispatchEvent("loadedmetadata");
   assert.equal(await video.evaluate(el=>el.currentTime),10);
 });
+
+test("video surface toggles playback without interfering with player controls", async t => {
+  const server = await createServer({server:{host:"127.0.0.1",port:0},logLevel:"error"});
+  t.after(() => server.close()); await server.listen();
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage(); page.setDefaultTimeout(3000);
+  await page.goto(new URL("tests/browser/line-player.html",server.resolvedUrls.local[0]).href);
+  await page.getByRole("button",{name:"Play video",exact:true}).click();
+  await page.getByRole("button",{name:"Pause line",exact:true}).waitFor();
+  await page.getByRole("button",{name:"Pause video",exact:true}).click();
+  await page.getByRole("button",{name:"Play line",exact:true}).waitFor();
+  await page.getByRole("button",{name:"Play video",exact:true}).press("Space");
+  await page.getByRole("button",{name:"Pause line",exact:true}).click();
+  await page.getByRole("button",{name:"Play video",exact:true}).waitFor();
+  await page.getByRole("button",{name:"Playback settings"}).click();
+  await page.getByRole("button",{name:"Play line",exact:true}).waitFor();
+});

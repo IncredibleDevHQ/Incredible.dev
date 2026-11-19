@@ -8,10 +8,11 @@
 import { isWorkspaceTarget } from "../workspaceTarget";
 import {
   ArrowLeft,
-  ArrowRight,
   ChevronLeft,
   ChevronRight,
   Circle,
+  Headphones,
+  Mic,
   ListVideo,
   Maximize2,
   Minimize2,
@@ -30,16 +31,19 @@ import { useHouse } from "../../store";
 import { useTheme } from "../../theme";
 import { FileDrop } from "../FileDrop";
 import { Kbd } from "../Kbd";
+import { Select } from "../Select";
 import { Tooltip } from "../Tooltip";
 import { Ask, useWaiting, type Marks, type Run, type Waiting } from "./Ask";
 import { ChoicePanel, PANELS, type Panel } from "./Choices";
 import { Devices, Level } from "./Devices";
+import { useNarrationGuide } from "./narrationGuide";
 import { useRecorder, type Recording } from "./recorder";
+import { RecordingScript } from "./RecordingScript";
+import { TakeReviewDetails } from "./TakeReviewDetails";
 import { FilmPage, type Open } from "./Film";
 import { Script, type ScriptHandle } from "./Script";
 import { PictureHead, Stills } from "./Picture";
 import { RegenerateChapter } from "./RegenerateChapter";
-import { GenerationSettings } from "./GenerationSettings";
 import { FILM, Slides } from "./Slides";
 import { LinePlayer } from "./LinePlayer";
 import { FrameCanvas } from "./FrameCanvas";
@@ -263,7 +267,7 @@ function Chapter({
   const [picked, setPicked] = useState(() => (opening && lines.some((l) => l.id === opening) ? opening : lines[0].id));
   const [progress, setProgress] = useState<number | null>(null);
   const [captions, setCaptions] = useCaptions();
-  // The editor expands above the script. Recording brings the same frame into a dialog.
+  // The editor expands above the script; recording uses the full workspace.
   const [full, setFull] = useState(pop);
   const [selected, setSelected] = useState(Boolean(opening || pop));
   const [timelineVisible, setTimelineVisible] = useState(true);
@@ -291,16 +295,43 @@ function Chapter({
   const presenterOff = view.settings.presenter === "off";
   const working = turning(view);
 
+  const [takeLabel, setTakeLabel] = useState("");
   const save = useCallback(
     async (recording: Recording) => {
-      await run(() => api.addTake(view.id, { chapter: chapter.id, frame: solo ?? undefined, marks: recording.marks, file: recording.blob, name: recording.name }));
+      const saved = await run(() => api.addTake(view.id, { chapter: chapter.id, frame: solo ?? undefined, marks: recording.marks, file: recording.blob, name: recording.name, label: takeLabel }));
+      if (!saved) throw new Error("The take could not be saved. Please try again.");
       setSolo(null);
+      setTakeLabel("");
     },
-    [run, view.id, chapter.id, solo],
+    [run, view.id, chapter.id, solo, takeLabel],
   );
   const frames = useMemo(() => (solo ? [solo] : lines.map((l) => l.id)), [solo, lines]);
   const recorder = useRecorder({ frames, camera: !presenterOff, onDone: save });
   const recording = recorder.state !== "off";
+  const guide = useNarrationGuide();
+  const [guided, setGuided] = useState(voice === "narrator" || voice === "local");
+  const [guideDuration, setGuideDuration] = useState(0);
+  const [preparing, setPreparing] = useState(false);
+  const startRecording = async () => {
+    if (preparing || guide.loading) return;
+    if (!guided) return recorder.start();
+    setPreparing(true);
+    try {
+      let prepared = view;
+      if (frames.some(id => !clockLine(prepared, id)?.audio_url)) {
+        prepared = await api.previewVoice(view.id, chapter.id);
+        useHouse.getState().setEpisode(prepared);
+      }
+      const urls = frames.map(id => clockLine(prepared, id)?.audio_url);
+      if (urls.some(url => !url)) throw new Error("Narration is unavailable. Turn off Follow narration to record your voice.");
+      const narration = await guide.prepare(urls as string[]);
+      if (narration) {
+        setGuideDuration(narration.durations.reduce((sum, duration) => sum + duration, 0));
+        recorder.start(narration);
+      }
+    } catch (error) { useHouse.getState().say((error as Error).message); }
+    finally { setPreparing(false); }
+  };
   const said = solo ? lines.find((l) => l.id === solo) : lines[recorder.index];
   const line = (recording && recorder.state !== "saving" ? said : undefined) ?? lines.find((l) => l.id === picked) ?? lines[0];
   const unit = unitOf(view, line.id);
@@ -323,7 +354,6 @@ function Chapter({
   const previous = number > 1 ? plan.chapters[number - 2] : undefined;
   // How long the take was planned to run: the chapter, or the one line said again.
   const planned = solo ? (lines.find((l) => l.id === solo)?.seconds ?? 0) : (view.clock?.chapters.find((c) => c.id === chapter.id)?.seconds ?? chapter.seconds);
-  const [sayStep, setSayStep] = useSayStep();
   // What the last change did is marked in the script, except while a take is recorded.
   const marked = marks.on && !recording;
   // A line picked to be said again: the recorder is armed once it knows it has one line.
@@ -368,22 +398,23 @@ function Chapter({
   useEffect(() => {
     if (recorder.state !== "recording" && recorder.state !== "ready") return;
     const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || (e.target as HTMLElement).closest("button, input, select, textarea, [role=combobox]")) return;
       if (recorder.state === "ready") {
         if (e.key !== " ") return;
         e.preventDefault();
-        recorder.start();
+        void startRecording();
       } else if (e.key === " " || e.key === "ArrowRight" || e.key === "Enter") {
         e.preventDefault();
-        recorder.next();
+        if (!guided) recorder.next();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [recorder]);
+  }, [recorder, guided, startRecording]);
 
   const { spans, total } = spansOf(view, chapter, lines);
   const span = spans.find((x) => x.line.id === line.id);
-  const playhead = span && progress !== null ? span.start + progress * span.seconds : null;
+  const playhead = recording ? (solo ? (span?.start ?? 0) : 0) + recorder.elapsed : span && progress !== null ? span.start + progress * span.seconds : null;
   const pick = (frame: string) => {
     setChapterCue(null);
     setSelected(true);
@@ -516,31 +547,6 @@ function Chapter({
   // A take of the chapter from a file: picked, or dropped on the frame.
   const takesFile = (file: File) => /^(video|audio)\//.test(file.type) || /\.(mp4|mov|m4v|webm|mkv|m4a|mp3|wav|aac|ogg)$/i.test(file.name);
   const bring = (file: File) => void run(() => api.addTake(view.id, { chapter: chapter.id, marks: [], file, name: file.name }));
-  // After a take, the way on: the next chapter (opened with the camera on when it has no take
-  // yet), or the film.
-  const onward =
-    take &&
-    (following ? (
-      takeOf(view, following.id) ? (
-        <button type="button" className="btn primary" onClick={() => onAt(following.id)}>
-          Chapter {number + 1}
-          <ArrowRight />
-        </button>
-      ) : (
-        <Tooltip content="Opens it with the camera on, ready for Space" side="top" align="end">
-          <button type="button" className="btn primary" onClick={() => onAt(following.id, true)}>
-            <Circle />
-            Record chapter {number + 1}
-          </button>
-        </Tooltip>
-      )
-    ) : (
-      <button type="button" className="btn primary" onClick={() => onAt(FILM)}>
-        The film
-        <ArrowRight />
-      </button>
-    ));
-
   const previewTake = scheduled?.source.kind === "take" ? view.takes.find(t => t.id === scheduled.source.take) : undefined;
   const artwork = view.units.filter(u => u.chapter === chapter.id).flatMap(u => Object.values(u.picture.stills))[0];
   const chapterPoster = (
@@ -564,6 +570,16 @@ function Chapter({
     if (!full) toggleEditor(true);
   };
   const playChapter = <button className="btn" type="button" disabled={recording || busy} onClick={() => void startChapter()}><Play />Play chapter</button>;
+  const askChapter = <>
+        <Tooltip content="Asks the writer for a change, at the caret" shortcut={ASK_KEYS} side="bottom" align="end">
+          <button type="button" className="btn" disabled={recording} onClick={() => script.current?.askAt(line.id, "chapter")}>
+            <Sparkles />
+            Ask AI
+          </button>
+        </Tooltip>
+  </>;
+  const regenerateChapter = pics.all > 0 && <RegenerateChapter view={view} chapter={chapter.id} count={pics.all}
+    disabled={busy || recording || working || pics.making > 0 || view.film_state.status === "rendering"} run={run} />;
   const chapterActions = (
     <div className="ep-doc-top">
       {full ? (
@@ -575,26 +591,17 @@ function Chapter({
       <div className="ep-doc-actions">
         {take && (
           <small className="ep-peek-take">
-            Take {take.n} · {mmss(take.seconds)}
+            {take.label || `Take ${take.n}`} · {mmss(take.seconds)}
           </small>
         )}
-        {/* the picked beat made again from here: by another agent or model, or the other way */}
-        {full && unit?.kind === "picture" && <GenerationSettings variant="redo" view={view} unit={unit} run={run} busy={busy || working || recording} />}
-        <Tooltip content="Asks the writer for a change, at the caret" shortcut={ASK_KEYS} side="bottom" align="end">
-          <button type="button" className="btn" disabled={recording} onClick={() => script.current?.askAt(line.id, "chapter")}>
-            <Sparkles />
-            Ask AI
-          </button>
-        </Tooltip>
         <Tooltip content={pics.planned ? "Makes this chapter's pictures first" : "Opens the camera and microphone"} shortcut="R" side="bottom" align="end">
-          <button type="button" className={`btn ${take ? "" : "primary"}`} disabled={busy || (waits > 0 && pics.planned === 0)} onClick={begin}>
+          <button type="button" className="btn primary ep-record-chapter" disabled={busy || (waits > 0 && pics.planned === 0)} onClick={begin}>
             <Circle />
             {take ? "Retake" : `Record chapter ${number}`}
           </button>
         </Tooltip>
-        {pics.all > 0 && <RegenerateChapter view={view} chapter={chapter.id} count={pics.all}
-          disabled={busy || recording || working || pics.making > 0 || view.film_state.status === "rendering"} run={run} />}
-        {onward}
+        {askChapter}
+        {full ? regenerateChapter : regenerateChapter && <details className="ep-chapter-more"><summary>More actions</summary><div>{regenerateChapter}</div></details>}
       </div>
     </div>
   );
@@ -616,25 +623,26 @@ function Chapter({
     </nav>
   );
   return (
-      <section data-recording={recording || undefined} className="ep-doc ep-chapter-sheet" aria-label="Script">
+      <section data-recording={recording || undefined}
+            data-review={Boolean(recorder.reviewUrl) || undefined} className="ep-doc ep-chapter-sheet" aria-label="Script">
         <div className="ep-doc-body" ref={scriptBody}>
       {full && (
-        <div className={recording ? "ep-pop-scrim" : undefined}>
+        <div className={recording ? "ep-record-page" : undefined}>
           <div
             ref={fullRef}
             className={recording ? "ep-full ep-pop" : "ep-full ep-pop ep-inline-player"}
-            role={recording ? "dialog" : "region"}
-            aria-modal={recording || undefined}
+            role="region"
             aria-label={`Chapter ${number}: the frame, its choices and the recorder`}
             tabIndex={-1}
             data-recording={recording || undefined}
+            data-review={Boolean(recorder.reviewUrl) || undefined}
           >
             <section className="ep-pop-main">
               <header className="ep-pop-head">
                 <b>Chapter {number}</b>
                 <span className="ep-chapter-kind">{chapterName(chapter)}</span>
                 <small>{mmss(total)}</small>
-                {unit?.kind === "picture" && <PictureHead view={view} unit={unit} run={run} busy={busy || working} recording={recording} />}
+                {!recording && unit?.kind === "picture" && <PictureHead view={view} unit={unit} run={run} busy={busy || working} recording={recording} />}
                 <span className="ep-gap" />
                 {!recording && <div className="ep-preview-actions"><FilmDownload view={view} />
                   <Tooltip content="Bring a recording of this chapter: pick a video or audio file, or drop one on the frame" side="bottom">
@@ -680,8 +688,12 @@ function Chapter({
                   accepts={takesFile}
                   onFiles={([file]) => bring(file)}
                 >
-                  {recording ? (
-                    <Stage view={view} frame={line} unit={unit} stream={recorder.stream} />
+                  {recorder.reviewUrl ? (
+                    presenterOff
+                      ? <audio className="ep-take-review" aria-label="Review your recording" controls src={recorder.reviewUrl} />
+                      : <video className="ep-take-review" aria-label="Review your recording" controls playsInline src={recorder.reviewUrl} />
+                  ) : recording ? (
+                    <Stage view={view} frame={line} unit={shown} stream={recorder.stream} previewAt={recorder.state === "recording" ? recorder.lineElapsed : 0} />
                   ) : (
                     <LinePlayer cameraPoster={cameraPoster} key={playerKey + "/" + chapterRun} initialPosition={chapterCue?.offset} autoStart={chapterCue?.play}
                       chapter={chapterCue && span ? {start: span.start, nextStart: spans[at + 1]?.start, total, seek: seekChapter} : undefined} audioControls={{volume, setVolume, muted, setMuted}}
@@ -691,11 +703,11 @@ function Chapter({
                   )}
                   {/* a version picked to look back at is named over the frame's corner, with the way back */}
                   {!recording && unit && version && lookedAt !== null && <VersionChip n={version.n} standing={versionShown(unit, null, view)?.n ?? unit.picture.version} onBack={() => setSeen(null)} />}
-                  {recorder.state === "count" && <span className="ep-count">{recorder.count}</span>}
+                  {recorder.state === "count" && <div className="ep-count" role="status" aria-live="assertive"><span>Recording in</span><div key={Math.max(1, recorder.count)} className="ep-count-dial"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" /></svg><b>{Math.max(1, recorder.count)}</b></div></div>}
                 </FileDrop>
               </div>
               {!recording && chapterActions}
-              {recording ? (
+              {recording && !recorder.reviewUrl ? (
                 <div className="ep-recbar" data-recording>
                   {recorder.state === "asking" && (
                     <span className="ep-said">
@@ -705,13 +717,16 @@ function Chapter({
                   )}
                   {recorder.state === "ready" && (
                     <>
-                      <button type="button" className="btn primary" onClick={recorder.start}>
+                      <button type="button" className="btn primary" disabled={preparing || guide.loading} onClick={() => void startRecording()}>
                         <Circle />
-                        Start recording
+                        {preparing || guide.loading ? "Preparing narration…" : "Start recording"}
                         <Kbd keys="space" size="sm" />
                       </button>
                       <Devices stream={recorder.stream} devices={recorder.devices} using={recorder.using} camera={!presenterOff} onChoose={recorder.choose} />
-                      <span className="faint">{solo ? "Press Space when you have said it." : "Press Space at the end of each line."}</span>
+                      {(voice === "narrator" || voice === "local") && <Select className="ep-record-mode" size="lg" aria-label="Recording audio" disabled={preparing || guide.loading} value={guided ? "narration" : "microphone"} onChange={value => setGuided(value === "narration")} options={[
+                        {value: "narration", label: "Follow narration", icon: <Headphones />},
+                        {value: "microphone", label: "Record microphone", icon: <Mic />},
+                      ]} />}
                     </>
                   )}
                   {recorder.state === "count" && <span className="ep-said">Get ready</span>}
@@ -721,12 +736,12 @@ function Chapter({
                       <b className="ep-timer">{mmss(recorder.elapsed)}</b>
                       {planned > 0 && (
                         <span className="ep-planned" data-over={recorder.elapsed > planned * 1.25 || undefined}>
-                          of {mmss(planned)}
+                          / {mmss(guided ? guideDuration : planned)}
                         </span>
                       )}
                       <Level stream={recorder.stream} />
-                      <button type="button" className="btn primary" onClick={recorder.next}>
-                        {solo || recorder.index + 1 >= lines.length ? "Finish" : "Next line"}
+                      <button type="button" className="btn primary" onClick={() => guided ? recorder.stop(true) : recorder.next()}>
+                        {guided ? "Finish early" : solo || recorder.index + 1 >= lines.length ? "Finish" : "Next line"}
                         <Kbd keys="space" size="sm" />
                       </button>
                     </>
@@ -737,14 +752,11 @@ function Chapter({
                       Saving the take
                     </span>
                   )}
-                  {recorder.state !== "saving" && (
-                    <button type="button" className="btn" onClick={() => recorder.stop(false)}>
-                      Cancel
-                    </button>
-                  )}
+
                 </div>
               ) : null}
-              {recorder.problem && (
+              {guide.problem && <p role="alert" className="ep-notice">{guide.problem}</p>}
+              {recorder.problem && !recorder.reviewUrl && (
                 <p className="ep-notice" data-tone="red" role="alert">
                   {recorder.problem}
                 </p>
@@ -767,7 +779,7 @@ function Chapter({
                 </p>
               )}
               {!recording && unit && <Stills key={unit.id} view={view} unit={unit} lines={lines} picked={line.id} onPick={pick} run={run} busy={busy} />}
-              {(recording || timelineVisible) && <Timeline
+              {!recorder.reviewUrl && (recording || timelineVisible) && <Timeline
                 view={view}
                 chapter={chapter}
                 lines={lines}
@@ -783,23 +795,22 @@ function Chapter({
               />}
             </section>
             {recording ? (
-              <section className="ep-say" aria-label="Say it" aria-live="polite" style={{ "--say": `${SAY_SIZES[sayStep]}px` } as React.CSSProperties}>
+              <section className={`ep-say${recorder.reviewUrl ? " ep-review-panel" : ""}`} aria-label={recorder.reviewUrl ? "Take review" : "Say it"}>
+                <button className="btn ep-record-back" type="button" disabled={preparing || guide.loading || recorder.state === "saving"} onClick={() => {
+                  if ((recorder.state !== "recording" && recorder.state !== "review") || window.confirm("Discard this recording and return to the chapter?")) recorder.stop(false);
+                }}>Back to chapter</button>
+                {recorder.reviewUrl ? <TakeReviewDetails title={chapter.question} seconds={recorder.elapsed} video={!presenterOff}
+                  lines={solo ? [line] : lines} label={takeLabel} onLabel={setTakeLabel} saving={recorder.state === "saving"}
+                  problem={recorder.problem} onSave={() => void recorder.save()}
+                  onAgain={() => { if (window.confirm("Discard this take and record again?")) void recorder.arm(); }} /> : <>
                 <header>
                   <p className="ep-kicker">{solo ? `Say it again · line ${at + 1}` : `Say it · line ${Math.min(recorder.index + 1, lines.length)} of ${lines.length}`}</p>
-                  <span className="ep-say-size" role="group" aria-label="The size of the words">
-                    <button type="button" aria-label="Smaller words" disabled={sayStep === 0} onClick={() => setSayStep(sayStep - 1)}>
-                      A
-                    </button>
-                    <button type="button" aria-label="Larger words" disabled={sayStep === SAY_SIZES.length - 1} onClick={() => setSayStep(sayStep + 1)}>
-                      A
-                    </button>
-                  </span>
                 </header>
-                <p className="ep-say-now">{line.vo}</p>
-                {!solo && lines[recorder.index + 1] && <p className="ep-say-next">{lines[recorder.index + 1].vo}</p>}
+                <RecordingScript lines={lines} current={line.id} elapsed={recorder.lineElapsed} seconds={clockLine(view, line.id)?.seconds ?? line.seconds} />
+                </>}
               </section>
             ) : null}
-            {recording && choiceRail}
+
           </div>
         </div>
       )}
@@ -1011,26 +1022,3 @@ function useCaptions(): [boolean, (on: boolean) => void] {
 
 // The rail's panel a person opened last, so the next pop-up opens on it.
 let lastPanel: Panel = "layout";
-
-// How large the words to say are drawn, in steps: a person reads them from where they stand to
-// be filmed, which is rarely where they sit to type. Kept on this computer.
-const SAY_SIZES = [18, 22, 28, 36];
-function useSayStep(): [number, (step: number) => void] {
-  const [step, setStep] = useState(() => {
-    try {
-      const kept = Number(localStorage.getItem("episode-say-size") ?? 1);
-      return Number.isInteger(kept) && kept >= 0 && kept < SAY_SIZES.length ? kept : 1;
-    } catch {
-      return 1;
-    }
-  });
-  const set = (to: number) => {
-    setStep(to);
-    try {
-      localStorage.setItem("episode-say-size", String(to));
-    } catch {
-      // kept for this visit only
-    }
-  };
-  return [step, set];
-}

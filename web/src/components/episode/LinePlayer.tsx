@@ -164,6 +164,9 @@ export function LinePlayer({ view, frame, unit, draft, editingWindow, cameraPost
       )}
       {cameraPoster && !editingWindow && <div className="ep-player-poster">{cameraPoster}</div>}
       {captions && <Captions words={frame.vo} progress={position / seconds} />}
+      {!editingWindow && <button type="button" className="ep-player-surface" aria-label={playing ? "Pause video" : chapterEnded ? "Replay video" : "Play video"} onClick={() => void toggle()}>
+        <span aria-hidden="true">{playing ? <Pause /> : <Play />}</span>
+      </button>}
       <div className="ep-player-controls">
         <button type="button" aria-label={chapter ? (playing ? "Pause chapter" : chapterEnded ? "Replay chapter" : "Resume chapter") : (playing ? "Pause line" : "Play line")} onClick={() => void toggle()}>
           {playing ? <Pause /> : <Play />}
