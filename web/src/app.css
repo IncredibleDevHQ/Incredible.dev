@@ -1898,6 +1898,7 @@ button.ep-version:focus-visible { outline: 2px solid var(--green); outline-offse
 .ep-new .picker-panel { width: min(960px, 100%); }
 .ep-new-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 28px; padding-top: 4px; }
 .ep-new-grid section { display: grid; gap: 14px; align-content: start; min-width: 0; }
+.ep-new-facts .ep-channel-voices { margin: 0; padding: 0; border: 0; }
 .ep-new-files { display: grid; gap: 8px; justify-items: start; }
 .ep-new-from { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
 .ep-new-row { display: grid; gap: 8px; justify-items: start; }

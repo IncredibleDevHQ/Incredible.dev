@@ -3460,6 +3460,11 @@ class EpisodeDesk:
             pick["verify"] = True
         return pick
 
+    def channel_voices(self, channel_id: str) -> list[Row]:
+        if self.store.channel(channel_id) is None:
+            raise KeyError(channel_id)
+        return [self._clone_pick(row) for row in self.store.channel_voice_clones(channel_id)]
+
     @staticmethod
     def _voice_preview_url(episode_id: str, voice_id: str) -> str:
         return f"/api/episodes/{episode_id}/voice/{voice_id}/preview"
@@ -3543,13 +3548,7 @@ class EpisodeDesk:
         so each time the person says it is theirs to clone, and the thread keeps that they did."""
         episode = self._episode(episode_id)
         channel_id = self._channel_of(episode)
-        if not self._speaks():
-            raise ValueError("Cloning a voice needs ELEVENLABS_API_KEY.")
-        if not consent:
-            raise ValueError("Say that the voice is yours, or that its speaker agreed.")
-        title = _clean(name, 60)
-        if not title:
-            raise ValueError("Give the voice a name.")
+        title = self._clone_title(name, consent)
         if sample is not None:
             samples, source = [sample], "a recording brought as a file"
         else:
@@ -3560,19 +3559,7 @@ class EpisodeDesk:
                     "Record a chapter first, or bring a recording."
                 )
             source = f"{len(samples)} take{'s' if len(samples) != 1 else ''} of this episode"
-        from design_agent.tools.media import MediaKeys, clone_voice
-
-        made = await clone_voice(
-            MediaKeys.from_settings(self.host.settings), title, samples, noisy=noisy
-        )
-        if isinstance(made, str):
-            raise ValueError(made)
-        self._listed = None
-        picked: Row = {"id": made.voice_id, "name": title}
-        if made.verify:
-            # ElevenLabs wants the speaker verified on its own site before the voice speaks
-            picked["verify"] = True
-        self.store.add_voice_clone(channel_id, picked)
+        picked = await self._save_clone(channel_id, title, samples, noisy=noisy)
         episode = self._episode(episode_id)
         self.store.update_episode(
             episode_id,
@@ -3591,6 +3578,44 @@ class EpisodeDesk:
         )
         self._settle(episode_id)
         return self.view(episode_id)
+
+    async def clone_channel_voice(
+        self, channel_id: str, *, name: str, consent: bool, sample: tuple[str, bytes]
+    ) -> Row:
+        """Save a channel voice from a recording before there is an episode to attach it to."""
+        if self.store.channel(channel_id) is None:
+            raise KeyError(channel_id)
+        return await self._save_clone(channel_id, self._clone_title(name, consent), [sample])
+
+    def _clone_title(self, name: str, consent: bool) -> str:
+        if not self._speaks():
+            raise ValueError("Cloning a voice needs ELEVENLABS_API_KEY.")
+        if not consent:
+            raise ValueError("Say that the voice is yours, or that its speaker agreed.")
+        title = _clean(name, 60)
+        if not title:
+            raise ValueError("Give the voice a name.")
+        return title
+
+    async def _save_clone(
+        self,
+        channel_id: str,
+        title: str,
+        samples: Sequence[tuple[str, bytes]],
+        *,
+        noisy: bool = False,
+    ) -> Row:
+        from design_agent.tools.media import MediaKeys, clone_voice
+
+        made = await clone_voice(
+            MediaKeys.from_settings(self.host.settings), title, samples, noisy=noisy
+        )
+        if isinstance(made, str):
+            raise ValueError(made)
+        picked = self._clone_pick({"id": made.voice_id, "name": title, "verify": made.verify})
+        self.store.add_voice_clone(channel_id, picked)
+        self._listed = None
+        return picked
 
     async def _rendered(self, episode_id: str) -> None:
         try:

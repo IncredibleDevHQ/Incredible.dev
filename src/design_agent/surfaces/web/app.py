@@ -731,6 +731,38 @@ def create_app(
     async def episode_options(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
         return await asyncio.to_thread(host.episodes.options)
 
+    @app.get("/api/channels/{channel_id}/voices")
+    async def list_channel_voices(channel_id: str, _me: str = Depends(person)) -> dict[str, Any]:
+        try:
+            return {"voices": host.episodes.channel_voices(channel_id)}
+        except KeyError:
+            raise HTTPException(status_code=404, detail="no such channel") from None
+
+    async def voice_sample(file: UploadFile) -> tuple[str, bytes]:
+        content = await file.read(MAX_SAMPLE_BYTES + 1)
+        if len(content) > MAX_SAMPLE_BYTES:
+            raise HTTPException(status_code=413, detail="the recording is over 25 MiB")
+        if not content:
+            raise HTTPException(status_code=422, detail="the recording is empty")
+        return file.filename or "sample", content
+
+    @app.post("/api/channels/{channel_id}/voices")
+    async def add_channel_voice(
+        channel_id: str,
+        name: str = Form(..., max_length=80),
+        consent: bool = Form(default=False),
+        file: UploadFile = File(...),  # noqa: B008 - FastAPI's declaration style
+        _me: str = Depends(person),
+    ) -> dict[str, Any]:
+        try:
+            return await host.episodes.clone_channel_voice(
+                channel_id, name=name, consent=consent, sample=await voice_sample(file)
+            )
+        except KeyError:
+            raise HTTPException(status_code=404, detail="no such channel") from None
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
     @app.post("/api/channels/{channel_id}/episodes")
     async def new_episode(
         channel_id: str, body: EpisodeIn, me: str = Depends(person)
@@ -1009,12 +1041,7 @@ def create_app(
         file: UploadFile | None = File(default=None),  # noqa: B008 - FastAPI's declaration style
         me: str = Depends(person),
     ) -> dict[str, Any]:
-        sample: tuple[str, bytes] | None = None
-        if file is not None:
-            content = await file.read(MAX_SAMPLE_BYTES + 1)
-            if len(content) > MAX_SAMPLE_BYTES:
-                raise HTTPException(status_code=413, detail="the recording is over 25 MiB")
-            sample = (file.filename or "sample", content)
+        sample = await voice_sample(file) if file is not None else None
         try:
             return await host.episodes.clone(
                 episode_id, by=me, name=name, consent=consent, noisy=noisy, sample=sample

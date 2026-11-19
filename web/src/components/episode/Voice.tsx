@@ -1,7 +1,7 @@
 // Account voices and local recording setup for the episode narrator.
 import { Mic, Play, Plus, Square, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, type ChannelVoice, type EpisodeView, type Voice } from "../../api";
+import { api, type ChannelVoice, type EpisodeView, type Voice, type VoiceCloneInput } from "../../api";
 import { mmss } from "../../episode";
 import { MAX_SAMPLE_BYTES, useVoiceSample } from "./voiceSample";
 import { Select } from "../Select";
@@ -59,8 +59,8 @@ export function NarratorVoice({ view, run, busy }: { view: EpisodeView; run: Run
   );
 }
 
-export function ChannelVoices({ view, voices, selected, busy, onSelect, onAdd }: {
-  view: EpisodeView; voices: ChannelVoice[]; selected?: ChannelVoice; busy: boolean;
+export function ChannelVoices({ episode, voices, selected, busy, onSelect, onAdd, addLabel }: {
+  episode?: string; voices: ChannelVoice[]; selected?: ChannelVoice; busy: boolean; addLabel?: string;
   onSelect: (id: string) => void; onAdd: () => void;
 }) {
   return (
@@ -74,10 +74,10 @@ export function ChannelVoices({ view, voices, selected, busy, onSelect, onAdd }:
         ) : <span>Channel voices</span>}
         <button className="btn ep-add-voice" type="button" disabled={busy}
           aria-label="Add cloned voice" title="Add cloned voice" onClick={onAdd}>
-          <Plus aria-hidden="true" />{voices.length === 0 && "Add voice"}
+          <Plus aria-hidden="true" />{addLabel ?? (voices.length === 0 && "Add voice")}
         </button>
       </div>
-      {selected && <VoicePreview key={selected.id} episode={view.id} voice={selected} />}
+      {selected && episode && <VoicePreview key={selected.id} episode={episode} voice={selected} />}
     </div>
   );
 }
@@ -118,7 +118,10 @@ function VoicePreview({ episode, voice }: { episode: string; voice: ChannelVoice
   );
 }
 
-export function CloneDialog({ view, run, onDone }: { view: EpisodeView; run: Run; onDone: () => void }) {
+export function CloneDialog({ onClone, onDone }: {
+  onClone: (clone: VoiceCloneInput & { file: File }) => Promise<boolean>;
+  onDone: () => void;
+}) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
   useEffect(() => {
@@ -150,20 +153,13 @@ export function CloneDialog({ view, run, onDone }: { view: EpisodeView; run: Run
     if (!file || !ready) return;
     setBusy(true);
     setProblem("");
-    const made = await run(async () => {
-      try {
-        return await api.cloneVoice(view.id, {
-          name: name.trim(),
-          consent: mine,
-          file,
-        });
-      } catch (error) {
-        setProblem(error instanceof Error ? error.message : "Voice cloning failed. Try again.");
-        throw error;
-      }
-    });
-    setBusy(false);
-    if (made) onDone();
+    try {
+      if (await onClone({ name: name.trim(), consent: mine, file })) onDone();
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : "Voice cloning failed. Try again.");
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <dialog

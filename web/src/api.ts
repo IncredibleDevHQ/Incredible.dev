@@ -256,6 +256,7 @@ export type EpisodeLength = [number, number] | "auto";
 // The voice picked to narrate an episode. `verify`: ElevenLabs wants its speaker verified on its site before it speaks.
 export type Narrator = { id: string; name: string; verify?: boolean };
 export type ChannelVoice = Narrator & { preview?: string };
+export type VoiceCloneInput = { name: string; consent: boolean; file?: File };
 // A voice the ElevenLabs account can speak in: one made in it (a clone), and the house's own.
 export type Voice = { id: string; name: string; own: boolean; usual: boolean; preview?: string };
 export type BackgroundTexture = "solid" | "dots" | "grid" | "diagonal";
@@ -618,6 +619,14 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return (await response.json()) as T;
 }
 
+function voiceCloneForm(clone: VoiceCloneInput): FormData {
+  const form = new FormData();
+  form.append("name", clone.name);
+  form.append("consent", String(clone.consent));
+  if (clone.file) form.append("file", clone.file, clone.file.name);
+  return form;
+}
+
 export const api = {
   session: () => call<Session>("GET", "/api/session"),
   channels: () => call<Channel[]>("GET", "/api/channels"),
@@ -698,16 +707,14 @@ export const api = {
     return call<EpisodeView>("POST", `/api/episodes/${id}/takes`, form);
   },
   voices: () => call<{ voices: Voice[] }>("GET", "/api/voices"),
+  channelVoices: (channel: string) => call<{ voices: ChannelVoice[] }>("GET", `/api/channels/${channel}/voices`),
+  cloneChannelVoice: (channel: string, clone: VoiceCloneInput & { file: File }) =>
+    call<ChannelVoice>("POST", `/api/channels/${channel}/voices`, voiceCloneForm(clone)),
   previewChannelVoice: (episode: string, voice: string) =>
     call<{ url: string }>("POST", `/api/episodes/${episode}/voice/${encodeURIComponent(voice)}/preview`, {}),
   // A clone of the person's voice, from this episode's takes or from a recording they bring. `consent` is theirs to give.
-  cloneVoice: (id: string, clone: { name: string; consent: boolean; file?: File }) => {
-    const form = new FormData();
-    form.append("name", clone.name);
-    form.append("consent", String(clone.consent));
-    if (clone.file) form.append("file", clone.file, clone.file.name);
-    return call<EpisodeView>("POST", `/api/episodes/${id}/voice`, form);
-  },
+  cloneVoice: (id: string, clone: VoiceCloneInput) =>
+    call<EpisodeView>("POST", `/api/episodes/${id}/voice`, voiceCloneForm(clone)),
   keepTake: (id: string, take: string) => call<EpisodeView>("POST", `/api/episodes/${id}/takes/${take}/keep`, { keep: true }),
   dropTake: (id: string, take: string) => call<EpisodeView>("DELETE", `/api/episodes/${id}/takes/${take}`),
   renderEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/film`),

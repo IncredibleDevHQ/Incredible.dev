@@ -993,9 +993,11 @@ app's canvas, from a channel's material or a research frame's notes.
   account's voices, or else in the house's own (`DESIGN_AGENT_NARRATOR_VOICE_ID`). A person
   can record a sample from a reading script in Studio or upload a recording. The dialog plays
   the sample locally. The person confirms the voice is theirs or the speaker agreed before
-  the sample goes to ElevenLabs. The thread records that consent. The clone endpoint also
+  the sample goes to ElevenLabs. For cloning from an existing episode, the thread records that
+  consent. The clone endpoint also
   accepts kept takes as its source. Cloning is a Studio action reserved for the person.
-  The Voice menu lists the channel's saved clones and offers a plus button to add one.
+  Choose Cloned voice in the New episode dialog to select a channel voice or record and save
+  one before planning. The Voice menu also offers the channel library and an add button.
   A successful clone is selected for the episode and remains available in the channel.
   Playing a sample generates one short line in the selected voice and reuses that audio on later plays.
 - Chapter playback uses a single elapsed time and seek bar across beats. Replay starts from the chapter opening. The sidebar previews the whole chapter by default, with chapter actions below its cover. Choosing a beat switches to its frame. Opening the preview places the player above the script. Playback uses the

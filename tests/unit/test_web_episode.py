@@ -3798,6 +3798,57 @@ async def test_channel_clones_can_be_selected_and_sampled_once(house, monkeypatc
         store.close()
 
 
+def test_a_channel_voice_can_be_cloned_before_creating_an_episode(tmp_path, monkeypatch):
+    from design_agent.tools import media
+
+    settings = Settings(
+        _env_file=None,
+        workspace_root=tmp_path / "workspace",
+        sandbox="host",
+        elevenlabs_api_key="test-key",
+    )
+    calls = []
+
+    async def clone(keys, name, samples, *, noisy):
+        calls.append((name, samples, noisy))
+        return media.Cloned("testvoice00001", False)
+
+    monkeypatch.setattr(media, "clone_voice", clone)
+    with TestClient(create_app(ROOT, settings, demo=True)) as client:
+        first, second, *_ = client.get("/api/channels").json()
+        url = f"/api/channels/{first['id']}/voices"
+        other = f"/api/channels/{second['id']}/voices"
+        assert client.get(url).json() == {"voices": []}
+        assert client.get("/api/channels/missing/voices").status_code == 404
+        file = {"file": ("sample.webm", b"recorded speech", "audio/webm")}
+        assert client.post(url, data={"name": "Narrator"}, files=file).status_code == 422
+        consent = {"name": " Narrator ", "consent": "true"}
+        assert client.post(url, data=consent).status_code == 422
+        empty = {"file": ("empty.webm", b"", "audio/webm")}
+        assert client.post(url, data=consent, files=empty).status_code == 422
+        assert (
+            client.post("/api/channels/missing/voices", data=consent, files=file).status_code == 404
+        )
+        assert not calls
+        made = client.post(url, data=consent, files=file)
+        assert made.status_code == 200, made.text
+        voice = {"id": "testvoice00001", "name": "Narrator"}
+        assert made.json() == voice
+        assert calls == [("Narrator", [("sample.webm", b"recorded speech")], False)]
+        assert client.get(url).json() == {"voices": [voice]}
+        assert client.get(other).json() == {"voices": []}
+        assert client.app.state.host.store.all_episodes() == []
+
+        body = {
+            "text": NOTES,
+            "settings": {"writer": DEMO, "voice": "narrator", "narrator": voice},
+        }
+        assert client.post(f"/api/channels/{second['id']}/episodes", json=body).status_code == 422
+        episode = client.post(f"/api/channels/{first['id']}/episodes", json=body)
+        assert episode.status_code == 200, episode.text
+        assert episode.json()["settings"]["narrator"] == voice
+
+
 def test_motion_plan_rejects_two_shots_for_one_frame():
     shot = {"frame": "a", "shot": "Show the path.", "hero": "Trace the path.", "still": "A path."}
     _, faults = picture.motion_plan(

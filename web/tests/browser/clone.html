@@ -9,6 +9,7 @@
     import { createRoot } from "react-dom/client";
     import { CloneDialog } from "/src/components/episode/Voice.tsx";
     import { FilmTools } from "/src/components/episode/Tools.tsx";
+    import { api } from "/src/api.ts";
     function SavedVoice() {
       const clone = { id: "stored-voice", name: "Sample narrator" };
       const [settings, setSettings] = useState({ voice: "live", level: "simple", writer: "demo", cloned_voice: clone });
@@ -23,7 +24,8 @@
     function Fixture() {
       const [open, setOpen] = useState(true);
       return open ? React.createElement(CloneDialog, {
-        view: { id: "test-episode", takes: [] }, run: (task) => task(), onDone: () => setOpen(false)
+        onClone: async clone => { await api.cloneVoice("test-episode", clone); return true; },
+        onDone: () => setOpen(false)
       }) : React.createElement("button", {onClick: () => setOpen(true)}, "Open voice setup");
     }
     createRoot(document.getElementById("root")).render(React.createElement(location.search === "?saved" ? SavedVoice : Fixture));

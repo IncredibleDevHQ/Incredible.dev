@@ -1,7 +1,7 @@
 // New episodes start from notes or a research frame. The sample writer is an explicit choice.
 import { Paperclip, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, type EpisodeOptions, type EpisodeSettings, type FileView, type WriterId } from "../../api";
+import { api, type ChannelVoice, type EpisodeOptions, type EpisodeSettings, type FileView, type WriterId } from "../../api";
 import { keepWriter, lastWriter, LOOKS, mmss } from "../../episode";
 import { useHouse, type EpisodeStart } from "../../store";
 import { FileList } from "../../ui";
@@ -12,6 +12,7 @@ import { SegmentedControl } from "../SegmentedControl";
 import { TextArea } from "../TextArea";
 import { TextField } from "../TextField";
 import { AgentModel, offersPicks, type ModelPick } from "./AgentModel";
+import { ChannelVoices, CloneDialog } from "./Voice";
 
 // What the notes can be read from, by name: a dragged Markdown file often says no type at all.
 const TEXT_FILE = /\.(md|markdown|mdx|txt|rst|json|csv|html?)$/i;
@@ -28,7 +29,12 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
   const [auto, setAuto] = useState(false);
   const [presenter, setPresenter] = useState<"on" | "off">("on");
   const [theme, setTheme] = useState("corner-window");
-  const [voice, setVoice] = useState<EpisodeSettings["voice"] | null>(null);
+  const [voice, setVoice] = useState<EpisodeSettings["voice"] | "clone" | null>(null);
+  const [voiceLibrary, setVoiceLibrary] = useState<{ channel: string; voices: ChannelVoice[] } | null>(null);
+  const [voiceId, setVoiceId] = useState<string>();
+  const [voiceProblem, setVoiceProblem] = useState("");
+  const [voiceRetry, setVoiceRetry] = useState(0);
+  const [cloneOpen, setCloneOpen] = useState(false);
   const [writer, setWriter] = useState<WriterId | null>(null);
   // the model the writer runs on and how hard it thinks; neither picked is the writer's default
   const [pick, setPick] = useState<ModelPick>({ model: "", effort: "" });
@@ -37,6 +43,8 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
   const [more, setMore] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const close = () => startEpisode(null);
+  const clones = voiceLibrary?.channel === channelId ? voiceLibrary?.voices : undefined;
+  const selectedClone = clones?.find((item) => item.id === voiceId);
 
   useEffect(() => {
     void api
@@ -54,10 +62,21 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
   }, []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && startEpisode(null);
+    if (voice !== "clone" || !channelId || clones) return;
+    let active = true;
+    setVoiceProblem("");
+    void api.channelVoices(channelId).then(
+      ({ voices }) => { if (active) setVoiceLibrary({ channel: channelId, voices }); },
+      (error: Error) => { if (active) setVoiceProblem(error.message); },
+    );
+    return () => { active = false; };
+  }, [channelId, clones, voice, voiceRetry]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !cloneOpen && startEpisode(null);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [startEpisode]);
+  }, [cloneOpen, startEpisode]);
 
   const attach = async (picked: File[]) => {
     if (!picked.length) return;
@@ -71,7 +90,7 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
 
   const hasMaterial = Boolean(start.frame) || text.trim().length > 0 || files.length > 0;
   const plan = async () => {
-    if (!channelId || !writer || !voice || !hasMaterial) return;
+    if (!channelId || !writer || !voice || !hasMaterial || (voice === "clone" && !selectedClone)) return;
     setBusy(true);
     keepWriter(writer);
     try {
@@ -86,7 +105,8 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
           presenter,
           theme: presenter === "off" ? "voice-only" : theme,
           writer,
-          voice,
+          voice: voice === "clone" ? "narrator" : voice,
+          ...(voice === "clone" && selectedClone ? { narrator: { id: selectedClone.id, name: selectedClone.name } } : {}),
           ...(pick.model || pick.effort ? { writer_model: pick.model, writer_effort: pick.effort } : {}),
         },
       });
@@ -200,15 +220,25 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
               placeholder="Loading voices…"
               disabled={!options}
               onChange={(value) => {
-                if (value === "local" || value === "live" || value === "narrator") setVoice(value);
+                if (value === "local" || value === "live" || value === "narrator" || value === "clone") setVoice(value);
               }}
               hint={voice === "local" ? "Reads unrecorded lines aloud on this computer." : voice === "live" ? "Record your chapters in Studio. Unrecorded lines will be silent." : voice === "narrator" ? "Choose an ElevenLabs voice in Studio before rendering." : undefined}
               options={[
                 { value: "local", label: "Local narrator", description: options?.local_narrator ? "Offline speech" : "No speech engine installed", disabled: !options?.local_narrator },
                 { value: "live", label: "Your recordings", description: "Use your own chapter takes" },
-                { value: "narrator", label: "ElevenLabs", description: options?.narrator.ready ? "Use a library or cloned voice" : "Requires an ElevenLabs connection", disabled: !options?.narrator.ready },
+                { value: "narrator", label: "ElevenLabs", description: options?.narrator.ready ? "Use a library voice" : "Requires an ElevenLabs connection", disabled: !options?.narrator.ready },
+                { value: "clone", label: "Cloned voice", description: options?.narrator.ready ? "Choose a channel voice or record a new one" : "Requires an ElevenLabs connection", disabled: !options?.narrator.ready || !channelId },
               ]}
             />
+            {voice === "clone" && (clones ? (
+              <ChannelVoices voices={clones} selected={selectedClone} busy={busy}
+                onSelect={setVoiceId} onAdd={() => setCloneOpen(true)} addLabel="Add voice" />
+            ) : voiceProblem ? (
+              <div className="ep-new-row">
+                <small data-tone="red" role="alert">{voiceProblem}</small>
+                <button type="button" className="btn" onClick={() => setVoiceRetry(n => n + 1)}>Retry voice list</button>
+              </div>
+            ) : <p className="ep-new-from" role="status">Loading channel voices…</p>)}
             <Select
               label="Episode writer"
               value={writer}
@@ -246,11 +276,17 @@ export function NewEpisode({ start }: { start: EpisodeStart }) {
           <button type="button" className="btn" onClick={close}>
             Cancel
           </button>
-          <button type="button" className="btn primary" disabled={busy || !writer || !voice || !hasMaterial} onClick={() => void plan()}>
+          <button type="button" className="btn primary" disabled={busy || !writer || !voice || !hasMaterial || (voice === "clone" && !selectedClone)} onClick={() => void plan()}>
             {writer === "demo" ? "Plan HTTP caching sample" : "Plan the episode"}
           </button>
         </footer>
       </FileDrop>
+      {cloneOpen && channelId && <CloneDialog onDone={() => setCloneOpen(false)} onClone={async clone => {
+        const saved = await api.cloneChannelVoice(channelId, clone);
+        setVoiceLibrary({ channel: channelId, voices: [...(clones ?? []), saved] });
+        setVoiceId(saved.id);
+        return true;
+      }} />}
     </div>
   );
 }

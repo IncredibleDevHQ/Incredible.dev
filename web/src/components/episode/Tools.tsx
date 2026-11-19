@@ -108,7 +108,7 @@ function VoiceTool({ view, run, busy }: Props) {
               ]}
             />
             {voice === "narrator" && !usingClone && narrator && <NarratorVoice view={view} run={run} busy={busy} />}
-            {narrator && usingClone && <ChannelVoices view={view} voices={clones} selected={picked}
+            {narrator && usingClone && <ChannelVoices episode={view.id} voices={clones} selected={picked}
               busy={busy} onAdd={add}
               onSelect={id => {
                 const next = clones.find(clone => clone.id === id);
@@ -118,7 +118,10 @@ function VoiceTool({ view, run, busy }: Props) {
           );
         }}
       </Tool>
-      {upload && <CloneDialog view={view} run={run} onDone={() => setUpload(false)} />}
+      {upload && <CloneDialog onDone={() => setUpload(false)} onClone={async clone => {
+        const made = await api.cloneVoice(view.id, clone);
+        return run(async () => made);
+      }} />}
     </>
   );
 }
