@@ -690,7 +690,7 @@ function Chapter({
                       }} speed={speed} onSpeed={setSpeed} view={view} frame={previewLine} editingWindow={draftSize !== null} unit={shown} draft={Boolean(version)} captions={captions} onCaptions={setCaptions} onProgress={setProgress} />
                   )}
                   {/* a version picked to look back at is named over the frame's corner, with the way back */}
-                  {!recording && version && lookedAt !== null && <VersionChip n={version.n} onLatest={() => setSeen(null)} />}
+                  {!recording && unit && version && lookedAt !== null && <VersionChip n={version.n} standing={versionShown(unit, null, view)?.n ?? unit.picture.version} onBack={() => setSeen(null)} />}
                   {recorder.state === "count" && <span className="ep-count">{recorder.count}</span>}
                 </FileDrop>
               </div>
@@ -753,6 +753,15 @@ function Chapter({
                 <p className="ep-notice" data-tone="red">
                   This picture couldn't be made: {unit.picture.failure || "it stopped"}.{" "}
                   <button type="button" className="linkish" disabled={busy} onClick={() => void run(() => api.makePictures(view.id, { units: [unit.id] }))}>
+                    Try again
+                  </button>
+                </p>
+              )}
+              {/* a redo that did not land: the version before stands again, and the beat says why */}
+              {!recording && unit && (unit.picture.status === "made" || unit.picture.status === "go") && unit.picture.failure && (
+                <p className="ep-notice" data-tone="amber">
+                  The new version couldn't be made: {unit.picture.failure.replace(/\.+$/, "")}. Version {unit.picture.version} stands.{" "}
+                  <button type="button" className="linkish" disabled={busy} onClick={() => void run(() => api.makePictures(view.id, { units: [unit.id], level: unit.level }))}>
                     Try again
                   </button>
                 </p>

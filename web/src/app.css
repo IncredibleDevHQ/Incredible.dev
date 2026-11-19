@@ -1761,6 +1761,8 @@ button.ep-run-open:focus-visible { outline: 2px solid var(--green); outline-offs
 .ep-version-beat h4 span { color: var(--muted); font-weight: 400; }
 .ep-version-beat h4[data-open] :is(b, svg) { color: var(--green); }
 .ep-version-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.ep-version-list > li { display: grid; gap: 6px; min-width: 0; }
+.ep-version-use { justify-content: center; width: 100%; }
 .ep-version-list[data-compact] { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .ep-version { display: grid; gap: 7px; width: 100%; padding: 5px 5px 8px; border: 1px solid var(--line-soft); border-radius: 11px; background: none; color: var(--ink-2); font: inherit; text-align: left; }
 button.ep-version { cursor: pointer; transition: border-color 140ms ease, background 160ms ease; }

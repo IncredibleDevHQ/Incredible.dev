@@ -370,8 +370,8 @@ export type EpisodeUnit = {
     // how long the build has taken in all: while it runs, when it began; once it ends, as the
     // beat's record keeps it (null before a build, or for one the house did not date)
     timing: BuildTiming | null;
-    // which version it is (or will be, while it is made), counting up from 1, and the ones made
-    // before it was asked for again, newest first, to look back at
+    // which version it is (or will be, while it is made), counting up from 1, and the ones it
+    // stood as before, the one it last stood as first, to look back at and to put back
     version: number;
     versions: PictureVersion[];
     reviewed: string;
@@ -381,8 +381,8 @@ export type EpisodeUnit = {
   };
 };
 export type BuildTiming = { started_at: number | null; ended_at: number | null; seconds: number | null };
-// A version of a picture kept to look back at: its number, its stills and clip, how and by whom
-// it was made, when its build ended and how long that took.
+// A version of a picture kept to look back at and to put back: its number, its stills and clip,
+// how and by whom it was made, when its build ended and how long that took.
 export type PictureVersion = {
   n: number;
   stills: Record<string, FileView>;
@@ -661,6 +661,10 @@ export const api = {
   // Pictures made for words their lines no longer say: the writer fits them to the new words,
   // then they are drawn again.
   replanPictures: (id: string, units: string[]) => call<EpisodeView>("POST", `/api/episodes/${id}/replan`, { units }),
+  // A version of a picture made before, put back: it stands again as it was made, and the one
+  // that stood is kept in its place. A build under way for the picture is stopped.
+  putVersionBack: (id: string, unit: string, n: number) =>
+    call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/versions/${n}/use`),
   // A picture made for other words, kept as it is for the words its lines say now.
   keepPicture: (id: string, unit: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/keep`),
   // a note for a picture's builder while it works, for its next turn, and taking one back

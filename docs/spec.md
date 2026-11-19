@@ -925,14 +925,21 @@ app's canvas, from a channel's material or a research frame's notes.
   script, the film being rendered, then the pictures waiting their turn; two or more can be
   stopped together. And the beat's tile on the timeline turns its mark, runs a line along its
   foot and, where it is wide enough, says what its builder is on.
-  Asking for a made picture again keeps the version it replaces with the beat
-  (`pictures.versions`, newest first: each one's number, stills, clip, level, builder, what it
-  was made on, when and how long its build took; the oldest is dropped past twelve, and
-  versions keep their numbers). The editor's History tab lists them for the open beat as
-  cards, the one being made first, then the one that stands, then the ones before, and for the
-  whole chapter as tiles under each beat. A press shows that version in the frame, where it
-  plays as it was made, with its number and the way back to the latest over the frame's
-  corner; it shows nothing else differently and makes nothing.
+  Asking for a made picture again keeps the version it replaces with the beat, whole
+  (`pictures.versions`, the one it last stood as first: each one's number, its picture's HTML,
+  stills, clip, level, builder, what it was made on, when and how long its build took; past
+  twelve the oldest made is dropped). A beat's own number is `pictures.version`, and a number
+  is never made twice. The editor's History tab lists them for the open beat as cards, the one
+  being made first, then the one that stands, then the ones before, and for the whole chapter
+  as tiles under each beat. A press shows that version in the frame, where it plays as it was
+  made, with its number and the way back to the one that stands over the frame's corner. Under
+  the card on show, Use this version puts it back (`POST …/pictures/{unit}/versions/{n}/use`):
+  it stands again as it was made, at its level, and the one it replaces is kept; while the beat
+  is being made again the press says Stop and use this, and does that. Nothing is
+  drawn. A redo that is stopped or fails goes back to the version before, which stands as it
+  did; one that failed says why under the frame, with Try again. Taking a change back puts its
+  pictures back the same way, keeping the ones made since. A first build that stops or fails
+  is left not made, as before.
   Draw it again and retry use that saved choice. Beats without an override inherit the
   chapter's saved provider, or the film's agent with the film's model and effort. Each agent
   draws its pictures a few at a time. A new episode starts with the agent picked last on that

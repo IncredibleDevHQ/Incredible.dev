@@ -119,9 +119,14 @@
     pill opens onto each task as a row (a picture's stages as a strip, who builds it on what
     and for how long; the writer's turn; the film being rendered), a picture's row opens its
     beat, and the stop moved there from the bar. The versions made before are kept with the
-    beat (`pictures.versions`, newest first, up to twelve), and the editor's History tab
-    lists them for the beat and for the chapter; a press shows one in the frame, as it was
-    made. While it is made, its
+    beat, whole (`pictures.versions`, up to twelve, with the beat's number in
+    `pictures.version`), and the editor's History tab lists them for the beat and for the
+    chapter; a press shows one in the frame, as it was made, and Use this version puts it back
+    (`POST …/pictures/{unit}/versions/{n}/use`), stopping a build under way for it. A redo that
+    is stopped or fails goes back to the version before instead of leaving the beat not made,
+    and one that failed says why under the frame. Taking a change back puts its pictures back
+    the same way. A store from before keeps none of the versions it had. While it is made,
+    its
     block follows the build stage by stage with its builder's
     steps and notes streaming under the stage under way (`picture.live` in the view). One
     picture can be stopped by itself. A made picture plays in its block from its draft clip, or full

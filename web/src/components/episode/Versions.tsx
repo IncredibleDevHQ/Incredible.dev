@@ -3,25 +3,28 @@
 // over who made it on what, how, how long its build took and when; the chapter's are every beat's
 // as small tiles, to find a version by eye. A press shows that version in the frame, where it
 // plays as it was made; the frame says in its corner which version it shows while that is not
-// the latest. Nothing here makes or changes a picture. Written for this house from notes on how lists
-// of an agent's saved points behave; no other component's source is in it.
-import { History } from "lucide-react";
+// the one that stands. A version made before, on show, can be put back: it stands again as it
+// was made, and the one it replaces is kept. Nothing here draws a picture. Written for this house
+// from notes on how lists of an agent's saved points behave; no other component's source is in it.
+import { ArchiveRestore, History } from "lucide-react";
 import { useState } from "react";
-import type { EpisodeChapter, EpisodeUnit, EpisodeView, FileView, Level } from "../../api";
+import { api, type EpisodeChapter, type EpisodeUnit, type EpisodeView, type FileView, type Level } from "../../api";
 import { doingNow, LEVEL_NAMES, linesOf, pictureState } from "../../episode";
 import { AgentMark } from "../../ui";
 import { Clock } from "../agent/Clock";
 import { took } from "../agent/format";
 import { SegmentedControl } from "../SegmentedControl";
+import type { Run } from "./Ask";
 import { blockName, blocksOf, KindIcon, type Block } from "./Blocks";
 import { writerTitle } from "./Film";
 import { builtOn, madeOn } from "./models";
 import { KindArt } from "./PictureArt";
 
-// A version of a beat picked to look back at, shown in the frame in place of the latest: the
-// beat, and the version's number.
+// A version of a beat picked to look back at, shown in the frame in place of the one that
+// stands: the beat, and the version's number.
 export type Seen = { unit: string; n: number } | null;
-// Shows a version of a beat in the frame (none: the latest), opening the beat at that line.
+// Shows a version of a beat in the frame (none: the one that stands), opening the beat at that
+// line.
 export type ShowVersion = (unit: string, n: number | null, frame: string) => void;
 
 type Row = {
@@ -33,7 +36,7 @@ type Row = {
   level: Level | "";
   seconds: number | null;
   at: number | null;
-  // what a press shows: a kept version by its number, or the latest
+  // what a press shows: a kept version by its number, or the one that stands
   shows: number | null;
 };
 
@@ -103,15 +106,19 @@ export function HistoryPanel({
   unit,
   shownVersion,
   onShow,
+  run,
+  busy,
 }: {
   view: EpisodeView;
   chapter: EpisodeChapter;
   // the open line's picture, if it has one
   unit?: EpisodeUnit;
   // the kept version of that picture picked to be shown, by its number; none while the frame
-  // shows the latest
+  // shows the one that stands
   shownVersion: number | null;
   onShow: ShowVersion;
+  run: Run;
+  busy: boolean;
 }) {
   const [scope, setScope] = useState<"beat" | "chapter">("beat");
   const lines = linesOf(chapter);
@@ -121,6 +128,9 @@ export function HistoryPanel({
     const from = lines.indexOf(b.lines[0]) + 1;
     return b.lines.length === 1 ? `line ${from}` : `lines ${from} to ${from + b.lines.length - 1}`;
   };
+  // a version made before stands again, and the frame shows it as the one that stands
+  const putBack = (of: EpisodeUnit, n: number) =>
+    run(() => api.putVersionBack(view.id, of.id, n)).then((ok) => ok && onShow(of.id, null, of.frames[0]));
   return (
     <>
       <h3>History</h3>
@@ -152,19 +162,22 @@ export function HistoryPanel({
               <small>Not made yet.</small>
             ) : (
               <ol className="ep-version-list" data-compact={scope === "chapter" || undefined}>
-                {rows.map((row) => (
-                  <li key={`${row.state}-${row.n}`}>
-                    <VersionRow
-                      view={view}
-                      unit={b.unit}
-                      row={row}
-                      compact={scope === "chapter"}
-                      // the row on show: in the open beat, the kept version picked or the latest
-                      shown={open && row.state !== "making" && row.shows === shownVersion}
-                      onShow={() => onShow(b.unit.id, row.shows, b.unit.frames[0])}
-                    />
-                  </li>
-                ))}
+                {rows.map((row) => {
+                  // the row on show: in the open beat, the kept version picked or the one that stands
+                  const shown = open && row.state !== "making" && row.shows === shownVersion;
+                  return (
+                    <li key={`${row.state}-${row.n}`}>
+                      <VersionRow view={view} unit={b.unit} row={row} compact={scope === "chapter"} shown={shown} onShow={() => onShow(b.unit.id, row.shows, b.unit.frames[0])} />
+                      {shown && row.state === "before" && scope === "beat" && (
+                        <button type="button" className="btn ep-version-use" disabled={busy} onClick={() => void putBack(b.unit, row.n)}>
+                          <ArchiveRestore aria-hidden="true" />
+                          {/* the beat being made again is stopped for it, so the press says so */}
+                          {pictureState(b.unit, view) === "making" ? "Stop and use this" : "Use this version"}
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
               </ol>
             )}
             {rows.length === 1 && rows[0].state !== "making" && scope === "beat" && <small>Made once. When it is made again, the version before is kept here.</small>}
@@ -233,17 +246,17 @@ function VersionRow({ view, unit, row, compact, shown, onShow }: { view: Episode
   );
 }
 
-// Over the frame's corner while it shows a version that is not the latest: which one, and the
-// way back.
-export function VersionChip({ n, onLatest }: { n: number; onLatest: () => void }) {
+// Over the frame's corner while it shows a version kept from before: which one, and the way back
+// to the one that stands.
+export function VersionChip({ n, standing, onBack }: { n: number; standing: number; onBack: () => void }) {
   return (
     <div className="ep-versions" role="group" aria-label={`The frame shows version ${n}`}>
       <span>
         <History aria-hidden="true" />
         Version {n}
       </span>
-      <button type="button" onClick={onLatest}>
-        Show the latest
+      <button type="button" onClick={onBack}>
+        Back to version {standing}
       </button>
     </div>
   );
