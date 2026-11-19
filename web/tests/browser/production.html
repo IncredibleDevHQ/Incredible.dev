@@ -1,0 +1,80 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Production board fixture</title>
+<body style="margin:0"><div id="root" style="display:flex;height:100vh"></div>
+<script type="module">
+// The production board with two episodes' jobs in every state. The server is stood in for here:
+// a read gives the fixture, and what is handed over or stopped is kept in `window.asked` and
+// applied to the fixture, so the board moves as it would. `?dark` wears the dark theme, `?empty`
+// has no episodes.
+import React from "react";
+import { createRoot } from "react-dom/client";
+import { Production } from "/src/pages/Production.tsx";
+import { useHouse } from "/src/store.ts";
+import "/src/app.css";
+const q = new URLSearchParams(location.search);
+if (q.has("dark")) document.documentElement.dataset.theme = "dark"; else document.documentElement.dataset.theme = "light";
+const now = Date.now() / 1000;
+const still = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90"><rect width="160" height="90" fill="#dcfce7"/><rect x="18" y="32" width="36" height="26" rx="5" fill="#3f9a66"/><rect x="62" y="32" width="36" height="26" rx="5" fill="#fff" stroke="#27272a"/><rect x="106" y="32" width="36" height="26" rx="5" fill="#fff" stroke="#27272a"/></svg>');
+const models = [
+  { id: "", name: "CLI default", efforts: ["low", "medium", "high", "max"], default_effort: "high", resolves: "Opus 5.5" },
+  { id: "claude-opus-5-5", name: "Opus 5.5", efforts: ["low", "medium", "high", "xhigh", "max"], default_effort: "high" },
+  { id: "claude-sonnet-5-5", name: "Sonnet 5.5", efforts: ["low", "medium", "high"], default_effort: "medium" },
+];
+const job = (episode, unit, over) => ({
+  id: `${episode}:${unit}`, what: "picture", episode, unit, chapter: unit.split(".")[0], kind: "diagram",
+  shows: "The browser on the left, its cache box in the middle and the server on the right, with the rules travelling back.",
+  says: "A cache is a local store of earlier responses. Before any request goes out, the browser looks there first.",
+  beats: [2, 3, 4, 5], lines: 4, level: "simple", state: "todo", stale: false, agent: "claude", model: "claude-opus-5-5", effort: "max", picked: false,
+  failure: "", stage: "", doing: "", asked_at: null, started_at: null, ended_at: null, seconds: null, still: null, tells: true, heard_at: null, pulse: null, ...over,
+});
+const view = {
+  agents: [
+    { id: "claude", title: "Claude Code", ready: true, models, running: 2, waiting: 2, seconds: 300 },
+    { id: "codex", title: "Codex", ready: true, models: [{ id: "", name: "gpt-6.2-sol", efforts: [] }], running: 1, waiting: 0, seconds: null },
+    { id: "kimi", title: "Kimi Code", ready: false, models: [], running: 0, waiting: 0, seconds: null },
+  ],
+  episodes: q.has("empty") ? [] : [
+    { id: "ep_a", title: "HTTP caching, explained", channel_id: "c_1", channel: "launch", status: "studio", writer: "claude", chapters: [{ id: "c1", n: 1, question: "What will you understand by the end?" }, { id: "c2", n: 2, question: "Who decides whether a stored copy can be reused?" }, { id: "c4", n: 4, question: "When does a stale copy get checked?" }] },
+    { id: "ep_b", title: "Shipping a fix past the cache", channel_id: "c_2", channel: "brand", status: "studio", writer: "codex", chapters: [{ id: "c1", n: 1, question: "Why does a renamed file reach everyone?" }] },
+    { id: "ep_c", title: "Reading the headers", channel_id: "c_1", channel: "launch", status: "plan", writer: "claude", chapters: [] },
+  ],
+  jobs: q.has("empty") ? [] : [
+    job("ep_a", "c2.b2.f1", {}),
+    job("ep_a", "c2.b6.f1", { kind: "chips", beats: [6], lines: 1 }),
+    job("ep_a", "c4.b2.f1", { level: "rich" }),
+    job("ep_a", "c4.b7.f1", { kind: "illustration", beats: [7, 8], lines: 2, stale: true, still }),
+    job("ep_b", "c1.b2.f1", { agent: "codex", model: "", effort: "", kind: "typeset-code", beats: [2], lines: 1 }),
+    job("ep_a", "c1.b2.f1", { state: "running", stage: "draw", started_at: now - 190, asked_at: now - 400, heard_at: now - 2, doing: "Reading pictures/pic-c1-b2-f1.brief.json", pulse: { at: now - 2, since: now - 95, doing: "thinking", text: "The cache box has to appear before the server does, or the second line names a thing nobody has seen.", amount: 0 }, kind: "illustration", beats: [2], lines: 1 }),
+    // between its builder's turns the house renders it: no turn to hear from
+    job("ep_a", "c4.b9.f1", { state: "running", stage: "pose", started_at: now - 40, asked_at: now - 410, kind: "list", beats: [9], lines: 1 }),
+    job("ep_a", "c1.b3.f1", { state: "waiting", asked_at: now - 380, kind: "chips", beats: [3], lines: 1 }),
+    job("ep_a", "c1.b5.f1", { state: "waiting", asked_at: now - 370, beats: [5, 6], lines: 2 }),
+    job("ep_b", "c1.b4.f1", { state: "running", agent: "codex", model: "", effort: "", stage: "draw", tells: false, started_at: now - 420, asked_at: now - 430, heard_at: now - 250, doing: "Writing pictures/pic-c1-b4-f1.html", beats: [4], lines: 1 }),
+    job("ep_a", "c4.b4.f1", { state: "go", level: "rich", ended_at: now - 302, started_at: now - 900, seconds: 598, still, beats: [4, 5], lines: 2 }),
+    job("ep_b", "c1.b6.f1", { state: "failed", agent: "codex", model: "", effort: "", failure: "Codex stopped: the plan's limit was reached.", beats: [6], lines: 1 }),
+    { ...job("ep_c", "", { state: "go", ended_at: now - 60 }), id: "ep_c:script", what: "script", kind: "script", chapter: "", beats: [], lines: 0, shows: "", says: "" },
+    job("ep_a", "c1.b7.f1", { state: "done", seconds: 200, ended_at: now - 1200, still, kind: "chips", beats: [7], lines: 1 }),
+    job("ep_b", "c1.b1.f1", { state: "done", agent: "codex", model: "", effort: "", seconds: 431, ended_at: now - 600, still, beats: [1], lines: 1 }),
+  ],
+};
+window.asked = [];
+const real = window.fetch.bind(window);
+window.fetch = async (input, init = {}) => {
+  const url = typeof input === "string" ? input : input.url;
+  const json = (body) => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+  if (url.endsWith("/api/production")) return json(view);
+  if (url.endsWith("/api/production/assign")) {
+    const body = JSON.parse(init.body);
+    window.asked.push({ url, body });
+    for (const j of view.jobs) if (body.jobs.some((x) => x.episode === j.episode && x.unit === j.unit)) Object.assign(j, { state: "waiting", stale: false, failure: "", asked_at: Date.now() / 1000, agent: body.agent || j.agent });
+    return json({ started: body.jobs.map((x) => `${x.episode}:${x.unit}`), refused: [] });
+  }
+  if (/\/api\/episodes\/[^/]+\/stop$/.test(url)) {
+    window.asked.push({ url, body: JSON.parse(init.body) });
+    return json({ ok: true });
+  }
+  return real(input, init);
+};
+useHouse.setState({ page: "production", production: view });
+createRoot(document.querySelector("#root")).render(React.createElement("main", { className: "main", style: { flex: 1 } }, React.createElement(Production)));
+window.board = useHouse;
+</script></body></html>

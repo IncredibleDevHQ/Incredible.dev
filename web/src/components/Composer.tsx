@@ -20,7 +20,9 @@ type Props = {
 
 export function Composer({ placeholder, agentLabel, kinds, allowTeam = true, attach: attaches = true, wait, onSend }: Props) {
   const mark = useHouse((s) => s.session?.agent.mark);
-  const capabilities = useHouse((s) => s.catalog.capabilities);
+  // An episode is started from its own sheet, not asked for in a message.
+  const all = useHouse((s) => s.catalog.capabilities);
+  const capabilities = all.filter((c) => !c.studio);
   const [text, setText] = useState("");
   const [toAgent, setToAgent] = useState(true);
   const [files, setFiles] = useState<FileView[]>([]);

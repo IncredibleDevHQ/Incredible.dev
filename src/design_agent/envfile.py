@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 _LINE = re.compile(r"^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=(.*)$")
-_SECRET = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD)$|^DATABASE_URL$|_TOKENS$")
+_SECRET = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD)$|^DATABASE_URL$|_TOKENS$|^AWS_ACCESS_KEY_ID$")
 #: Keys `generate` may fill with a random value, and how.
 GENERATED = {
     "DESIGN_AGENT_API_TOKENS": lambda: f"{secrets.token_urlsafe(32)}:me",

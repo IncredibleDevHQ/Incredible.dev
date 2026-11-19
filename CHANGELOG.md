@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.0 — 2026-11-19
+
+The first release of the new Incredible.dev: episodes (notes to a rendered, presenter-led film in a
+studio of their own), live agent trails and the production board, on top of channels, threads, the
+canvas, research frames and brands. The release notes are in
+[docs/releases/0.1.0.md](docs/releases/0.1.0.md).
+
 ### Removed in this fork
 
 - Slack: MDA's Slack channel, the self-hosted Slack adapter (`design-agent slack`, `test slack`),
@@ -16,6 +23,231 @@
 
 ### Added in this fork
 
+- Episodes: a presenter-led explainer of one idea, taken from notes to a rendered film in a
+  studio of its own (`surfaces/web/episode_desk.py`, `design_agent/episode/`, the `episode`
+  skill). It starts from a channel's material or a research frame's notes.
+  - The plan is written in stages (the brief, the script, a frame for every line) by a writer
+    the person picks: Claude Code, Codex or Kimi Code on this computer, in a folder of the
+    episode's own where it may change files and nothing else, or the built-in agent on the
+    episode's thread. After each stage the words are read by a typed classifier (Jev with
+    `TYPESAFE_API_KEY`; otherwise the writer's own model answers the same questions) and held
+    to the checks by code, and the report opens the writer's next turn. The writer never types
+    a label or a number.
+  - An episode's length is asked for as a least and a most (4 to 10 minutes, at least 30
+    seconds apart; the sheet opens on 5 to 7), and the script must land between the two. A
+    plan that ends outside them says what was asked for beside its length. On Auto no length
+    is asked for and none is checked: the material decides how long it runs.
+  - The studio is the plan and the recording in one place: the film's page (the whole script
+    beside the film) and, per chapter, the script, the frame for the picked line and that
+    line's choices (who has the frame and the layout). A pick is kept beside the plan and never
+    undone by a later stage. A layout can be used for the chapter or the film, a picture can
+    sit beside the person or fill the screen, and the line that brings a picture in can be
+    given another type of picture and another transition (cut, push, crossfade, zoom), which
+    the film renders by moving the picture's whole box. While pictures are being made a pill
+    in the bar fills as they land and opens onto every picture with its state and what its
+    builder is doing. The ones that stopped are made again on request. While the plan
+    is written it fills the screen: its stages on the agent trail, each with its own time and
+    the writer's steps and notes under the one at work, every turn of the writer on one strip
+    of time and in a list, and the idea and the
+    chapters as they land (the demo's writer keeps its turns in the record as an agent does).
+  - The plan is read, and changed, before anything is drawn. A chapter's script is a document
+    edited as text (TipTap): words are typed in place and kept when the caret leaves the line,
+    Enter starts the next line of the block (splitting a line in one change), Backspace at a
+    line's start joins it to the line before, an emptied line is cut, and a block is cut from
+    its head. A slash opens the blocks a chapter can be given, each by its icon, name and what
+    it is (a line to camera, or a diagram, list, code, chips, illustration or slide that the
+    writer designs), with "- " and three backticks as markdown keys for a list and code, and
+    asks for a change from there too. Nothing typed or added runs an agent: a new picture, and
+    a step whose word was typed away, wait for Apply changes like a pick does. Cmd/Ctrl+Z in a
+    line puts its words back before they are kept. Placing the caret in a line shows an "Ask
+    AI" pill at its end (or at the end of the selected words); it, or Cmd/Ctrl+J, opens a
+    prompt under the line with three changes to pick, and the line shows the writer at work on
+    it, with Stop. A picture made for words its lines no longer say is marked so, with its
+    changed lines and what changed in each against the words it was made for, and can be kept
+    as it is, planned again (the writer fits it to the new words, then it is drawn again) or
+    drawn again; a line changed after its take, and a film rendered before the change, say so
+    in the frame's panel. The words a change brings in are written in as it lands. From
+    affectUI's agent items (Writing Assistant, Agent Cursors, Run Controls, Inline Diff, read
+    for their behaviour; none of their source is here) came the caret prompt's shape, the
+    writer shown at work where it works, Stop beside it, a read-only diff and Keep it. That
+    prompt asks about the selected words, the line, its picture, the chapter or the film (Ask AI
+    at the editor's top right opens it on the chapter), so a chapter's page has no other field to
+    ask in; the film's page keeps a change bar under its script. The writer makes the change
+    while the studio stays open, and a note on how a picture is drawn goes to its builder. While
+    the writer works, a line over the timeline shows what was asked and for how long, with Stop,
+    and the prompt still takes the next change, which waits its turn there. What a
+    change did is marked in the script word by word, with the lines it cut; changes are taken
+    back one at a time, newest first, a change taken back can be put back, and the picks made
+    since stay. A change that stops can be asked again in the same words. One pick of a frame
+    sets who has it and its layout, and the film's look is picked by a picture of the frame it
+    is named for. One line can be recorded again. Before a take the microphone's level shows
+    and the microphone and camera can be chosen (kept on that computer); during it the time
+    planned for the chapter stands beside the time run, and the words to say can be made
+    larger. Notes are dropped on the new-episode sheet as files, and a recording on a
+    chapter's frame. Keys: R opens the camera, Cmd/Ctrl+Z takes the last change back and
+    Shift+Cmd/Ctrl+Z puts it back. The studio's controls use more of affectUI's free parts
+    (Segmented Control, Tooltip, Popover, Kbd, Shimmer Loader); the word marks, the drop
+    place and the device choice are the studio's own. The bar and the slides sit on a ground
+    and the script and the frame are sheets laid on it, each with a hairline edge, in light and
+    in dark (after Open Slide's stage and inspector); the frame is a titled panel, the slides
+    have a header, and the look can follow the system.
+  - Pictures are made when they are asked for: one from its block in the chapter's script (a
+    card with the picture, a placeholder until it is made, over the lines it is shown on), a
+    chapter's together by asking to record the chapter (the camera opens once they are made),
+    or the whole film's from the bar. A picture is simple or motion graphics (`rich` in the
+    plan), on its block or for the film. Pictures are built on HyperFrames' own path: each
+    builder is handed the guides of the vendored `hyperframes` skill (motion, spec, review and
+    the page on explainers), moves ease by role, the view moves, and no stretch passes three
+    seconds with nothing changing. Motion graphics are planned before they are drawn: their
+    builder weighs three treatments, picks one and writes its spec (a device, a world, the
+    look, the objects and the motion as numbers, and a shot for each line: what it opens on,
+    the one move the line is about, how it is framed, what fills a quiet stretch, what its
+    still shows), code holds it to its shape, the studio shows it on the picture's lines, and
+    the picture is built to it. Its builder then reviews frames from inside its moves and what
+    the renderer's craft pass measured, beside the stills, before they wait for the person's
+    go. The block follows the build stage by stage with each stage's time and the build's
+    total running on over them, the builder's tool calls and words, and between two of them
+    what its model is at: thinking, with the newest words of the thought, the file it is
+    writing and how much of it, or a request made again. Claude Code says these as it goes
+    (`--include-partial-messages`, and summaries of its thinking), so the house hears from it
+    every few seconds and a silence of 90 seconds reads as no sign of life, in amber, with
+    Stop it; Codex and Kimi Code tell only of whole steps, so the trail says they are quiet
+    and why. The trail's marks turn only while the agent is heard from. A picture's card
+    names the beats it plays over ("Beats 2–5"), and asking for it says what that makes: one
+    picture for all of its lines. Each build's times, in all and stage by stage, are kept with its beat in the
+    house's database (`pictures.timing`) once it ends. A note left while a
+    motion-graphics picture is made goes in with the builder's next turn without stopping
+    it; and a made picture says how its build went (its stages as a bar, what the review
+    said, the notes it took in), from components of the house's own agent library
+    (`web/src/components/agent`). Switching a
+    made picture to the other level asks first (the stages to come, the go among them, what it
+    costs, and which agent makes it) and Start makes it again that way (`POST …/pictures` with
+    a `level`). The switch and the beat's model picker sit over the frame too, after the
+    picture's kind, and the picker draws a made picture again (or tries a failed one again)
+    with what is picked, saying first that it is another full run. The editor's timeline bar
+    has Redo beat, one form for the picked beat's agent, model, effort and level, and Redo it.
+    A beat made again holds nothing up: its frame keeps the version it was, which plays on,
+    and where the build is shows on its chapter (a small turning mark on the slide and the
+    notebook row), on its tile on the timeline (the mark turns, a line runs along its foot,
+    and it says what its builder is on) and in the bar, as one pill for what runs now. The
+    pill opens onto each task as a row (a picture's stages as a strip, who builds it on what
+    and for how long; the writer's turn; the film being rendered), a picture's row opens its
+    beat, and the stop moved there from the bar. The versions made before are kept with the
+    beat, whole (`pictures.versions`, up to twelve, with the beat's number in
+    `pictures.version`), and the editor's History tab lists them for the beat and for the
+    chapter; a press shows one in the frame, as it was made, and Use this version puts it back
+    (`POST …/pictures/{unit}/versions/{n}/use`), stopping a build under way for it. A redo that
+    is stopped or fails goes back to the version before instead of leaving the beat not made,
+    and one that failed says why under the frame. Taking a change back puts its pictures back
+    the same way. A store from before keeps none of the versions it had. While it is made,
+    its
+    block follows the build stage by stage with its builder's
+    steps and notes streaming under the stage under way (`picture.live` in the view). One
+    picture can be stopped by itself. A made picture plays in its block from its draft clip, or full
+    screen from a button on it (the studio's own, so it works in an app's browser pane);
+    the stills ask the person to play it before the go, and the go, which makes nothing more,
+    says so where the stills were.
+  - The production board (`/production`): every episode's jobs in one place. What is written
+    and not made, by episode and chapter; each agent with what it runs and what waits its
+    turn; what waits on the person (a go, a plan to read, a job that stopped); and what is
+    done. A job, a chapter or an episode is handed to an agent by dragging it onto the
+    agent's row (the row says what that comes to first), with the row's number key, or from
+    the job's details, on the model and effort picked on that row; an agent builds at most
+    four pictures at once across the house. A job opens its episode as a peek over the board
+    (Escape goes back) or as its own page, on the job's chapter and line
+    (`…/episode/<id>?at=<chapter>&line=<line>`), and the board is narrowed to an episode, a
+    chapter or an agent in its address (`GET /api/production`,
+    `POST /api/production/assign`).
+  - Picks are free to try: a frame, a layout for the chapter or the film, a kind of picture, a
+    level or an agent changes the plan and the preview and starts no agent (a made
+    picture's level asks first, and its yes makes it again). A picture
+    made before is out of date until the person presses Apply changes in the bar (or Draw it
+    again on its block); a pick that needs the writer waits too, and Apply runs the writer's
+    part first. Apply says what will run, and that drawing a made picture again is another full
+    run of its agent, before anything starts. A pick taken back makes its picture current again.
+  - Where more than one agent is ready, which one works is chosen at three levels: the film's
+    agent in the bar (it writes the changes asked for and draws the pictures from then on), a
+    chapter's in its head (for its pictures), and a picture's own when it was not made and is
+    tried again. A new episode starts with the agent picked last on that computer.
+  - Each agent runs on a model and an effort a person picks: for the film in the bar's Agent
+    menu and the new-episode sheet, and for one beat in its picker, which inherits the film's
+    choice until it has its own. Kimi Code's models and the efforts each takes are read from
+    its own settings (K3.1 Pro, K3, K2.7 and the rest, low to max); Claude Code offers Fable,
+    Opus, Sonnet and Haiku with its efforts. A made picture names the agent, model and effort
+    that made it.
+  - Each picture is one HyperFrames sub-composition built by an agent, in the channel's
+    brand: its colours by role and its type, staged on the thread's computer. Every time in it
+    comes from a clock block code rewrites, so a recording never sends a picture back to its
+    builder. Each is held to the renderer's own check (lint, runtime, layout, contrast) and
+    posed as a still at the end of every line, with a draft clip; a rich picture's builder
+    looks at its stills once before the person does.
+  - A chapter is recorded in the browser as one take (Space starts the next line), or brought as
+    a file; where each line starts in the take sets how long it runs in the film and when its
+    picture's cues land. The film is one HyperFrames page written by code and rendered on the
+    thread's computer; before anything is recorded it renders as a draft with a stand-in.
+  - Every page of the studio is the film and its chapters as slides down the left (the film
+    first, as its title card) and an editor: the document with the frame floating beside it,
+    level with the line the caret is on, drawn on a canvas from the same table the film is
+    rendered from (after the Figma editor's live preview); Record sits at the editor's top
+    right. The frame opens in a pop-up as the Figma editor's preview does: the frame with the
+    chapters either side as a carousel, the chapter's lines under it as a timeline, and a dark
+    rail at the right edge opening one panel at a time (Layout, Picture, Transition, Steps).
+    Play plays a line's take, else its picture's draft, else its words at the plan's pace, and
+    a Script switch (C) shows the line's words over the frame in time with what plays. Under
+    the script runs the chapter's timeline on its own clock, after the Figma editor's strip:
+    each block a tile as long as its lines with its kind on a small screen, its name and at most
+    one quiet mark (not made, needs your go, being made, out of date, or motion graphics), a mark
+    on the join where a picture comes in (which opens that choice), the film's title, a
+    chapter's card or the end card at the ends, and each line a span as long as it lasts: the
+    caret's line lands the playhead on its span and a span's click puts the caret on its line;
+    the pop-up shows it taller, with each line's frame and the playhead following what plays. Every
+    block of a chapter's script is a section of its own, a run said to camera as much as a
+    picture.
+  - The web app wears Incredible's own palette, as the old product and its Figma had it: zinc
+    greys on white, the old product's near-black scale in dark, and its green. The warm paper
+    tones are gone from the app and from the default look of pictures and films (a channel's
+    brand still sets its own). The film's page has the whole script as one document, chapter by chapter, with the
+    film beside it: pointing at a line shows its frame, and a chapter opens at the line picked.
+    A chapter's page has its script as a block per picture and per run said to camera, and the
+    frame for the picked line, which opens full screen with its choices and the recorder. The
+    film's voice and pictures' level are buttons in the bar over every page, each saying what
+    is chosen, beside the film's agent; the look is picked when the episode is started (each
+    line's layout is the planner's, and another is picked on the line), the rendered film is
+    downloaded from the bar, and light or dark is switched there as in the sidebar (each
+    switch hears the other). A picture's
+    kind and its way in are picked from tiles that draw each kind and play each move as the film
+    makes it, with one line saying what the one pointed at is.
+  - A take is recorded as the camera and the microphone give it: no echo cancelling, one
+    channel, H.264 where the browser can at about 16 Mbit/s for 1080p, and room noise cleaned
+    up only for a microphone that sits in the computer. The recording panel names the
+    microphone and the camera on a button each: the microphone's holds that switch, the
+    camera's shows the picture it is giving. A recording brought as a file may be a
+    camera's own, up to 8 GiB: it goes to disk and to the thread's computer as a file. The cut
+    brings a high-dynamic-range picture down to the film's range and sets every take's sound
+    to −16 LUFS by one gain.
+  - With `DESIGN_AGENT_FOOTAGE_BUCKET`, every take's recording is also kept as it arrived in
+    a bucket (`tools/footage.py`, the `s3` extra): S3 in production, MinIO or another
+    S3-compatible store in development (`DESIGN_AGENT_S3_ENDPOINT`, `deploy/dev/compose.yaml`).
+    The host sends it; a take stands when the bucket is down, and the thread says so.
+  - Recording a chapter opens a workspace with a reading guide: the chapter's lines, the one
+    being said highlighted, after a three-second countdown. With a local or cloned narrator,
+    Follow narration plays it into headphones and records it with the camera, and beats follow
+    it. A take stays in review until Save take, can be named, and is kept if saving fails; the
+    History tab's Takes lists a chapter's takes and Use this take picks the one the film uses.
+    A cloned voice can be picked, or recorded and saved for the channel, in the new-episode
+    sheet.
+  - With `ELEVENLABS_API_KEY`, the lines no take covers are narrated when a film's voice is
+    the narrator: in a voice picked for the episode from the account's voices, in a clone of
+    the person's own voice (made by ElevenLabs from the takes they kept or a recording they
+    bring, after they say the voice is theirs to clone), or in the house's
+    `DESIGN_AGENT_NARRATOR_VOICE_ID`.
+- README: episodes, the production board and the agents on your computer, with screenshots taken
+  from the demo; the release workflow takes a version's own notes (`docs/releases/<version>.md`)
+  where they are written, else its section of this changelog.
+- Every run of an agent is a row in the house's own store (`runs`): what it was told, each step
+  and note on the way, what it said, and the session it ran under. A local agent's own session
+  is a shortcut to that record: when one can no longer be resumed, research and episodes start
+  the turn again, told what was said from the record.
 - One presentation hook in place of the Slack slot: `surfaces/presenter.py`'s `Presenter`, set on
   `RuntimeProfile.presenter` (`build_local_runtime(presenter=...)`). With none, runs are headless.
 - Summarization counts each image at what it costs, for the lead and every helper
@@ -89,7 +321,7 @@
   an exact-id model capability registry (Claude Opus 5.5 by default, direct providers, optional
   LangSmith Gateway).
 - The designer's computer: a pinned, checksum-verified sandbox recipe (Chrome Headless Shell,
-  ffmpeg, HyperFrames 0.8.169, sharp, ECharts, D2, open fonts) shared by MDA's bake, the published
+  ffmpeg, HyperFrames 0.9.64, sharp, ECharts, D2, open fonts) shared by MDA's bake, the published
   snapshot, the local Docker runner and CI, with a build-time probe.
 - A per-thread Docker sandbox runner (no network, dropped capabilities, unprivileged agent user,
   read-only staged brand and gates) and LangSmith Sandboxes from a published snapshot.
@@ -99,8 +331,15 @@
 - Delivery through `upload_files` on every runtime with an exactly-once `DELIVERY.json` ledger.
 - Host media tools (OpenAI images with a measured alpha report, ElevenLabs voice, effects and
   music, local or Groq transcription) and an SSRF-hardened `fetch_asset`; keys stay on the host.
-- HyperFrames skills vendored unmodified at the v0.8.169 release commit with a per-file
-  `skills-lock.json`; third-party assets without recorded licenses are left out.
+- HyperFrames skills vendored unmodified at the v0.9.64 release commit with a per-file
+  `skills-lock.json`; third-party assets without recorded licenses are left out. Since v0.8.170
+  upstream is one `hyperframes` skill (story, spec, look, motion, film, review and a page per
+  kind of video) beside its CLI, registry and media skills; the workflow and domain skills it
+  replaced are no longer vendored.
+- A rebuilt sandbox image reaches the threads that already had a container: a stopped
+  container made from an older build is made again from the current one the next time its
+  thread runs (it used to be restarted on the old image for good). The thread's files are in
+  its volume and stay.
 - An offline demo through the real graph with a scripted model, and `doctor`.
 - A 4-second HyperFrames teaser in the offline demo, gated by `video-gate` and `hyperframes check`
   and measured by `artifact-contract`; render smoke for HyperFrames (lint, check, snapshot, render)

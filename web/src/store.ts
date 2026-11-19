@@ -11,6 +11,8 @@ import {
   type CanvasTask,
   type Catalog,
   type Channel,
+  type EpisodeCard,
+  type EpisodeView,
   type FileView,
   type Message,
   type Person,
@@ -20,9 +22,16 @@ import {
   type Thread,
   type ThreadDetail,
   type Work,
+  type WorkPulse,
+  type ProductionView,
 } from "./api";
+import { NO_FILTER, type BoardFilter } from "./production";
 
-export type Page = "channel" | "needs" | "brand" | "read-brand" | "skills" | "computer";
+export type Page = "channel" | "needs" | "production" | "brand" | "read-brand" | "skills" | "computer";
+// Where an episode opens: one of its chapters, at one of its lines ("" for the chapter's first).
+export type Landing = { chapter: string; line: string };
+// The sheet an episode is started from: open, with the research frame its notes come from if any.
+export type EpisodeStart = { frame?: string; title?: string; notes?: string };
 export type Mode = "chat" | "canvas";
 // The template picker on the canvas: open on the list, or on one template (started from an asset,
 // or placed onto a research frame, made from its notes).
@@ -57,6 +66,23 @@ export type State = {
   picking: TemplatePick | null;
   preview: OpenPreview | null;
   viewing: OpenFiles | null;
+  // The episode whose studio is open over the channel, and everything that studio draws.
+  episodeId: string | null;
+  episode: EpisodeView | null;
+  // Where the open episode is to land once its plan is in (asked for once, by a link or the
+  // board), the chapter it is on now (its address says so), and whether it is open as a peek:
+  // over the page it was opened from, which Escape goes back to.
+  landing: Landing | null;
+  episodeChapter: string;
+  episodePeek: boolean;
+  // What each turn under way is doing between its steps, by episode and lane ("<episode>:plan",
+  // "<episode>:picture:<unit>"): told a second apart while a model thinks, so it is kept beside
+  // the episodes and only what shows it draws again.
+  pulses: Record<string, WorkPulse>;
+  // The production board: every job of every episode, and what the board is narrowed to.
+  production: ProductionView | null;
+  board: BoardFilter;
+  startingEpisode: EpisodeStart | null;
   // The coding agents on this computer and the repositories they can research.
   research: ResearchOptions | null;
   // The house's brands, and the reads from websites still running or just finished.
@@ -81,6 +107,12 @@ export type State = {
   pickTemplate: (pick: TemplatePick | null) => void;
   openPreview: (preview: OpenPreview | null) => void;
   openFiles: (viewing: OpenFiles | null) => void;
+  openEpisode: (id: string | null, landing?: Landing | null, peek?: boolean) => Promise<void>;
+  setEpisode: (episode: EpisodeView) => void;
+  // `quiet` for a read nobody asked for (the sidebar's count): one that fails says nothing
+  loadProduction: (quiet?: boolean) => Promise<void>;
+  setBoard: (filter: Partial<BoardFilter>) => void;
+  startEpisode: (start: EpisodeStart | null) => void;
   loadResearch: () => Promise<ResearchOptions>;
   loadBrands: () => Promise<void>;
   say: (text: string | null) => void;
@@ -124,6 +156,15 @@ export const useHouse = create<State>((set, get) => ({
   picking: null,
   preview: null,
   viewing: null,
+  episodeId: null,
+  episode: null,
+  landing: null,
+  episodeChapter: "",
+  episodePeek: false,
+  pulses: {},
+  production: null,
+  board: NO_FILTER,
+  startingEpisode: null,
   research: null,
   brands: [],
   reads: [],
@@ -136,6 +177,7 @@ export const useHouse = create<State>((set, get) => ({
     const [session, channels, catalog] = await Promise.all([api.session(), api.channels(), api.catalog()]);
     const people = Object.fromEntries(session.people.map((p) => [p.id, p]));
     set({ session, people, channels, catalog });
+    void get().loadProduction(true);
   },
 
   async switchPerson(id) {
@@ -146,6 +188,7 @@ export const useHouse = create<State>((set, get) => ({
 
   openPage(page) {
     set({ page, frameId: null });
+    if (page === "production") void get().loadProduction();
   },
 
   readBrandFor(channelId) {
@@ -229,6 +272,47 @@ export const useHouse = create<State>((set, get) => ({
 
   openFiles(viewing) {
     set({ viewing });
+  },
+
+  async openEpisode(id, landing = null, peek = false) {
+    if (!id) {
+      const peeked = get().episodePeek;
+      set({ episodeId: null, episode: null, landing: null, episodeChapter: "", episodePeek: false });
+      // what was done in the peek shows on the board it was opened from
+      if (peeked) void get().loadProduction();
+      return;
+    }
+    const kept = get().episode;
+    set({ episodeId: id, episode: kept?.id === id ? kept : null, landing, episodePeek: peek });
+    try {
+      const episode = await api.episode(id);
+      if (get().episodeId === id) set({ episode });
+    } catch (error) {
+      set({ episodeId: null, episode: null, landing: null, episodePeek: false, toast: (error as Error).message });
+    }
+  },
+
+  async loadProduction(quiet = false) {
+    try {
+      set({ production: await api.production() });
+    } catch (error) {
+      if (!quiet) set({ toast: (error as Error).message });
+    }
+  },
+
+  setBoard(filter) {
+    const board = { ...get().board, ...filter };
+    // a chapter is one episode's: another episode, or none, lets it go
+    if (filter.episode !== undefined && filter.episode !== get().board.episode && filter.chapter === undefined) board.chapter = "";
+    set({ board });
+  },
+
+  setEpisode(episode) {
+    if (get().episodeId === episode.id) set({ episode });
+  },
+
+  startEpisode(start) {
+    set({ startingEpisode: start });
   },
 
   async loadBrands() {
@@ -366,6 +450,27 @@ export const useHouse = create<State>((set, get) => ({
         if (read.status === "failed" && s.page !== "read-brand") set({ toast: read.message ?? "The read stopped." });
         break;
       }
+      case "episode.updated": {
+        const card = event.card as EpisodeCard;
+        set({
+          canvas: mapTask(s.canvas, event.thread_id as string, (t) => ({
+            ...t,
+            episodes: upsert(t.episodes ?? [], card),
+          })),
+        });
+        // The open studio follows: its progress at once, everything else read again soon.
+        if (s.episodeId === card.id) {
+          if (s.episode) set({ episode: { ...s.episode, ...card } });
+          refreshEpisode(card.id);
+        }
+        refreshProduction(s.page === "production");
+        break;
+      }
+      case "episode.pulse": {
+        const { lane, ...pulse } = event.pulse as WorkPulse & { lane: string };
+        set({ pulses: { ...s.pulses, [`${event.id as string}:${lane}`]: pulse } });
+        break;
+      }
       case "research.updated": {
         const research = event.research as ResearchView;
         set({ canvas: mapTask(s.canvas, event.thread_id as string, (t) => ({ ...t, research })) });
@@ -378,6 +483,35 @@ export const useHouse = create<State>((set, get) => ({
     }
   },
 }));
+
+// The production board, read again after a change to any episode: a moment after the last one
+// while the board is open, and seldom while it is not (the sidebar's count is all that shows).
+let productionTimer = 0;
+let productionRead = 0;
+function refreshProduction(open: boolean) {
+  if (!open && (productionTimer || Date.now() - productionRead < 20_000)) return;
+  window.clearTimeout(productionTimer);
+  productionTimer = window.setTimeout(
+    () => {
+      productionTimer = 0;
+      productionRead = Date.now();
+      void useHouse.getState().loadProduction(!open);
+    },
+    open ? 500 : 2000,
+  );
+}
+
+// The open studio's episode, read again a moment after the last change to it.
+let episodeTimer = 0;
+function refreshEpisode(id: string) {
+  window.clearTimeout(episodeTimer);
+  episodeTimer = window.setTimeout(() => {
+    void api
+      .episode(id)
+      .then((episode) => useHouse.getState().setEpisode(episode))
+      .catch(() => undefined);
+  }, 350);
+}
 
 function channelCounts(channelId: string, threads: Record<string, Thread>) {
   const mine = Object.values(threads).filter((t) => t.channel_id === channelId);

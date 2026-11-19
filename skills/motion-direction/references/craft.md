@@ -71,7 +71,7 @@ restates for interface and type.
 - **Mono is for literal values**, typed or decoded at a steady rate (roughly 12-20 ms a character),
   starting a moment after the headline so it reads as a second beat.
 - **Small text that must stay sharp over moving footage** is not motion-blurred; blur the approach,
-  land sharp, hold (`hyperframes-animation`, motion blur).
+  land sharp, hold (`hyperframes`, `references/motion.md`, render-time blur).
 
 ## Camera
 
@@ -86,9 +86,8 @@ restates for interface and type.
 - **The camera holds still while the viewer reads.**
 - **Which moves blur**: blur the beats that snap (a slam, a whip, a spin, a scale punch), one to three
   in a composition; never text being read, slow drifts or a whole scene. Two routes, the `motion-blur`
-  registry component per element and the engine's render option for the whole frame, are compared in
-  `hyperframes-animation` (`references/motion-blur.md`), measured there against an After Effects
-  export.
+  registry component per element and the engine's `data-motion-blur` on the composition root, are
+  described in `hyperframes` (`references/motion.md`, render-time blur).
 
 ## Transitions
 
@@ -114,7 +113,7 @@ restates for interface and type.
   wrappers driven by opacity, with the carrier on its own track.
 - **z-order is a requirement.** Foreground never shows the background through it: dim a node's fill,
   not the node group's opacity, or a line behind it shows through.
-- **Entrances use `fromTo`**, never a bare `from` paired with a CSS starting state (`hyperframes-core`).
+- **Entrances use `fromTo`**, never a bare `from` paired with a CSS starting state (`hyperframes`, the contract).
 - **One primary transition and one or two accents for the film**, chosen for what the content is
   doing; the same transition at every cut is a slide build.
 
@@ -155,7 +154,7 @@ restates for interface and type.
 
 - **Seek-safety is a hard floor**: no clock, randomness, timers or wall-clock animation; one paused
   timeline; callbacks write state derived from time and never accumulate; measure layout once, after
-  fonts load, then bake it (`video-gate` scans for all of these; `hyperframes-core` has the rules).
+  fonts load, then bake it (`video-gate` scans for all of these; `hyperframes` has the contract).
 - **Snap emitted times to frames** and back off half a millisecond, so an event never rounds past its
   frame (`MotionPresets.onFrame`).
 - **Prove a hold is a hold**: sample frames across it and diff them; video encoders have a noise

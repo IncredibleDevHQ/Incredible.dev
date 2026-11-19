@@ -1,6 +1,6 @@
 [project]
 name = "design-agent"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "On-brand design and motion from a chat thread. Built on Deep Agents."
 readme = "README.md"
 license = "Apache-2.0"
@@ -62,6 +62,8 @@ self-host = [
 google = ["langchain-google-genai>=4,<5"]
 groq = ["langchain-groq>=1,<2"]
 mistral = ["langchain-mistralai>=1,<2"]
+# Raw footage in a bucket: S3 in production, MinIO or another S3-compatible store in development.
+s3 = ["boto3>=1.35,<2"]
 
 [dependency-groups]
 dev = [
@@ -97,22 +99,11 @@ extend-exclude = [
   ".agents/skills/deep-agents-orchestration",
   ".agents/skills/langsmith-dataset",
   ".agents/skills/langsmith-evaluator",
-  "skills/embedded-captions",
-  "skills/faceless-explainer",
-  "skills/general-video",
   "skills/hyperframes",
-  "skills/hyperframes-animation",
-  "skills/hyperframes-audio",
   "skills/hyperframes-cli",
-  "skills/hyperframes-core",
-  "skills/hyperframes-creative",
-  "skills/hyperframes-keyframes",
   "skills/hyperframes-registry",
   "skills/langsmith-trace",
   "skills/media-use",
-  "skills/motion-graphics",
-  "skills/music-to-video",
-  "skills/pr-to-video",
   "skills/remotion-to-hyperframes",
   "skills/slideshow",
 ]

@@ -49,7 +49,7 @@ Type is sized for the smallest view the piece gets, not for the canvas you autho
 - **Leading.** Headlines are set tight (around 1.0-1.15 of the size) because they are read as one
   shape; body text opens up (around 1.3-1.5). Default to weigh; the pack's graphic language may fix it.
 - **No `<br>` for layout in compositions that reflow**: wrap by width so every size recomposes
-  (HyperFrames also asks for no `<br>` in body text, `hyperframes-core`).
+  (HyperFrames also asks for no `<br>` in body text, `hyperframes`, `references/format.md`).
 
 ## Casing and punctuation
 

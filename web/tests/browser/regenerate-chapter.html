@@ -1,0 +1,23 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><div id="root"></div>
+<script type="module">
+import React from "react";
+import { createRoot } from "react-dom/client";
+import { RegenerateChapter } from "/src/components/episode/RegenerateChapter.tsx";
+import "/src/app.css";
+
+const view = {
+  id: "fixture",
+  options: {
+    picture_writers: [
+      { id: "demo", ready: true },
+      { id: "codex", ready: true },
+      { id: "claude", ready: false },
+    ],
+    generation_models: { codex: [{ id: "", name: "CLI default" }, { id: "chosen", name: "Chosen model" }] },
+  },
+};
+createRoot(document.querySelector("#root")).render(React.createElement(RegenerateChapter, {
+  view, chapter: "chapter-2", count: 3, disabled: false,
+  run: async fn => { await fn(); return true; },
+}));
+</script></html>

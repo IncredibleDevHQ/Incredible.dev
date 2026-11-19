@@ -4,8 +4,11 @@ The engine keeps the agent's side of a thread: its conversation (the checkpointe
 (the sandbox), its helpers, watches and events. This keeps the people's side: who is in the
 workspace, the channels, every message (a person's, the agent's reply, a turn's progress), the
 files that went in and out, each task's assets on the canvas (with the boards their review goes up
-as) and the feedback people leave on them, and the research a task can start from (the questions
-asked of a coding agent on this computer, and the notes kept from its answers).
+as) and the feedback people leave on them, the research a task can start from (the questions
+asked of a coding agent on this computer, and the notes kept from its answers), every run of such
+an agent (what it was told, what it did and what it said, so a conversation's history is the
+house's own and not only the agent's), and episodes: the plan, the pictures built for it and the
+takes recorded.
 
 One connection, one lock: writes are small and the app is one process.
 """
@@ -89,9 +92,57 @@ CREATE TABLE IF NOT EXISTS notes (
   author_id TEXT NOT NULL, position INTEGER NOT NULL, created_at REAL NOT NULL,
   updated_at REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS notes_by_frame ON notes(frame_id, position);
+CREATE TABLE IF NOT EXISTS runs (
+  id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, lane TEXT NOT NULL DEFAULT '',
+  harness TEXT NOT NULL, session TEXT NOT NULL DEFAULT '', prompt TEXT NOT NULL,
+  answer TEXT NOT NULL DEFAULT '', failure TEXT NOT NULL DEFAULT '', state TEXT NOT NULL,
+  steps TEXT NOT NULL DEFAULT '[]', started_at REAL NOT NULL, ended_at REAL);
+CREATE INDEX IF NOT EXISTS runs_by_thread ON runs(thread_id, lane, started_at);
+CREATE TABLE IF NOT EXISTS episodes (
+  id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, asset_id TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL, status TEXT NOT NULL, material TEXT NOT NULL DEFAULT '',
+  settings TEXT NOT NULL DEFAULT '{}', stage TEXT NOT NULL DEFAULT '{}',
+  plan TEXT NOT NULL DEFAULT '{}', labels TEXT NOT NULL DEFAULT '{}',
+  picks TEXT NOT NULL DEFAULT '{}', report TEXT NOT NULL DEFAULT '{}',
+  film TEXT NOT NULL DEFAULT '{}', approved INTEGER NOT NULL DEFAULT 0,
+  started_by TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS episodes_by_thread ON episodes(thread_id, created_at);
+CREATE TABLE IF NOT EXISTS channel_voice_clones (
+  id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, name TEXT NOT NULL,
+  verify INTEGER NOT NULL DEFAULT 0, preview_file TEXT NOT NULL DEFAULT '',
+  created_at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS voice_clones_by_channel
+  ON channel_voice_clones(channel_id, created_at);
+INSERT OR IGNORE INTO channel_voice_clones (id, channel_id, name, verify, created_at)
+  SELECT json_extract(e.settings, '$.cloned_voice.id'), t.channel_id,
+         COALESCE(json_extract(e.settings, '$.cloned_voice.name'), 'Cloned voice'),
+         COALESCE(json_extract(e.settings, '$.cloned_voice.verify'), 0), e.updated_at
+  FROM episodes e JOIN threads t ON t.id = e.thread_id
+  WHERE json_extract(e.settings, '$.cloned_voice.id') IS NOT NULL
+  ORDER BY e.updated_at;
+CREATE TABLE IF NOT EXISTS pictures (
+  id TEXT PRIMARY KEY, episode_id TEXT NOT NULL, unit TEXT NOT NULL, sig TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL, html TEXT NOT NULL DEFAULT '', stills TEXT NOT NULL DEFAULT '{}',
+  clip TEXT NOT NULL DEFAULT '', go_sig TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '',
+  failure TEXT NOT NULL DEFAULT '', updated_at REAL NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS pictures_by_unit ON pictures(episode_id, unit);
+CREATE TABLE IF NOT EXISTS takes (
+  id TEXT PRIMARY KEY, episode_id TEXT NOT NULL, chapter TEXT NOT NULL,
+  frame TEXT NOT NULL DEFAULT '', n INTEGER NOT NULL, seconds REAL NOT NULL,
+  marks TEXT NOT NULL DEFAULT '[]', video TEXT NOT NULL DEFAULT '', audio TEXT NOT NULL DEFAULT '',
+  kept INTEGER NOT NULL DEFAULT 1, added_by TEXT NOT NULL, created_at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS takes_by_episode ON takes(episode_id, chapter, created_at);
+CREATE TABLE IF NOT EXISTS history (
+  n INTEGER PRIMARY KEY AUTOINCREMENT, episode_id TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'before', why TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '{}', data TEXT NOT NULL DEFAULT '{}', at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS history_by_episode ON history(episode_id, kind, n);
 """
 #: A research conversation's thread: it lives on its research frame, not in the channel.
 CONVERSATION = "conversation"
+#: How many of an episode's changes are kept to be taken back. Each holds the plan and its
+#: pictures as they stood, so the count is small.
+HISTORY = 12
 #: Columns added since a table was first made, put into a store that predates them.
 ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # A film's Studio preview on the thread's computer, and the proof frames that came with it.
@@ -99,12 +150,59 @@ ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # The brand pack a channel's work wears (a folder under workspace/brands); empty for the
     # configured one.
     ("channels", "brand", "TEXT NOT NULL DEFAULT ''"),
+    # Where a take's recording, as it arrived, is kept (`s3://bucket/key`); empty when there
+    # is no bucket for footage.
+    ("takes", "raw", "TEXT NOT NULL DEFAULT ''"),
+    ("takes", "label", "TEXT NOT NULL DEFAULT ''"),
+    # What a picture was built as and by whom: its level (simple or rich), the agent that built
+    # it, and for a rich one the motion plan its builder wrote before drawing it.
+    ("pictures", "level", "TEXT NOT NULL DEFAULT ''"),
+    # The words its lines said when it was made (a digest), so a picture made for other words
+    # can say so.
+    ("pictures", "words", "TEXT NOT NULL DEFAULT ''"),
+    ("pictures", "builder", "TEXT NOT NULL DEFAULT ''"),
+    ("pictures", "generation", "TEXT NOT NULL DEFAULT '{}'"),
+    ("pictures", "motion", "TEXT NOT NULL DEFAULT '{}'"),
+    # How long its latest build took, kept with the beat: when it began and ended, in all, and
+    # each of its stages with its own times.
+    ("pictures", "timing", "TEXT NOT NULL DEFAULT '{}'"),
+    # The versions it stood as before, the one it last stood as first, each kept whole (its
+    # picture, stills and clip, how and by whom it was made, when and how long it took) to look
+    # back at and to put back; and which version it is (or will be, while it is made), counting
+    # up from 1. A store from before versions were numbered keeps none of the ones it had.
+    ("pictures", "versions", "TEXT NOT NULL DEFAULT '[]'"),
+    ("pictures", "version", "INTEGER NOT NULL DEFAULT 1"),
 )
+#: What adding a column to a store that predates it also does.
+ADDED_THEN = {("pictures", "version"): "UPDATE pictures SET versions = '[]'"}
 
 #: Columns that hold JSON, decoded on the way out.
-JSON_COLUMNS = frozenset({"data", "footer", "versions", "steps", "sources", "files", "preview"})
+JSON_COLUMNS = frozenset(
+    {
+        "data",
+        "footer",
+        "versions",
+        "steps",
+        "sources",
+        "files",
+        "preview",
+        # an episode's
+        "settings",
+        "stage",
+        "plan",
+        "labels",
+        "picks",
+        "report",
+        "film",
+        "stills",
+        "marks",
+        "motion",
+        "generation",
+        "timing",
+    }
+)
 #: Columns that hold a SQLite boolean.
-BOOL_COLUMNS = frozenset({"agent", "task", "to_agent", "resolved", "gate"})
+BOOL_COLUMNS = frozenset({"agent", "task", "to_agent", "resolved", "gate", "approved", "kept"})
 
 AGENT_ID = "agent"
 #: The workspace a fresh store starts with: you, two teammates to review with, and the agent.
@@ -155,6 +253,9 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         self._lock = threading.Lock()
+        #: What each turn under way is doing between its steps (`pulse`), by run. In memory
+        #: only: a restart ends the turns it was about.
+        self.pulses: dict[str, Row] = {}
         self._db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self._db.row_factory = sqlite3.Row
         with self._lock:
@@ -164,6 +265,8 @@ class Store:
                 have = {row[1] for row in self._db.execute(f"PRAGMA table_info({table})")}
                 if column not in have:
                     self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+                    if then := ADDED_THEN.get((table, column)):
+                        self._db.execute(then)
         self._seed()
 
     def close(self) -> None:
@@ -509,6 +612,269 @@ class Store:
     def delete_note(self, note_id: str) -> None:
         with self._lock:
             self._db.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+
+    # -- runs: what an agent on this computer (or the engine) was told and said ----------------
+
+    def add_run(self, *, thread_id: str, lane: str, harness: str, prompt: str, session: str) -> Row:
+        row: Row = {
+            "id": new_id("run"),
+            "thread_id": thread_id,
+            "lane": lane,
+            "harness": harness,
+            "session": session,
+            "prompt": prompt,
+            "state": "working",
+            "steps": [],
+            "started_at": time.time(),
+        }
+        self._insert("runs", row)
+        found = self.run(str(row["id"]))
+        assert found is not None  # noqa: S101 - written just above
+        return found
+
+    def run(self, run_id: str) -> Row | None:
+        return self._one("SELECT * FROM runs WHERE id = ?", (run_id,))
+
+    def update_run(self, run_id: str, **values: Any) -> Row | None:
+        self._update("runs", run_id, values)
+        return self.run(run_id)
+
+    def runs(self, thread_id: str, lane: str | None = None) -> list[Row]:
+        """A thread's runs, oldest first; one lane of them when `lane` is given."""
+        if lane is None:
+            return self._all(
+                "SELECT * FROM runs WHERE thread_id = ? ORDER BY started_at", (thread_id,)
+            )
+        return self._all(
+            "SELECT * FROM runs WHERE thread_id = ? AND lane = ? ORDER BY started_at",
+            (thread_id, lane),
+        )
+
+    def working_runs(self) -> list[Row]:
+        return self._all("SELECT * FROM runs WHERE state = 'working' ORDER BY started_at")
+
+    def pulse(
+        self, run_id: str, lane: str, doing: str = "", text: str = "", amount: int = 0
+    ) -> Row:
+        """A sign of life from a turn between two of its steps: what its model is at
+        ("thinking", "writing" its own words, "step" for a tool call it is writing, or nothing
+        known), the newest words of the thought or the step the call will be, and how much so
+        far (tokens of thought, characters written). `since` is when it began what it is at."""
+        now = time.time()
+        was = self.pulses.get(run_id)
+        going_on = was is not None and bool(doing) and was["doing"] == doing
+        row: Row = {
+            "lane": lane,
+            "at": now,
+            "doing": doing,
+            "text": text,
+            "amount": amount,
+            "since": was["since"] if was is not None and going_on else now,
+        }
+        self.pulses[run_id] = row
+        return row
+
+    # -- episodes: the plan, the pictures built for it, the takes recorded ----------------------
+
+    def add_episode(self, values: Mapping[str, Any]) -> Row:
+        now = time.time()
+        row: Row = {"id": new_id("ep"), "created_at": now, "updated_at": now, **values}
+        self._insert("episodes", row)
+        found = self.episode(str(row["id"]))
+        assert found is not None  # noqa: S101 - written just above
+        return found
+
+    def episode(self, episode_id: str) -> Row | None:
+        return self._one("SELECT * FROM episodes WHERE id = ?", (episode_id,))
+
+    def episodes(self, thread_id: str) -> list[Row]:
+        return self._all(
+            "SELECT * FROM episodes WHERE thread_id = ? ORDER BY created_at", (thread_id,)
+        )
+
+    def all_episodes(self) -> list[Row]:
+        return self._all("SELECT * FROM episodes ORDER BY created_at")
+
+    def update_episode(self, episode_id: str, **values: Any) -> Row | None:
+        self._update("episodes", episode_id, {**values, "updated_at": time.time()})
+        return self.episode(episode_id)
+
+    def voice_clone(self, voice_id: str) -> Row | None:
+        return self._one("SELECT * FROM channel_voice_clones WHERE id = ?", (voice_id,))
+
+    def channel_voice_clones(self, channel_id: str) -> list[Row]:
+        return self._all(
+            "SELECT * FROM channel_voice_clones WHERE channel_id = ? ORDER BY created_at, id",
+            (channel_id,),
+        )
+
+    def voice_clone_ids(self) -> set[str]:
+        return {str(row["id"]) for row in self._all("SELECT id FROM channel_voice_clones")}
+
+    def add_voice_clone(self, channel_id: str, voice: Row) -> None:
+        self._insert(
+            "channel_voice_clones",
+            {**voice, "channel_id": channel_id, "created_at": time.time()},
+        )
+
+    def save_voice_preview(self, voice_id: str, file_id: str) -> None:
+        self._update("channel_voice_clones", voice_id, {"preview_file": file_id, "verify": 0})
+
+    def picture(self, episode_id: str, unit: str) -> Row | None:
+        return self._one(
+            "SELECT * FROM pictures WHERE episode_id = ? AND unit = ?", (episode_id, unit)
+        )
+
+    def pictures(self, episode_id: str) -> list[Row]:
+        return self._all("SELECT * FROM pictures WHERE episode_id = ?", (episode_id,))
+
+    def set_picture(self, episode_id: str, unit: str, **values: Any) -> Row:
+        """A unit's picture, made on first use."""
+        existing = self.picture(episode_id, unit)
+        now = time.time()
+        if existing is None:
+            row: Row = {
+                "id": new_id("pic"),
+                "episode_id": episode_id,
+                "unit": unit,
+                "status": "queued",
+                "updated_at": now,
+                **values,
+            }
+            self._insert("pictures", row)
+        else:
+            self._update("pictures", str(existing["id"]), {**values, "updated_at": now})
+        found = self.picture(episode_id, unit)
+        assert found is not None  # noqa: S101 - written just above
+        return found
+
+    # An episode's changes, oldest first. A row is a change and the other side of it: while the
+    # change stands (`before`) it holds the episode as it stood before, and once the change is
+    # taken back (`undone`) it holds the episode as the change left it.
+
+    def put_snapshot(self, episode_id: str, *, why: str, data: Mapping[str, Any]) -> None:
+        """A change begins: the episode as it stands is kept. What was taken back before it
+        can no longer be put back, and only the newest `HISTORY` changes are kept."""
+        with self._lock:
+            self._db.execute(
+                "DELETE FROM history WHERE episode_id = ? AND kind = 'undone'", (episode_id,)
+            )
+            self._db.execute(
+                "INSERT INTO history (episode_id, kind, why, summary, data, at) "
+                "VALUES (?, 'before', ?, '{}', ?, ?)",
+                (episode_id, why, json.dumps(data), time.time()),
+            )
+            self._db.execute(
+                "DELETE FROM history WHERE episode_id = ? AND n NOT IN "
+                "(SELECT n FROM history WHERE episode_id = ? ORDER BY n DESC LIMIT ?)",
+                (episode_id, episode_id, HISTORY),
+            )
+
+    def _history(self, episode_id: str, kind: str, columns: str) -> Any:
+        # the change that stands last is the next to take back; the one taken back first is
+        # the last to put back
+        order = "DESC" if kind == "before" else "ASC"
+        with self._lock:
+            return self._db.execute(
+                f"SELECT {columns} FROM history WHERE episode_id = ? AND kind = ? "  # noqa: S608
+                f"ORDER BY n {order} LIMIT 1",
+                (episode_id, kind),
+            ).fetchone()
+
+    def snapshot(self, episode_id: str, kind: str = "before") -> Row | None:
+        """The newest change whole. `data` is large and stays text until asked for here."""
+        row = self._history(episode_id, kind, "n, why, summary, data, at")
+        if row is None:
+            return None
+        return {
+            "n": row["n"],
+            "why": row["why"],
+            "summary": json.loads(row["summary"] or "{}"),
+            "data": json.loads(row["data"] or "{}"),
+            "at": row["at"],
+        }
+
+    def previous_plans(self, episode_id: str) -> list[Row]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT n, why, at, json_extract(data, '$.plan') AS plan FROM history "
+                "WHERE episode_id = ? AND kind = 'before' ORDER BY n DESC",
+                (episode_id,),
+            ).fetchall()
+        return [{**dict(row), "plan": json.loads(row["plan"] or "{}")} for row in rows]
+
+    def snapshot_note(self, episode_id: str, kind: str = "before") -> Row | None:
+        """What the newest change did, without the snapshot's weight."""
+        row = self._history(episode_id, kind, "n, why, summary, at")
+        if row is None:
+            return None
+        return {
+            "n": row["n"],
+            "why": row["why"],
+            "summary": json.loads(row["summary"] or "{}"),
+            "at": row["at"],
+        }
+
+    def snapshots(self, episode_id: str) -> int:
+        """How many changes stand and can be taken back."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT COUNT(*) FROM history WHERE episode_id = ? AND kind = 'before' "
+                "AND summary != '{}'",
+                (episode_id,),
+            ).fetchone()
+        return int(row[0])
+
+    def note_snapshot(self, n: int, summary: Mapping[str, Any]) -> None:
+        with self._lock:
+            self._db.execute("UPDATE history SET summary = ? WHERE n = ?", (json.dumps(summary), n))
+
+    def turn_snapshot(self, n: int, *, kind: str, data: Mapping[str, Any]) -> None:
+        """A change is taken back, or put back: its row now holds the other side of it."""
+        with self._lock:
+            self._db.execute(
+                "UPDATE history SET kind = ?, data = ?, at = ? WHERE n = ?",
+                (kind, json.dumps(data), time.time(), n),
+            )
+
+    def drop_snapshot(self, n: int) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM history WHERE n = ?", (n,))
+
+    def delete_picture(self, episode_id: str, unit: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "DELETE FROM pictures WHERE episode_id = ? AND unit = ?", (episode_id, unit)
+            )
+
+    def add_take(self, values: Mapping[str, Any]) -> Row:
+        episode_id, chapter, frame = (str(values[k]) for k in ("episode_id", "chapter", "frame"))
+        with self._lock:
+            count = self._db.execute(
+                "SELECT COUNT(*) FROM takes WHERE episode_id = ? AND chapter = ? AND frame = ?",
+                (episode_id, chapter, frame),
+            ).fetchone()[0]
+        row: Row = {"id": new_id("tk"), "n": int(count) + 1, "created_at": time.time(), **values}
+        self._insert("takes", row)
+        found = self.take(str(row["id"]))
+        assert found is not None  # noqa: S101 - written just above
+        return found
+
+    def take(self, take_id: str) -> Row | None:
+        return self._one("SELECT * FROM takes WHERE id = ?", (take_id,))
+
+    def takes(self, episode_id: str) -> list[Row]:
+        return self._all(
+            "SELECT * FROM takes WHERE episode_id = ? ORDER BY created_at", (episode_id,)
+        )
+
+    def update_take(self, take_id: str, **values: Any) -> Row | None:
+        self._update("takes", take_id, values)
+        return self.take(take_id)
+
+    def delete_take(self, take_id: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM takes WHERE id = ?", (take_id,))
 
     # -- background work and activity --------------------------------------------------------
 

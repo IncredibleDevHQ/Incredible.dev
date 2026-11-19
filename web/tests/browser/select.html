@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8">
+  <title>Scrollable component selector</title>
+  <div id="root"></div>
+  <script type="module">
+    import React from "react";
+    import { createRoot } from "react-dom/client";
+    import { Select } from "/src/components/Select.tsx";
+
+    const options = Array.from({length: 30}, (_, i) => ({
+      value: String(i), label: i === 0 ? "Automatic" : "Component " + i, disabled: i === 28
+    }));
+    createRoot(document.getElementById("root")).render(
+      React.createElement(Select, {label: "Component", options, defaultValue: "0"})
+    );
+  </script>
+</html>

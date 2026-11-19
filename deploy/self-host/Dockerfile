@@ -10,7 +10,7 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PROJECT_ENVIRONMENT=/opt/venv PAT
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
-RUN uv sync --frozen --no-dev --extra self-host
+RUN uv sync --frozen --no-dev --extra self-host --extra s3
 COPY instructions.md NOTICE.md ./
 COPY config ./config
 COPY skills ./skills

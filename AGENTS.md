@@ -76,6 +76,9 @@ behind them.
 - `sandbox/`: the designer's computer: one recipe (`setup.sh`), its Dockerfile and the render
   toolchain lock.
 - `src/design_agent/assembly.py`: the shared model, tools, middleware, subagents and policy.
+- `src/design_agent/episode/`: an episode's plan as code handles it (the reading, the checks,
+  the clock, the built pictures, the film's page). No model call and no network but the typed
+  classifier's.
 - `src/design_agent/harness/`: orchestration (background helpers, wake-ups, check-ins, durable
   helper transcripts, pipelines, parallel looks, render watchers, context and failure boundaries).
 - `src/design_agent/tools/`: host tools (render jobs, image generation, voice, MCP, file

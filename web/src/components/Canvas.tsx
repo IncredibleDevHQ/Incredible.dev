@@ -4,10 +4,12 @@
 // approved), add an asset made from any card, or place a template that sets several up at once;
 // all of it reaches the agent in the task's thread. A research frame starts further back: questions
 // about a repository, the conversations they grow into, and the notes its assets are made from.
-import { ArrowLeft, Check, LayoutTemplate, Maximize, MessageSquare, Minus, Paperclip, Play, Plus, Send, Telescope } from "lucide-react";
+import { isWorkspaceTarget } from "./workspaceTarget";
+import { ArrowLeft, ArrowRight, Check, LayoutTemplate, Maximize, MessageSquare, Minus, Paperclip, Play, Plus, Podcast, Send, Telescope } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api, type Asset, type Board, type CanvasTask, type Capability, type FileView, type FrameView, type Work } from "../api";
+import { api, type Asset, type Board, type CanvasTask, type Capability, type EpisodeCard, type FileView, type FrameView, type Work } from "../api";
+import { mmss } from "../episode";
 import { useFocused, useHouse, type Focus } from "../store";
 import { Avatar, FileList, FooterLine, KindIcon, makesOf, StatusChip } from "../ui";
 import { columnsOf, Lines, useLines, type Edge } from "./Flow";
@@ -161,6 +163,10 @@ export function Canvas({ channelId }: { channelId: string }) {
             <LayoutTemplate />
             Templates
           </button>
+          <button type="button" className="btn" onClick={() => useHouse.getState().startEpisode({})}>
+            <Podcast />
+            Episode
+          </button>
         </div>
       )}
       {starting && (
@@ -260,7 +266,7 @@ function TaskFrame({ task }: { task: CanvasTask }) {
         </div>
       </header>
       {/* The demo's sample is the same whatever was brought: said where that work shows. */}
-      {demo && <p className="tf-demo">Demo: a scripted agent makes the same sample work whatever you bring, so this isn't made from your source.</p>}
+      {demo && !task.episodes?.some((e) => e.writer !== "demo") && <p className="tf-demo">Demo: a scripted agent makes the same sample work whatever you bring, so this isn't made from your source.</p>}
       {running.length > 0 && <Running work={running} />}
       <TaskFlow task={task} />
       {adding && <MakeMenu task={task} anchor={adding} onClose={() => setAdding(null)} />}
@@ -364,6 +370,7 @@ function AssetCard({ asset, task, onHot }: { asset: Asset; task: CanvasTask; onH
   const finished = asset.files.length > 0 && (asset.status === "done" || !board);
   const reviewing = asset.preview && (asset.status === "review" || asset.status === "changes");
   const draft = isDraft(asset);
+  const episode = task.episodes?.find((e) => e.asset_id === asset.id);
   const live = asset.status === "making" && task.thread.status === "working";
   const chip = CHIPS[asset.status];
   const focused = useFocused(task.thread.id, asset.id);
@@ -399,13 +406,14 @@ function AssetCard({ asset, task, onHot }: { asset: Asset; task: CanvasTask; onH
           <FilmPreview asset={asset} />
         ) : finished ? (
           <>
-            <Finals files={asset.files} title={asset.title} />
+            <Finals files={asset.files} title={asset.title} poster={episode?.film.poster?.url} />
             {draft && <DraftActions asset={asset} />}
           </>
         ) : board ? (
           <BoardPreview board={board} />
         ) : null}
-        <AssetLine asset={asset} task={task} live={live} />
+        {episode && <EpisodeFace episode={episode} />}
+        {!episode && <AssetLine asset={asset} task={task} live={live} />}
       </div>
       <button
         type="button"
@@ -419,6 +427,40 @@ function AssetCard({ asset, task, onHot }: { asset: Asset; task: CanvasTask; onH
       </button>
       {making && <MakeMenu task={task} from={asset} anchor={making} onClose={() => setMaking(null)} />}
     </article>
+  );
+}
+
+// An episode's card: where it stands in one line, and the way into its studio.
+// Where an episode stands, in the one line its card has.
+function episodeLine(episode: EpisodeCard): string {
+  const p = episode.pictures;
+  const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  if (episode.status === "planning") return episode.stage.said || "The plan is being written";
+  if (episode.status === "failed") return episode.stage.said || "The plan stopped";
+  if (episode.stage.state === "working" || episode.stage.state === "reading") return "The writer is making a change";
+  if (episode.status === "plan") return `${episode.chapters} chapters planned. Read it, then make the pictures.`;
+  if (episode.film.status === "rendering") return `Rendering the film · ${Math.round((episode.film.fraction ?? 0) * 100)}%`;
+  if (p.go) return `${count(p.go, "picture needs", "pictures need")} your go`;
+  if (p.making) return `${count(p.making, "picture", "pictures")} being made`;
+  if (p.failed) return `${count(p.failed, "picture", "pictures")} not made`;
+  if (episode.film.status === "done") return [episode.film.seconds ? mmss(episode.film.seconds) : "Rendered", count(episode.chapters, "chapter", "chapters")].join(" · ");
+  return `${episode.recorded} of ${episode.chapters} chapters recorded`;
+}
+
+function EpisodeFace({ episode }: { episode: EpisodeCard }) {
+  const openEpisode = useHouse((s) => s.openEpisode);
+  const line = episodeLine(episode);
+  return (
+    <div className="ep-face">
+      <p className="node-line">
+        {episode.status === "planning" && <span className="spin" style={{ width: 10, height: 10, borderWidth: 1.5 }} />}
+        {line}
+      </p>
+      <button type="button" className="btn primary" onClick={() => void openEpisode(episode.id)}>
+        Edit episode
+        <ArrowRight />
+      </button>
+    </div>
   );
 }
 
@@ -576,7 +618,7 @@ function FilmPreview({ asset }: { asset: Asset }) {
 
 // An asset's finished files: a film shows a frame to play, images show (the first large), the rest
 // are files. Any of them opens full size, among the asset's other files.
-function Finals({ files, title }: { files: FileView[]; title: string }) {
+function Finals({ files, title, poster }: { files: FileView[]; title: string; poster?: string }) {
   const openFiles = useHouse((s) => s.openFiles);
   const video = files.find((f) => f.mime.startsWith("video/"));
   const audio = files.find((f) => f.mime.startsWith("audio/"));
@@ -590,7 +632,7 @@ function Finals({ files, title }: { files: FileView[]; title: string }) {
       {video && (
         <button type="button" className="film-hero" onClick={() => open(video)} aria-label={`Play ${title}`}>
           {/* Two seconds in: a film's first frame is often its empty ground. */}
-          <video src={`${video.url}#t=2`} preload="metadata" muted />
+          {poster ? <img src={poster} alt="" loading="lazy" /> : <video key={video.id} src={`${video.url}#t=2`} preload="metadata" muted />}
           <span className="play">
             <Play />
           </span>
@@ -627,7 +669,8 @@ function MakeMenu({ task, from, anchor, onClose }: { task: CanvasTask; from?: As
   const [busy, setBusy] = useState(false);
   const [place, setPlace] = useState<{ top: number; left: number } | null>(null);
   const media = from ? makesOf(from.kind) : "material";
-  const kinds = catalog.capabilities.filter((c) => c.takes.includes(media));
+  // An episode is started from its own sheet (below), not asked of the agent here.
+  const kinds = catalog.capabilities.filter((c) => c.takes.includes(media) && !c.studio);
   const finished = from && READY.has(from.status) && from.status !== "skipped";
   // A research frame's notes are what it started from; templates that start from material join it.
   const notes = !from && task.thread.kind === "research";
@@ -645,8 +688,9 @@ function MakeMenu({ task, from, anchor, onClose }: { task: CanvasTask; from?: As
   }, [anchor, from, chosen]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && isWorkspaceTarget(e.target) && onClose();
     const onDown = (e: PointerEvent) => {
+      if (e.defaultPrevented || !isWorkspaceTarget(e.target)) return;
       const target = e.target as Node;
       if (!box.current?.contains(target) && !anchor.contains(target)) onClose();
     };
@@ -674,6 +718,7 @@ function MakeMenu({ task, from, anchor, onClose }: { task: CanvasTask; from?: As
   const title = from ? `Make from “${from.title}”` : notes ? "Make from the notes" : "Add to this task";
   return createPortal(
     <div
+      data-house-portal=""
       className="pop"
       ref={box}
       role="dialog"
@@ -711,6 +756,21 @@ function MakeMenu({ task, from, anchor, onClose }: { task: CanvasTask; from?: As
         <>
           <h3>{title}</h3>
           <div className="pop-list">
+            {notes && (
+              <button
+                type="button"
+                onClick={() => {
+                  useHouse.getState().startEpisode({ frame: task.thread.id });
+                  onClose();
+                }}
+              >
+                <Podcast size={16} />
+                <span>
+                  <b>Episode</b>
+                  <small>A presenter-led explainer, planned from the notes and recorded in its studio</small>
+                </span>
+              </button>
+            )}
             {kinds.map((k) => (
               <button type="button" key={k.id} onClick={() => setChosen(k)}>
                 <KindIcon kind={k.id} />

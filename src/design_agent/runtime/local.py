@@ -7,6 +7,7 @@ import asyncio
 import time
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -107,6 +108,7 @@ class LocalRuntime:
     waker: InProcessWaker
     services: BackgroundServices
     replies: Replies
+    graph_for_model: Callable[[str, str | None], Any] | None = None
     _locks: dict[str, asyncio.Lock] = field(default_factory=dict)
 
     def _config(self, thread_id: str, extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -119,19 +121,34 @@ class LocalRuntime:
         return self._locks.setdefault(thread_id, asyncio.Lock())
 
     async def ask(
-        self, message: str, *, thread_id: str, configurable: Mapping[str, Any] | None = None
+        self,
+        message: str,
+        *,
+        thread_id: str,
+        configurable: Mapping[str, Any] | None = None,
+        model_settings: Settings | None = None,
     ) -> list[BaseMessage]:
         """Run one turn and return the messages it added. `configurable` carries what a surface
         knows about the request."""
         async with self._lock(thread_id):
-            return await self._turn(thread_id, message, configurable)
+            graph = self.graph
+            if model_settings is not None:
+                if self.graph_for_model is None:
+                    raise ValueError("This runtime cannot switch models.")
+                graph = self.graph_for_model(model_settings.model, model_settings.model_effort)
+            return await self._turn(thread_id, message, configurable, graph=graph)
 
     async def _turn(
-        self, thread_id: str, message: str, configurable: Mapping[str, Any] | None = None
+        self,
+        thread_id: str,
+        message: str,
+        configurable: Mapping[str, Any] | None = None,
+        *,
+        graph: Any = None,
     ) -> list[BaseMessage]:
         config = self._config(thread_id, configurable)
         before = await self._message_count(config)
-        result = await self.graph.ainvoke(
+        result = await (graph if graph is not None else self.graph).ainvoke(
             {"messages": [HumanMessage(content=message)]}, config=config
         )
         messages: list[BaseMessage] = list(result.get("messages", []))
@@ -262,5 +279,22 @@ def build_local_runtime(
         services=services,
         replies=replies or (lambda _thread, text: print(text)),
     )
+
+    @lru_cache(maxsize=8)
+    def graph_for_model(spec: str, effort: str | None) -> Any:
+        scoped = settings.model_copy(update={"model": spec, "model_effort": effort})
+        components = build_agent_components(
+            settings=scoped,
+            runtime=profile,
+            role_models=role_models,
+            mcp_servers=mcp_servers,
+            mcp_tools=mcp_tools,
+            brand_for=brand_for,
+        )
+        return compile_graph(
+            components, chosen, checkpointer=runtime.graph.checkpointer, store=store
+        )
+
+    runtime.graph_for_model = graph_for_model
     holder.append(runtime)
     return runtime

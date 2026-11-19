@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><body><div id="root"></div>
+<script type="module">
+  import React from 'react';
+  import { createRoot } from 'react-dom/client';
+  import { NewEpisode } from '/src/components/episode/NewEpisode.tsx';
+  import { useHouse } from '/src/store.ts';
+  useHouse.setState({ channelId: 'test', setMode: () => {}, openEpisode: async () => {} });
+  createRoot(document.querySelector('#root')).render(React.createElement(NewEpisode, { start: {} }));
+</script>
+</body></html>

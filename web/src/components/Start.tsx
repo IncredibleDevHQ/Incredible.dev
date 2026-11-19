@@ -1,7 +1,7 @@
-// An empty channel's first screen: the brand its work will wear, then the two ways in, research
-// when the story is in code, or material you already have, each with one action. Laid out like
+// An empty channel's first screen: the brand its work will wear, then the ways in: research when
+// the story is in code, material you already have, or an episode from notes, each with one action. Laid out like
 // affectUI's Tips Panel (short steps, one action each); it gives way to the work once there is any.
-import { LayoutTemplate, Telescope } from "lucide-react";
+import { LayoutTemplate, Podcast, Telescope } from "lucide-react";
 import { useState } from "react";
 import type { Channel } from "../api";
 import { useHouse } from "../store";
@@ -11,6 +11,7 @@ import { ResearchStart } from "./Research";
 export function ChannelStart({ channel, inChat }: { channel: Channel; inChat?: boolean }) {
   const setMode = useHouse((s) => s.setMode);
   const pickTemplate = useHouse((s) => s.pickTemplate);
+  const startEpisode = useHouse((s) => s.startEpisode);
   const [researching, setResearching] = useState<HTMLElement | null>(null);
   return (
     <section className="start-panel" aria-label={`Start #${channel.name}`}>
@@ -47,6 +48,17 @@ export function ChannelStart({ channel, inChat }: { channel: Channel; inChat?: b
           >
             <LayoutTemplate />
             Choose what to make
+          </button>
+        </article>
+        <article className="start-way">
+          <span className="start-icon">
+            <Podcast />
+          </span>
+          <h3>Make an episode</h3>
+          <p>When you have notes and want to explain one idea on camera. It is planned from them, then you record it chapter by chapter.</p>
+          <button type="button" className="btn" onClick={() => startEpisode({})}>
+            <Podcast />
+            Plan an episode
           </button>
         </article>
       </div>
