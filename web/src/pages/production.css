@@ -82,8 +82,9 @@
 .pb-group-name:hover { background: var(--wash); }
 .pb-group-name svg { flex: none; width: 13px; height: 13px; color: var(--muted); transition: transform 200ms ease; }
 .pb-group-name[aria-expanded="true"] svg { transform: rotate(90deg); }
-.pb-group-name b { flex: none; max-width: 100%; overflow: hidden; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
-.pb-group-head[data-level="episode"] .pb-group-name b { color: var(--ink); font-size: 13px; }
+.pb-group-name b { flex: none; overflow: hidden; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+/* an episode's name gives way to its count; a chapter's number stays, and its question gives way */
+.pb-group-head[data-level="episode"] .pb-group-name b { flex: 0 1 auto; min-width: 0; color: var(--ink); font-size: 13px; }
 .pb-group-name span { min-width: 0; overflow: hidden; color: var(--muted); white-space: nowrap; text-overflow: ellipsis; }
 .pb-start { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--raised); color: var(--ink-2); font: inherit; font-size: 12px; font-weight: 550; cursor: pointer; opacity: 0; transition: opacity 140ms ease; }
 .pb-start svg { width: 11px; height: 11px; }
