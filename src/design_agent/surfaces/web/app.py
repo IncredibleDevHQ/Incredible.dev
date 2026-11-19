@@ -801,6 +801,12 @@ def create_app(
     ) -> dict[str, Any]:
         return episode_call(lambda: host.episodes.keep_picture(episode_id, unit_id, by=me))
 
+    @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/versions/{n}/use")
+    async def use_picture_version(
+        episode_id: str, unit_id: str, n: int, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.use_version(episode_id, unit_id, n, by=me))
+
     @app.post("/api/episodes/{episode_id}/replan")
     async def replan_pictures(
         episode_id: str, body: ReplanIn, me: str = Depends(person)

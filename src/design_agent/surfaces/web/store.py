@@ -165,10 +165,15 @@ ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # How long its latest build took, kept with the beat: when it began and ended, in all, and
     # each of its stages with its own times.
     ("pictures", "timing", "TEXT NOT NULL DEFAULT '{}'"),
-    # The versions made before it was asked for again, newest first (each one's stills and clip,
-    # how and by whom it was made, when and how long it took), kept to look back at.
+    # The versions it stood as before, the one it last stood as first, each kept whole (its
+    # picture, stills and clip, how and by whom it was made, when and how long it took) to look
+    # back at and to put back; and which version it is (or will be, while it is made), counting
+    # up from 1. A store from before versions were numbered keeps none of the ones it had.
     ("pictures", "versions", "TEXT NOT NULL DEFAULT '[]'"),
+    ("pictures", "version", "INTEGER NOT NULL DEFAULT 1"),
 )
+#: What adding a column to a store that predates it also does.
+ADDED_THEN = {("pictures", "version"): "UPDATE pictures SET versions = '[]'"}
 
 #: Columns that hold JSON, decoded on the way out.
 JSON_COLUMNS = frozenset(
@@ -256,6 +261,8 @@ class Store:
                 have = {row[1] for row in self._db.execute(f"PRAGMA table_info({table})")}
                 if column not in have:
                     self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+                    if then := ADDED_THEN.get((table, column)):
+                        self._db.execute(then)
         self._seed()
 
     def close(self) -> None:

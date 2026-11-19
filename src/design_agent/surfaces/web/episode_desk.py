@@ -108,8 +108,24 @@ MOTION_TRIES = 2
 #: Pictures built at once by a local agent. The built-in agent builds one at a time: its
 #: thread holds one turn.
 PICTURES_AT_ONCE = 2
-#: Earlier versions of a picture kept to look back at; the oldest is dropped past this.
+#: Earlier versions of a picture kept to look back at and to put back; past this, the
+#: oldest made is dropped.
 VERSIONS = 12
+#: What a version of a picture is kept as: all it needs to stand again as it was made.
+VERSION_KEEPS = (
+    "status",
+    "sig",
+    "html",
+    "stills",
+    "clip",
+    "go_sig",
+    "level",
+    "builder",
+    "generation",
+    "motion",
+    "words",
+    "timing",
+)
 MATERIAL_CHARS = 200_000
 TEXT_FILES = (".md", ".markdown", ".txt", ".rst", ".json", ".csv", ".html", ".htm")
 #: The lengths a person can ask for, in seconds: the limits (the lengths this kind of film
@@ -912,22 +928,7 @@ class EpisodeDesk:
 
     def _as_it_stands(self, episode: Row) -> Row:
         """The plan, its labels and its pictures as they stand: what a change can go back to."""
-        keep = (
-            "unit",
-            "sig",
-            "status",
-            "html",
-            "stills",
-            "clip",
-            "go_sig",
-            "note",
-            "failure",
-            "level",
-            "builder",
-            "motion",
-            "generation",
-            "words",
-        )
+        keep = ("unit", "version", "note", "failure", *VERSION_KEEPS)
         return {
             "plan": episode["plan"],
             "labels": episode["labels"],
@@ -1004,7 +1005,7 @@ class EpisodeDesk:
             values = {"words": "", **{k: v for k, v in row.items() if k != "unit"}}
             if values.get("status") in ("queued", "making", "posing"):
                 values["sig"] = ""  # it was on its way then: it is asked for again
-            self.store.set_picture(episode_id, str(row["unit"]), **values)
+            self._put(episode_id, str(row["unit"]), values)
 
     def _with_picks(self, episode: Row, plan: Row, labels: Row, picks: Row) -> Row:
         """A plan's labels, as they were kept, with a person's picks as they stand now laid
@@ -1385,8 +1386,9 @@ class EpisodeDesk:
 
     def stop(self, episode_id: str, unit_id: str = "") -> None:
         """Stop what is under way for an episode: its plan, and every picture being made or
-        waiting its turn; or, when one picture is named, that picture alone. A stopped picture
-        stays stopped until a person asks for it again."""
+        waiting its turn; or, when one picture is named, that picture alone. A picture stopped
+        while it was made again goes back to the version before; one stopped on its first build
+        stays stopped until a person asks for it again (see `_unmade`)."""
         job = self._jobs.get(episode_id)
         if not unit_id:
             self._then_draw.discard(episode_id)
@@ -1921,6 +1923,35 @@ class EpisodeDesk:
         self._changed(episode_id)
         return self.view(episode_id)
 
+    def use_version(self, episode_id: str, unit_id: str, n: int, *, by: str) -> Row:
+        """A person puts a kept version of a picture back: it stands again as it was made, and
+        the one that stood is kept in its place. A build under way for it is stopped, which the
+        press says. The beat's level follows the version's, so it does not read as out of date
+        for being made another way. Nothing is drawn."""
+        episode = self._episode(episode_id)
+        have = self.store.picture(episode_id, unit_id)
+        chosen = next((k for k in (have or {}).get("versions") or [] if k["n"] == n), None)
+        if chosen is None:
+            raise ValueError("That version isn't kept any more.")
+        build = self._builds.get((episode_id, unit_id))
+        if build is not None and not build.done():
+            build.cancel()  # its stop lands on a settled picture and leaves it (`_unmade`)
+        full = self._full(episode)
+        unit = (
+            next((u for u in self._units(episode, full) if u["id"] == unit_id), None)
+            if full
+            else None
+        )
+        if unit is not None and chosen["level"] and chosen["level"] != unit["level"]:
+            picks = dict(episode["picks"] or {})
+            picked = dict(picks.get("units") or {})
+            picked[unit_id] = {**(picked.get(unit_id) or {}), "level": chosen["level"]}
+            self.store.update_episode(episode_id, picks={**picks, "units": picked})
+        self._put(episode_id, unit_id, {**_standing(chosen), "failure": "", "note": ""})
+        self._say(episode, f"Put version {n} of a picture back.", by=by, quiet=True)
+        self._settle(episode_id)
+        return self.view(episode_id)
+
     def replan(self, episode_id: str, *, by: str, pictures: Sequence[str]) -> Row:
         """Have the writer fit pictures to what their lines say now: a person changed the
         words after the pictures were made. What each shows, its objects and its cues are
@@ -2169,12 +2200,10 @@ class EpisodeDesk:
             async with gate:
                 await self._build(episode_id, unit_id, generation_pick=generation_pick)
         except asyncio.CancelledError:
-            self.store.set_picture(episode_id, unit_id, status="failed", failure="Stopped.")
+            self._unmade(episode_id, unit_id, "Stopped.", stopped=True)
         except Exception as error:  # one picture failing must not stop the others
             _LOGGER.exception("picture failed on %s %s", episode_id, unit_id)
-            self.store.set_picture(
-                episode_id, unit_id, status="failed", failure=_clean(str(error), 240)
-            )
+            self._unmade(episode_id, unit_id, _clean(str(error), 240))
         finally:
             self._record_timing(episode_id, unit_id)
             self._builds.pop((episode_id, unit_id), None)
@@ -2302,9 +2331,7 @@ class EpisodeDesk:
             if not faults:
                 await worker.prepare(episode, {str(brief["file"]): html})
         if faults:
-            self.store.set_picture(
-                episode_id, unit_id, status="failed", html=html, failure="; ".join(faults[:3])
-            )
+            self._unmade(episode_id, unit_id, "; ".join(faults[:3]), html=html)
             return
         generation = {
             **unit["generation"],
@@ -2824,12 +2851,10 @@ class EpisodeDesk:
         try:
             await self._build(episode_id, unit_id, note)
         except asyncio.CancelledError:
-            self.store.set_picture(episode_id, unit_id, status="failed", failure="Stopped.")
+            self._unmade(episode_id, unit_id, "Stopped.", stopped=True)
         except Exception as error:  # one picture failing must not stop the others
             _LOGGER.exception("picture failed on %s %s", episode_id, unit_id)
-            self.store.set_picture(
-                episode_id, unit_id, status="failed", failure=_clean(str(error), 240)
-            )
+            self._unmade(episode_id, unit_id, _clean(str(error), 240))
         finally:
             self._record_timing(episode_id, unit_id)
             self._builds.pop((episode_id, unit_id), None)
@@ -2838,15 +2863,52 @@ class EpisodeDesk:
             self._settle(episode_id)
 
     def _set_queued(self, episode_id: str, unit_id: str, **values: Any) -> None:
-        """A picture asked for again. The version made before joins the ones kept to look back
-        at, newest first, the oldest dropped past `VERSIONS`; one that was not made leaves the
-        kept ones as they are."""
+        """A picture asked for again: the version made before is kept (see `_put`)."""
+        self._put(episode_id, unit_id, {**values, "status": "queued"})
+
+    def _put(self, episode_id: str, unit_id: str, values: Row) -> None:
+        """A picture's record moves: asked for again, or put back to a version of it. The
+        version that stood joins the kept ones, first, unless it is the one put back, which
+        leaves them; one with no number of its own (on its way) is numbered after every one
+        kept, so a number is never made twice. Past `VERSIONS` the oldest made is dropped. A
+        version put back is followed as its own build, not the one before it."""
         have = self.store.picture(episode_id, unit_id)
-        kept = _kept_version(have)
-        extra: Row = (
-            {"versions": [kept, *((have or {}).get("versions") or [])][:VERSIONS]} if kept else {}
+        made = values.get("status") in ("made", "go")
+        n = values.get("version") if made else None
+        kept = [k for k in (have or {}).get("versions") or [] if k["n"] != n]
+        standing = _kept_version(have)
+        if standing is not None and standing["n"] != n:
+            kept.insert(0, standing)
+        if n is None:
+            values = {**values, "version": max((k["n"] for k in kept), default=0) + 1}
+        else:
+            self._began.pop((episode_id, unit_id), None)
+            self._steered.pop((episode_id, unit_id), None)
+        newest = sorted((k["n"] for k in kept), reverse=True)[:VERSIONS]
+        self.store.set_picture(
+            episode_id, unit_id, **values, versions=[k for k in kept if k["n"] in newest]
         )
-        self.store.set_picture(episode_id, unit_id, status="queued", **values, **extra)
+
+    def _unmade(
+        self, episode_id: str, unit_id: str, failure: str, *, stopped: bool = False, **values: Any
+    ) -> None:
+        """A build ended without a picture. A picture made again goes back to the version
+        before, which stands as it did and says why the new one wasn't made (a stop needs no
+        why); a first build is left not made, saying why. A stop that lands once the picture
+        was settled (made, or a change taken back) leaves it as it is."""
+        have = self.store.picture(episode_id, unit_id)
+        if have is None:
+            return
+        building = have["status"] in ("queued", "making", "posing")
+        if stopped and not building:
+            return
+        kept = have.get("versions") or []
+        if not building or not kept:
+            self.store.set_picture(episode_id, unit_id, status="failed", failure=failure, **values)
+            return
+        self._put(
+            episode_id, unit_id, {**_standing(kept[0]), "failure": "" if stopped else failure}
+        )
 
     def _record_timing(self, episode_id: str, unit_id: str) -> None:
         """Keeps with the beat how long its picture's build took, in all and stage by stage,
@@ -3815,12 +3877,7 @@ class EpisodeDesk:
                 )
             for have in self.store.pictures(episode_id):
                 if have["status"] in ("queued", "making", "posing"):
-                    self.store.set_picture(
-                        episode_id,
-                        have["unit"],
-                        status="failed",
-                        failure="Stopped when the house restarted.",
-                    )
+                    self._unmade(episode_id, have["unit"], "Stopped when the house restarted.")
             if (episode["film"] or {}).get("status") == "rendering":
                 self.store.update_episode(
                     episode_id,
@@ -4134,28 +4191,29 @@ class EpisodeDesk:
             "made_for": _made_for(have, unit, lines or {}) if reworded else {},
             "failure": have["failure"],
             "note": have["note"],
-            # which version it is (or will be, while it is made), and the ones made before it
-            # was asked for again, newest first, to look back at
-            "version": _version_number(have.get("versions")) + 1,
+            # which version it is (or will be, while it is made), and the ones it stood as
+            # before, the one it last stood as first, to look back at and to put back
+            "version": have["version"],
             "versions": [self._version_view(kept) for kept in have.get("versions") or []],
         }
 
     def _version_view(self, kept: Row) -> Row:
-        """A version kept to look back at, as the studio shows it: its number, its stills and
-        its clip as files, how and by whom it was made, when, and how long its build took."""
+        """A version kept to look back at and to put back, as the studio shows it: its number,
+        its stills and its clip as files, how and by whom it was made, when, and how long its
+        build took."""
         return {
             "n": kept["n"],
             "stills": {
                 frame: view
-                for frame, file_id in (kept.get("stills") or {}).items()
+                for frame, file_id in (kept["stills"] or {}).items()
                 if (view := self._file(file_id)) is not None
             },
-            "clip": self._file(kept.get("clip")),
-            "level": kept.get("level") or "",
-            "builder": kept.get("builder") or "",
-            "generation": kept.get("generation") or None,
-            "made_at": kept.get("made_at"),
-            "seconds": kept.get("seconds"),
+            "clip": self._file(kept["clip"]),
+            "level": kept["level"],
+            "builder": kept["builder"],
+            "generation": kept["generation"] or None,
+            "made_at": kept["made_at"],
+            "seconds": (kept["timing"] or {}).get("seconds"),
         }
 
     def _take_view(self, take: Row) -> dict[str, Any]:
@@ -4351,7 +4409,10 @@ def _stages(
     if status == "queued":
         own = []
     elif began is not None:
-        own = [r for r in own if float(r["started_at"] or 0.0) >= began]
+        # a build that ended is the turns it ran: a version put back is not read with the turns
+        # of a later build that did not land
+        ended = float(((have or {}).get("timing") or {}).get("ended_at") or "inf")
+        own = [r for r in own if began <= float(r["started_at"] or 0.0) <= ended]
     else:
         opening = BUILD_OPENINGS.get(level, BUILD_OPENINGS[units.SIMPLE])
         opened = [i for i, r in enumerate(own) if asked_now(str(r["prompt"])).startswith(opening)]
@@ -4442,29 +4503,21 @@ def _plan_stages(stage: Row, turns: Sequence[Row]) -> list[Row]:
     return out
 
 
-def _version_number(kept: Sequence[Row] | None) -> int:
-    """The number of the newest version kept: versions count up from 1 over a picture's life,
-    whichever of them are still kept."""
-    return int(kept[0]["n"]) if kept else 0
-
-
 def _kept_version(have: Row | None) -> Row | None:
-    """A made picture as a version to look back at: its number, its stills and clip, how and by
-    whom it was made, when its build ended and how long that took. None for a picture that was
-    not made."""
-    if have is None or have["status"] not in ("made", "go") or not (have["stills"] or have["clip"]):
+    """A made picture as a version to keep: its number, when it was made, and all it needs to
+    stand again as it was made. None for a picture that was not made."""
+    if have is None or have["status"] not in ("made", "go") or not have["html"]:
         return None
-    timing = have.get("timing") or {}
     return {
-        "n": _version_number(have.get("versions")) + 1,
-        "stills": dict(have["stills"] or {}),
-        "clip": have["clip"] or "",
-        "level": have["level"],
-        "builder": have["builder"],
-        "generation": have.get("generation") or {},
-        "made_at": timing.get("ended_at") or have["updated_at"],
-        "seconds": timing.get("seconds"),
+        "n": int(have["version"]),
+        "made_at": (have["timing"] or {}).get("ended_at") or have["updated_at"],
+        **{key: have[key] for key in VERSION_KEEPS},
     }
+
+
+def _standing(kept: Row) -> Row:
+    """A kept version as the picture's own record, to stand again."""
+    return {"version": kept["n"], **{key: kept[key] for key in VERSION_KEEPS}}
 
 
 def _started(have: Row | None) -> float | None:

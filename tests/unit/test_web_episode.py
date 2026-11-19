@@ -8,6 +8,7 @@ import asyncio
 import io
 import json
 import re
+import sqlite3
 import time
 from collections.abc import AsyncGenerator, Mapping
 from pathlib import Path
@@ -4032,3 +4033,164 @@ async def test_a_picture_made_again_keeps_the_versions_before_to_look_back_at(
     monkeypatch.setattr(episode_desk, "VERSIONS", 2)
     fifth = await again(fourth["level"])
     assert fifth["version"] == 4 and [v["n"] for v in fifth["versions"]] == [3, 2]
+
+
+async def test_a_kept_version_is_put_back_whole_and_a_redo_that_does_not_land_falls_back(
+    tmp_path: Path, house: AgentHost
+) -> None:
+    desk = house.episodes
+    episode_id = await planned(house)
+    key = next(u for u in desk.view(episode_id)["units"] if u["kind"] == "picture")["id"]
+
+    def row() -> dict[str, Any]:
+        found = house.store.picture(episode_id, key)
+        assert found is not None
+        return found
+
+    def numbers(found: Mapping[str, Any]) -> tuple[int, list[int]]:
+        return found["version"], [kept["n"] for kept in found["versions"]]
+
+    def ask_again() -> None:
+        desk.make(episode_id, by="you", only=[key], level=row()["level"] or "simple")
+
+    async def made_again() -> dict[str, Any]:
+        ask_again()
+        await settle(lambda: not desk._busy(episode_id))
+        return row()
+
+    class Picture(DemoWorker):
+        """The demo's builder, slow or failing on this picture when told to."""
+
+        mode = ""
+
+        async def turn(self, episode: Any, *, lane: str, prompt: str, heard: Any) -> Told:
+            if lane == f"picture:{key}" and self.mode == "slow":
+                await asyncio.sleep(30)
+            if lane == f"picture:{key}" and self.mode == "broken":
+                raise RuntimeError("The  agent  fell over.")
+            return await super().turn(episode, lane=lane, prompt=prompt, heard=heard)
+
+    builder = Picture(data_dir=tmp_path, script=SCRIPT, pause=0, store=house.store)
+    desk.workers[DEMO] = builder
+    desk.make(episode_id, by="you", only=[key])
+    await settle(lambda: not desk._busy(episode_id))
+    first = row()
+    second = await made_again()
+    third = await made_again()
+    assert numbers(third) == (3, [2, 1])
+    # a version is kept whole: the picture as it was drawn, not only its stills
+    assert third["versions"][1]["html"] == first["html"]
+    assert third["versions"][1]["stills"] == first["stills"]
+    # put back, the first stands again as it was made, and the third is kept in its place
+    view = desk.use_version(episode_id, key, 1, by="you")
+    back = row()
+    assert (back["status"], back["html"], back["stills"]) == (
+        first["status"],
+        first["html"],
+        first["stills"],
+    )
+    assert numbers(back) == (1, [3, 2]) and back["timing"] == first["timing"]
+    shown = next(u for u in view["units"] if u["id"] == key)["picture"]
+    assert shown["version"] == 1 and [v["n"] for v in shown["versions"]] == [3, 2]
+    assert not shown["stale"]
+    with pytest.raises(ValueError, match="isn't kept"):
+        desk.use_version(episode_id, key, 1, by="you")
+    # made again from there, it is numbered after every version there has been
+    fourth = await made_again()
+    assert numbers(fourth) == (4, [1, 3, 2])
+    # a redo that fails goes back to the version before, which says why the new one wasn't made
+    builder.mode = "broken"
+    failed = await made_again()
+    assert (failed["status"], failed["html"]) == (fourth["status"], fourth["html"])
+    assert numbers(failed) == (4, [1, 3, 2]) and failed["failure"] == "The agent fell over."
+    # one stopped goes back too, with nothing to explain
+    builder.mode = "slow"
+    ask_again()
+    await settle(lambda: row()["status"] == "making")
+    assert numbers(row()) == (5, [4, 1, 3, 2])
+    desk.stop(episode_id, key)
+    await settle(lambda: not desk._busy(episode_id))
+    stopped = row()
+    assert (stopped["html"], stopped["failure"]) == (fourth["html"], "")
+    assert numbers(stopped) == (4, [1, 3, 2])
+    # putting a version back while the beat is made again stops that build, which leaves the
+    # version put back standing
+    ask_again()
+    await settle(lambda: row()["status"] == "making")
+    desk.use_version(episode_id, key, 2, by="you")
+    await settle(lambda: not desk._busy(episode_id))
+    put = row()
+    assert (put["status"], put["html"], put["failure"]) == (second["status"], second["html"], "")
+    assert numbers(put) == (2, [4, 1, 3])
+    # a version made another way brings its way with it, so it does not read as out of date
+    house.store.set_picture(
+        episode_id,
+        key,
+        versions=[{**k, "level": "rich"} if k["n"] == 3 else k for k in put["versions"]],
+    )
+    view = desk.use_version(episode_id, key, 3, by="you")
+    rich = next(u for u in view["units"] if u["id"] == key)
+    assert (rich["level"], rich["picture"]["level"], rich["picture"]["stale"]) == (
+        "rich",
+        "rich",
+        False,
+    )
+
+
+def test_a_store_from_before_numbered_versions_keeps_none_of_the_ones_it_had(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "house.sqlite"
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "CREATE TABLE pictures (id TEXT PRIMARY KEY, episode_id TEXT NOT NULL,"
+            " unit TEXT NOT NULL, sig TEXT NOT NULL DEFAULT '', status TEXT NOT NULL,"
+            " html TEXT NOT NULL DEFAULT '', stills TEXT NOT NULL DEFAULT '{}',"
+            " clip TEXT NOT NULL DEFAULT '', go_sig TEXT NOT NULL DEFAULT '',"
+            " note TEXT NOT NULL DEFAULT '', failure TEXT NOT NULL DEFAULT '',"
+            " updated_at REAL NOT NULL, versions TEXT NOT NULL DEFAULT '[]')"
+        )
+        db.execute(
+            "INSERT INTO pictures (id, episode_id, unit, status, html, updated_at, versions)"
+            " VALUES ('pic_1', 'ep', 'u1', 'made', '<p>2</p>', 0, ?)",
+            (json.dumps([{"n": 1, "stills": {}, "clip": "", "made_at": 0}]),),
+        )
+    found = Store(path).picture("ep", "u1")
+    assert found is not None and (found["version"], found["versions"]) == (1, [])
+
+
+async def test_taking_a_change_back_puts_back_the_picture_it_had_and_keeps_the_one_since(
+    house: AgentHost,
+) -> None:
+    desk = house.episodes
+    episode_id = await planned(house)
+    key = desk.view(episode_id)["units"][0]["id"]
+
+    def drawn(variant: str) -> None:
+        desk.choose(
+            episode_id,
+            by="you",
+            change={"units": {key: {"component": "list", "variant": variant}}},
+        )
+        desk.make(episode_id, by="you", only=[key])
+
+    def row() -> dict[str, Any]:
+        found = house.store.picture(episode_id, key)
+        assert found is not None
+        return found
+
+    drawn("horizontal")
+    await settle(lambda: not desk._busy(episode_id))
+    first = row()
+    drawn("vertical")
+    await settle(lambda: not desk._busy(episode_id))
+    second = row()
+    assert second["version"] == 2 and 'data-variant="vertical"' in second["html"]
+    desk.undo(episode_id, by="you")
+    back = row()
+    assert (back["version"], back["html"]) == (1, first["html"])
+    assert [k["n"] for k in back["versions"]] == [2]
+    desk.redo(episode_id, by="you")
+    again = row()
+    assert (again["version"], again["html"]) == (2, second["html"])
+    assert [k["n"] for k in again["versions"]] == [1]
