@@ -174,7 +174,7 @@ export function CloneDialog({ onClone, onDone }: {
       }}
     >
       <h2 id="ep-clone-title">Clone your voice</h2>
-      <p>Record or upload a sample. The cloned voice is saved to this channel and selected for this episode.</p>
+      <p>Record or upload 1–3 minutes of clean speech. Speak in your natural accent and in the language you want the episode to use.</p>
       <form
         className="ep-clone"
         onSubmit={(e) => {
@@ -184,7 +184,7 @@ export function CloneDialog({ onClone, onDone }: {
       >
         <TextField size="sm" label="Name" value={name} maxLength={60} disabled={busy} onChange={(e) => setName(e.target.value)} />
         <section className="ep-sample-script" aria-label="Reading script">
-          <h3>Read aloud <small>About 1 minute</small></h3>
+          <h3>Optional English script <small>About 1 minute</small></h3>
           <p>Last Saturday, I took a map and a bottle of water and set out for the river. At the corner, a small sign pointed down a street I’d never noticed. Where did it go? I had time to find out. I turned left, passed a bakery, and followed the sound of running water.</p>
           <p>Just beyond the bridge, a woman was painting the view. I asked what she liked most about it. She set down her brush and pointed to the sky. “Wait a moment,” she said. A cloud moved, the water caught the light, and suddenly I saw what she meant. I stayed for a while. On the way home, I folded up the map and put it in my pocket.</p>
         </section>

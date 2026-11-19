@@ -364,6 +364,7 @@ async def speak(
     previous_text: str | None = None,
     next_text: str | None = None,
     model: str = "eleven_v4",
+    similarity_boost: float | None = None,
 ) -> Spoken | str:
     """One line spoken by ElevenLabs, for host code that needs the audio itself (an episode's
     narration) rather than a file on a thread's computer. Returns the reason when there is none.
@@ -371,6 +372,8 @@ async def speak(
     if not VOICE_ID.fullmatch(voice_id):
         return "rejected: voice_id must be an ElevenLabs voice id."
     body: dict[str, JsonValue] = {"text": text, "model_id": model}
+    if similarity_boost is not None:
+        body["voice_settings"] = {"similarity_boost": similarity_boost}
     if previous_text:
         body["previous_text"] = previous_text
     if next_text:

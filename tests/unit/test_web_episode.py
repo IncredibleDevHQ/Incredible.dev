@@ -3797,6 +3797,37 @@ async def test_local_chapter_preview_caches_only_its_lines_and_serializes_reques
     assert not desk.view(ep)["film_state"]["file"]
 
 
+async def test_speech_only_overrides_voice_similarity_when_requested(monkeypatch):
+    import httpx
+
+    from design_agent.tools import media
+
+    requests = []
+
+    async def request(key, path, name, body, output_format, *, timeout):
+        requests.append((path, body))
+        return httpx.Response(200, json={"audio_base64": "bXAz"})
+
+    monkeypatch.setattr(media, "_elevenlabs_request", request)
+    keys = media.MediaKeys.from_settings(Settings(_env_file=None))
+    voice = "testvoice00001"
+    assert isinstance(
+        await media.speak(keys, "A sample", voice, similarity_boost=0.9), media.Spoken
+    )
+    assert isinstance(await media.speak(keys, "A sample", voice), media.Spoken)
+    assert requests == [
+        (
+            f"text-to-speech/{voice}/with-timestamps",
+            {
+                "text": "A sample",
+                "model_id": "eleven_v4",
+                "voice_settings": {"similarity_boost": 0.9},
+            },
+        ),
+        (f"text-to-speech/{voice}/with-timestamps", {"text": "A sample", "model_id": "eleven_v4"}),
+    ]
+
+
 async def test_cloned_voice_narrates_only_the_requested_chapter(
     house: AgentHost, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -3815,7 +3846,8 @@ async def test_cloned_voice_narrates_only_the_requested_chapter(
         assert name == "My test voice" and samples == [("sample.wav", b"sample")]
         return media.Cloned(voice_id, False)
 
-    async def speak(keys, words, selected, **unused):
+    async def speak(keys, words, selected, **options):
+        assert options["similarity_boost"] == 0.9
         said.append((words, selected))
         return media.Spoken(b"mp3", 2.0, [])
 
@@ -3824,6 +3856,21 @@ async def test_cloned_voice_narrates_only_the_requested_chapter(
     await desk.clone(
         ep, by="you", name="My test voice", consent=True, sample=("sample.wav", b"sample")
     )
+    planned_chapter = desk.view(ep)["plan"]["chapters"][0]
+    line = planned_chapter["beats"][0]["frames"][0]
+    house.store.update_episode(
+        ep,
+        film={
+            "voice": {
+                line["id"]: {
+                    "file": "old-preview",
+                    "seconds": 14.0,
+                    "h": plans.digest(line["vo"], voice_id),
+                }
+            }
+        },
+    )
+    assert not desk.view(ep)["clock"]["lines"][0].get("audio_url")
     view = await desk.preview_voice(ep, chapter)
     assert view["settings"]["cloned_voice"]["id"] == voice_id
     lines = view["clock"]["lines"]
@@ -3854,7 +3901,8 @@ async def test_channel_clones_can_be_selected_and_sampled_once(house, monkeypatc
     async def clone(*args, **kwargs):
         return media.Cloned(next(ids), False)
 
-    async def speak(keys, text, voice):
+    async def speak(keys, text, voice, **options):
+        assert options["similarity_boost"] == 0.9
         spoken.append(voice)
         return media.Spoken(b"sample audio", 2, [])
 
@@ -3874,6 +3922,9 @@ async def test_channel_clones_can_be_selected_and_sampled_once(house, monkeypatc
         desk.choose(other, by="you", change=pick)
     with pytest.raises(KeyError):
         await desk.preview_channel_voice(other, voice["id"])
+    earlier = house.save_file("", f"voice-preview-{voice['id']}.mp3", b"old", origin="episode")
+    house.store.save_voice_preview(voice["id"], earlier["id"])
+    assert not any(v.get("preview") for v in desk.view(second)["channel_voices"])
     await asyncio.gather(*(desk.preview_channel_voice(second, voice["id"]) for _ in range(2)))
     assert spoken == [voice["id"]]
     assert any(v.get("preview") for v in desk.view(second)["channel_voices"])

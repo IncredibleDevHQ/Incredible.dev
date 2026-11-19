@@ -1033,7 +1033,9 @@ app's canvas, from a channel's material or a research frame's notes.
   Choose Cloned voice in the New episode dialog to select a channel voice or record and save
   one before planning. The Voice menu also offers the channel library and an add button.
   A successful clone is selected for the episode and remains available in the channel.
-  Playing a sample generates one short line in the selected voice and reuses that audio on later plays.
+  Record one speaker in their natural accent and in the language of the episode. Studio requests
+  higher voice similarity for channel clone previews and narration. Playing a sample generates
+  one short line in the selected voice and reuses it while the synthesis settings match.
 - Chapter playback uses a single elapsed time and seek bar across beats. Replay starts from the chapter opening. The sidebar previews the whole chapter by default, with chapter actions below its cover. Choosing a beat switches to its frame. Opening the preview places the player above the script. Playback uses the
   current export when available. For a changed film the editor plays the selected take or
   the cached narration for that text and voice, with the draft picture on the same clock.
