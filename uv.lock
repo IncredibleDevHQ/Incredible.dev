@@ -770,7 +770,7 @@ wheels = [
 
 [[package]]
 name = "design-agent"
-version = "0.1.0.dev0"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
@@ -805,6 +805,9 @@ groq = [
 mistral = [
     { name = "langchain-mistralai" },
 ]
+s3 = [
+    { name = "boto3" },
+]
 self-host = [
     { name = "langgraph-checkpoint-postgres" },
     { name = "psycopg", extra = ["binary", "pool"] },
@@ -823,6 +826,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "boto3", specifier = ">=1.40,<2" },
+    { name = "boto3", marker = "extra == 's3'", specifier = ">=1.35,<2" },
     { name = "click", specifier = ">=8.2,<9" },
     { name = "deepagents", specifier = ">=0.7.28,<0.8" },
     { name = "email-validator", specifier = ">=2.3,<3" },
@@ -849,7 +853,7 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.35,<1" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'self-host'", specifier = ">=0.35,<1" },
 ]
-provides-extras = ["self-host", "google", "groq", "mistral"]
+provides-extras = ["self-host", "google", "groq", "mistral", "s3"]
 
 [package.metadata.requires-dev]
 dev = [

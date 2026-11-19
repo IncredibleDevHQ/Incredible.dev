@@ -61,3 +61,12 @@ with a `command`). A server that fails to load or errors leaves the rest working
 
 `uv run design-agent config show` lists every setting with its current value (secrets as set or
 unset); `.env.example` documents each one.
+
+## Studio illustrations
+
+Episode scenes can combine reusable object drawings with custom inline SVG. Physical
+comparisons use the illustration renderer so the same color, spacing and timing rules apply
+to the objects and their transfers. The objects use stable IDs to connect narration cues to
+their artwork. If a declared physical subject needs bespoke artwork, the picture builder
+adds its shapes to the seeded file. The renderer uses those shapes with the same placement
+and animation code. [Episode illustration workflow](../skills/episode/briefs/picture.md)

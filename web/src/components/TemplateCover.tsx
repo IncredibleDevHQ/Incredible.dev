@@ -23,7 +23,7 @@ const SPOTS: [number, number][] = [
 const GAP = 0.08;
 
 export function lookOf(pack: BrandPackView | null): Look {
-  if (!pack) return { name: "", ground: "#f6f1e7", ink: "#14161a", accent: "#2f8f5b", muted: "#6b6f68", series: ["#2f8f5b", "#8fb3c9", "#d8c39a"] };
+  if (!pack) return { name: "", ground: "#f4f4f5", ink: "#18181b", accent: "#16a34a", muted: "#71717a", series: ["#16a34a", "#8fb3c9", "#a1a1aa"] };
   const roles = rolesOf(pack);
   const ground = roles.ground || "#ffffff";
   const ink = roles.ink || "#111111";

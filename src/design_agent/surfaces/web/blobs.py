@@ -54,7 +54,7 @@ def s3_client(settings: Settings) -> Any:
     return boto3.client(
         "s3",
         endpoint_url=settings.s3_endpoint,
-        region_name=settings.s3_region,
+        region_name=settings.s3_region or "us-east-1",
         aws_access_key_id=settings.s3_access_key.get_secret_value(),
         aws_secret_access_key=settings.s3_secret_key.get_secret_value(),
         config=Config(

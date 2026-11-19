@@ -47,33 +47,26 @@ class Upstream:
 ROOTS = {"skills": "skills", "agent_skills": ".agents/skills"}
 
 UPSTREAMS: dict[str, Upstream] = {
-    # Left out: figma (needs a Figma connection), hyperframes-studio (the desktop app),
-    # product-launch-video (overlaps the launch_film pipeline's routing), talking-head-recut
-    # (MIT-derived; not in the v0.1 skill set).
+    # Since v0.8.170 upstream is one `hyperframes` skill (story, spec, look, motion, film,
+    # review and a page per kind of video) beside its CLI, registry and media skills: the
+    # workflow skills it replaced (faceless-explainer, motion-graphics, general-video,
+    # pr-to-video, music-to-video, embedded-captions) and the domain skills folded into it
+    # (hyperframes-core, -animation, -creative, -audio, -keyframes) are gone upstream.
+    # Left out: figma (needs a Figma connection), reverse-any-video and style-sampling (they
+    # start from another film's footage; not in this product's skill set).
     "hyperframes": Upstream(
         repo="heygen-com/hyperframes",
-        commit="7735338b49ed6e11c227b0710da3bd35c3366b9c",
-        release="v0.8.169",
+        commit="f291b125983a180ef9dd8744536c90023e5a1998",
+        release="v0.9.64",
         license="Apache-2.0",
         license_file="licenses/hyperframes-LICENSE.txt",
         source="skills",
         runtime=(
             "hyperframes",
-            "hyperframes-core",
             "hyperframes-cli",
-            "hyperframes-animation",
-            "hyperframes-creative",
-            "hyperframes-audio",
-            "hyperframes-keyframes",
             "hyperframes-registry",
             "media-use",
             "slideshow",
-            "pr-to-video",
-            "music-to-video",
-            "embedded-captions",
-            "faceless-explainer",
-            "general-video",
-            "motion-graphics",
             "remotion-to-hyperframes",
         ),
     ),
@@ -112,20 +105,6 @@ EXCLUDED: tuple[tuple[str, str], ...] = (
     (
         "media-use/audio/assets/sfx/*.mp3",
         "Pixabay Content License audio, pending partner and legal review",
-    ),
-    (
-        "embedded-captions/modes/standard/fonts/files/*",
-        "font binaries without license text beside them",
-    ),
-    (
-        "embedded-captions/modes/standard/fonts/fonts.css",
-        "inlines the excluded font binaries as base64",
-    ),
-    ("embedded-captions/assets/strokefonts/*", "assets without recorded provenance"),
-    # fnmatch's `*` crosses `/`, so this covers every depth under a template's assets.
-    (
-        "music-to-video/references/templates/*/assets/*",
-        "template assets without recorded provenance",
     ),
 )
 

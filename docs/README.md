@@ -46,4 +46,4 @@ which one fits.
 ## Contribute
 
 [Contributing](../CONTRIBUTING.md) · [Agent instructions](../AGENTS.md) · [Security](../SECURITY.md) ·
-[Changelog](../CHANGELOG.md)
+[Changelog](../CHANGELOG.md) · [Release notes 0.1.0](releases/0.1.0.md)

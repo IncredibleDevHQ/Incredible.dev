@@ -231,3 +231,97 @@ async def test_a_gateway_without_an_openai_key_says_where_to_add_one(
     )  # type: ignore[misc]
     assert "LangSmith Gateway HTTP 424" in result and "no OpenAI key" in result
     assert not backend.files
+
+
+async def test_a_voice_is_cloned_from_recordings_and_the_accounts_own_are_listed_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from design_agent.tools.media import Cloned, MediaKeys, Voice, clone_voice, voices
+
+    keys = MediaKeys.from_settings(_settings(elevenlabs_api_key="xi-test"))
+    seen: dict[str, Any] = {}
+
+    async def fake_post(self: httpx.AsyncClient, url: str, **kwargs: Any) -> httpx.Response:
+        seen.update(url=url, **kwargs)
+        made = {"voice_id": "clone1234567890", "requires_verification": False}
+        return httpx.Response(200, json=made, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    samples = [("take-1.m4a", b"one"), ("/tmp/memo.wav", b"two")]
+    assert await clone_voice(keys, "  My   voice ", samples) == Cloned(
+        "clone1234567890", verify=False
+    )
+    assert seen["url"] == "https://api.elevenlabs.io/v1/voices/add"
+    assert seen["headers"] == {"xi-api-key": "xi-test"}
+    assert seen["data"] == {"name": "My voice", "remove_background_noise": "false"}
+    assert seen["files"] == [
+        ("files", ("take-1.m4a", b"one", "audio/mp4")),
+        ("files", ("memo.wav", b"two", "audio/wav")),
+    ]
+    # what cannot make a voice is refused here, before a recording leaves this computer
+    seen.clear()
+    one = [("a.m4a", b"a")]
+    assert "no ELEVENLABS_API_KEY" in str(
+        await clone_voice(MediaKeys.from_settings(_settings()), "x", one)
+    )
+    assert "needs a name" in str(await clone_voice(keys, " ", one))
+    assert "1 to 25 recordings" in str(await clone_voice(keys, "x", []))
+    assert "empty" in str(await clone_voice(keys, "x", [("a.m4a", b"")]))
+    assert not seen
+
+    # the provider's own reason is passed on: a plan without cloning says so
+    async def refused(self: httpx.AsyncClient, url: str, **kwargs: Any) -> httpx.Response:
+        detail = {"status": "no_cloning", "message": "Your plan has no instant voice cloning."}
+        return httpx.Response(401, json={"detail": detail}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", refused)
+    assert await clone_voice(keys, "x", one) == (
+        "cloning failed: ElevenLabs HTTP 401: Your plan has no instant voice cloning."
+    )
+
+    pages: list[dict[str, Any]] = [
+        {
+            "voices": [
+                {
+                    "voice_id": "premade123456",
+                    "name": "Ada",
+                    "category": "premade",
+                    "preview_url": "https://storage.googleapis.com/eleven-public-prod/ada.mp3",
+                },
+                {"voice_id": "not an id", "name": "x"},
+            ],
+            "has_more": True,
+            "next_page_token": "t2",
+        },
+        {
+            "voices": [
+                {
+                    "voice_id": "clone1234567890",
+                    "name": "My voice",
+                    "category": "cloned",
+                    "preview_url": "http://untrusted.invalid/sample",
+                }
+            ],
+            "has_more": False,
+        },
+    ]
+    asked: list[dict[str, Any]] = []
+
+    async def fake_get(self: httpx.AsyncClient, url: str, **kwargs: Any) -> httpx.Response:
+        asked.append({"url": url, **kwargs["params"]})
+        return httpx.Response(200, json=pages[len(asked) - 1], request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    listed = await voices(keys)
+    assert listed == [
+        Voice("clone1234567890", "My voice", "cloned"),
+        Voice(
+            "premade123456",
+            "Ada",
+            "premade",
+            "https://storage.googleapis.com/eleven-public-prod/ada.mp3",
+        ),
+    ]
+    assert isinstance(listed, list) and listed[0].own and not listed[1].own
+    assert asked[0]["url"] == "https://api.elevenlabs.io/v2/voices"
+    assert "next_page_token" not in asked[0] and asked[1]["next_page_token"] == "t2"

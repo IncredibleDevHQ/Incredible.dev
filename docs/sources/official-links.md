@@ -28,9 +28,10 @@ Confirm each URL still resolves when you move a pin forward; the docs site renam
   <https://github.com/heygen-com/hyperframes/releases> · adopters list `ADOPTERS.md`
 - Agent skills: `npx skills add heygen-com/hyperframes` (standalone) or the HyperFrames plugin;
   update with `npx hyperframes skills update`.
-- CLI at the pinned 0.8.169 (verified with `--help` in the sandbox): `hyperframes init | lint |
-  check | snapshot | preview | render --quality draft|looks|delivery --output <file>`; `validate`,
-  `inspect` and `layout` are deprecated aliases of `check`.
+- CLI at the pinned 0.9.64 (verified with `--help` in the sandbox): `hyperframes init | lint |
+  check | snapshot | keyframes | preview | render --quality draft|looks|delivery --output <file>`.
+  `check` runs lint, runtime validation and layout inspection as one gate, and since 0.9 a craft
+  pass too (a stretch with nothing changing, a line too brief to read, type under the floor).
 - Studio (desktop preview app): <https://hyperframes.dev/studio/download>
 
 ## Models and tool disclosure
@@ -46,11 +47,32 @@ Confirm each URL still resolves when you move a pin forward; the docs site renam
 ## Media services (optional)
 
 - ElevenLabs text to speech and music: <https://elevenlabs.io/docs>
+- ElevenLabs voices: instant voice clone <https://elevenlabs.io/docs/api-reference/voices/ivc/create>,
+  listing an account's voices <https://elevenlabs.io/docs/api-reference/voices/search>, what a clone
+  is made from <https://elevenlabs.io/docs/product-guides/voices/voice-cloning/instant-voice-cloning>
+- Amazon S3 through boto3 (uploads in parts): <https://boto3.amazonaws.com/v1/documentation/api/latest/guide/s3-uploading-files.html>
+- MinIO, the S3-compatible store used in development: <https://min.io/docs/minio/container/index.html>
 - FFmpeg: <https://ffmpeg.org/documentation.html>
 - Chrome Headless Shell: <https://developer.chrome.com/blog/chrome-headless-shell>
 - sharp: <https://sharp.pixelplumbing.com>
 - Apache ECharts: <https://echarts.apache.org> · D2: <https://d2lang.com>
 
+## Coding agents on the person's computer
+
+- Claude Code run without a terminal (`claude -p`), its `stream-json` output, partial messages
+  and `system/api_retry`: <https://code.claude.com/docs/en/headless>
+- Claude Code's options: <https://code.claude.com/docs/en/cli-reference>
+- The Agent SDK's messages, among them partial messages and the thinking display
+  (`thinking.display`): <https://code.claude.com/docs/en/agent-sdk/typescript>
+
 ## Skills format
 
 - Agent Skills specification: <https://agentskills.io/specification>
+
+
+## Episode illustrations
+
+- SVG.js documentation: <https://svgjs.dev/docs/3.2/>. The episode renderer embeds the
+  MIT-licensed npm bundle at 3.2.8. Its package source, checksum and license are kept under
+  `src/design_agent/episode/vendor/`; rendered compositions run offline.
+- GSAP timelines: <https://gsap.com/docs/v3/GSAP/Timeline/>.

@@ -40,6 +40,7 @@ from design_agent.harness import tasks
 from design_agent.harness.notices import should_post
 from design_agent.middleware.meter import METER
 from design_agent.surfaces.web import catalog, pages, preview
+from design_agent.surfaces.web.episode_desk import EpisodeDesk
 from design_agent.surfaces.web.hub import Hub
 from design_agent.surfaces.web.preview import Previews
 from design_agent.surfaces.web.research_desk import RESEARCH, ResearchDesk
@@ -136,6 +137,7 @@ class AgentHost:
         data_dir: Path,
         demo: bool = False,
         blob_namespace: str = "local",
+        project_root: Path | None = None,
     ) -> None:
         self.settings = settings
         self.store = store
@@ -155,9 +157,21 @@ class AgentHost:
         self.research = ResearchDesk(
             store=store, hub=hub, data_dir=data_dir, roots=settings.research_folders()
         )
+        #: Episodes: explainers planned, recorded and rendered from a task's material.
+        self.episodes = EpisodeDesk(
+            host=self,
+            store=store,
+            hub=hub,
+            data_dir=data_dir,
+            project_root=project_root or Path.cwd(),
+            demo=demo,
+        )
+        #: Who is following a thread's turn step by step (an episode's writer on the engine).
+        self._step_listeners: dict[str, Callable[[str], None]] = {}
         #: How links people bring are reached (tests swap in their own).
         self.link_resolver = system_resolver
         self.link_transport: Any = None
+        self._picture_models: dict[str, Settings] = {}
         self._turns: dict[str, asyncio.Task[None]] = {}
         self._followups: dict[str, list[FollowUp]] = {}
         self._stops: set[str] = set()
@@ -194,6 +208,7 @@ class AgentHost:
                     self.store.set_footer(thread["id"], self.footer(thread["id"]))
                     self._adopt(thread["id"])
         self.research.restore()
+        self.episodes.restore()
 
     def _replay_spend(self, thread: Row) -> None:
         """A thread's calls back into the meter, as priced when they were made. A footer that
@@ -227,6 +242,7 @@ class AgentHost:
         if self.previews is not None:
             await self.previews.close()
         await self.research.close()
+        await self.episodes.close()
         for task in list(self._turns.values()):
             task.cancel()
         self.blobs.close()
@@ -260,7 +276,7 @@ class AgentHost:
             )
             thread_id = str(thread["id"])
             asked = catalog.capability(kind)
-            if to_agent and asked is not None and not assets:
+            if to_agent and asked is not None and not asked.studio and not assets:
                 assets = [
                     self._new_asset(thread_id, kind=kind, title=asked.title, by=author_id)["id"]
                 ]
@@ -338,6 +354,8 @@ class AgentHost:
         research conversation's run ends at once."""
         if self.research.stop(thread_id):
             return
+        for episode in self.store.episodes(thread_id):
+            self.episodes.stop(str(episode["id"]))
         running = self._turns.get(thread_id)
         if running is not None and not running.done():
             self._stops.add(thread_id)
@@ -453,7 +471,21 @@ class AgentHost:
         self._open_turn(thread_id)
         try:
             text = await self._compose(thread_id, inputs)
-            added = await runtime.ask(text, thread_id=thread_id, configurable={"surface": "web"})
+            overrides = [
+                self._picture_models[i.message_id]
+                for i in inputs
+                if i.message_id in self._picture_models
+            ]
+            if overrides and len(inputs) != 1:
+                raise ValueError(
+                    "Start this picture when the current conversation turn has finished."
+                )
+            added = await runtime.ask(
+                text,
+                thread_id=thread_id,
+                configurable={"surface": "web"},
+                **({"model_settings": overrides[0]} if overrides else {}),
+            )
         except asyncio.CancelledError:
             raise
         except Exception as error:
@@ -547,6 +579,11 @@ class AgentHost:
         if thread is not None:
             self.hub.publish("thread.updated", thread=self.thread_view(thread))
 
+    def settle_status(self, thread_id: str) -> None:
+        """A thread's status from what is running on it and what waits on people, for a desk
+        whose work is not a turn (an episode's)."""
+        self._settle_status(thread_id)
+
     def _settle_status(self, thread_id: str) -> None:
         if self._busy(thread_id):
             status = "working"
@@ -558,6 +595,8 @@ class AgentHost:
 
     def _busy(self, thread_id: str) -> bool:
         if self.research.running(thread_id):  # a research conversation, answering on this computer
+            return True
+        if self.episodes.busy(thread_id):  # an episode's plan, pictures or film, under way
             return True
         turn = self._turns.get(thread_id)
         if turn is not None and not turn.done():
@@ -726,6 +765,58 @@ class AgentHost:
 
     def turn_step(self, thread_id: str, step_id: str, title: str, status: str) -> None:
         self._turn_update(thread_id, {"step": {"id": step_id, "title": title, "status": status}})
+        listener = self._step_listeners.get(thread_id)
+        if listener is not None and status == "running":
+            listener(title)
+
+    async def told(
+        self,
+        thread_id: str,
+        *,
+        by: str,
+        text: str,
+        on_step: Callable[[str], None] | None = None,
+        picture_model: tuple[str, str] | None = None,
+    ) -> tuple[str, str]:
+        """A turn another part of the house asks of the agent on a task's thread (an episode's
+        writer on the engine): posted in the thread like any message, so the thread holds the
+        whole exchange, and awaited. Returns the reply and, when there is none, why."""
+        thread = self.store.thread(thread_id)
+        if thread is None:
+            raise KeyError(thread_id)
+        if (
+            picture_model
+            and (running := self._turns.get(thread_id)) is not None
+            and not running.done()
+        ):
+            raise ValueError(
+                "The current thread turn must finish before starting this picture with a different model."
+            )
+        message_id = ""
+        if on_step is not None:
+            self._step_listeners[thread_id] = on_step
+        try:
+            asked = self.post(
+                channel_id=thread["channel_id"],
+                author_id=by,
+                text=text,
+                to_agent=True,
+                thread_id=thread_id,
+            )
+            message_id = str(asked["id"])
+            if picture_model:
+                from design_agent.surfaces.web.episode_models import settings_for
+
+                self._picture_models[message_id] = settings_for(self.settings, *picture_model)
+            while (turn := self._turns.get(thread_id)) is not None and not turn.done():
+                await asyncio.wait({turn})
+        finally:
+            self._picture_models.pop(message_id, None)
+            self._step_listeners.pop(thread_id, None)
+        after = [m for m in self.store.messages(thread_id) if m["created_at"] > asked["created_at"]]
+        reply = next((str(m["text"]) for m in reversed(after) if m["kind"] == "agent"), "")
+        why = next((str(m["text"]) for m in reversed(after) if m["kind"] == "notice"), "")
+        return reply, "" if reply else why or "The agent gave no reply."
 
     def turn_note(self, thread_id: str, text: str) -> None:
         text = text.strip()
@@ -1264,6 +1355,8 @@ class AgentHost:
             raise KeyError(thread_id)
         if asked is None:
             raise ValueError(f"There is no kind of work called {kind}.")
+        if asked.studio:
+            raise ValueError(f"{asked.title} is started from its own sheet, not asked for here.")
         made_from: list[Row] = []
         for source_id in sources:
             source = self.store.asset(source_id)
@@ -1480,6 +1573,20 @@ class AgentHost:
         if asset is not None:
             self.hub.publish("asset.updated", asset=self.asset_view(asset))
         return asset
+
+    def new_asset(self, thread_id: str, *, kind: str, title: str, by: str, status: str) -> Row:
+        """An asset a desk of the house puts on a task's canvas (an episode)."""
+        return self._new_asset(thread_id, kind=kind, title=title, by=by, status=status)
+
+    def set_asset(self, asset_id: str, *, status: str) -> None:
+        asset = self.store.asset(asset_id)
+        if asset is not None and asset["status"] != status:
+            self._set_asset(asset_id, status=status)
+
+    def file_asset(self, asset_id: str, row: Row) -> None:
+        """A finished file a desk made, on its asset's card in place of the one before it."""
+        if self.store.asset(asset_id) is not None:
+            self._set_asset(asset_id, files=[{"id": row["id"], "path": ""}])
 
     def _in_thread(self, asset_id: str, thread_id: str) -> bool:
         asset = self.store.asset(asset_id)
@@ -1882,6 +1989,7 @@ class AgentHost:
             "thread": self.thread_view(thread),
             "material": self.material_view(thread["id"]),
             "research": self.research.view(thread["id"]) if thread["kind"] == RESEARCH else None,
+            "episodes": self.episodes.cards(thread["id"]),
             "assets": [self.asset_view(a) for a in assets],
             "boards": [self.board_view(b["id"]) for b in self.store.boards(thread["id"])],
             "files": [

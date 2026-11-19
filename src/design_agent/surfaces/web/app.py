@@ -25,6 +25,34 @@ runtime), the store of channels, messages and boards, and this API:
   `POST /api/research/{id}/conversations` (another, or a branch from a passage),
   `POST /api/research/{id}/notes`, `PATCH /api/notes/{id}`, `DELETE /api/notes/{id}`; a
   conversation's follow-ups and stops go through its thread's routes
+- episodes (`episode_desk.py`): `GET /api/episodes/options` (who can write one, the looks, the
+  lengths), `POST /api/channels/{id}/episodes` (one from material or a research frame's notes),
+  `GET /api/episodes/{id}` (everything its studio draws), `POST /api/episodes/{id}/approve`,
+  `POST /api/episodes/{id}/choices` (the look, who has the frame, a picture's level and who
+  builds it),
+  `POST /api/episodes/{id}/ask` (a change in words, of the film, a chapter, a line or a
+  picture), `POST /api/episodes/{id}/lines/{frame}` (a person's own words for a line),
+  `POST /api/episodes/{id}/lines` (a line they add: going on in its block, to camera, or with a
+  picture) and `/cut` (lines they cut, or one joined to the line before it),
+  `POST /api/episodes/{id}/replan` (pictures planned again for the words their lines say now,
+  then drawn again), `POST /api/episodes/{id}/pictures/{unit}/keep` (a picture made for other
+  words kept for the new ones, with nothing run),
+  `POST /api/episodes/{id}/undo` (the last change, taken back; the one before it is next) and
+  `/redo` (put back),
+  `POST /api/episodes/{id}/again` (its planning), `/stop` (the plan and the pictures under
+  way, or one picture), `POST /api/episodes/{id}/pictures` (make the ones named, a chapter's,
+  or the ones that stopped), `POST /api/episodes/{id}/apply` (run what the picks and changes
+  wait on: the writer's part, then the pictures out of date),
+  `POST /api/episodes/{id}/pictures/{unit}/go` and `/note` (a picture's stills),
+  `POST /api/episodes/{id}/takes` (a recording, of any size up to 8 GiB: it goes to disk,
+  and as it arrived to the footage bucket when one is set),
+  `POST /api/episodes/{id}/takes/{take}/keep`, `DELETE /api/episodes/{id}/takes/{take}`,
+  `GET /api/voices` (the voices a narrator can speak in), `POST /api/episodes/{id}/voice` (a
+  clone of the person's voice, from their takes or a recording, after they say it is theirs),
+  `POST /api/episodes/{id}/film` (render it)
+- the production board: `GET /api/production` (every episode's jobs, the agents and how busy
+  each is, in one read), `POST /api/production/assign` (pictures of any episodes handed to an
+  agent and started)
 - what the agent works with: `GET /api/brand` (a channel's with `?channel=`), `GET /api/skills`,
   `GET /api/computer`
 - brands (`brands.py`): `GET /api/brands`, `POST /api/brands` (read one from a website),
@@ -43,13 +71,13 @@ import contextlib
 import html
 import json
 import mimetypes
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -60,6 +88,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 from starlette.background import BackgroundTask
+from starlette.datastructures import UploadFile as FormFile
 
 from design_agent.config import SAMPLE_BRAND, Settings
 from design_agent.runtime import maintenance
@@ -78,6 +107,11 @@ from design_agent.tools.mcp import load_mcp_tools, servers_for_runtime
 
 MAX_UPLOADS = 10
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
+#: A take may be a camera's own recording: ten minutes of 4K at 100 Mbit/s is 7.5 GB. It is
+#: written to disk as it arrives and read from there, so its size is never held in memory.
+MAX_TAKE_BYTES = 8 * 1024**3
+#: A recording brought for a voice clone: a few minutes of speech.
+MAX_SAMPLE_BYTES = 25 * 1024 * 1024
 PING_SECONDS = 15.0
 
 
@@ -180,6 +214,183 @@ class NoteEditIn(BaseModel):
     text: str = Field(min_length=1, max_length=8_000)
 
 
+class NarratorIn(BaseModel):
+    """The ElevenLabs voice an episode is narrated in, by its id, with the name it is shown by."""
+
+    id: str = Field(pattern=r"^[A-Za-z0-9]{10,40}$")
+    name: str = Field(default="", max_length=80)
+
+
+class EpisodeSettingsIn(BaseModel):
+    #: How long it may run: the least and the most, in seconds, or "auto" when the material
+    #: decides. The desk keeps the two inside its limits and apart.
+    seconds: tuple[int, int] | Literal["auto"] | None = None
+    presenter: str | None = Field(default=None, pattern=r"^(on|off)$")
+    theme: str | None = Field(default=None, max_length=60)
+    voice: str | None = Field(default=None, pattern=r"^(live|narrator|local)$")
+    background_color: str | None = Field(default=None, pattern=r"^(#[0-9a-fA-F]{6})?$")
+    portrait: Literal["mira", "kai", "ellis", "june"] | None = None
+    background_texture: Literal["solid", "dots", "grid", "diagonal"] | None = None
+    narrator: NarratorIn | None = None
+    level: str | None = Field(default=None, pattern=r"^(simple|rich)$")
+    writer: str | None = Field(default=None, pattern=r"^(claude|codex|kimi|builtin|demo)$")
+    #: The model the film's agent runs on and how hard it thinks; an empty one is the agent's
+    #: own default. The desk holds both to what that agent offers.
+    writer_model: str | None = Field(default=None, max_length=120)
+    writer_effort: str | None = Field(default=None, pattern=r"^[a-z]{0,12}$")
+
+
+class EpisodeIn(BaseModel):
+    title: str = Field(default="", max_length=120)
+    #: The notes it starts from (with or without text files), or a word to go with a frame's.
+    text: str = Field(default="", max_length=200_000)
+    files: list[str] = Field(default_factory=list, max_length=MAX_UPLOADS)
+    #: A research frame whose notes it is made from, in that frame.
+    from_frame: str = Field(default="", max_length=64)
+    settings: EpisodeSettingsIn = Field(default_factory=EpisodeSettingsIn)
+    resolve_links: bool = True
+
+
+class FramePickIn(BaseModel):
+    """A person's picks for a line, a chapter or the film. A value of null takes that pick
+    back and leaves the others."""
+
+    presence: str | None = Field(default=None, pattern=r"^(person|both|content)$")
+    layout: str | None = Field(default=None, max_length=60)
+    #: A layout for every line of one presence (a chapter's or the film's picks only).
+    layouts: dict[str, str | None] | None = Field(default=None, max_length=3)
+    #: The type of the picture a line brings in, and how it comes in (a line's picks only).
+    picture: str | None = Field(default=None, max_length=40)
+    transition: str | None = Field(default=None, max_length=40)
+    window_size: (
+        Annotated[int, Field(strict=True, ge=25, le=125)] | Literal["small", "large"] | None
+    ) = None
+    window_shape: Literal["rectangle", "rounded", "circle"] | None = None
+
+
+class UnitPickIn(BaseModel):
+    """A person's picks for one picture: how it is made, and which agent builds it (an empty
+    builder gives it back to the film's writer)."""
+
+    level: str | None = Field(default=None, pattern=r"^(simple|rich)$")
+    builder: str | None = Field(default=None, pattern=r"^(claude|codex|kimi|builtin|demo|)$")
+
+    component: str | None = Field(default=None, max_length=40)
+    variant: str | None = Field(default=None, max_length=40)
+    direction: str | None = Field(default=None, max_length=1600)
+    model: str | None = Field(default=None, max_length=100)
+    effort: str | None = Field(default=None, max_length=16)
+
+
+class PicturesIn(BaseModel):
+    """Which pictures to make: the ones named, a chapter's, or with neither the ones that
+    stopped or failed. With a level, the ones named are made again that way."""
+
+    units: list[str] | None = Field(default=None, max_length=200)
+    chapter: str = Field(default="", max_length=80)
+    level: Literal["simple", "rich"] | None = None
+
+
+class RegenerateChapterIn(BaseModel):
+    provider: Literal["", "claude", "codex", "kimi", "builtin"] = ""
+    model: str = Field(default="", max_length=100)
+
+
+class LineIn(BaseModel):
+    """A line a person adds to a chapter's script: after a line (or first in the chapter
+    named), going on in that line's block, said to camera, or with a picture of a type."""
+
+    after: str = Field(min_length=1, max_length=80)
+    text: str = Field(min_length=1, max_length=2000)
+    kind: str = Field(
+        default="more",
+        pattern=r"^(more|camera|diagram|list|typeset-code|chips|illustration|slide)$",
+    )
+    #: The words the line `after` keeps, when the new line is the rest of it split off.
+    keep: str | None = Field(default=None, max_length=2000)
+
+
+class CutIn(BaseModel):
+    """Lines a person cuts: one, or a block's run. With `join`, the one line's words go on at
+    the end of the line before it."""
+
+    frames: list[str] = Field(min_length=1, max_length=40)
+    join: bool = False
+    #: What the line before says once joined, when the person changed its words too.
+    words: str | None = Field(default=None, max_length=2000)
+
+
+class ReplanIn(BaseModel):
+    """Pictures to have planned again for the words their lines say now."""
+
+    units: list[str] = Field(min_length=1, max_length=200)
+
+
+class StopIn(BaseModel):
+    #: One picture to stop; with none, everything under way for the episode.
+    unit: str = Field(default="", max_length=80)
+
+
+class ChoicesIn(BaseModel):
+    settings: EpisodeSettingsIn = Field(default_factory=EpisodeSettingsIn)
+    #: Who has the frame, and in which layout: for a line, a chapter, or every line.
+    frames: dict[str, FramePickIn] = Field(default_factory=dict)
+    chapters: dict[str, FramePickIn] = Field(default_factory=dict)
+    all: FramePickIn | None = None
+    #: Lines (or chapters) whose pick is taken back.
+    clear: list[str] = Field(default_factory=list, max_length=400)
+    units: dict[str, UnitPickIn] = Field(default_factory=dict)
+    #: The agent that builds a chapter's pictures, by chapter; null gives them back to the
+    #: film's writer.
+    builders: dict[str, str | None] = Field(default_factory=dict, max_length=200)
+
+
+class AskIn(BaseModel):
+    """A change asked for in words, of the film, a chapter, a line or a line's picture."""
+
+    scope: str = Field(pattern=r"^(film|chapter|line|picture)$")
+    target: str = Field(default="", max_length=80)
+    text: str = Field(min_length=1, max_length=2_000)
+
+
+class WordsIn(BaseModel):
+    text: str = Field(min_length=1, max_length=2_000)
+
+
+class AgainIn(BaseModel):
+    from_start: bool = False
+    writer: str = Field(default="", pattern=r"^(claude|codex|kimi|builtin|demo|)$")
+    model: str | None = Field(default=None, max_length=120)
+    effort: str | None = Field(default=None, pattern=r"^[a-z]{0,12}$")
+
+
+class PictureNoteIn(BaseModel):
+    text: str = Field(min_length=1, max_length=600)
+
+
+class KeepIn(BaseModel):
+    keep: bool = True
+
+
+class JobIn(BaseModel):
+    """A picture as the production board names it: its episode, and its unit there."""
+
+    episode: str = Field(min_length=1, max_length=64)
+    unit: str = Field(min_length=1, max_length=80)
+
+
+class AssignIn(BaseModel):
+    """Pictures handed to an agent and started. A model or an effort the agent offers goes with
+    every one of them; with neither, a picture already with that agent keeps what it runs on.
+    With no agent each keeps the one it is set to."""
+
+    jobs: list[JobIn] = Field(min_length=1, max_length=400)
+    agent: str = Field(default="", pattern=r"^(claude|codex|kimi|builtin|demo|)$")
+    model: str = Field(default="", max_length=100)
+    effort: str = Field(default="", max_length=16)
+    start: bool = True
+
+
 class BrandReadIn(BaseModel):
     url: str = Field(min_length=3, max_length=2_000)
     #: A channel that wears the brand once it is read.
@@ -228,10 +439,12 @@ def create_app(
         data_dir=data_dir,
         demo=demo,
         blob_namespace=schema.removeprefix("user_") if schema else "local",
+        project_root=project_root,
     )
     shelf = BrandShelf(
         store=store, hub=hub, settings=settings, project_root=project_root, data_dir=data_dir
     )
+    host.episodes.brand_for = shelf.brand_for
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001 - FastAPI's signature
@@ -644,6 +857,389 @@ def create_app(
         return message
 
     # -- a film's final look -----------------------------------------------------------------
+
+    # -- episodes: an explainer planned, recorded and rendered in its own studio --------------
+
+    def episode_call(run: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+        try:
+            return run()
+        except KeyError:
+            raise HTTPException(status_code=404, detail="no such episode") from None
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.get("/api/presenter-portraits/{name}")
+    def presenter_portrait(name: str) -> FileResponse:
+        from design_agent.episode import film
+
+        if name not in film.PORTRAITS:
+            raise HTTPException(status_code=404, detail="Unknown presenter portrait.")
+        return FileResponse(film.portrait_path(name), media_type="image/jpeg")
+
+    @app.get("/api/episodes/options")
+    async def episode_options(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        return await asyncio.to_thread(host.episodes.options)
+
+    @app.get("/api/channels/{channel_id}/voices")
+    async def list_channel_voices(channel_id: str, _me: str = Depends(person)) -> dict[str, Any]:
+        try:
+            return {"voices": host.episodes.channel_voices(channel_id)}
+        except KeyError:
+            raise HTTPException(status_code=404, detail="no such channel") from None
+
+    async def voice_sample(file: UploadFile) -> tuple[str, bytes]:
+        content = await file.read(MAX_SAMPLE_BYTES + 1)
+        if len(content) > MAX_SAMPLE_BYTES:
+            raise HTTPException(status_code=413, detail="the recording is over 25 MiB")
+        if not content:
+            raise HTTPException(status_code=422, detail="the recording is empty")
+        return file.filename or "sample", content
+
+    @app.post("/api/channels/{channel_id}/voices")
+    async def add_channel_voice(
+        channel_id: str,
+        name: str = Form(..., max_length=80),
+        consent: bool = Form(default=False),
+        file: UploadFile = File(...),  # noqa: B008 - FastAPI's declaration style
+        _me: str = Depends(person),
+    ) -> dict[str, Any]:
+        try:
+            return await host.episodes.clone_channel_voice(
+                channel_id, name=name, consent=consent, sample=await voice_sample(file)
+            )
+        except KeyError:
+            raise HTTPException(status_code=404, detail="no such channel") from None
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.post("/api/channels/{channel_id}/episodes")
+    async def new_episode(
+        channel_id: str, body: EpisodeIn, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        if store.channel(channel_id) is None:
+            raise HTTPException(status_code=404, detail="no such channel")
+        files = [*body.files, *(await linked(body.text, me) if body.resolve_links else [])]
+        return episode_call(
+            lambda: host.episodes.create(
+                channel_id,
+                by=me,
+                title=body.title,
+                text=body.text,
+                file_ids=files,
+                frame_id=body.from_frame,
+                settings=body.settings.model_dump(exclude_none=True),
+            )
+        )
+
+    @app.get("/api/episodes/{episode_id}")
+    async def episode(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        return episode_call(lambda: host.episodes.view(episode_id))
+
+    @app.post("/api/episodes/{episode_id}/approve")
+    async def approve_episode(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.approve(episode_id, by=me))
+
+    @app.post("/api/episodes/{episode_id}/choices")
+    async def choose_episode(
+        episode_id: str, body: ChoicesIn, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        # what was sent, as it was sent: a null is a pick taken back, not a pick left out
+        change = body.model_dump(exclude_unset=True)
+        change["settings"] = body.settings.model_dump(exclude_none=True)
+        if "narrator" in body.settings.model_fields_set and body.settings.narrator is None:
+            change["settings"]["narrator"] = None
+        return episode_call(lambda: host.episodes.choose(episode_id, by=me, change=change))
+
+    @app.post("/api/episodes/{episode_id}/ask")
+    async def ask_episode(
+        episode_id: str, body: AskIn, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(
+            lambda: host.episodes.ask(
+                episode_id, by=me, scope=body.scope, target=body.target, text=body.text
+            )
+        )
+
+    @app.post("/api/episodes/{episode_id}/lines/{frame_id}")
+    async def edit_line(
+        episode_id: str, frame_id: str, body: WordsIn, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(
+            lambda: host.episodes.edit(episode_id, by=me, frame=frame_id, text=body.text)
+        )
+
+    @app.post("/api/episodes/{episode_id}/lines")
+    async def add_line(episode_id: str, body: LineIn, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(
+            lambda: host.episodes.add_line(
+                episode_id, by=me, after=body.after, text=body.text, kind=body.kind, keep=body.keep
+            )
+        )
+
+    @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/keep")
+    async def keep_picture(
+        episode_id: str, unit_id: str, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.keep_picture(episode_id, unit_id, by=me))
+
+    @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/versions/{n}/use")
+    async def use_picture_version(
+        episode_id: str, unit_id: str, n: int, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.use_version(episode_id, unit_id, n, by=me))
+
+    @app.post("/api/episodes/{episode_id}/replan")
+    async def replan_pictures(
+        episode_id: str, body: ReplanIn, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.replan(episode_id, by=me, pictures=body.units))
+
+    @app.post("/api/episodes/{episode_id}/cut")
+    async def cut_lines(episode_id: str, body: CutIn, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(
+            lambda: host.episodes.cut_lines(
+                episode_id, by=me, frames=body.frames, join=body.join, words=body.words
+            )
+        )
+
+    @app.post("/api/episodes/{episode_id}/undo")
+    async def undo_episode(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.undo(episode_id, by=me))
+
+    @app.post("/api/episodes/{episode_id}/redo")
+    async def redo_episode(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.redo(episode_id, by=me))
+
+    @app.post("/api/episodes/{episode_id}/again")
+    async def plan_again(
+        episode_id: str,
+        body: AgainIn,
+        me: str = Depends(person),  # noqa: ARG001
+    ) -> dict[str, Any]:
+        return episode_call(
+            lambda: host.episodes.again(
+                episode_id,
+                writer=body.writer,
+                model=body.model,
+                effort=body.effort,
+                from_start=body.from_start,
+            )
+        )
+
+    @app.post("/api/episodes/{episode_id}/stop")
+    async def stop_episode(
+        episode_id: str,
+        body: StopIn | None = None,
+        me: str = Depends(person),  # noqa: ARG001
+    ) -> dict[str, bool]:
+        if store.episode(episode_id) is None:
+            raise HTTPException(status_code=404, detail="no such episode")
+        host.episodes.stop(episode_id, body.unit if body else "")
+        return {"ok": True}
+
+    @app.get("/api/episodes/{episode_id}/lines/{frame}/history")
+    async def line_history(
+        episode_id: str, frame: str, _me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.line_history(episode_id, frame))
+
+    @app.post("/api/episodes/{episode_id}/apply")
+    async def apply_episode(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.apply(episode_id, by=me))
+
+    @app.post("/api/episodes/{episode_id}/pictures")
+    async def make_pictures(
+        episode_id: str, body: PicturesIn | None = None, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        asked = body or PicturesIn()
+        return episode_call(
+            lambda: host.episodes.make(
+                episode_id, by=me, only=asked.units, chapter=asked.chapter, level=asked.level or ""
+            )
+        )
+
+    @app.post("/api/episodes/{episode_id}/chapters/{chapter}/regenerate")
+    async def regenerate_chapter(
+        episode_id: str,
+        chapter: str,
+        body: RegenerateChapterIn,
+        me: str = Depends(person),
+    ) -> dict[str, Any]:
+        return episode_call(
+            lambda: host.episodes.regenerate_chapter(
+                episode_id, chapter, by=me, provider=body.provider, model=body.model
+            )
+        )
+
+    @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/go")
+    async def picture_go(
+        episode_id: str, unit_id: str, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.go(episode_id, unit_id, by=me))
+
+    @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/steer")
+    async def steer_picture(
+        episode_id: str, unit_id: str, body: PictureNoteIn, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.steer(episode_id, unit_id, body.text, by=me))
+
+    @app.delete("/api/episodes/{episode_id}/pictures/{unit_id}/steer/{note_id}")
+    async def unsteer_picture(
+        episode_id: str, unit_id: str, note_id: str, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.unsteer(episode_id, unit_id, note_id, by=me))
+
+    @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/note")
+    async def picture_note(
+        episode_id: str, unit_id: str, body: PictureNoteIn, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return episode_call(
+            lambda: host.episodes.send_back(episode_id, unit_id, by=me, note=body.text)
+        )
+
+    @app.post("/api/episodes/{episode_id}/takes")
+    async def add_take(
+        episode_id: str, request: Request, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        # The form is read here, not declared, so a recording too large is refused by its
+        # stated size before any of it is read. What is read goes to a file on disk.
+        stated = request.headers.get("content-length", "")
+        if not stated.isdigit():
+            raise HTTPException(status_code=411, detail="the recording's size must be stated")
+        if int(stated) > MAX_TAKE_BYTES:
+            raise HTTPException(status_code=413, detail="the recording is over 8 GiB")
+        async with request.form(max_files=1, max_fields=8) as form:
+            upload, chapter = form.get("file"), form.get("chapter")
+            if not isinstance(upload, FormFile) or not isinstance(chapter, str) or not chapter:
+                raise HTTPException(status_code=422, detail="a recording and its chapter")
+            frame, marks = form.get("frame") or "", form.get("marks") or "[]"
+            label = form.get("label") or ""
+            if not isinstance(label, str):
+                raise HTTPException(status_code=422, detail="version name must be text")
+            try:
+                given = json.loads(marks) if isinstance(marks, str) else None
+                if not isinstance(given, list) or not all(isinstance(m, dict) for m in given):
+                    raise ValueError("marks must be a list")
+                return await host.episodes.add_take(
+                    episode_id,
+                    by=me,
+                    chapter=chapter,
+                    frame=frame if isinstance(frame, str) else "",
+                    marks=given,
+                    label=label,
+                    name=upload.filename or "take.webm",
+                    source=upload.file,
+                )
+            except KeyError:
+                raise HTTPException(status_code=404, detail="no such episode or chapter") from None
+            except ValueError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.get("/api/voices")
+    async def narrator_voices(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        try:
+            return await host.episodes.voices()
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.post("/api/episodes/{episode_id}/pictures/{unit_id}/preview")
+    async def preview_clip(
+        episode_id: str, unit_id: str, _me: str = Depends(person)
+    ) -> dict[str, Any]:
+        try:
+            return await host.episodes.preview_clip(episode_id, unit_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Unknown episode.") from None
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.post("/api/episodes/{episode_id}/chapters/{chapter}/preview-voice")
+    async def preview_voice(
+        episode_id: str, chapter: str, _me: str = Depends(person)
+    ) -> dict[str, Any]:
+        try:
+            return await host.episodes.preview_voice(episode_id, chapter)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Unknown episode or chapter.") from None
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.post("/api/episodes/{episode_id}/voice/{voice_id}/preview")
+    async def preview_clone(
+        episode_id: str, voice_id: str, _me: str = Depends(person)
+    ) -> dict[str, Any]:
+        try:
+            return await host.episodes.preview_channel_voice(episode_id, voice_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="No such voice in this channel.") from None
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.get("/api/episodes/{episode_id}/voice/{voice_id}/preview")
+    async def clone_audio(
+        episode_id: str, voice_id: str, _me: str = Depends(person)
+    ) -> FileResponse:
+        try:
+            path = host.episodes.channel_voice_audio(episode_id, voice_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="No saved sample for this voice.") from None
+        return FileResponse(path, media_type="audio/mpeg")
+
+    @app.post("/api/episodes/{episode_id}/voice")
+    async def clone_voice(
+        episode_id: str,
+        name: str = Form(..., max_length=80),
+        consent: bool = Form(default=False),
+        noisy: bool = Form(default=False),
+        file: UploadFile | None = File(default=None),  # noqa: B008 - FastAPI's declaration style
+        me: str = Depends(person),
+    ) -> dict[str, Any]:
+        sample = await voice_sample(file) if file is not None else None
+        try:
+            return await host.episodes.clone(
+                episode_id, by=me, name=name, consent=consent, noisy=noisy, sample=sample
+            )
+        except KeyError:
+            raise HTTPException(status_code=404, detail="no such episode") from None
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.post("/api/episodes/{episode_id}/takes/{take_id}/keep")
+    async def keep_take(
+        episode_id: str,
+        take_id: str,
+        body: KeepIn,
+        me: str = Depends(person),  # noqa: ARG001
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.keep_take(episode_id, take_id, keep=body.keep))
+
+    @app.delete("/api/episodes/{episode_id}/takes/{take_id}")
+    async def drop_take(episode_id: str, take_id: str, me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        return episode_call(lambda: host.episodes.keep_take(episode_id, take_id, keep=False))
+
+    @app.post("/api/episodes/{episode_id}/film")
+    async def render_episode(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.render(episode_id, by=me))
+
+    # -- the production board: every episode's jobs, and handing them to agents ---------------
+
+    @app.get("/api/production")
+    async def production(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        # Off the event loop: it reads every episode, and may wait on an agent's list of models.
+        return await asyncio.to_thread(host.episodes.production)
+
+    @app.post("/api/production/assign")
+    async def assign_jobs(body: AssignIn, me: str = Depends(person)) -> dict[str, Any]:
+        return episode_call(
+            lambda: host.episodes.assign(
+                [(job.episode, job.unit) for job in body.jobs],
+                by=me,
+                agent=body.agent,
+                model=body.model,
+                effort=body.effort,
+                start=body.start,
+            )
+        )
 
     # -- research: questions about the person's repositories, asked on this computer --------
 

@@ -106,6 +106,57 @@ async def test_ui_data_and_graph_memory_are_private_and_survive_reopening(databa
             store.close()
 
 
+def test_episode_history_and_voice_clone_backfill_survive_reopening(database, tmp_path: Path):
+    credential, users = database
+    user = users[0]
+
+    def open_store() -> Store:
+        return Store(
+            tmp_path / "workspace",
+            database_url=credential.get_secret_value(),
+            schema=user_schema(user["id"]),
+            user=user,
+        )
+
+    store = open_store()
+    try:
+        channel = store.add_channel("episodes")
+        thread = store.add_thread(
+            thread_id="example",
+            channel_id=channel["id"],
+            task=True,
+            title="Example",
+            kind="",
+            by=user["id"],
+        )
+        episode = store.add_episode(
+            {
+                "thread_id": thread["id"],
+                "title": "Example",
+                "status": "planned",
+                "started_by": user["id"],
+                "settings": {"cloned_voice": {"id": "voice-1", "name": "Speaker", "verify": True}},
+            }
+        )
+        plan = {"chapters": [{"id": "first"}]}
+        store.put_snapshot(episode["id"], why="Changed plan", data={"plan": plan})
+        store.put_snapshot(episode["id"], why="Earlier draft", data={})
+    finally:
+        store.close()
+
+    store = open_store()
+    try:
+        history = store.previous_plans(episode["id"])
+        assert [item["plan"] for item in history] == [{}, plan]
+        assert history[0]["n"] > history[1]["n"]
+        voices = store.channel_voice_clones(channel["id"])
+        assert [(voice["id"], voice["name"], voice["verify"]) for voice in voices] == [
+            ("voice-1", "Speaker", True)
+        ]
+    finally:
+        store.close()
+
+
 async def test_real_private_apps_reject_other_users_channel_file_and_thread_ids(
     database, tmp_path: Path
 ):

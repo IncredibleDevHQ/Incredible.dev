@@ -18,6 +18,7 @@ import {
   type LucideIcon,
   Palette,
   Paperclip,
+  Podcast,
   Presentation,
   Repeat2,
   ScanSearch,
@@ -44,6 +45,7 @@ const KIND_ICONS: Record<string, LucideIcon> = {
   sound: AudioLines,
   captions: Captions,
   study: ScanSearch,
+  episode: Podcast,
 };
 
 export function KindIcon({ kind, size = 16 }: { kind: string; size?: number }) {

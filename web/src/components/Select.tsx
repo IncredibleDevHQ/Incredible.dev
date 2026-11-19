@@ -1,6 +1,7 @@
 // Adapted from affectUI's Select (https://www.affectui.com), a free item under the MIT
 // licence (licenses/affectui-MIT.txt). Changed for the house: it can open on hover (`openOnHover`),
 // and app.css gives it the house's colours through its `--aui-*` variables.
+import { isWorkspaceTarget } from "./workspaceTarget";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent as HoverEvent, type ReactNode, type Ref } from "react";
 
 /*
@@ -93,7 +94,7 @@ export function Select({
   // Hover: a short wait before it opens or closes, so passing over it or crossing to the list is
   // forgiven; a click just after a hover opened it keeps it open.
   const linger = useRef<number | undefined>(undefined);
-  const hovered = useRef(0);
+  const hoverOnly = useRef(false);
 
   const invalid = Boolean(error);
   const message = shows(error) ? error : shows(hint) ? hint : null;
@@ -117,6 +118,8 @@ export function Select({
     setOpen(true);
   };
   const hide = (focusBack = true) => {
+    window.clearTimeout(linger.current);
+    hoverOnly.current = false;
     setOpen(false);
     setGlow(null);
     setPlace(null);
@@ -152,7 +155,10 @@ export function Select({
     // The top layer, so no overflow cuts it and no z-index fights it
     if (el && "showPopover" in el && !el.matches(":popover-open")) el.showPopover();
     measure();
-    const update = () => measure();
+    const update = (event: Event) => {
+      if (event.target instanceof Node && el?.contains(event.target)) return;
+      measure();
+    };
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
     return () => {
@@ -166,22 +172,40 @@ export function Select({
   useEffect(() => {
     if (!open) return;
     const down = (e: PointerEvent) => {
+      if (e.defaultPrevented || !isWorkspaceTarget(e.target)) return;
       const target = e.target as Node;
       if (trigger.current?.contains(target) || list.current?.contains(target)) return;
       hide(false);
     };
-    document.addEventListener("pointerdown", down, true);
-    return () => document.removeEventListener("pointerdown", down, true);
+    document.addEventListener("pointerdown", down);
+    return () => document.removeEventListener("pointerdown", down);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The highlight glides to the active option, and the list scrolls it into view
+  // Opening or navigating with keys reveals the option inside the list. Hover and
+  // manual scrolling may update the highlight without moving the user's viewport.
+  const reveal = (i: number) => {
+    const el = list.current;
+    const row = el?.querySelector<HTMLElement>(`[data-index="${i}"]`);
+    if (!el || !row) return;
+    const top = row.offsetTop;
+    const bottom = top + row.offsetHeight;
+    if (top < el.scrollTop) el.scrollTop = top;
+    else if (bottom > el.scrollTop + el.clientHeight) el.scrollTop = bottom - el.clientHeight;
+  };
+  const navigate = (i: number) => {
+    setActive(i);
+    reveal(i);
+  };
+  const positioned = place !== null;
   useLayoutEffect(() => {
-    if (!open || active < 0) return;
+    if (open && positioned) reveal(active);
+  }, [open, positioned]); // Only the initial placement should reveal the opening option.
+
+  useLayoutEffect(() => {
+    if (!open || active < 0 || !positioned) return;
     const row = list.current?.querySelector<HTMLElement>(`[data-index="${active}"]`);
-    if (!row) return;
-    setGlow({ top: row.offsetTop, height: row.offsetHeight });
-    row.scrollIntoView({ block: "nearest" });
-  }, [active, open, place]);
+    if (row) setGlow({ top: row.offsetTop, height: row.offsetHeight });
+  }, [active, open, positioned]);
 
   // Typing letters jumps to the next option that starts with them, like a native select
   const typeahead = (key: string) => {
@@ -193,12 +217,14 @@ export function Select({
     const order = [...options.keys()].map((k) => (k + start + (q.length === 1 ? 1 : 0) + options.length) % options.length);
     const hit = order.find((i) => enabled(i) && options[i].label.toLowerCase().startsWith(q));
     if (hit === undefined) return;
-    if (open) setActive(hit);
+    if (open) navigate(hit);
     else pick(hit);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
     if (disabled) return;
+    window.clearTimeout(linger.current);
+    hoverOnly.current = false;
     if (!open) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ") {
         e.preventDefault();
@@ -209,21 +235,21 @@ export function Select({
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
-        setActive((a) => step(a, 1));
+        navigate(step(active, 1));
         break;
       case "ArrowUp":
         e.preventDefault();
-        setActive((a) => step(a, -1));
+        navigate(step(active, -1));
         break;
       case "Home":
       case "PageUp":
         e.preventDefault();
-        setActive(first());
+        navigate(first());
         break;
       case "End":
       case "PageDown":
         e.preventDefault();
-        setActive(last());
+        navigate(last());
         break;
       case "Enter":
       case " ":
@@ -249,14 +275,14 @@ export function Select({
     window.clearTimeout(linger.current);
     if (!open)
       linger.current = window.setTimeout(() => {
-        hovered.current = Date.now();
+        hoverOnly.current = true;
         show();
       }, 120);
   };
   const leave = (e: HoverEvent) => {
     if (!openOnHover || e.pointerType !== "mouse") return;
     window.clearTimeout(linger.current);
-    linger.current = window.setTimeout(() => hide(false), 260);
+    if (hoverOnly.current) linger.current = window.setTimeout(() => hide(false), 260);
   };
 
   return (
@@ -302,7 +328,11 @@ export function Select({
         aria-required={required || undefined}
         disabled={disabled}
         onClick={() => {
-          if (open && Date.now() - hovered.current < 800) return;
+          window.clearTimeout(linger.current);
+          if (open && hoverOnly.current) {
+            hoverOnly.current = false;
+            return;
+          }
           if (open) hide();
           else show();
         }}

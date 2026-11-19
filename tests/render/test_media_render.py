@@ -19,7 +19,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageChops
+
+from design_agent.surfaces.web.demo import Asked, asset_thumbs
 
 ROOT = Path(__file__).resolve().parents[2]
 IMAGE = os.environ.get("DESIGN_AGENT_SANDBOX_IMAGE", "design-agent-sandbox:local")
@@ -350,6 +352,34 @@ def test_synthesized_cue_is_a_short_audible_wav(sandbox: Sandbox) -> None:
 
 
 # ----------------------------------------------------------------------------------------- thumbnails
+
+
+def test_thumbnail_template_renders_both_arms_from_a_source_video(
+    sandbox: Sandbox, tmp_path: Path
+) -> None:
+    source = "/workspace/projects/t/source.mp4"
+    write, render, publish = asset_thumbs(
+        Asked(id="as_test", kind="thumbs", title="Thumbnails"), source
+    )
+    for call in write([]).tool_calls:
+        if call["name"] == "write_file":
+            path = tmp_path / Path(call["args"]["file_path"]).relative_to("/workspace")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(call["args"]["content"], encoding="utf-8")
+    command = render([]).tool_calls[0]["args"]["command"]
+    result = sandbox(
+        "set -e\n"
+        f"ffmpeg -v error -f lavfi -i testsrc2=s=320x180:r=5 -t 4 -c:v libx264 {source}\n" + command
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    frames = publish([]).tool_calls[0]["args"]["frames"]
+    assert len(frames) == 2
+    images = []
+    for frame in frames:
+        with Image.open(tmp_path / Path(frame["path"]).relative_to("/workspace")) as image:
+            assert image.size == (1280, 720)
+            images.append(image.convert("RGB"))
+    assert ImageChops.difference(*images).getbbox() is not None
 
 
 def test_thumbnail_gate_passes_a_16x9_frame_and_fails_a_small_one(

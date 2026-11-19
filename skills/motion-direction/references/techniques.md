@@ -99,7 +99,7 @@ motion-blur component; a whip that carries copy stays sharp.
 **16. Orbit.** The camera circles a centred subject drawn far to near over a floor, for parallax.
 *When*: showing that a flat thing has depth; revealing a diagram. *Timing*: about 1.5 beats
 `power2.inOut`. *Build*: CSS 3D (`perspective` on the wrapper, `rotationY` on the stage) or the
-Three adapter (`hyperframes-animation`, `adapters/three.md`); the subject stays centred.
+Three runtime (`hyperframes`, `references/runtimes.md`); the subject stays centred.
 
 **17. Ring of stages.** A product lifecycle as a ring: items evenly spaced, a camera at a fixed
 elevation orbiting, cards floating above the ring and facing the lens. *When*: the one diagram a

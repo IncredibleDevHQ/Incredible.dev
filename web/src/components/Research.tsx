@@ -4,6 +4,7 @@ import { Skeleton } from "./Skeleton";
 // each question grows into a conversation, and a passage of any answer can be kept as a note or
 // explored as a branch, which sits to the right of what it branched from. The notes are what
 // everything made in the frame starts from.
+import { isWorkspaceTarget } from "./workspaceTarget";
 import { ArrowUp, Check, CornerDownRight, FileText, FolderOpen, GitBranch, MessageSquare, NotebookPen, Pencil, Plus, Quote, Search, Telescope, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -312,10 +313,11 @@ export function Passage({
   useEffect(() => {
     if (!picked) return;
     const onDown = (e: PointerEvent) => {
+      if (e.defaultPrevented || !isWorkspaceTarget(e.target)) return;
       if (!bar.current?.contains(e.target as Node)) setPicked(null);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPicked(null);
+      if (e.key === "Escape" && isWorkspaceTarget(e.target)) setPicked(null);
     };
     window.addEventListener("pointerdown", onDown);
     window.addEventListener("keydown", onKey);
@@ -348,7 +350,7 @@ export function Passage({
     }
   };
   return createPortal(
-    <div className="passage" ref={bar} style={{ left: picked.x, top: picked.y }} role="toolbar" aria-label="The selected passage">
+    <div data-house-portal="" className="passage" ref={bar} style={{ left: picked.x, top: picked.y }} role="toolbar" aria-label="The selected passage">
       {asking ? (
         <form
           onSubmit={(e) => {
@@ -625,8 +627,9 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
   }, [placed]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && isWorkspaceTarget(e.target) && onClose();
     const onDown = (e: PointerEvent) => {
+      if (e.defaultPrevented || !isWorkspaceTarget(e.target)) return;
       const target = e.target as Node;
       if (!box.current?.contains(target) && !anchor.contains(target)) onClose();
     };
@@ -668,6 +671,7 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
   };
   return createPortal(
     <div
+      data-house-portal=""
       className="pop research-start"
       ref={box}
       role="dialog"

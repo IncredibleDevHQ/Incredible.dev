@@ -7,6 +7,12 @@
     <link rel="stylesheet" href="tokens.css" />
     <script src="gsap.min.js"></script>
     <style>
+      /* The brand's face is installed on the designer's computer. The renderer's lint wants
+         every family it does not bundle declared in the file that uses it. */
+      @font-face {
+        font-family: "Geist";
+        src: local("Geist");
+      }
       html,
       body {
         margin: 0;

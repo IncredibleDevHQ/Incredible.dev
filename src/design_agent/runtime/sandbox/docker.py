@@ -25,6 +25,7 @@ import threading
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
+from typing import IO
 
 from deepagents.backends.protocol import (
     ExecuteResponse,
@@ -127,6 +128,7 @@ class DockerSandboxRunner:
         args: Sequence[str],
         *,
         input_bytes: bytes | None = None,
+        stdin: IO[bytes] | None = None,
         timeout: float | None = 120,
         check: bool = True,
     ) -> subprocess.CompletedProcess[bytes]:
@@ -134,13 +136,23 @@ class DockerSandboxRunner:
             raise SandboxUnavailableError(
                 "Docker is not installed or not on PATH; install Docker or choose another sandbox"
             )
-        result = subprocess.run(  # noqa: S603 - fixed docker argv, never a shell
-            [self._docker, *args],
-            input=input_bytes,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
+        if stdin is not None:
+            # An open file is read by Docker itself, so its size is never held in this process.
+            result = subprocess.run(  # noqa: S603 - fixed docker argv, never a shell
+                [self._docker, *args],
+                stdin=stdin,
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+            )
+        else:
+            result = subprocess.run(  # noqa: S603 - fixed docker argv, never a shell
+                [self._docker, *args],
+                input=input_bytes,
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+            )
         if check and result.returncode != 0:
             # The CLI ends with "Run 'docker run --help' …"; the daemon's reason is above it.
             lines = [
@@ -198,13 +210,20 @@ class DockerSandboxRunner:
 
     def _ensure_running(self, container: _Container) -> None:
         state = self._run(
-            ["container", "inspect", "--format", "{{.State.Running}}", container.name],
+            ["container", "inspect", "--format", "{{.State.Running}} {{.Image}}", container.name],
             check=False,
             timeout=30,
         )
-        if state.returncode == 0 and state.stdout.strip() == b"true":
+        exists = state.returncode == 0
+        running, _, made_from = state.stdout.decode().strip().partition(" ")
+        if exists and running == "true":
             return
-        if state.returncode == 0:
+        if exists and self._outdated(made_from):
+            # The sandbox image was rebuilt since (a renderer upgrade), and a restart would keep
+            # the old one. A stopped container holds no work: the thread's files are in its volume.
+            self._run(["rm", container.name], timeout=60)
+            exists = False
+        if exists:
             self._run(["start", container.name], timeout=60)
         else:
             cpus, memory = self._host_limits()
@@ -258,15 +277,28 @@ class DockerSandboxRunner:
             timeout=60,
         )
 
+    def _outdated(self, made_from: str) -> bool:
+        """Whether a container was made from another build of the image than the one configured
+        now. Unknown on either side counts as current: a container is never dropped on a guess."""
+        found = self._run(
+            ["image", "inspect", "--format", "{{.Id}}", self.image], check=False, timeout=15
+        )
+        wanted = found.stdout.decode().strip() if found.returncode == 0 else ""
+        return bool(made_from and wanted) and made_from != wanted
+
     def reap_idle(self) -> list[str]:
         """Stop containers idle past the TTL. Their volumes (the thread's files) stay."""
         stopped: list[str] = []
         now = self._clock()
         with self._lock:
-            for container in self._containers.values():
+            for thread_id, container in list(self._containers.items()):
                 if now - container.last_used >= self.idle_ttl_seconds:
-                    self._run(["stop", "--time", "5", container.name], check=False, timeout=60)
-                    stopped.append(container.name)
+                    result = self._run(
+                        ["stop", "--time", "5", container.name], check=False, timeout=60
+                    )
+                    if result.returncode == 0:
+                        del self._containers[thread_id]
+                        stopped.append(container.name)
         return stopped
 
     def stop_all(self) -> None:
@@ -312,6 +344,18 @@ class DockerSandboxRunner:
             ["exec", "-i", *user, name, "tar", "-x", "-C", "/", "--no-same-owner", "-f", "-"],
             input_bytes=archive,
             timeout=300,
+        )
+
+    def put_file(
+        self, thread_id: str, path: str, source: IO[bytes], *, timeout: float = 3600
+    ) -> None:
+        """Write one file in the thread's container from an open file on this computer, read
+        from where it stands. For files too large to hold in memory (a camera's recording)."""
+        name = self.container_for(thread_id)
+        self._run(
+            ["exec", "-i", "--user", AGENT_USER, name, "sh", "-c", 'cat > "$1"', "sh", path],
+            stdin=source,
+            timeout=timeout,
         )
 
     def get_file(self, thread_id: str, path: str) -> bytes | None:

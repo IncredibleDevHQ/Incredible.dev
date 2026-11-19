@@ -67,4 +67,4 @@ def test_hyperframes_runs_through_the_quiet_wrapper() -> None:
         "HYPERFRAMES_SKIP_SKILLS=1",
     ):
         assert variable in SETUP
-    assert '"hyperframes": "0.8.169"' in (ROOT / "sandbox/render/package.json").read_text()
+    assert '"hyperframes": "0.9.64"' in (ROOT / "sandbox/render/package.json").read_text()

@@ -192,3 +192,11 @@ def test_brand_path_falls_back_to_the_sample_brand(tmp_path) -> None:  # type: i
     (tmp_path / "workspace/brand").mkdir(parents=True)
     (tmp_path / "workspace/brand/brand.toml").write_text("name = 'x'\n")
     assert settings().resolved_brand_path(tmp_path) == tmp_path / "workspace/brand"
+
+
+def test_s3_region_accepts_aws_region_as_a_fallback(monkeypatch):
+    monkeypatch.delenv("DESIGN_AGENT_S3_REGION", raising=False)
+    monkeypatch.setenv("AWS_REGION", "eu-west-2")
+    assert Settings(_env_file=None).s3_region == "eu-west-2"
+    monkeypatch.setenv("DESIGN_AGENT_S3_REGION", "us-west-2")
+    assert Settings(_env_file=None).s3_region == "us-west-2"

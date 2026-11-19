@@ -51,10 +51,10 @@ A starting point, not a procedure; change the order when the film asks for it.
 6. **Listen, then hand it over.** Check the scored file's duration against the picture and listen to
    the joins. The person's ear decides; offer the mix with one line on what you did.
 
-Recipes that already render their own narrated film (`faceless-explainer`, `pr-to-video`,
-`general-video`, `website-to-video`): rescoring replaces their audio, so put the narration back as
-voice lines with `node scripts/vo-from-index.mjs <hyperframesDir> <jobDir> [voicePattern]`, which
-copies each line and writes `vo-from-film.json` for the plan's `vo`. `music-to-video` passes its track
+A film that already carries its own narration (its `index.html` mounts each voice line as an
+`<audio>`): rescoring replaces its audio, so put the narration back as voice lines with
+`node scripts/vo-from-index.mjs <hyperframesDir> <jobDir> [voicePattern]`, which copies each line
+and writes `vo-from-film.json` for the plan's `vo`. A film cut to a music track passes that track
 in as the bed (`source: "supplied"`).
 
 ## Judgment

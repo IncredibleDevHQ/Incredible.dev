@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     model: str = DEFAULT_MODEL_SPEC
     model_effort: str | None = None
     """Lead effort; unset uses the registry default for the model (`high` for Claude 5)."""
+    episode_codex_model: str = ""
+    """Optional account-supported Codex CLI model for episode planning and classification."""
     helper_model: str | None = None
     look_model: str | None = None
     tool_selector_model: str | None = None
@@ -115,6 +117,8 @@ class Settings(BaseSettings):
     job_budget_usd: float | None = Field(default=None, gt=0)
     workspace_root: Path = Path("workspace")
     research_roots: str = "~/Documents/code"
+    #: The ElevenLabs voice that narrates an episode nobody records (with ELEVENLABS_API_KEY).
+    narrator_voice_id: str = ""
     """Comma-separated folders the web app's research looks in for the person's repositories
     (each git repository up to two levels down can be researched, read-only, on this computer)."""
 
@@ -129,6 +133,33 @@ class Settings(BaseSettings):
     )
     groq_api_key: SecretStr | None = Field(default=None, validation_alias=_alias("GROQ_API_KEY"))
     exa_api_key: SecretStr | None = Field(default=None, validation_alias=_alias("EXA_API_KEY"))
+    #: Jev, the typed classifier that reads an episode's plan. Without it the episode's own
+    #: writer answers the same questions.
+    typesafe_api_key: SecretStr | None = Field(
+        default=None, validation_alias=_alias("TYPESAFE_API_KEY")
+    )
+
+    # Raw footage (host only): each take's recording as it arrived, kept in a bucket. S3 in
+    # production; MinIO or another S3-compatible store in development. With no bucket a
+    # recording is cut for the film and not kept.
+    footage_bucket: str = ""
+    s3_endpoint: str | None = None
+    """An S3-compatible store's address (MinIO in development: http://127.0.0.1:9400). Unset
+    is AWS S3. A bucket missing from such a store is made; on AWS it must exist."""
+    s3_region: str | None = Field(
+        default=None,
+        validation_alias=_alias("DESIGN_AGENT_S3_REGION", "AWS_REGION", "AWS_DEFAULT_REGION"),
+    )
+    #: The bucket's credentials. Unset on AWS, the machine's own are used (its role).
+    aws_access_key_id: SecretStr | None = Field(
+        default=None, validation_alias=_alias("AWS_ACCESS_KEY_ID")
+    )
+    aws_secret_access_key: SecretStr | None = Field(
+        default=None, validation_alias=_alias("AWS_SECRET_ACCESS_KEY")
+    )
+    aws_session_token: SecretStr | None = Field(
+        default=None, validation_alias=_alias("AWS_SESSION_TOKEN")
+    )
 
     # Behavior switches (the runtime's presenter reads progress, footer and steering)
     enable_progress: bool = True
@@ -160,9 +191,7 @@ class Settings(BaseSettings):
     )
     database_url: SecretStr | None = Field(default=None, validation_alias=_alias("DATABASE_URL"))
     blob_backend: Literal["local", "s3"] = "local"
-    s3_endpoint: str | None = None
     s3_bucket: str = "incredible-files"
-    s3_region: str = "us-east-1"
     s3_access_key: SecretStr | None = None
     s3_secret_key: SecretStr | None = None
     api_tokens: SecretStr | None = None
@@ -190,8 +219,13 @@ class Settings(BaseSettings):
         "elevenlabs_api_key",
         "groq_api_key",
         "exa_api_key",
-        "database_url",
+        "typesafe_api_key",
         "s3_endpoint",
+        "s3_region",
+        "aws_access_key_id",
+        "aws_secret_access_key",
+        "aws_session_token",
+        "database_url",
         "s3_access_key",
         "s3_secret_key",
         "supabase_url",

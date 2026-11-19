@@ -21,10 +21,12 @@ from design_agent.surfaces.web.research import (
     GUIDE,
     HARNESSES,
     Event,
+    Watch,
     clean_env,
     command,
     find_repos,
     parse,
+    run_env,
 )
 from design_agent.surfaces.web.research_desk import RESEARCH, ResearchDesk
 from design_agent.surfaces.web.store import AGENT_ID, CONVERSATION, Store
@@ -168,6 +170,130 @@ def test_codex_and_kimi_streams_are_read_too(tmp_path: Path) -> None:
     assert parse("kimi", "not json", tmp_path) == []
 
 
+def _part(event: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "stream_event", "event": event}
+
+
+def _delta(**delta: Any) -> dict[str, Any]:
+    return _part({"type": "content_block_delta", "delta": delta})
+
+
+def test_claude_code_is_watched_between_its_steps(tmp_path: Path) -> None:
+    """Thinking, a file being written and its own words each give a pulse as they go (one a
+    second at most), a thought is told once it ends, and a request made again is a step."""
+    now = [100.0]
+    watch = Watch("claude", tmp_path, clock=lambda: now[0])
+
+    def read(record: dict[str, Any], after: float = 0.0) -> list[Event]:
+        now[0] += after
+        return watch.read(record)
+
+    opened = _part({"type": "content_block_start", "content_block": {"type": "thinking"}})
+    assert read(opened) == [Event("pulse", "thinking")]
+    # more of the same thought within the second is held back
+    assert (
+        read(_delta(type="thinking_delta", thinking="**The order** matters", estimated_tokens=50))
+        == []
+    )
+    assert read(_delta(type="thinking_delta", thinking=" most.", estimated_tokens=120), 1.2) == [
+        Event("pulse", "thinking", detail="The order matters most.", amount=120)
+    ]
+    tick = {"type": "system", "subtype": "thinking_tokens", "estimated_tokens": 900}
+    assert read(tick, 1.0) == [
+        Event("pulse", "thinking", detail="The order matters most.", amount=900)
+    ]
+    assert read(_part({"type": "content_block_stop"}), 30.0) == [
+        Event("thought", "The order matters most.", amount=900, seconds=32.2)
+    ]
+
+    call = {"type": "tool_use", "name": "Write", "input": {}}
+    assert read(_part({"type": "content_block_start", "content_block": call})) == [
+        Event("pulse", "step", detail="Writing a file")
+    ]
+    start = json.dumps({"file_path": f"{tmp_path}/pictures/a.html", "content": "<html>"})[:-2]
+    assert read(_delta(type="input_json_delta", partial_json=start), 1.5) == [
+        Event("pulse", "step", detail="Writing pictures/a.html", amount=len(start))
+    ]
+    assert read(_part({"type": "content_block_stop"})) == [Event("pulse", "")]
+
+    assert read(_part({"type": "content_block_start", "content_block": {"type": "text"}})) == [
+        Event("pulse", "writing")
+    ]
+    assert read(_delta(type="text_delta", text="Done."), 2.0) == [
+        Event("pulse", "writing", amount=5)
+    ]
+    retry = {
+        "type": "system",
+        "subtype": "api_retry",
+        "attempt": 2,
+        "max_retries": 10,
+        "error": "overloaded",
+    }
+    assert read(retry) == [Event("step", "Asking again: the model's service is busy (try 2 of 10)")]
+
+
+def test_other_agents_give_a_pulse_for_any_line_and_codex_its_reasoning(tmp_path: Path) -> None:
+    now = [5.0]
+    kimi = Watch("kimi", tmp_path, clock=lambda: now[0])
+    assert kimi.read({"role": "tool", "content": "1\tA note"}) == [Event("pulse", "")]
+    assert kimi.read({"role": "tool", "content": "more"}) == []
+    now[0] += 2
+    assert kimi.read({"role": "meta", "type": "system.version"}) == [Event("pulse", "")]
+
+    codex = Watch("codex", tmp_path, clock=lambda: now[0])
+    reasoning = {"type": "reasoning", "text": "**Weighing the headers**\n\nmax-age first."}
+    assert codex.read({"type": "item.completed", "item": reasoning}) == [
+        Event("thought", "Weighing the headers max-age first.")
+    ]
+    assert codex.read({"type": "turn.started"}) == [Event("pulse", "")]
+
+
+@pytest.mark.asyncio
+async def test_claude_code_runs_watched_and_without_summaries_where_it_refuses_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from design_agent.surfaces.web import research
+
+    profile = tmp_path / "researcher.md"
+    plain, _ = command(
+        HARNESSES["claude"], "claude", repo=tmp_path, prompt="why?", session="", profile=profile
+    )
+    assert "--include-partial-messages" not in plain and research.CLAUDE_THOUGHTS not in plain
+    watched, _ = command(
+        HARNESSES["claude"],
+        "claude",
+        repo=tmp_path,
+        prompt="why?",
+        session="",
+        profile=profile,
+        watched=True,
+        thoughts=True,
+    )
+    assert "--include-partial-messages" in watched
+    assert watched[watched.index(research.CLAUDE_THOUGHTS) + 1] == "summarized"
+
+    # a CLI from before that option: it ends at once, and the same run goes again without it
+    binary = tmp_path / "claude"
+    binary.write_text(
+        "#!/bin/sh\ncat >/dev/null\n"
+        'case "$*" in *--thinking-display*)\n'
+        """  echo "error: unknown option '--thinking-display'" >&2; exit 1;; esac\n"""
+        """echo '{"type":"system","subtype":"init","session_id":"s-9"}'\n"""
+        """echo '{"type":"result","subtype":"success","is_error":false,"result":"It renews."}'\n"""
+    )
+    binary.chmod(0o755)
+    monkeypatch.setattr(type(HARNESSES["claude"]), "binary", lambda self: str(binary))
+    monkeypatch.setattr(research, "_without_thoughts", set())
+    events = [
+        event
+        async for event in research.run(
+            "claude", repo=tmp_path, prompt="why?", session="", profile=profile
+        )
+    ]
+    assert events == [Event("session", "s-9"), Event("answer", "It renews.")]
+    assert research._without_thoughts == {str(binary)}
+
+
 def test_every_agent_runs_read_only_with_the_prompt_kept_out_of_its_options(
     tmp_path: Path,
 ) -> None:
@@ -221,6 +347,32 @@ def test_every_agent_runs_read_only_with_the_prompt_kept_out_of_its_options(
     )
     assert kimi[kimi.index("--agent-file") + 1] == str(profile)
     assert "--prompt=-why?" in kimi and said is None
+    assert "--model" not in kimi
+
+
+def test_kimi_takes_its_model_as_an_option_and_its_effort_from_the_environment(
+    tmp_path: Path,
+) -> None:
+    profile = tmp_path / "writer.md"
+    kimi, said = command(
+        HARNESSES["kimi"],
+        "kimi",
+        repo=tmp_path,
+        prompt="why?",
+        session="",
+        profile=profile,
+        model="kimi-code/k3",
+        effort="low",
+    )
+    assert kimi[:3] == ["kimi", "--model", "kimi-code/k3"] and said is None
+    # its CLI has no option for effort: nothing of it is on the command line
+    assert "low" not in kimi and not any("effort" in part for part in kimi)
+    house = {"HOME": "/Users/k", "PATH": "/usr/bin", "KIMI_MODEL_THINKING_EFFORT": "max"}
+    assert run_env("kimi", "low", house)["KIMI_MODEL_THINKING_EFFORT"] == "low"
+    # nothing asked leaves Kimi's own setting alone, and no other agent is handed the variable
+    assert "KIMI_MODEL_THINKING_EFFORT" not in run_env("kimi", "", house)
+    assert "KIMI_MODEL_THINKING_EFFORT" not in run_env("claude", "low", house)
+    assert run_env("claude", "low", house) == clean_env(house)
 
 
 def test_an_agent_gets_none_of_the_houses_environment() -> None:
@@ -676,3 +828,31 @@ async def test_a_new_question_is_told_the_frames_notes_and_no_other_chat(
     told_now = runner.calls[-1]["prompt"]
     assert "Note 11." in told_now and "Note 00." not in told_now and "Expiry" not in told_now
     assert len(told_now) < 6_000 + 400
+
+
+@pytest.mark.asyncio
+async def test_codex_failure_keeps_its_reported_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from design_agent.surfaces.web import research
+
+    binary = tmp_path / "codex"
+    binary.write_text(
+        "#!/bin/sh\ncat >/dev/null\n"
+        """echo '{"type":"turn.failed","error":{"message":"Model unavailable"}}'\nexit 1\n"""
+    )
+    binary.chmod(0o755)
+    monkeypatch.setattr(type(HARNESSES["codex"]), "binary", lambda self: str(binary))
+    events = [
+        event
+        async for event in research.run(
+            "codex", repo=tmp_path, prompt="Draw", session="", profile=tmp_path
+        )
+    ]
+    assert events == [Event("error", "Model unavailable")]
+
+
+def test_codex_nested_provider_error_has_readable_message(tmp_path: Path) -> None:
+    body = json.dumps({"status": 400, "error": {"message": "Model unavailable"}})
+    event = {"type": "turn.failed", "error": {"message": body}}
+    assert parse("codex", json.dumps(event), tmp_path) == [Event("error", "Model unavailable")]

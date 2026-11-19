@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // vo-from-index.mjs — the voiceover lines of a finished HyperFrames film, as score-video `vo` entries.
 //
-// A narrated recipe (faceless-explainer, pr-to-video, general-video, website-to-video) mounts
-// each voice line in its index.html as
+// A narrated HyperFrames film mounts each voice line in its index.html as
 // <audio src="assets/voice/<id>.wav" data-start="<seconds>">. Scoring that film replaces its audio
 // track, so the lines go back in as `vo` entries at the same starts: this copies each voice file
 // into <jobDir>/sound-assets/vo/ and writes <jobDir>/vo-from-film.json. Merge that array into

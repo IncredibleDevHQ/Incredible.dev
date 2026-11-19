@@ -6,8 +6,10 @@ description: Direct and review motion built in HyperFrames, from a sting to a fi
 # Motion direction
 
 How to make motion worth watching. HyperFrames is the engine: the composition contract, the CLI,
-GSAP adapters and the catalog are in the vendored `hyperframes`, `hyperframes-core`,
-`hyperframes-cli` and `hyperframes-animation` skills, and this skill does not repeat them. The
+runtimes and the catalog are in the vendored `hyperframes`, `hyperframes-cli` and
+`hyperframes-registry` skills, and this skill does not repeat them. On this computer the CLI is
+`hyperframes` on the PATH: run it directly wherever those skills write `npx hyperframes` or
+`plugin-cli.mjs`, and skip their usage beacon (there is no network). The
 storyboard comes first (`storyboard`); a 1-3 minute film with helpers runs through `launch-film`;
 the sound is made with `sound`. This is the director's judgment that sits across all of them.
 
@@ -78,7 +80,7 @@ Scenes read their times from it and never type them, so a re-time is one number.
 - **Search before you author**: `hyperframes catalog --query "<the move in plain words>"`, then
   `hyperframes add`; write by hand only when nothing fits (`hyperframes-registry`).
 - **One paused timeline per composition**, seek-driven; scenes as sub-compositions mounted by a thin
-  `index.html` (`hyperframes-core`). Elements a later move needs get stable ids, scene-prefixed
+  `index.html` (`hyperframes`, the contract). Elements a later move needs get stable ids, scene-prefixed
   (`#s3-card`), and a carrier that crosses scenes is unprefixed (`#carrier-report`) on its own track.
 - **One easing family per film.** [scripts/motion-presets.js](scripts/motion-presets.js) holds the
   frame presets and five families (silk, snap, spring, float, pulse) with `enter`, `exit`, a seeded
@@ -135,7 +137,7 @@ are in [motion-presets.js](scripts/motion-presets.js); placement specs in
 
 | Symptom | Likely cause and fix |
 | --- | --- |
-| A sub-composition renders as tiny unstyled text | Its `<style>` or `<script>` sits outside the `<template>` (`hyperframes-core`, sub-compositions) |
+| A sub-composition renders as tiny unstyled text | Its `<style>` or `<script>` sits outside the `<template>` (`hyperframes`, contract rule 12) |
 | A scene shows its initial state for the whole slot | The host's `data-composition-id` does not match the file's and its timeline key |
 | A frame dips to grey or black at a cut | A dissolve between unrelated grounds, or separate clips on alternating tracks; see transitions in [craft](references/craft.md) |
 | A number or word lands one frame late in one render and not another | A time not snapped to its frame (`MotionPresets.onFrame`) |

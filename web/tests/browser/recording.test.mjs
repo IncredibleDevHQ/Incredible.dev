@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {chromium} from 'playwright';
+import {createServer} from 'vite';
+
+test('guided recording counts down, previews before saving, and preserves the take after a failed save', async t=>{
+ const server=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'error'});
+ t.after(()=>server.close());await server.listen();
+ const browser=await chromium.launch({args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});
+ t.after(()=>browser.close());
+ const page=await browser.newPage({permissions:['microphone','camera']});
+ const samples=24000, rate=24000, wav=Buffer.alloc(44+samples*2);
+ wav.write('RIFF');wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8);
+ wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);
+ wav.writeUInt32LE(rate,24);wav.writeUInt32LE(rate*2,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);
+ wav.write('data',36);wav.writeUInt32LE(samples*2,40);
+ for(let i=0;i<samples;i++)wav.writeInt16LE(Math.round(Math.sin(i*2*Math.PI*440/rate)*12000),44+i*2);
+ await page.route('**/tone.wav',r=>r.fulfill({body:wav,contentType:'audio/wav'}));
+ await page.goto(new URL('tests/browser/recording.html',server.resolvedUrls.local[0]).href);
+ await page.getByRole('button',{name:'Open camera'}).click();
+ await page.getByLabel('State').filter({hasText:'ready'}).waitFor();
+ await page.getByRole('button',{name:'Start guided'}).click();
+ for (const count of ['3','2','1']) await page.getByLabel('Countdown').filter({hasText:count}).waitFor();
+ await page.getByLabel('State').filter({hasText:'recording'}).waitFor();
+ await page.getByLabel('Beat').filter({hasText:'1'}).waitFor();
+ await page.getByLabel('State').filter({hasText:'review'}).waitFor();
+ assert.equal(await page.locator('pre').count(),0, 'recording must not auto-save');
+ await page.locator('video').evaluate(video=>video.play());
+ await page.getByRole('button',{name:'Save take'}).click();
+ await page.getByRole('alert').filter({hasText:'Upload failed'}).waitFor();
+ assert.equal(await page.getByLabel('State').innerText(),'review');
+ assert.ok(await page.locator('video').getAttribute('src'));
+ await page.getByRole('button',{name:'Allow save'}).click();
+ await page.getByRole('button',{name:'Save take'}).click();
+ await page.locator('pre').waitFor();
+ const saved=JSON.parse(await page.locator('pre').innerText());
+ assert.deepEqual(saved.marks,[{frame:'a',t:0},{frame:'b',t:1}]);
+ assert.ok(saved.size>1000);
+ const media=await page.locator('video').evaluate(async video=>{
+   await video.play();
+   return {width:video.videoWidth,audio:video.webkitAudioDecodedByteCount};
+ });
+ assert.ok(media.width>0);
+ // Decode the saved audio independently to verify narration reached the recorded file.
+ const sound=await page.evaluate(async url=>{
+   const context=new AudioContext();
+   const bytes=await (await fetch(url)).arrayBuffer();
+   const buffer=await context.decodeAudioData(bytes);
+   const peak=Math.max(...buffer.getChannelData(0).subarray(2400,4800).map(Math.abs));
+   await context.close(); return {peak,duration:buffer.duration};
+ },saved.url);
+ assert.ok(sound.peak>0.1);
+ assert.ok(sound.duration>=1.9 && sound.duration<2.6);
+ await page.getByRole('button',{name:'Open camera'}).click();
+ await page.getByLabel('State').filter({hasText:'ready'}).waitFor();
+ await page.route('**/tone.wav',r=>r.fulfill({status:500}));
+ await page.getByRole('button',{name:'Start guided'}).click();
+ await page.getByRole('alert').waitFor();
+ assert.equal(await page.getByLabel('State').innerText(),'ready');
+ await page.getByRole('button',{name:'Discard'}).click();
+ assert.equal(await page.getByLabel('State').innerText(),'off');
+ // Cancel during the countdown: no recorder or review should appear later.
+ await page.getByRole('button',{name:'Open camera'}).click();
+ await page.getByLabel('State').filter({hasText:'ready'}).waitFor();
+ await page.getByRole('button',{name:'Start manual'}).click();
+ await page.getByLabel('Countdown').filter({hasText:'3'}).waitFor();
+ await page.getByRole('button',{name:'Discard'}).click();
+ await page.waitForTimeout(3200);
+ assert.equal(await page.getByLabel('State').innerText(),'off');
+ // Manual finishing also goes to review; a retake releases the old object URL.
+ await page.getByRole('button',{name:'Open camera'}).click();
+ await page.getByLabel('State').filter({hasText:'ready'}).waitFor();
+ await page.getByRole('button',{name:'Start manual'}).click();
+ await page.getByLabel('State').filter({hasText:'recording'}).waitFor();
+ await page.waitForTimeout(350);
+ await page.getByRole('button',{name:'Next line'}).click();
+ await page.getByRole('button',{name:'Next line'}).click();
+ await page.getByLabel('State').filter({hasText:'review'}).waitFor();
+ const unsaved=await page.locator('video').first().getAttribute('src');
+ assert.equal(JSON.parse(await page.locator('pre').innerText()).url,saved.url);
+ await page.getByRole('button',{name:'Open camera'}).click();
+ await page.getByLabel('State').filter({hasText:'ready'}).waitFor();
+ assert.equal(await page.evaluate(url=>fetch(url).then(()=>true,()=>false),unsaved),false);
+ await page.getByRole('button',{name:'Discard'}).click();
+});
