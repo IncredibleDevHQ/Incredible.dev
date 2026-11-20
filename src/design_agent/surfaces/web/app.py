@@ -71,12 +71,15 @@ import contextlib
 import html
 import json
 import mimetypes
+import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import quote
+from uuid import uuid4
 
+import httpx
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import (
     FileResponse,
@@ -905,6 +908,72 @@ def create_app(
         if not content:
             raise HTTPException(status_code=422, detail="the recording is empty")
         return file.filename or "sample", content
+
+    # Test audio stays in this workspace process for one hour, isolated by person and episode.
+    lab_audio: dict[str, tuple[str, str, str, bytes, bytes, float, str | None]] = {}
+    lab_slots = asyncio.Semaphore(2)
+
+    @app.get("/api/episodes/{episode_id}/voice-tests")
+    async def voice_tests(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
+        if store.episode(episode_id) is None:
+            raise HTTPException(404, "Unknown episode.")
+        return {
+            "clips": [
+                {"id": key, "name": name, "expires_at": expires, "text": text}
+                for key, (owner, episode, name, _, _, expires, text) in reversed(lab_audio.items())
+                if (owner, episode) == (me, episode_id)
+            ]
+        }
+
+    @app.get("/api/episodes/{episode_id}/voice-tests/{clip_id}/{kind}")
+    async def voice_test_audio(
+        episode_id: str, clip_id: str, kind: Literal["original", "clone"], me: str = Depends(person)
+    ) -> Response:
+        clip = lab_audio.get(clip_id)
+        if not clip or clip[:2] != (me, episode_id):
+            raise HTTPException(404, "This test recording has expired.")
+        return Response(
+            clip[3 if kind == "original" else 4],
+            media_type="audio/wav",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/api/episodes/{episode_id}/voice-tests")
+    async def create_voice_test(
+        episode_id: str,
+        name: str = Form(..., max_length=80),
+        consent: bool = Form(False),
+        text: str | None = Form(None, max_length=2000),
+        file: UploadFile = File(...),  # noqa: B008
+        me: str = Depends(person),
+    ) -> dict[str, Any]:
+        from design_agent.tools.media import MediaKeys
+        from design_agent.tools.voice_lab import render
+
+        if store.episode(episode_id) is None:
+            raise HTTPException(404, "Unknown episode.")
+        if not consent or not name.strip():
+            raise HTTPException(422, "Name the test and confirm this is your voice.")
+        if lab_slots.locked():
+            raise HTTPException(429, "Another voice test is running. Try again shortly.")
+        async with lab_slots:
+            if len(lab_audio) >= 16:
+                raise HTTPException(
+                    429, "Temporary storage is full. Try again after a test expires."
+                )
+            _, original = await voice_sample(file)
+            try:
+                async with httpx.AsyncClient(timeout=300) as client:
+                    generated = await render(
+                        client, MediaKeys.from_settings(host.settings), name, original, text
+                    )
+            except ValueError as error:
+                raise HTTPException(422, str(error)) from None
+            key = uuid4().hex
+            expires = time.time() + 3600
+            lab_audio[key] = (me, episode_id, name.strip(), original, generated, expires, text)
+            asyncio.get_running_loop().call_later(3600, lab_audio.pop, key, None)
+            return {"id": key, "name": name.strip(), "expires_at": expires, "text": text}
 
     @app.post("/api/channels/{channel_id}/voices")
     async def add_channel_voice(

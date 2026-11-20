@@ -1036,6 +1036,11 @@ app's canvas, from a channel's material or a research frame's notes.
   Record one speaker in their natural accent and in the language of the episode. Studio requests
   higher voice similarity for channel clone previews and narration. Playing a sample generates
   one short line in the selected voice and reuses it while the synthesis settings match.
+  The unlinked voice-test page accepts a microphone recording or uploaded audio and offers two
+  reading scripts. With consent it creates a disposable instant clone and reads a separate editable
+  passage using Eleven Multilingual v2 text-to-speech. Repeat recording uses Voice Changer to match the original timing. The provider clone is removed after conversion.
+  Named original/clone listening pairs stay in workspace memory for one hour, scoped to the
+  person and episode. The source can also be downloaded.
 - Chapter playback uses a single elapsed time and seek bar across beats. Replay starts from the chapter opening. The sidebar previews the whole chapter by default, with chapter actions below its cover. Choosing a beat switches to its frame. Opening the preview places the player above the script. Playback uses the
   current export when available. For a changed film the editor plays the selected take or
   the cached narration for that text and voice, with the draft picture on the same clock.

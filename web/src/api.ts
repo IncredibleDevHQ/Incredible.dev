@@ -661,7 +661,7 @@ export function actAs(id: string) {
   }
 }
 
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request(method: string, path: string, body?: unknown): Promise<Response> {
   const response = await fetch(path, {
     method,
     headers: { "X-Person": person, ...(body instanceof FormData || body === undefined ? {} : { "Content-Type": "application/json" }) },
@@ -677,7 +677,11 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     }
     throw new Error(typeof detail === "string" ? detail : "Request failed");
   }
-  return (await response.json()) as T;
+  return response;
+}
+
+async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  return (await (await request(method, path, body)).json()) as T;
 }
 
 export type UsagePeriod = "today" | "week" | "month";
@@ -697,7 +701,17 @@ function voiceCloneForm(clone: VoiceCloneInput): FormData {
   return form;
 }
 
+export type VoiceTestClip = {text?: string | null; id: string; name: string; expires_at: number};
+
 export const api = {
+  voiceTests: (episode: string) => call<{clips: VoiceTestClip[]}>("GET", `/api/episodes/${episode}/voice-tests`),
+  createVoiceTest: (episode: string, clone: VoiceCloneInput & {file: File; text?: string}) => {
+    const form = voiceCloneForm(clone);
+    if (clone.text !== undefined) form.append("text", clone.text);
+    return call<VoiceTestClip>("POST", `/api/episodes/${episode}/voice-tests`, form);
+  },
+  voiceTestAudio: async (episode: string, id: string, kind: "original" | "clone") =>
+    (await request("GET", `/api/episodes/${episode}/voice-tests/${id}/${kind}`)).blob(),
   usageReport: (period: UsagePeriod) => call<UsageReport>("GET", "/api/usage/report?period=" + period),
   organization: () => call<Organization>("GET", "/api/organization"),
   saveOrganization: (profile: Organization) => call<Organization>("PUT", "/api/organization", profile),

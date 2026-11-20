@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { SettingsPage } from "./pages/Settings";
+import { VoiceTest } from "./pages/VoiceTest";
 import { AuthGate, WorkspaceSkeleton } from "./components/AuthGate";
 import { ChannelView } from "./components/ChannelView";
 import { NewEpisode } from "./components/episode/NewEpisode";
@@ -16,7 +17,8 @@ import { followAddress, go, parse } from "./route";
 import { useHouse } from "./store";
 
 export function App() {
-  return <AuthGate><WorkspaceApp /></AuthGate>;
+  const voiceTest = /^\/c\/[^/]+\/episode\/(ep_[a-z0-9]+)\/voice-test\/?$/.exec(location.pathname);
+  return <AuthGate>{voiceTest ? <VoiceTest episode={voiceTest[1]} /> : <WorkspaceApp />}</AuthGate>;
 }
 
 function WorkspaceApp() {
