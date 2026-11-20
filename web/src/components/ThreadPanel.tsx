@@ -1,13 +1,16 @@
 // One thread: a task's whole conversation. People's messages, each agent turn as a live card of
 // steps, the replies and files, the boards it put on the canvas, the work still running
 // (helpers, renders, pipelines) and the footer, with a way to stop or steer it. A research
-// conversation reads the same way, its answers with a way to keep them, or a passage, as notes.
-import { Check, ChevronRight, CornerDownRight, LayoutDashboard, NotebookPen, Square, X } from "lucide-react";
+// conversation reads the same way, its answers with a way to keep them, or a passage, as notes;
+// each of its agent's turns is drawn on the agent trail the episode's work uses.
+import { Check, ChevronRight, LayoutDashboard, NotebookPen, Square, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Board, type ConversationRow, type Message, type Step, type Work } from "../api";
-import { useHouse } from "../store";
+import { researchPulse, useHouse } from "../store";
 import { AgentMark, Avatar, clock, FileList, FooterLine, kindTitle, Rich, StatusChip, StepIcon } from "../ui";
+import { AgentTrail, type TrailStage } from "./agent/AgentTrail";
 import { Composer } from "./Composer";
+import { pickLabel } from "./episode/models";
 import { Folder } from "./Folder";
 import { Passage } from "./Research";
 
@@ -45,10 +48,21 @@ export function ThreadPanel() {
     return () => window.removeEventListener("keydown", onKey);
   }, [openThread]);
 
+  // A conversation's chip says what its agent runs on, by the names the research node offers.
+  const asking = Boolean(detail?.conversation);
+  const options = useHouse((s) => s.research);
+  useEffect(() => {
+    if (asking && !options) void useHouse.getState().loadResearch().catch(() => undefined);
+  }, [asking, options]);
+  const replying = useHouse((s) => s.replying);
+
   if (!threadId) return null;
   if (!detail) return <aside className="thread" aria-label="Thread"><div className="empty">Opening…</div></aside>;
   const { thread } = detail;
   const conversation = detail.conversation ?? null;
+  const on = conversation ? pickLabel(options?.models[conversation.harness], conversation) : "";
+  // a passage of an answer here, quoted over the next question (Reply on a selection)
+  const quote = replying?.thread === thread.id ? replying.text : null;
   const live = detail.work.filter((w) => w.status === "running");
   const turnRunning = detail.messages.some((m) => m.kind === "turn" && m.data.state === "working");
 
@@ -65,6 +79,7 @@ export function ThreadPanel() {
                 <span className="chip">
                   <AgentMark mark={conversation.harness} size="sm" />
                   {AGENT_TITLES[conversation.harness]}
+                  {on && <span className="faint">· {on}</span>}
                 </span>
                 <span className="chip">{conversation.repo.split("/").pop()}</span>
               </>
@@ -127,8 +142,11 @@ export function ThreadPanel() {
         allowTeam={thread.task}
         attach={!conversation}
         wait={conversation && turnRunning ? "Answering… ask again once it's done, or stop it." : undefined}
+        quote={quote}
+        onUnquote={() => useHouse.setState({ replying: null })}
         onSend={async (body) => {
-          await api.reply(thread.id, { text: body.text, to_agent: thread.task && body.to_agent, files: body.files });
+          await api.reply(thread.id, { text: body.text, to_agent: thread.task && body.to_agent, files: body.files, ...(quote ? { quote } : {}) });
+          if (quote) useHouse.setState({ replying: null });
         }}
       />
       <span className="sr-only">{people[thread.started_by]?.name}</span>
@@ -139,7 +157,7 @@ export function ThreadPanel() {
 function Item({ message, conversation }: { message: Message; conversation?: ConversationRow | null }) {
   const people = useHouse((s) => s.people);
   const text = useRef<HTMLDivElement>(null);
-  if (message.kind === "turn") return <TurnCard message={message} />;
+  if (message.kind === "turn") return conversation ? <ResearchTurn message={message} conversation={conversation} /> : <TurnCard message={message} />;
   const agent = message.author_id === "agent";
   const author = people[message.author_id];
   const state = message.data.state;
@@ -155,8 +173,7 @@ function Item({ message, conversation }: { message: Message; conversation?: Conv
         </div>
         {message.data.quote && (
           <p className="msg-quote">
-            <CornerDownRight size={13} />
-            <span>“{message.data.quote}”</span>
+            <span title={message.data.quote}>{message.data.quote}</span>
           </p>
         )}
         {message.text &&
@@ -169,7 +186,7 @@ function Item({ message, conversation }: { message: Message; conversation?: Conv
           ))}
         {answer && message.text && (
           <>
-            <Passage within={text} frameId={answer.frame_id} conversationId={answer.id} messageId={message.id} />
+            <Passage within={text} frameId={answer.frame_id} conversationId={answer.id} messageId={message.id} agent={answer} />
             <KeepAnswer message={message} conversation={answer} />
           </>
         )}
@@ -234,6 +251,43 @@ function Answers({ message }: { message: Message }) {
           {option}
         </button>
       ))}
+    </div>
+  );
+}
+
+// A research answer on the agent trail the episode's work uses: one stage, reading the repository
+// and answering, with the agent's steps, words and thinking under it as they come and, between
+// them, what its model is at (its pulse). Once it is over, its steps fold behind their count.
+function ResearchTurn({ message, conversation }: { message: Message; conversation: ConversationRow }) {
+  const data = message.data;
+  const working = data.state === "working";
+  const ended = data.state === "stopped" ? "Stopped" : data.state === "failed" ? "No answer" : "";
+  const pulse = useHouse((s) => s.pulses[researchPulse(message.thread_id)]);
+  const cut = useHouse((s) => s.cut);
+  const events = data.events ?? [];
+  const stage: TrailStage = {
+    id: "answer",
+    label: `Read ${conversation.repo.split("/").pop() || "the repository"} and answer`,
+    state: working ? "running" : ended ? "failed" : "done",
+    startedAt: data.started_at ?? message.created_at,
+    endedAt: data.ended_at ?? null,
+    doing: working ? "Reading" : undefined,
+    working,
+    word: ended || undefined,
+    kept: working ? undefined : events,
+  };
+  return (
+    <div className="turn-trail">
+      <AgentTrail
+        label={`${AGENT_TITLES[conversation.harness]}'s answer`}
+        steps={[stage]}
+        events={working ? events : []}
+        turnSince={data.started_at ?? null}
+        pulse={working ? (pulse ?? null) : null}
+        tells={data.tells ?? false}
+        onStop={() => void api.stop(message.thread_id)}
+        cut={cut}
+      />
     </div>
   );
 }

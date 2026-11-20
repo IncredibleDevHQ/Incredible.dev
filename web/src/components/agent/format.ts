@@ -22,3 +22,9 @@ export function middle(text: string, max = 44): string {
   const tail = Math.ceil((max - 1) * 0.6);
   return `${text.slice(0, max - 1 - tail)}…${text.slice(text.length - tail)}`;
 }
+
+// An agent's own words as they read, without the marks its markdown sets round them: bold, code,
+// and a heading's opening. Names with underscores in them keep them.
+export function plainly(text: string): string {
+  return text.replace(/\*\*|`/g, "").replace(/(^|\n)#{1,6}\s+/g, "$1").trim();
+}

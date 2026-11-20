@@ -40,7 +40,7 @@ from design_agent.harness import events as ev
 from design_agent.harness import tasks
 from design_agent.harness.notices import should_post
 from design_agent.middleware.meter import METER
-from design_agent.surfaces.web import catalog, pages, preview
+from design_agent.surfaces.web import catalog, episode_models, pages, preview
 from design_agent.surfaces.web.episode_desk import EpisodeDesk
 from design_agent.surfaces.web.hub import Hub
 from design_agent.surfaces.web.preview import Previews
@@ -151,7 +151,11 @@ class AgentHost:
         self.previews: Previews | None = None
         #: Research frames: questions about the person's repositories, asked on this computer.
         self.research = ResearchDesk(
-            store=store, hub=hub, data_dir=data_dir, roots=settings.research_folders()
+            store=store,
+            hub=hub,
+            data_dir=data_dir,
+            roots=settings.research_folders(),
+            models=lambda harness: episode_models.options(settings, harness),
         )
         #: Episodes: explainers planned, recorded and rendered from a task's material.
         self.episodes = EpisodeDesk(
@@ -260,9 +264,11 @@ class AgentHost:
         thread_id: str | None = None,
         kind: str = "",
         assets: Sequence[str] = (),
+        quote: str = "",
     ) -> Row:
         """A person's message: a new thread (a task when it is for the agent) or a reply. A new
-        task that asks for one kind of work puts that work on the canvas as its first asset."""
+        task that asks for one kind of work puts that work on the canvas as its first asset. A
+        research follow-up may quote the passage of the answer it asks about."""
         files = [f for f in (self.store.file(i) for i in file_ids) if f is not None]
         data: dict[str, Any] = {"files": [self.file_view(f) for f in files]}
         if thread_id is None:
@@ -280,7 +286,7 @@ class AgentHost:
             if found is None:
                 raise KeyError(thread_id)
             if found["kind"] == CONVERSATION:  # a research conversation: its agent answers it
-                return self.research.follow_up(thread_id, by=author_id, text=text)
+                return self.research.follow_up(thread_id, by=author_id, text=text, quote=quote)
             thread = found
             to_agent = to_agent and bool(thread["task"])
         # A thread's first message is its root: the channel lists it, and its id is the thread's.

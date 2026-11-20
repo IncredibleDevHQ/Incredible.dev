@@ -7,14 +7,17 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 
 from design_agent.config import Settings
 from design_agent.surfaces.web.agent import AgentHost
+from design_agent.surfaces.web.app import create_app
 from design_agent.surfaces.web.hub import Hub
 from design_agent.surfaces.web.research import (
     CLAUDE_BLOCKED,
@@ -33,6 +36,7 @@ from design_agent.surfaces.web.store import AGENT_ID, CONVERSATION, Store
 from tests.unit.test_web_surface import FakeBackend, FakeRuntime
 
 ANSWER = "Sessions outlive requests.\n\n## Why\n\nA Durable Object renews them."
+ROOT = Path(__file__).resolve().parents[2]
 
 
 class FakeRunner:
@@ -50,10 +54,27 @@ class FakeRunner:
         self.hold: asyncio.Event | None = None
 
     async def __call__(
-        self, harness: str, *, repo: Path, prompt: str, session: str, fork: bool, profile: Path
+        self,
+        harness: str,
+        *,
+        repo: Path,
+        prompt: str,
+        session: str,
+        fork: bool,
+        profile: Path,
+        model: str,
+        effort: str,
     ) -> AsyncGenerator[Event, None]:
         self.calls.append(
-            {"harness": harness, "repo": repo, "prompt": prompt, "session": session, "fork": fork}
+            {
+                "harness": harness,
+                "repo": repo,
+                "prompt": prompt,
+                "session": session,
+                "fork": fork,
+                "model": model,
+                "effort": effort,
+            }
         )
         for event in self.script:
             if self.hold is not None and event.kind == "answer":
@@ -294,6 +315,79 @@ async def test_claude_code_runs_watched_and_without_summaries_where_it_refuses_t
     assert research._without_thoughts == {str(binary)}
 
 
+async def test_kimi_code_asking_its_service_again_is_a_step_and_giving_up_says_why(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from design_agent.surfaces.web import research
+
+    def retrying(attempt: int, status: int = 500) -> dict[str, Any]:
+        return {
+            "role": "meta",
+            "type": "turn.step.retrying",
+            "failed_attempt": attempt,
+            "next_attempt": attempt + 1,
+            "max_attempts": 3,
+            "delay_ms": 500.0,
+            "error_name": "APIStatusError",
+            "error_message": "500 The server had an error while processing your request",
+            "status_code": status,
+        }
+
+    assert parse("kimi", json.dumps(retrying(1, 429)), tmp_path) == [
+        Event("step", "Asking again: the plan's limit was reached (try 2 of 3)")
+    ]
+    # Its stderr only points at its log: the run says why it stopped, from its last retry.
+    binary = tmp_path / "kimi"
+    binary.write_text(
+        "#!/bin/sh\n"
+        f"echo '{json.dumps(retrying(1))}'\n"
+        f"echo '{json.dumps(retrying(2))}'\n"
+        "echo 'See log: /home/you/.kimi-code/logs/kimi-code.log' >&2; exit 1\n"
+    )
+    binary.chmod(0o755)
+    monkeypatch.setattr(type(HARNESSES["kimi"]), "binary", lambda self: str(binary))
+    events = [
+        event
+        async for event in research.run("kimi", repo=tmp_path, prompt="why?", profile=tmp_path)
+    ]
+    assert events == [
+        Event("step", "Asking again: the model's service had an error (try 2 of 3)"),
+        Event("step", "Asking again: the model's service had an error (try 3 of 3)"),
+        Event(
+            "error",
+            "Kimi Code stopped: the model's service had an error, 3 times in a row "
+            "(“500 The server had an error while processing your request”). "
+            "Ask again in a little while.",
+        ),
+    ]
+
+
+async def test_a_cli_that_prints_nothing_for_too_long_is_stopped_as_stuck(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from design_agent.surfaces.web import research
+
+    binary = tmp_path / "kimi"
+    binary.write_text(
+        "#!/bin/sh\n"
+        """echo '{"role":"assistant","content":"Reading the engine."}'\n"""
+        "sleep 30\n"
+    )
+    binary.chmod(0o755)
+    monkeypatch.setattr(type(HARNESSES["kimi"]), "binary", lambda self: str(binary))
+    monkeypatch.setitem(research.SILENT_SECONDS, False, 0.5)
+    began = time.monotonic()
+    events = [
+        event
+        async for event in research.run("kimi", repo=tmp_path, prompt="why?", profile=tmp_path)
+    ]
+    assert time.monotonic() - began < 10, "the stuck CLI is stopped, not waited out"
+    assert events[0] == Event("note", "Reading the engine.")
+    assert events[-1].kind == "error"
+    assert events[-1].text.startswith("Kimi Code printed nothing for")
+    assert "stopped it as stuck" in events[-1].text
+
+
 def test_every_agent_runs_read_only_with_the_prompt_kept_out_of_its_options(
     tmp_path: Path,
 ) -> None:
@@ -441,18 +535,24 @@ async def test_a_research_frame_asks_its_first_question_and_files_the_answer(
             "prompt": "Why sessions?",
             "session": "",
             "fork": False,
+            "model": "",
+            "effort": "",
         }
     ]
     thread = agent.store.thread(conversation["id"])
     assert thread is not None and thread["kind"] == CONVERSATION and thread["status"] == "idle"
     question, turn, answer = agent.store.messages(conversation["id"])
     assert question["text"] == "Why sessions?" and question["author_id"] == "you"
+    # The turn as its trail draws it: each step and note with when it came, and whether this
+    # agent says what its model is doing between them.
     assert turn["kind"] == "turn" and turn["data"]["state"] == "done"
-    assert [s["title"] for s in turn["data"]["steps"]] == [
-        "Reading README.md",
-        "Searching for “expiry”",
+    assert [(e["kind"], e["text"]) for e in turn["data"]["events"]] == [
+        ("step", "Reading README.md"),
+        ("note", "Reading the session code."),
+        ("step", "Searching for “expiry”"),
     ]
-    assert {s["status"] for s in turn["data"]["steps"]} == {"done"}
+    assert all(e["at"] >= turn["data"]["started_at"] for e in turn["data"]["events"])
+    assert turn["data"]["tells"] is True and turn["data"]["ended_at"] >= turn["data"]["started_at"]
     assert answer["kind"] == "agent" and answer["author_id"] == AGENT_ID
     assert answer["text"] == ANSWER and answer["data"]["mark"] == "claude"
     assert agent.store.conversation(conversation["id"])["session"] == "s-1"  # type: ignore[index]
@@ -465,6 +565,191 @@ async def test_a_research_frame_asks_its_first_question_and_files_the_answer(
     assert shown["question"] == "Why sessions?" and shown["answer"] == ANSWER
     assert shown["status"] == "idle" and shown["answer_id"] == answer["id"]
     assert [m["thread_id"] for m in agent.store.roots(_channel(agent))] == [frame["id"]]
+
+
+async def test_a_question_runs_on_the_model_and_effort_picked_and_keeps_them(
+    house: tuple[AgentHost, FakeRunner, Path],
+) -> None:
+    agent, runner, repo = house
+    offered: dict[str, list[dict[str, Any]]] = {
+        "claude": [
+            {"id": "", "name": "CLI default", "efforts": ["low", "high"]},
+            {"id": "claude-opus-5-5", "name": "Opus 5.5", "efforts": ["low", "high", "max"]},
+            {"id": "claude-haiku-5-5", "name": "Haiku 5.5", "efforts": []},
+        ],
+    }
+    agent.research.models = lambda harness: offered.get(harness, [])
+    assert agent.research.options()["models"]["claude"] == offered["claude"]
+
+    def ran_on() -> tuple[str, str, str]:
+        call = runner.calls[-1]
+        return call["harness"], call["model"], call["effort"]
+
+    frame, first = agent.research.open(
+        _channel(agent),
+        by="you",
+        repo=str(repo),
+        harness="claude",
+        question="Why sessions?",
+        model="claude-opus-5-5",
+        effort="max",
+    )
+    await _settle(agent.research)
+    assert ran_on() == ("claude", "claude-opus-5-5", "max")
+    kept = agent.store.conversation(first["id"])
+    assert kept is not None and (kept["model"], kept["effort"]) == ("claude-opus-5-5", "max")
+    # The research node asks its next question as it asked this one, and the conversation says
+    # what it runs on, which is where Explore on a passage of its answer starts.
+    view = agent.research.view(frame["id"])
+    assert view is not None
+    assert (view["harness"], view["model"], view["effort"]) == ("claude", "claude-opus-5-5", "max")
+    [shown] = view["conversations"]
+    assert (shown["model"], shown["effort"]) == ("claude-opus-5-5", "max")
+
+    # Its follow-ups and its branches keep the pick, unless a branch is asked of another agent;
+    # a branch leaves the node's pick as it was.
+    agent.research.follow_up(first["id"], by="you", text="And expiry?")
+    await _settle(agent.research)
+    assert ran_on() == ("claude", "claude-opus-5-5", "max")
+    agent.research.ask(frame["id"], by="you", question="Why?", parent=first["id"], quote="renews")
+    await _settle(agent.research)
+    assert ran_on() == ("claude", "claude-opus-5-5", "max")
+    agent.research.ask(frame["id"], by="you", question="Kimi?", parent=first["id"], harness="kimi")
+    await _settle(agent.research)
+    assert ran_on() == ("kimi", "", "")
+    assert agent.research.view(frame["id"])["model"] == "claude-opus-5-5"  # type: ignore[index]
+
+    # What an agent doesn't offer is refused before anything is asked.
+    asked = len(runner.calls)
+    for model, effort in (("gpt-5", ""), ("claude-haiku-5-5", "high"), ("", "max")):
+        with pytest.raises(ValueError, match="doesn't offer"):
+            agent.research.ask(
+                frame["id"], by="you", question="Q?", harness="claude", model=model, effort=effort
+            )
+    assert len(runner.calls) == asked
+    # A pick its agent no longer offers is not carried on: the question runs on the default.
+    offered["claude"] = offered["claude"][:1]
+    agent.research.ask(frame["id"], by="you", question="And now?")
+    await _settle(agent.research)
+    assert ran_on() == ("claude", "", "")
+
+
+async def test_a_turn_tells_its_trail_what_its_model_is_at_and_keeps_its_long_thoughts(
+    house: tuple[AgentHost, FakeRunner, Path],
+) -> None:
+    agent, runner, repo = house
+    agent.hub.bind(asyncio.get_running_loop())
+    told = agent.hub.open()
+    runner.script = [
+        Event("session", "s-1"),
+        Event("pulse", "thinking", detail="Where does decoding start?", amount=40),
+        Event("thought", "Where does decoding start?", amount=900, seconds=12.5),
+        Event("thought", "A blink.", seconds=1.0),
+        Event("step", "Reading sampler.py"),
+        Event("pulse", "step", detail="Reading engine.py", amount=30),
+        Event("answer", ANSWER),
+    ]
+    _, conversation = agent.research.open(
+        _channel(agent), by="you", repo=str(repo), harness="claude", question="What is decoding?"
+    )
+    await _settle(agent.research)
+    events = [told.get_nowait() for _ in range(told.qsize())]
+    pulses = [e for e in events if e["type"] == "research.pulse"]
+    assert {e["thread_id"] for e in pulses} == {conversation["id"]}
+    # each sign of life between steps, alone: what the model is at, and a short thought as a
+    # sign of life with nothing to show
+    assert [(p["pulse"]["doing"], p["pulse"]["text"]) for p in pulses] == [
+        ("thinking", "Where does decoding start?"),
+        ("", ""),
+        ("step", "Reading engine.py"),
+    ]
+    assert all("lane" not in p["pulse"] for p in pulses)
+    turn = next(m for m in agent.store.messages(conversation["id"]) if m["kind"] == "turn")
+    assert [(e["kind"], e["text"]) for e in turn["data"]["events"]] == [
+        ("thought", "Where does decoding start?"),
+        ("step", "Reading sampler.py"),
+    ]
+    assert turn["data"]["events"][0]["seconds"] == 12.5
+    [record] = agent.store.runs(conversation["id"])
+    assert [e["kind"] for e in record["steps"]] == ["thought", "step"]
+    assert not agent.store.pulses, "a turn that is over leaves no pulse behind"
+
+
+def test_the_app_takes_a_pick_and_reads_a_frames_notes_as_one_page(tmp_path: Path) -> None:
+    code = tmp_path / "code"
+    repo = _repo(code, "streamline")
+    settings = Settings(_env_file=None, workspace_root=tmp_path / "workspace", sandbox="host")  # type: ignore[call-arg]
+    with TestClient(create_app(ROOT, settings)) as client:
+        desk: ResearchDesk = client.app.state.host.research  # type: ignore[attr-defined]
+        desk.runner = FakeRunner()
+        desk.roots = [code]
+        desk.ready = lambda harness: True
+        desk.models = lambda harness: [{"id": "", "name": "CLI default", "efforts": ["high"]}]
+        channel = desk.store.channels()[0]["id"]
+        asked = {"repo": str(repo), "harness": "claude", "question": "Why sessions?"}
+        refused = client.post(f"/api/channels/{channel}/research", json={**asked, "model": "x"})
+        assert refused.status_code == 422 and "doesn't offer" in refused.json()["detail"]
+        opened = client.post(f"/api/channels/{channel}/research", json={**asked, "effort": "high"})
+        assert opened.status_code == 200 and opened.json()["conversation"]["effort"] == "high"
+        frame = opened.json()["thread"]["id"]
+        conversation = opened.json()["conversation"]["id"]
+        until = time.time() + 10
+        while desk.running(conversation) and time.time() < until:
+            time.sleep(0.02)
+        # a follow-up quoting the passage it asks about (Reply on a selection)
+        replied = client.post(
+            f"/api/threads/{conversation}/messages", json={"text": "Why?", "quote": "Sessions"}
+        )
+        assert replied.status_code == 200 and replied.json()["data"]["quote"] == "Sessions"
+        while desk.running(conversation) and time.time() < until:
+            time.sleep(0.02)
+
+        assert client.get(f"/api/research/{frame}/notes.md").text == ""
+        desk.keep(frame, by="you", text="Sessions outlive requests.")
+        page = client.get(f"/api/research/{frame}/notes.md")
+        assert page.status_code == 200 and page.headers["content-type"].startswith("text/markdown")
+        assert page.headers["cache-control"] == "no-store"
+        assert page.text.startswith("# Research notes: streamline")
+        assert "Sessions outlive requests." in page.text
+        assert client.get("/api/research/th_none/notes.md").status_code == 404
+
+
+async def test_a_follow_up_can_quote_the_passage_it_asks_about(
+    house: tuple[AgentHost, FakeRunner, Path],
+) -> None:
+    agent, runner, repo = house
+    channel = _channel(agent)
+    frame, claude = agent.research.open(
+        channel, by="you", repo=str(repo), harness="claude", question="Why sessions?"
+    )
+    await _settle(agent.research)
+    agent.post(
+        channel_id=channel,
+        author_id="you",
+        text="Why there?",
+        to_agent=True,
+        thread_id=claude["id"],
+        quote="  A Durable Object\n renews them. ",
+    )
+    await _settle(agent.research)
+    # in its own session, the agent is shown the passage over the question
+    assert runner.calls[-1]["session"] == "s-1"
+    assert runner.calls[-1]["prompt"] == (
+        "About this passage of your answer:\n\n> A Durable Object renews them.\n\nWhy there?"
+    )
+    # and the conversation keeps the passage with the question it was asked with
+    asked = [m for m in agent.store.messages(claude["id"]) if m["kind"] == "person"][-1]
+    assert asked["text"] == "Why there?"
+    assert asked["data"]["quote"] == "A Durable Object renews them."
+
+    # an agent that starts again is retold the conversation, then the passage and the question
+    kimi = agent.research.ask(frame["id"], by="you", question="What are the parts?", harness="kimi")
+    await _settle(agent.research)
+    agent.research.follow_up(kimi["id"], by="you", text="And?", quote="Sessions")
+    await _settle(agent.research)
+    assert runner.calls[-1]["prompt"].endswith(
+        "Now: About this passage of your answer:\n\n> Sessions\n\nAnd?"
+    )
 
 
 async def test_follow_ups_resume_where_the_agent_can_and_retell_where_it_cannot(
@@ -500,9 +785,9 @@ async def test_follow_ups_resume_where_the_agent_can_and_retell_where_it_cannot(
         [("conversation", "Why sessions?"), ("follow_up", "And expiry?")],
     ]
     written = agent.research.notes_markdown(frame["id"])
-    assert "› “Why sessions?”; answered by Claude Code._" in written
-    assert "_The whole answer:_" in written
-    assert "_A passage of the answer to the follow-up “And expiry?”:_\nIt renews." in written
+    assert "› “Why sessions?”; answered by Claude Code.*" in written
+    assert "*The whole answer:*" in written
+    assert "*A passage of the answer to the follow-up “And expiry?”:*\nIt renews." in written
 
     kimi = agent.research.ask(frame["id"], by="you", question="What are the parts?", harness="kimi")
     await _settle(agent.research)
@@ -582,6 +867,8 @@ async def test_a_run_can_be_stopped_and_a_failure_says_why(
     await _settle(agent.research)
     assert agent.store.messages(failed["id"])[-1]["text"] == "Not signed in."
     assert agent.store.thread(failed["id"])["status"] == "failed"  # type: ignore[index]
+    turn = next(m for m in agent.store.messages(failed["id"]) if m["kind"] == "turn")
+    assert turn["data"]["state"] == "failed", "a turn that gave no answer says so on its trail"
     shown = agent.research.view(frame["id"])["conversations"][-1]  # type: ignore[index]
     assert shown["problem"] == "Not signed in." and shown["answer"] == ""
 
@@ -617,10 +904,10 @@ async def test_notes_kept_from_answers_become_the_frames_notes_file(
     text = agent.research.notes_markdown(frame["id"])
     assert text.startswith("# Research notes: streamline\n")
     assert (
-        "## Why sessions?\n_Lineage: `streamline` (main) › “Why sessions?”; answered by Claude Code._"
+        "## Why sessions?\n*Lineage: `streamline` (main) › “Why sessions?”; answered by Claude Code.*"
         in text
     )
-    assert "_The whole answer:_\n" in text and "_A passage of the answer:_\nA Durable" in text
+    assert "*The whole answer:*\n" in text and "*A passage of the answer:*\nA Durable" in text
     assert "#### Why" in text  # the answer's own heading sits under its question's
     assert text.index("A Durable Object renews them.") < text.index("## Written by the team")
     kinds = [(n["kind"], [s["kind"] for s in n["lineage"]]) for n in view["notes"]]
@@ -668,6 +955,29 @@ async def test_what_a_research_frame_makes_is_made_from_its_notes(
     assert task["files"] == []  # the notes file is what the frame starts from, not a delivery
     with pytest.raises(KeyError):
         agent.place_template(channel, "launch-kit", by="you", from_frame=root["id"])
+
+
+async def test_a_run_that_breaks_off_never_leaves_its_conversation_answering(
+    house: tuple[AgentHost, FakeRunner, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent, _, repo = house
+    desk = agent.research
+
+    async def broken(conversation: dict[str, Any], *_: Any) -> None:
+        # an error of the house's own, after the turn began and before it could end it
+        desk._say(str(conversation["id"]), "", kind="turn", data={"state": "working"})
+        raise RuntimeError("the house's own error")
+
+    monkeypatch.setattr(desk, "_run", broken)
+    _, conversation = desk.open(
+        _channel(agent), by="you", repo=str(repo), harness="claude", question="Why?"
+    )
+    await asyncio.sleep(0.05)
+    assert not desk.running(conversation["id"])
+    messages = agent.store.messages(conversation["id"])
+    assert next(m for m in messages if m["kind"] == "turn")["data"]["state"] == "stopped"
+    assert messages[-1]["kind"] == "notice" and "broke off" in messages[-1]["text"]
+    assert agent.store.thread(conversation["id"])["status"] == "failed"  # type: ignore[index]
 
 
 async def test_a_restart_stops_a_conversation_that_was_answering(

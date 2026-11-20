@@ -1,7 +1,8 @@
 // Writing to a channel or a thread. To the agent (a task, or a follow-up to it) or to the team
-// only; with files people already have, and optionally what they want back.
+// only; with files people already have, and optionally what they want back. A research follow-up
+// may carry a passage of an answer to ask about, quoted over the words (Reply on a selection).
 import { ArrowUp, Paperclip, Users, Wand2, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type FileView } from "../api";
 import { useHouse } from "../store";
 import { AgentMark, KindIcon, kindTitle } from "../ui";
@@ -15,10 +16,13 @@ type Props = {
   attach?: boolean;
   // Why sending waits, when it does; the box still takes a draft meanwhile.
   wait?: string;
+  // A passage the words are about, quoted over them until it is sent or taken off (`onUnquote`).
+  quote?: string | null;
+  onUnquote?: () => void;
   onSend: (body: { text: string; to_agent: boolean; files: string[]; kind: string }) => Promise<void>;
 };
 
-export function Composer({ placeholder, agentLabel, kinds, allowTeam = true, attach: attaches = true, wait, onSend }: Props) {
+export function Composer({ placeholder, agentLabel, kinds, allowTeam = true, attach: attaches = true, wait, quote = null, onUnquote, onSend }: Props) {
   const mark = useHouse((s) => s.session?.agent.mark);
   // An episode is started from its own sheet, not asked for in a message.
   const all = useHouse((s) => s.catalog.capabilities);
@@ -31,6 +35,15 @@ export function Composer({ placeholder, agentLabel, kinds, allowTeam = true, att
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
+
+  // A passage just quoted: the box takes the keyboard, ready for the question about it.
+  useEffect(() => {
+    if (quote) area.current?.focus();
+  }, [quote]);
+  const unquote = () => {
+    onUnquote?.();
+    area.current?.focus();
+  };
 
   const grow = () => {
     const el = area.current;
@@ -118,12 +131,20 @@ export function Composer({ placeholder, agentLabel, kinds, allowTeam = true, att
             ))}
           </div>
         )}
+        {quote && (
+          <div className="composer-quote">
+            <span title={quote}>{quote}</span>
+            <button type="button" className="icon-btn" aria-label="Remove the quoted passage" onClick={unquote}>
+              <X />
+            </button>
+          </div>
+        )}
         <textarea
           ref={area}
           rows={1}
           value={text}
-          placeholder={wait || (toAgent ? placeholder : "Message the team. The agent won't act on it.")}
-          aria-label={placeholder}
+          placeholder={wait || (quote ? "Ask about this passage" : toAgent ? placeholder : "Message the team. The agent won't act on it.")}
+          aria-label={quote ? "A question about the quoted passage" : placeholder}
           onChange={(e) => {
             setText(e.target.value);
             grow();
@@ -132,6 +153,11 @@ export function Composer({ placeholder, agentLabel, kinds, allowTeam = true, att
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               void send();
+            } else if (quote && (e.key === "Escape" || (e.key === "Backspace" && !text))) {
+              // the quote comes off first; Escape closes nothing else on the way
+              e.preventDefault();
+              e.stopPropagation();
+              unquote();
             }
           }}
         />
