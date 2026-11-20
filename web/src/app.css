@@ -355,6 +355,13 @@ button { cursor: pointer; }
   background: none; resize: none; outline: none; line-height: 1.5;
 }
 .box-row { display: flex; align-items: center; gap: 6px; padding: 6px 8px 8px; }
+/* a passage quoted over the question about it, and over that question once it is sent: a quiet
+   tint behind a leading bar, two lines at most here (three in the thread), the rest on hover */
+.composer-quote, .msg-quote { border-left: 2px solid var(--green); border-radius: 3px 8px 8px 3px; background: color-mix(in srgb, var(--green) 7%, transparent); color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+.composer-quote { display: flex; align-items: flex-start; gap: 4px; margin: 10px 10px 0; padding: 5px 3px 5px 10px; }
+.composer-quote span { flex: 1; min-width: 0; padding-top: 1px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.composer-quote .icon-btn { flex: none; width: 22px; height: 22px; }
+.composer-quote .icon-btn svg { width: 13px; height: 13px; }
 .toggle { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--sunk); }
 .toggle button { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 0; border-radius: 7px; background: none; color: var(--muted); font-size: 13px; }
 .toggle button img { width: 16px; height: 16px; border-radius: 4px; }
@@ -396,6 +403,8 @@ button { cursor: pointer; }
 .steps li { display: flex; align-items: center; gap: 9px; padding: 3px 0; font-size: 13px; color: var(--ink-2); }
 .steps li[data-status="pending"] { color: var(--faint); }
 .steps li[data-status="failed"] { color: var(--red); }
+/* a research answer's turn, on the agent trail */
+.turn-trail { margin: 4px 16px 4px 60px; padding: 8px 12px 4px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--surface); }
 .st { width: 14px; height: 14px; flex: none; display: grid; place-items: center; }
 .st svg { width: 14px; height: 14px; }
 .st.done { color: var(--green); }
@@ -588,7 +597,8 @@ button { cursor: pointer; }
 .conv-quote span, .conv-follow span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .conv-quote span { font-style: italic; }
 .conv-follow { color: var(--ink-2); }
-.msg-quote { margin: 2px 0 4px; font-style: italic; }
+.msg-quote { margin: 2px 0 6px; padding: 4px 10px; }
+.msg-quote span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 @keyframes pulse { 50% { opacity: 0.25; } }
 .conv-answer { max-height: 210px; overflow: hidden; font-size: 13px; line-height: 1.5; color: var(--ink-2); mask-image: linear-gradient(to bottom, #000 70%, transparent); cursor: text; }
 .conv-answer h1, .conv-answer h2, .conv-answer h3, .conv-answer h4 { font-size: 13.5px; }
@@ -603,8 +613,11 @@ button { cursor: pointer; }
 .passage > button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 0; border-radius: 8px; background: none; color: var(--ink); font-size: 13px; font-weight: 550; }
 .passage > button:hover { background: var(--green-soft); }
 .passage > button svg { width: 14px; height: 14px; color: var(--muted); }
-.passage form { display: flex; align-items: center; gap: 4px; }
+.passage form { display: grid; gap: 8px; }
+/* the question, then what it is asked on */
+.passage-ask { display: flex; align-items: center; gap: 4px; }
 .passage input { width: 280px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); outline: none; }
+.passage .ep-agent-model { padding: 0 4px 4px; }
 .notes-node .node-head .chip { font-variant-numeric: tabular-nums; }
 .note-row { display: grid; gap: 4px; padding: 9px 10px; border-radius: 11px; background: var(--surface); border: 1px solid var(--line-soft); }
 .note-text { font-size: 13px; line-height: 1.5; color: var(--ink); }
@@ -642,10 +655,11 @@ button { cursor: pointer; }
 .repo-list button:hover { background: var(--sunk); }
 .repo-list button[aria-selected="true"] { background: var(--green-soft); }
 .repo-list button[aria-selected="true"] svg { color: var(--green); }
+.research-start .ep-agent-model { margin-bottom: 8px; }
 .research-start .pop-actions { align-items: center; justify-content: space-between; gap: 8px; }
 .research-start .pop-actions .faint { font-size: 12px; }
 .answer-tools { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-.answer-tools .faint { font-size: 12px; }
+.answer-tools .faint { min-width: 0; font-size: 12px; line-height: 1.4; text-wrap: pretty; }
 
 /* Templates: a picker over the canvas. */
 .picker { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; padding: 72px 24px 24px; background: var(--scrim); backdrop-filter: blur(3px); overflow: auto; }
@@ -758,9 +772,10 @@ button { cursor: pointer; }
 .pin.answered { background: var(--pin-answered); }
 .pin.resolved { background: var(--pin-resolved); }
 .board-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+/* A button's label stays on one line: beside long text in a row, the text gives way, not it. */
 .btn {
   display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 9px; border: 1px solid var(--line);
-  background: var(--raised); color: var(--ink); font-weight: 550;
+  background: var(--raised); color: var(--ink); font-weight: 550; white-space: nowrap;
 }
 .btn:hover { border-color: var(--line-strong); }
 .btn svg { width: 15px; height: 15px; }
@@ -899,6 +914,9 @@ pre.viewer-doc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 
 
 /* -- toast ------------------------------------------------------------------------------- */
 .toast { position: fixed; left: 50%; bottom: 24px; z-index: 50; transform: translateX(-50%); padding: 10px 16px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line); box-shadow: var(--shadow); }
+/* the page has lost the house: one still line over everything until it is heard from again */
+.house-cut { position: fixed; top: 10px; left: 50%; z-index: 60; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 32px); padding: 7px 14px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--amber) 55%, var(--line)); background: var(--raised); box-shadow: var(--shadow); color: var(--ink-2); font-size: 13px; }
+.house-cut::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); }
 
 @media (max-width: 1100px) {
   .app { grid-template-columns: 220px minmax(0, 1fr); }

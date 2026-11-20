@@ -2,8 +2,11 @@
 asked about it of a coding agent on this computer, and the notes the team keeps from the answers.
 
 Each question is a conversation, a thread of its own kept on the frame rather than in the channel:
-the question, each run's progress as a turn card of steps, and the answer. A conversation can
-branch from a passage of another's answer, so a frame grows into a tree. What each run is told:
+the question, each run's progress as the house's agent trail (its steps, its own words and its
+thinking, each with when it came, and between them what its model is at: `research.pulse`), and
+the answer. It is asked of an agent on a model and effort that agent offers, or on its own
+default, and its follow-ups and branches keep that pick. A conversation can branch from a passage
+of another's answer, so a frame grows into a tree. What each run is told:
 - a new question starts afresh, with the notes the team kept on the frame as what is already
   established (never another conversation's raw chat, which would make its answer depend on
   whichever happened to run before);
@@ -47,6 +50,7 @@ from design_agent.surfaces.web.research import (
     find_repos,
     repo_root,
     run,
+    thought,
 )
 from design_agent.surfaces.web.store import AGENT_ID, CONVERSATION, Row, Store, new_id
 
@@ -60,14 +64,22 @@ CARD_SECONDS = 1.0
 CONTEXT_CHARS = 6_000
 #: Each kept note, as a new question is told it: one line.
 NOTE_CHARS = 600
-#: Steps a turn card keeps.
-STEPS_KEPT = 40
-#: Steps and notes a run's record keeps.
+#: Steps, notes and stretches of thinking a turn keeps for its trail, newest last, and how much
+#: of each one's words.
+TURN_EVENTS = 40
+EVENT_CHARS = 400
+#: Steps, notes and thoughts a run's record keeps.
 RUN_EVENTS = 400
+#: The lane a conversation's pulse is kept under (`Store.pulse`).
+LANE = "research"
 
 
 def _installed(harness: str) -> bool:
     return HARNESSES[harness].binary() is not None
+
+
+def _offers_none(harness: str) -> list[Row]:  # noqa: ARG001 - the same for every agent
+    return []
 
 
 class ResearchDesk:
@@ -80,12 +92,16 @@ class ResearchDesk:
         roots: Sequence[Path],
         runner: Runner = run,
         ready: Callable[[str], bool] = _installed,
+        models: Callable[[str], list[Row]] = _offers_none,
     ) -> None:
         self.store = store
         self.hub = hub
         self.roots = [Path(r).expanduser() for r in roots]
         self.runner = runner
         self.ready = ready
+        #: What each agent can be asked to run on, as the episode offers it: its own default
+        #: first, then each model with the efforts it takes (`episode_models.options`).
+        self.models = models
         self.profile = data_dir / "research" / "kimi-researcher.md"
         self._runs: dict[str, asyncio.Task[None]] = {}
         self._card_at: dict[str, float] = {}
@@ -93,11 +109,12 @@ class ResearchDesk:
     # -- what can be asked, of what --------------------------------------------------------
 
     def options(self) -> dict[str, Any]:
+        ready = [h.id for h in HARNESSES.values() if self.ready(h.id)]
         return {
             "harnesses": [
-                {"id": h.id, "title": h.title, "ready": self.ready(h.id)}
-                for h in HARNESSES.values()
+                {"id": h.id, "title": h.title, "ready": h.id in ready} for h in HARNESSES.values()
             ],
+            "models": {harness: self.models(harness) for harness in ready},
             "repos": [r.view() for r in find_repos(self.roots)],
         }
 
@@ -119,6 +136,17 @@ class ResearchDesk:
         if not self.ready(harness):
             raise ValueError(f"{HARNESSES[harness].title} isn't installed on this computer.")
 
+    def _offered(self, harness: str, model: str, effort: str) -> bool:
+        """Whether `harness` offers this model and effort; none (its own default) always is."""
+        if not (model or effort):
+            return True
+        row = next((m for m in self.models(harness) if m["id"] == model), None)
+        return row is not None and (not effort or effort in row["efforts"])
+
+    def _check(self, harness: str, model: str, effort: str) -> None:
+        if not self._offered(harness, model, effort):
+            raise ValueError(f"{HARNESSES[harness].title} doesn't offer that model and effort.")
+
     def _frame(self, frame_id: str) -> tuple[Row, Row]:
         research = self.store.research(frame_id)
         frame = self.store.thread(frame_id)
@@ -129,11 +157,21 @@ class ResearchDesk:
     # -- frames and their conversations ------------------------------------------------------
 
     def open(
-        self, channel_id: str, *, by: str, repo: str, harness: str, question: str
+        self,
+        channel_id: str,
+        *,
+        by: str,
+        repo: str,
+        harness: str,
+        question: str,
+        model: str = "",
+        effort: str = "",
     ) -> tuple[Row, Row]:
-        """A research frame on the channel's canvas, reading `repo`, with its first question."""
+        """A research frame on the channel's canvas, reading `repo`, with its first question,
+        asked of `harness` on `model` and `effort` (empty for the agent's own default)."""
         found = self._repo(repo)
         self._harness(harness)
+        self._check(harness, model, effort)
         if not question.strip():
             raise ValueError("Ask the first question.")
         frame = self.store.add_thread(
@@ -156,7 +194,10 @@ class ResearchDesk:
             data={"kind": RESEARCH, "repo": found.view()},
         )
         self.hub.publish("message.created", message=root)
-        return frame, self.ask(frame["id"], by=by, question=question, harness=harness)
+        conversation = self.ask(
+            frame["id"], by=by, question=question, harness=harness, model=model, effort=effort
+        )
+        return frame, conversation
 
     def ask(
         self,
@@ -165,20 +206,31 @@ class ResearchDesk:
         by: str,
         question: str,
         harness: str = "",
+        model: str = "",
+        effort: str = "",
         parent: str = "",
         quote: str = "",
         answer: str = "",
     ) -> Row:
         """A new conversation on the frame: from the research node, or branching from another
         conversation (on a passage of its answer, when `quote` is given; `answer` is the message
-        the passage was taken from, else the latest)."""
+        the passage was taken from, else the latest). It runs on `model` and `effort`, empty
+        for the agent's own default."""
         research, frame = self._frame(frame_id)
         above = self.store.conversation(parent) if parent else None
         if parent and (above is None or above["frame_id"] != frame_id):
             raise KeyError(parent)
-        # A branch stays with the agent it branched from, unless another is asked for.
-        harness = harness or str((above or research)["harness"])
+        # A branch stays with the agent it branched from and what that ran on, and a question
+        # asked of no agent goes to the frame's last, unless another is asked for (or the
+        # agent no longer offers that model).
+        source = above or research
+        if not harness:
+            harness = str(source["harness"])
+            kept = str(source["model"]), str(source["effort"])
+            if not (model or effort) and self._offered(harness, *kept):
+                model, effort = kept
         self._harness(harness)
+        self._check(harness, model, effort)
         words = question.strip()
         if not words:
             raise ValueError("Ask something.")
@@ -199,8 +251,13 @@ class ResearchDesk:
                 "quote": passage,
                 "harness": harness,
                 "repo": research["repo"],
+                "model": model,
+                "effort": effort,
             }
         )
+        if above is None:
+            # the research node asks its next question as it asked this one
+            self.store.update_research(frame_id, harness=harness, model=model, effort=effort)
         self.hub.publish("thread.created", thread=thread)
         message = self.store.add_message(
             message_id=thread["id"],
@@ -223,9 +280,10 @@ class ResearchDesk:
             self._start(conversation, self._retold(above, answer, words, passage), session="")
         return conversation
 
-    def follow_up(self, conversation_id: str, *, by: str, text: str) -> Row:
+    def follow_up(self, conversation_id: str, *, by: str, text: str, quote: str = "") -> Row:
         """A person's reply in a conversation: asked of the same agent, in the same session where
-        its CLI can resume one."""
+        its CLI can resume one. With `quote`, it asks about that passage of the answer, which the
+        agent is shown above the question and the conversation keeps with it."""
         conversation = self.store.conversation(conversation_id)
         thread = self.store.thread(conversation_id)
         if conversation is None or thread is None:
@@ -233,6 +291,7 @@ class ResearchDesk:
         if self.running(conversation_id):
             raise ValueError("It's still answering. Wait for the answer, or stop it first.")
         words = text.strip()
+        passage = " ".join(quote.split())[:2_000]
         message = self.store.add_message(
             channel_id=thread["channel_id"],
             thread_id=conversation_id,
@@ -240,11 +299,13 @@ class ResearchDesk:
             kind="person",
             text=words,
             to_agent=True,
+            data={"quote": passage} if passage else {},
         )
         self.hub.publish("message.created", message=message)
-        retold = self._so_far(conversation, words)
+        asked = _about(passage, words)
+        retold = self._so_far(conversation, asked)
         if HARNESSES[conversation["harness"]].resumes and conversation["session"]:
-            self._start(conversation, words, session=str(conversation["session"]), retold=retold)
+            self._start(conversation, asked, session=str(conversation["session"]), retold=retold)
         else:
             self._start(conversation, retold, session="")
         return message
@@ -341,20 +402,43 @@ class ResearchDesk:
                 self.store.update_run(str(record["id"]), state="stopped", ended_at=time.time())
         for channel in self.store.channels():
             for thread in self.store.threads(channel["id"]):
-                if thread["kind"] != CONVERSATION or thread["status"] != "working":
-                    continue
-                for message in self.store.messages(thread["id"]):
-                    if message["kind"] == "turn" and message["data"].get("state") == "working":
-                        data = {**message["data"], "state": "stopped", "ended_at": time.time()}
-                        self.store.update_message(message["id"], data=data)
-                self.store.add_message(
-                    channel_id=thread["channel_id"],
-                    thread_id=thread["id"],
-                    author_id=AGENT_ID,
-                    kind="notice",
-                    text="Stopped when the house restarted. Ask again to pick it up.",
-                )
-                self.store.update_thread(thread["id"], status="failed")
+                if thread["kind"] == CONVERSATION and thread["status"] == "working":
+                    self._broke_off(
+                        str(thread["id"]),
+                        "Stopped when the house restarted. Ask again to pick it up.",
+                    )
+
+    def _broke_off(self, conversation_id: str, why: str) -> None:
+        """A conversation whose run ended without ending its own turn: the turn under way is
+        stopped, the run's record closed, and the conversation says why."""
+        now = time.time()
+        for record in self.store.runs(conversation_id, ""):
+            if record["state"] == "working":
+                self.store.update_run(str(record["id"]), state="stopped", ended_at=now)
+        for message in self.store.messages(conversation_id):
+            if message["kind"] == "turn" and message["data"].get("state") == "working":
+                data = {**message["data"], "state": "stopped", "ended_at": now}
+                self._update(str(message["id"]), data=data)
+        self._say(conversation_id, why, kind="notice")
+        self._set_status(conversation_id, "failed")
+
+    def _ended(self, conversation_id: str, task: asyncio.Task[None]) -> None:
+        """However a run ended, its conversation is never left answering: one that broke off
+        before it could end its own turn (an error of the house's own) is stopped, and says so."""
+        if self._runs.get(conversation_id) is task:
+            del self._runs[conversation_id]
+        thread = self.store.thread(conversation_id)
+        broke = task.cancelled() or task.exception() is not None
+        if not broke or thread is None or thread["status"] != "working":
+            return
+        if not task.cancelled():
+            _LOGGER.error(
+                "research run broke off on %s", conversation_id, exc_info=task.exception()
+            )
+        self._broke_off(conversation_id, "It broke off before it could answer. Ask again.")
+        conversation = self.store.conversation(conversation_id)
+        if conversation is not None:
+            self._changed(str(conversation["frame_id"]))
 
     def _start(
         self,
@@ -369,10 +453,12 @@ class ResearchDesk:
         when the agent's own session can't be picked up."""
         conversation_id = str(conversation["id"])
         self._set_status(conversation_id, "working")
-        self._runs[conversation_id] = asyncio.get_running_loop().create_task(
+        task = asyncio.get_running_loop().create_task(
             self._run(conversation, prompt, session, fork, retold),
             name=f"research {conversation_id}",
         )
+        task.add_done_callback(lambda ended: self._ended(conversation_id, ended))
+        self._runs[conversation_id] = task
         self._changed(str(conversation["frame_id"]))
 
     async def _run(
@@ -382,6 +468,9 @@ class ResearchDesk:
         frame_id = str(conversation["frame_id"])
         harness = HARNESSES[conversation["harness"]]
         repo = Path(conversation["repo"])
+        # The turn as its trail draws it: each step, note (the agent's own words) and longer
+        # stretch of thinking with when it came, newest last, and whether this agent says what
+        # its model is doing between them (that, its pulse, goes out on its own: `_pulse`).
         turn = self._say(
             conversation_id,
             "",
@@ -389,55 +478,64 @@ class ResearchDesk:
             data={
                 "state": "working",
                 "header": f"{harness.title} is reading {repo.name}",
-                "steps": [],
-                "notes": [],
+                "events": [],
+                "tells": harness.tells,
                 "mark": harness.id,
                 "started_at": time.time(),
             },
         )
-        steps: list[dict[str, Any]] = []
-        notes: list[str] = []
-        answer = failure = ""
+        events: list[dict[str, Any]] = []
+        said = answer = failure = ""
         stopped = False
         record = self.store.add_run(
             thread_id=conversation_id, lane="", harness=harness.id, prompt=prompt, session=session
         )
-        heard: list[dict[str, Any]] = []
+        run_id = str(record["id"])
 
         def show(**change: Any) -> None:
-            turn["data"] = {**turn["data"], "steps": steps[-STEPS_KEPT:], "notes": notes[-3:]}
-            turn["data"].update(change)
+            kept = [{**e, "text": _clip(e["text"], EVENT_CHARS)} for e in events[-TURN_EVENTS:]]
+            turn["data"] = {**turn["data"], "events": kept, **change}
             self._update(str(turn["id"]), data=turn["data"])
 
         try:
             self._write_profile()
-            events = self.runner(
+            stream = self.runner(
                 harness.id,
                 repo=repo,
                 prompt=prompt,
                 session=session,
                 fork=fork,
                 profile=self.profile,
+                model=str(conversation["model"]),
+                effort=str(conversation["effort"]),
             )
-            async with contextlib.aclosing(events):
-                async for event in events:
-                    if event.kind in ("step", "note"):
-                        heard.append({"kind": event.kind, "text": event.text, "at": time.time()})
-                        self.store.update_run(str(record["id"]), steps=heard[-RUN_EVENTS:])
+            async with contextlib.aclosing(stream):
+                async for event in stream:
                     if event.kind == "session":
                         self.store.update_conversation(conversation_id, session=event.text)
-                        self.store.update_run(str(record["id"]), session=event.text)
-                    elif event.kind == "step":
-                        for step in steps:
-                            step["status"] = "done"
-                        steps.append(
-                            {"id": f"s{len(steps)}", "title": event.text, "status": "running"}
+                        self.store.update_run(run_id, session=event.text)
+                    elif event.kind == "pulse":
+                        self._pulse(conversation_id, run_id, event.text, event.detail, event.amount)
+                    elif event.kind in ("step", "note", "thought"):
+                        kept = thought(event) if event.kind == "thought" else None
+                        if event.kind == "thought" and kept is None:
+                            # too short to mention, but a sign of life all the same
+                            self._pulse(conversation_id, run_id)
+                            continue
+                        # whatever it is, the model has moved on from what its pulse said
+                        self.store.pulse(run_id, LANE)
+                        events.append(
+                            {"kind": event.kind, "text": event.text, "at": time.time()}
+                            | (kept or {})
                         )
-                        show(header=event.text)
-                        self._card(frame_id)
-                    elif event.kind == "note":
-                        notes.append(event.text)
-                        show()
+                        self.store.update_run(run_id, steps=events[-RUN_EVENTS:])
+                        if event.kind == "note":
+                            said = event.text
+                        if event.kind == "step":
+                            show(header=event.text)
+                            self._card(frame_id)
+                        else:
+                            show()
                     elif event.kind == "answer":
                         answer = event.text
                     elif event.kind == "error":
@@ -449,24 +547,26 @@ class ResearchDesk:
         except Exception as error:  # a CLI that misbehaves must not take the house down
             _LOGGER.exception("research run failed on %s", conversation_id)
             failure = f"It stopped: {type(error).__name__}."
-        if not answer and notes and not (failure or stopped):
-            answer = notes[-1]
+        finally:
+            self.store.pulses.pop(run_id, None)
+        if not answer and said and not (failure or stopped):
+            answer = said
         self.store.update_run(
-            str(record["id"]),
+            run_id,
             answer=answer,
             failure=failure,
             state="stopped" if stopped else "failed" if failure and not answer else "done",
             ended_at=time.time(),
         )
-        if session and retold and failure and not (answer or heard or stopped):
+        if session and retold and failure and not (answer or events or stopped):
             # The agent's own session is gone: tell it what was said, from the house's record.
+            # The try that said nothing stays out of the conversation (a quiet turn).
             self.store.update_conversation(conversation_id, session="")
-            show(state="stopped", ended_at=time.time())
+            show(state="quiet", ended_at=time.time())
             await self._run({**conversation, "session": ""}, retold, "", False)
             return
-        for step in steps:
-            step["status"] = "done"
-        show(state="stopped" if stopped else "done", ended_at=time.time())
+        ended = "stopped" if stopped else "failed" if failure and not answer else "done"
+        show(state=ended, ended_at=time.time())
         if answer:
             self._say(conversation_id, answer, kind="agent", data={"mark": harness.id})
         if failure:
@@ -500,6 +600,15 @@ class ResearchDesk:
         updated = self.store.update_message(message_id, **values)
         if updated is not None:
             self.hub.publish("message.updated", message=updated)
+
+    def _pulse(
+        self, conversation_id: str, run_id: str, doing: str = "", text: str = "", amount: int = 0
+    ) -> None:
+        """A sign of life from a conversation's run between two of its steps (`Store.pulse`):
+        the conversation is told that alone, so a long thought costs it no rewrite of its turn."""
+        pulse = self.store.pulse(run_id, LANE, doing, text, amount)
+        told = {key: value for key, value in pulse.items() if key != "lane"}
+        self.hub.publish("research.pulse", thread_id=conversation_id, pulse=told)
 
     def _set_status(self, conversation_id: str, status: str) -> None:
         thread = self.store.update_thread(conversation_id, status=status)
@@ -605,7 +714,7 @@ class ResearchDesk:
                     for step in trail
                 )
                 lines.append(
-                    f"_Lineage: {path}; answered by {HARNESSES[conversation['harness']].title}._"
+                    f"*Lineage: {path}; answered by {HARNESSES[conversation['harness']].title}.*"
                 )
             said = self.store.messages(conversation_id) if conversation is not None else []
             for note in kept:
@@ -618,7 +727,7 @@ class ResearchDesk:
                 asked = _follow_up(said, str(note["message_id"]), conversation_id)
                 if label and asked:
                     label += f" to the follow-up “{_clip(asked, 90)}”"
-                lines += ["", f"_{label}:_" if label else "", _demote(str(note["text"]))]
+                lines += ["", f"*{label}:*" if label else "", _demote(str(note["text"]))]
         return (
             "\n".join(line for i, line in enumerate(lines) if line or i == 0 or lines[i - 1]) + "\n"
         )
@@ -635,7 +744,10 @@ class ResearchDesk:
         repo = self._repo_view(research)
         return {
             "repo": repo,
+            # what the research node asks its next question of, and on: the last it asked
             "harness": research["harness"],
+            "model": research["model"],
+            "effort": research["effort"],
             "conversations": [
                 self._conversation_view(c, kept[str(c["id"])]) for c in conversations
             ],
@@ -728,7 +840,10 @@ class ResearchDesk:
             "id": conversation["id"],
             "parent_id": conversation["parent_id"],
             "quote": conversation["quote"],
+            # who answers it, on what: what a branch from it starts on
             "harness": conversation["harness"],
+            "model": conversation["model"],
+            "effort": conversation["effort"],
             "question": next((m["text"] for m in messages if m["kind"] == "person"), ""),
             "status": thread.get("status", "idle"),
             "answer": answers[-1]["text"] if answers else "",
@@ -770,6 +885,11 @@ def _clip(text: str, limit: int) -> str:
 def _cut(text: str, limit: int) -> str:
     """`text` up to `limit`, its lines kept."""
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _about(quote: str, question: str) -> str:
+    """A follow-up on a passage of the answer: the passage, quoted, then the question."""
+    return f"About this passage of your answer:\n\n> {quote}\n\n{question}" if quote else question
 
 
 def _forked(question: str, quote: str) -> str:

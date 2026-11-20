@@ -10,6 +10,14 @@ export type ModelPick = { model: string; effort: string };
 // Whether an agent offers anything to pick: more than one model, or a level of effort.
 export const offersPicks = (models: ModelOption[] | undefined) => (models?.length ?? 0) > 1 || (models ?? []).some((m) => m.efforts.length > 0);
 
+// A pick as the picker shows it, so what is sent is what was seen: a model the agent no longer
+// offers is its default, an effort its model doesn't take is the model's own. Before the models
+// are known, the pick stands as it is.
+export function shownPick(models: ModelOption[] | undefined, pick: ModelPick): ModelPick {
+  const row = models?.find((m) => m.id === pick.model) ?? models?.[0];
+  return row ? { model: row.id, effort: row.efforts.includes(pick.effort) ? pick.effort : "" } : pick;
+}
+
 export function AgentModel({ models, pick, disabled, onChange }: { models: ModelOption[]; pick: ModelPick; disabled?: boolean; onChange: (pick: ModelPick) => void }) {
   const row = models.find((m) => m.id === pick.model) ?? models[0];
   const choices = modelChoices(models, row?.id ?? "");

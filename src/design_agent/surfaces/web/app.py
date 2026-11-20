@@ -20,10 +20,12 @@ runtime), the store of channels, messages and boards, and this API:
 - a film's final look: `GET /api/threads/{id}/preview/{port}` (its Studio on the thread's
   computer, through a local port: `preview.py`), `POST /api/assets/{id}/render` (signed off);
   a draft's sign-off: `POST /api/assets/{id}/approve`
-- research on this computer (`research_desk.py`): `GET /api/research` (the agents and the
-  repositories), `POST /api/channels/{id}/research` (a research frame and its first question),
-  `POST /api/research/{id}/conversations` (another, or a branch from a passage),
-  `POST /api/research/{id}/notes`, `PATCH /api/notes/{id}`, `DELETE /api/notes/{id}`; a
+- research on this computer (`research_desk.py`): `GET /api/research` (the agents, the models
+  and efforts each offers, and the repositories), `POST /api/channels/{id}/research` (a
+  research frame and its first question), `POST /api/research/{id}/conversations` (another, or a
+  branch from a passage), each asked of an agent on a model and effort it offers;
+  `GET /api/research/{id}/notes.md` (its notes as one page), `POST /api/research/{id}/notes`,
+  `PATCH /api/notes/{id}`, `DELETE /api/notes/{id}`; a
   conversation's follow-ups and stops go through its thread's routes
 - episodes (`episode_desk.py`): `GET /api/episodes/options` (who can write one, the looks, the
   lengths), `POST /api/channels/{id}/episodes` (one from material or a research frame's notes),
@@ -107,7 +109,7 @@ from design_agent.surfaces.web import camera
 from design_agent.surfaces.web.agent import AgentHost
 from design_agent.surfaces.web.brands import BrandShelf, brand_view
 from design_agent.surfaces.web.catalog import catalog_view
-from design_agent.surfaces.web.hub import Hub
+from design_agent.surfaces.web.hub import CLOSING, Hub
 from design_agent.surfaces.web.presenter import WebDelivery, WebPresenter
 from design_agent.surfaces.web.preview import PreviewError
 from design_agent.surfaces.web.site_brand import SiteBrandError
@@ -124,6 +126,9 @@ MAX_TAKE_BYTES = 64 * 1024**3
 SPARE_BYTES = 1024**3
 #: A recording brought for a voice clone: a few minutes of speech.
 MAX_SAMPLE_BYTES = 25 * 1024 * 1024
+#: How often a quiet live stream says the house is still there: an event the page hears (a
+#: comment line would keep the connection open but never reach it), so a page that stops hearing
+#: it knows it has lost the house (`live.ts`).
 PING_SECONDS = 15.0
 
 
@@ -178,6 +183,8 @@ class MessageIn(BaseModel):
     kind: str = Field(default="", max_length=40)
     #: The question (an agent message) this message answers from its buttons, if any.
     answers: str = Field(default="", max_length=64)
+    #: A passage of the answer it replies to (a research follow-up asked about that passage).
+    quote: str = Field(default="", max_length=4_000)
 
 
 class CommentIn(BaseModel):
@@ -229,11 +236,16 @@ class ResearchIn(BaseModel):
     repo: str = Field(min_length=1, max_length=1_024)
     harness: str = Field(pattern=AGENTS)
     question: str = Field(min_length=1, max_length=8_000)
+    #: A model the agent offers and how hard it thinks; empty for the agent's own default.
+    model: str = Field(default="", max_length=120)
+    effort: str = Field(default="", pattern=r"^[a-z]{0,12}$")
 
 
 class QuestionIn(BaseModel):
     question: str = Field(min_length=1, max_length=8_000)
     harness: str = Field(default="", pattern=r"^(claude|codex|kimi|)$")
+    model: str = Field(default="", max_length=120)
+    effort: str = Field(default="", pattern=r"^[a-z]{0,12}$")
     #: The conversation it branches from, the passage of that one's answer it starts on, and the
     #: answer (a message) the passage was taken from.
     parent: str = Field(default="", max_length=64)
@@ -632,6 +644,7 @@ def create_app(
                 to_agent=body.to_agent,
                 file_ids=[*body.files, *read],
                 thread_id=thread_id,
+                quote=body.quote,
             )
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from None
@@ -1261,7 +1274,13 @@ def create_app(
             raise HTTPException(status_code=404, detail="no such channel")
         try:
             frame, conversation = host.research.open(
-                channel_id, by=me, repo=body.repo, harness=body.harness, question=body.question
+                channel_id,
+                by=me,
+                repo=body.repo,
+                harness=body.harness,
+                question=body.question,
+                model=body.model,
+                effort=body.effort,
             )
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from None
@@ -1277,6 +1296,8 @@ def create_app(
                 by=me,
                 question=body.question,
                 harness=body.harness,
+                model=body.model,
+                effort=body.effort,
                 parent=body.parent,
                 quote=body.quote,
                 answer=body.answer,
@@ -1285,6 +1306,19 @@ def create_app(
             raise HTTPException(status_code=404, detail="no such research") from None
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.get("/api/research/{frame_id}/notes.md")
+    async def research_notes(frame_id: str, me: str = Depends(person)) -> Response:  # noqa: ARG001
+        """The frame's notes as one page, as everything made from them is handed them."""
+        try:
+            text = await asyncio.to_thread(host.research.notes_markdown, frame_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="no such research") from None
+        return Response(
+            text,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+        )
 
     @app.post("/api/research/{frame_id}/notes")
     async def keep_note(frame_id: str, body: NoteIn, me: str = Depends(person)) -> dict[str, Any]:
@@ -1437,8 +1471,10 @@ def create_app(
                     try:
                         event = await asyncio.wait_for(queue.get(), timeout=PING_SECONDS)
                     except TimeoutError:
-                        yield ": ping\n\n"
+                        yield 'data: {"type": "ping"}\n\n'
                         continue
+                    if event["type"] == CLOSING:
+                        return  # the house is stopping: its page sees the stream end
                     yield f"data: {json.dumps(event, default=str)}\n\n"
             finally:
                 hub.close(queue)

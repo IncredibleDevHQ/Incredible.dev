@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { middle, took } from '../src/components/agent/format.ts';
+import { middle, plainly, took } from '../src/components/agent/format.ts';
 import { toolOf } from '../src/components/agent/tools.ts';
 
 test('a time taken is said the short way, and nothing for a time not known', () => {
@@ -18,6 +18,11 @@ test('a long path keeps its end, where the file is named', () => {
   const cut = middle('house/episodes/ep_0a1b2c3d4e5f/pictures/pic-c2-b2-f1.stills/2.png', 40);
   assert.equal(cut.length, 40);
   assert.ok(cut.endsWith('c2-b2-f1.stills/2.png') && cut.startsWith('house/ep') && cut.includes('…'));
+});
+
+test("an agent's own words read without their markdown marks, and names keep their underscores", () => {
+  assert.equal(plainly('**Decoding is the loop** that `LLM._run_engine()` drives'), 'Decoding is the loop that LLM._run_engine() drives');
+  assert.equal(plainly('## Why\nsnake_case and __init__ stay'), 'Why\nsnake_case and __init__ stay');
 });
 
 test("a step's words say which kind of tool it was and what it touched", () => {
@@ -68,6 +73,9 @@ test('a turn between two steps is thinking, writing, waiting, quiet or lost by w
   assert.equal(signalOf({ kind: 'lost', since: 1000 }), 'lost');
   // before a turn has a time to count from, nothing is said
   assert.equal(nowOf(1000, null, pulse(), true), null);
+  // a page that has lost the house knows nothing of the agent: no silence is blamed on it
+  assert.deepEqual(nowOf(1000 + LOST_SILENT, 1000, pulse(), true, 1500), { kind: 'cut', since: 1500 });
+  assert.equal(signalOf({ kind: 'cut', since: 1500 }), 'cut');
   // a thought is shown by its end, from a word's start
   assert.equal(tail('short'), 'short');
   const long = tail('one two three four five six seven eight nine ten eleven twelve', 20);

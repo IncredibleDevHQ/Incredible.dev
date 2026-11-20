@@ -182,6 +182,13 @@ ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # up from 1. A store from before versions were numbered keeps none of the ones it had.
     ("pictures", "versions", "TEXT NOT NULL DEFAULT '[]'"),
     ("pictures", "version", "INTEGER NOT NULL DEFAULT 1"),
+    # What a conversation's agent runs on, a model it offers and how hard it thinks (empty for
+    # the agent's own default), and the research frame's last pick, which its next question
+    # starts from.
+    ("conversations", "model", "TEXT NOT NULL DEFAULT ''"),
+    ("conversations", "effort", "TEXT NOT NULL DEFAULT ''"),
+    ("research", "model", "TEXT NOT NULL DEFAULT ''"),
+    ("research", "effort", "TEXT NOT NULL DEFAULT ''"),
 )
 #: What adding a column to a store that predates it also does.
 ADDED_THEN = {("pictures", "version"): "UPDATE pictures SET versions = '[]'"}
