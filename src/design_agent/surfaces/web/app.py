@@ -44,12 +44,16 @@ runtime), the store of channels, messages and boards, and this API:
   or the ones that stopped), `POST /api/episodes/{id}/apply` (run what the picks and changes
   wait on: the writer's part, then the pictures out of date),
   `POST /api/episodes/{id}/pictures/{unit}/go` and `/note` (a picture's stills),
-  `POST /api/episodes/{id}/takes` (a recording, of any size up to 8 GiB: it goes to disk,
-  and as it arrived to the footage bucket when one is set),
+  `POST /api/episodes/{id}/takes` (a recording, of any size up to 64 GiB: it goes to disk,
+  and as it arrived to the footage bucket or folder; one with no marks, or a camera's file
+  to match to a take by sound, comes in while the studio goes on),
+  `GET /api/camera` (the clips on the camera cards put into this computer),
+  `POST /api/episodes/{id}/takes/camera` (a card's clip brought in where it is, no upload),
+  `DELETE /api/episodes/{id}/imports/{chapter}` (one that couldn't be brought in, put away),
   `POST /api/episodes/{id}/takes/{take}/keep`, `DELETE /api/episodes/{id}/takes/{take}`,
   `GET /api/voices` (the voices a narrator can speak in), `POST /api/episodes/{id}/voice` (a
   clone of the person's voice, from their takes or a recording, after they say it is theirs),
-  `POST /api/episodes/{id}/film` (render it)
+  `POST /api/episodes/{id}/film` (render it, in HD or in 4K)
 - the production board: `GET /api/production` (every episode's jobs, the agents and how busy
   each is, in one read), `POST /api/production/assign` (pictures of any episodes handed to an
   agent and started)
@@ -71,10 +75,16 @@ import contextlib
 import html
 import json
 import mimetypes
+import os
+import re
+import secrets
+import shutil
+import tempfile
+import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import IO, Annotated, Any, Literal
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
@@ -93,6 +103,7 @@ from design_agent.config import SAMPLE_BRAND, Settings
 from design_agent.runtime import maintenance
 from design_agent.runtime.local import build_local_runtime
 from design_agent.runtime.persistence import open_persistence, workspace_of
+from design_agent.surfaces.web import camera
 from design_agent.surfaces.web.agent import AgentHost
 from design_agent.surfaces.web.brands import BrandShelf, brand_view
 from design_agent.surfaces.web.catalog import catalog_view
@@ -105,12 +116,54 @@ from design_agent.tools.mcp import load_mcp_tools, servers_for_runtime
 
 MAX_UPLOADS = 10
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
-#: A take may be a camera's own recording: ten minutes of 4K at 100 Mbit/s is 7.5 GB. It is
-#: written to disk as it arrives and read from there, so its size is never held in memory.
-MAX_TAKE_BYTES = 8 * 1024**3
+#: A take may be a camera's own recording: an hour of 4K at 140 Mbit/s is 63 GB. It is written
+#: to disk as it arrives and read from there, so its size is never held in memory. A camera's
+#: card needs no upload at all: its clips are read where they are.
+MAX_TAKE_BYTES = 64 * 1024**3
+#: Room kept free on this computer's disk beyond a recording being brought in.
+SPARE_BYTES = 1024**3
 #: A recording brought for a voice clone: a few minutes of speech.
 MAX_SAMPLE_BYTES = 25 * 1024 * 1024
 PING_SECONDS = 15.0
+
+
+def _short_of_room(size: int, incoming: Path) -> str:
+    """Why a recording of `size` bytes can't be brought in for want of disk, or nothing. It is
+    written where uploads land first, then copied to where it waits to be brought in."""
+    places: dict[int, list[Path]] = {}
+    for place in (Path(tempfile.gettempdir()), incoming):
+        with contextlib.suppress(OSError):
+            places.setdefault(os.stat(place).st_dev, []).append(place)
+    for held in places.values():
+        need = size * len(held) + SPARE_BYTES
+        free = shutil.disk_usage(held[0]).free
+        if free < need:
+            return (
+                f"There isn't room on this computer for a {size / 1024**3:.1f} GB recording "
+                f"({free / 1024**3:.1f} GB free). Bring it from the camera's card instead, or "
+                "free some space."
+            )
+    return ""
+
+
+def _ending(name: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", Path(name).suffix.lower())[:5] or "webm"
+
+
+def _stage(source: IO[bytes], target: Path) -> None:
+    """An upload copied to where it waits to be brought in, as a file."""
+    source.seek(0)
+    with target.open("wb") as out:
+        shutil.copyfileobj(source, out, 4 * 1024 * 1024)
+
+
+def _moment(given: Any) -> float | None:
+    """When a take began recording (seconds since 1970), as the browser said, if it is one."""
+    try:
+        moment = float(given)
+    except (TypeError, ValueError):
+        return None
+    return moment if 1e9 < moment < time.time() + 86400 else None
 
 
 class ChannelIn(BaseModel):
@@ -354,6 +407,20 @@ class PictureNoteIn(BaseModel):
 
 class KeepIn(BaseModel):
     keep: bool = True
+
+
+class CameraTakeIn(BaseModel):
+    """A clip on a camera's card brought in as a chapter's take, by the path the card's listing
+    gave it; with `guide`, matched by sound to the take recorded at the same moment."""
+
+    chapter: str = Field(min_length=1, max_length=64)
+    path: str = Field(min_length=1, max_length=4096)
+    guide: str = Field(default="", max_length=64)
+    label: str = Field(default="", max_length=120)
+
+
+class FilmIn(BaseModel):
+    size: Literal["", "hd", "4k"] = ""
 
 
 class JobIn(BaseModel):
@@ -975,24 +1042,50 @@ def create_app(
         episode_id: str, request: Request, me: str = Depends(person)
     ) -> dict[str, Any]:
         # The form is read here, not declared, so a recording too large is refused by its
-        # stated size before any of it is read. What is read goes to a file on disk.
+        # stated size before any of it is read. What is read goes to a file on disk. A take
+        # recorded in the studio (it has marks) is cut while the person waits; a file brought
+        # with none, or to be matched to a take (`guide`), comes in while the studio goes on.
         stated = request.headers.get("content-length", "")
         if not stated.isdigit():
             raise HTTPException(status_code=411, detail="the recording's size must be stated")
         if int(stated) > MAX_TAKE_BYTES:
-            raise HTTPException(status_code=413, detail="the recording is over 8 GiB")
-        async with request.form(max_files=1, max_fields=8) as form:
+            raise HTTPException(status_code=413, detail="the recording is over 64 GiB")
+        incoming = host.episodes.data_dir / "incoming"
+        incoming.mkdir(parents=True, exist_ok=True)
+        short = _short_of_room(int(stated), incoming)
+        if short:
+            raise HTTPException(status_code=507, detail=short)
+        async with request.form(max_files=1, max_fields=10) as form:
             upload, chapter = form.get("file"), form.get("chapter")
             if not isinstance(upload, FormFile) or not isinstance(chapter, str) or not chapter:
                 raise HTTPException(status_code=422, detail="a recording and its chapter")
             frame, marks = form.get("frame") or "", form.get("marks") or "[]"
-            label = form.get("label") or ""
-            if not isinstance(label, str):
+            label, guide = form.get("label") or "", form.get("guide") or ""
+            if not isinstance(label, str) or not isinstance(guide, str):
                 raise HTTPException(status_code=422, detail="version name must be text")
+            started = form.get("started_at") or ""
             try:
                 given = json.loads(marks) if isinstance(marks, str) else None
                 if not isinstance(given, list) or not all(isinstance(m, dict) for m in given):
                     raise ValueError("marks must be a list")
+                name = upload.filename or "take.webm"
+                if guide or (not given and not frame):
+                    staged = incoming / f"{secrets.token_hex(8)}.{_ending(name)}"
+                    await asyncio.to_thread(_stage, upload.file, staged)
+                    try:
+                        return host.episodes.bring_take(
+                            episode_id,
+                            by=me,
+                            chapter=chapter,
+                            name=name,
+                            source=staged,
+                            staged=True,
+                            guide=guide,
+                            label=label,
+                        )
+                    except BaseException:
+                        staged.unlink(missing_ok=True)
+                        raise
                 return await host.episodes.add_take(
                     episode_id,
                     by=me,
@@ -1000,13 +1093,50 @@ def create_app(
                     frame=frame if isinstance(frame, str) else "",
                     marks=given,
                     label=label,
-                    name=upload.filename or "take.webm",
+                    name=name,
                     source=upload.file,
+                    recorded_at=_moment(started),
                 )
             except KeyError:
                 raise HTTPException(status_code=404, detail="no such episode or chapter") from None
             except ValueError as error:
                 raise HTTPException(status_code=422, detail=str(error)) from None
+
+    @app.get("/api/camera")
+    async def camera_clips(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        """The clips on the camera cards put into this computer, newest first."""
+        folders = host.settings.camera_folders()
+        found = await asyncio.to_thread(camera.clips, folders)
+        return {"clips": [c.view() for c in found], "folders": [str(f) for f in folders]}
+
+    @app.post("/api/episodes/{episode_id}/takes/camera")
+    async def camera_take(
+        episode_id: str, body: CameraTakeIn, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        clip = await asyncio.to_thread(camera.find, host.settings.camera_folders(), body.path)
+        if clip is None:
+            raise HTTPException(status_code=404, detail="That clip isn't on a card any more.")
+        return episode_call(
+            lambda: host.episodes.bring_take(
+                episode_id,
+                by=me,
+                chapter=body.chapter,
+                name=clip.name,
+                source=Path(clip.path),
+                staged=False,
+                guide=body.guide,
+                label=body.label,
+                clip=clip.view(),
+            )
+        )
+
+    @app.delete("/api/episodes/{episode_id}/imports/{chapter}")
+    async def forget_import(
+        episode_id: str,
+        chapter: str,
+        me: str = Depends(person),  # noqa: ARG001
+    ) -> dict[str, Any]:
+        return episode_call(lambda: host.episodes.forget_import(episode_id, chapter))
 
     @app.get("/api/voices")
     async def narrator_voices(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
@@ -1091,8 +1221,11 @@ def create_app(
         return episode_call(lambda: host.episodes.keep_take(episode_id, take_id, keep=False))
 
     @app.post("/api/episodes/{episode_id}/film")
-    async def render_episode(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
-        return episode_call(lambda: host.episodes.render(episode_id, by=me))
+    async def render_episode(
+        episode_id: str, body: FilmIn | None = None, me: str = Depends(person)
+    ) -> dict[str, Any]:
+        size = body.size if body is not None else ""
+        return episode_call(lambda: host.episodes.render(episode_id, by=me, size=size))
 
     # -- the production board: every episode's jobs, and handing them to agents ---------------
 

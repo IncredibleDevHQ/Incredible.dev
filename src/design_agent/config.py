@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Literal
 
@@ -140,9 +141,17 @@ class Settings(BaseSettings):
     )
 
     # Raw footage (host only): each take's recording as it arrived, kept in a bucket. S3 in
-    # production; MinIO or another S3-compatible store in development. With no bucket a
-    # recording is cut for the film and not kept.
+    # production; MinIO or another S3-compatible store in development. With no bucket it is
+    # kept in a folder on this computer (`footage_dir`).
     footage_bucket: str = ""
+    footage_dir: Path | None = None
+    """Where each take's recording is kept as it arrived when there is no bucket: a fast drive
+    of its own suits a camera's files (an external SSD). Unset, the house's own folder
+    (`<workspace>/house/footage`)."""
+    camera_dirs: str = ""
+    """Comma-separated folders where a camera's memory card shows up when it is put in (or a
+    folder a card was copied to). Unset: `/Volumes` on macOS, `/media`, `/run/media` and `/mnt`
+    on Linux. Clips are read where they are, so a card's file needs no upload."""
     s3_endpoint: str | None = None
     """An S3-compatible store's address (MinIO in development: http://127.0.0.1:9400). Unset
     is AWS S3. A bucket missing from such a store is made; on AWS it must exist."""
@@ -251,6 +260,14 @@ class Settings(BaseSettings):
 
     def research_folders(self) -> list[Path]:
         return [Path(p.strip()).expanduser() for p in self.research_roots.split(",") if p.strip()]
+
+    def camera_folders(self) -> list[Path]:
+        named = [Path(p.strip()).expanduser() for p in self.camera_dirs.split(",") if p.strip()]
+        if named:
+            return named
+        if sys.platform == "darwin":
+            return [Path("/Volumes")]
+        return [Path("/media"), Path("/run/media"), Path("/mnt")]
 
     def resolved_brand_path(self, root: Path) -> Path:
         """The active brand pack: the configured folder when it has a pack, else the sample brand."""

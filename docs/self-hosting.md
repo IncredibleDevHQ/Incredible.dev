@@ -50,12 +50,15 @@ agent chose to wait); use a generous client timeout and poll `updates` for backg
 - Sandbox containers and their per-thread volumes persist between turns; idle ones are stopped.
   After the sandbox image is rebuilt (a renderer upgrade), a thread's stopped container is made
   again from the new image the next time the thread runs; its volume keeps the thread's files.
-- An episode's raw footage (each take's recording as it arrived) is kept in a bucket when
+- An episode's raw footage (each take's recording as it arrived) is kept in a folder of the
+  API's (`DESIGN_AGENT_FOOTAGE_DIR`, else `<workspace>/house/footage`), or in a bucket when
   `DESIGN_AGENT_FOOTAGE_BUCKET` is set: on AWS, an S3 bucket you made, opened by the machine's
   role (or `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`), in `DESIGN_AGENT_S3_REGION`. Any
   S3-compatible store works with `DESIGN_AGENT_S3_ENDPOINT`; `deploy/dev/compose.yaml` runs
   MinIO for development. The API's image carries the `s3` extra. Nothing is deleted from the
-  bucket: set a lifecycle rule for how long footage is kept.
+  folder or the bucket: set a lifecycle rule for how long footage is kept.
+- A camera's card is read where the API runs (`DESIGN_AGENT_CAMERA_DIRS`): on a server, mount
+  the folder cards are copied to; with none, people bring camera files by upload (up to 64 GiB).
 
 ## Security
 

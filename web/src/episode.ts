@@ -1,6 +1,6 @@
 // What the studio reads off an episode: its lines, each line's picture and take, and where a
 // chapter stands. The server derives every number (episode_desk.py); nothing here recounts one.
-import type { BuildStageId, EpisodeChapter, EpisodeFrame, EpisodeLine, EpisodeSettings, EpisodeTake, EpisodeUnit, EpisodeView, LayoutSpot, Level, PictureVersion, Presence } from "./api";
+import type { BuildStageId, EpisodeChapter, EpisodeFrame, EpisodeImport, EpisodeLine, EpisodeSettings, EpisodeTake, EpisodeUnit, EpisodeView, LayoutSpot, Level, PictureVersion, Presence } from "./api";
 
 export const PRESENCE: Record<Presence, string> = { person: "You", both: "Both", content: "Picture" };
 export const LAYOUTS: Record<string, string> = {
@@ -247,7 +247,7 @@ export const turning = (view: EpisodeView) => view.status !== "planning" && (vie
 // What runs for an episode now, as the bar lists it: the work under way first (each picture being
 // built, the writer's turn on the script, the film being rendered), then the pictures waiting
 // their turn; pictures in the film's order.
-export type RunningTask = { kind: "picture"; id: string; unit: EpisodeUnit; waiting: boolean } | { kind: "writer"; id: "writer" } | { kind: "film"; id: "film" };
+export type RunningTask = { kind: "picture"; id: string; unit: EpisodeUnit; waiting: boolean } | { kind: "writer"; id: "writer" } | { kind: "film"; id: "film" } | { kind: "import"; id: string; coming: EpisodeImport };
 export function runningTasks(view: EpisodeView): RunningTask[] {
   const pictures = view.units
     .filter((u) => u.kind === "picture" && pictureState(u, view) === "making")
@@ -256,6 +256,7 @@ export function runningTasks(view: EpisodeView): RunningTask[] {
     ...pictures.filter((t) => t.kind === "picture" && !t.waiting),
     ...(turning(view) ? [{ kind: "writer", id: "writer" } as const] : []),
     ...(view.film_state.status === "rendering" ? [{ kind: "film", id: "film" } as const] : []),
+    ...(view.imports ?? []).filter((i) => i.state !== "failed").map((coming): RunningTask => ({ kind: "import", id: `import:${coming.chapter}`, coming })),
     ...pictures.filter((t) => t.kind === "picture" && t.waiting),
   ];
 }

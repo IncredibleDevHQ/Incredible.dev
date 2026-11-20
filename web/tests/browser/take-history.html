@@ -5,10 +5,10 @@ import {createRoot} from 'react-dom/client';
 import {TakeHistory} from '/src/components/episode/TakeHistory.tsx';
 import '/src/app.css';
 const takes=[
- {id:'old',chapter:'c1',frame:'',n:1,label:'Calm delivery',seconds:10,created_at:1,kept:false,video:{url:'/old.webm'}},
- {id:'new',chapter:'c1',frame:'',n:2,label:'More energy',seconds:12,created_at:2,kept:true,audio:{url:'/new.wav'}},
- {id:'other',chapter:'c2',frame:'',n:1,label:'Other chapter',seconds:10,created_at:3,kept:true}];
+ {id:'old',chapter:'c1',frame:'',n:1,label:'Calm delivery',seconds:10,created_at:1,kept:false,video:{url:'/old.webm'},recording:{kind:'studio'}},
+ {id:'new',chapter:'c1',frame:'',n:2,label:'More energy',seconds:12,created_at:2,kept:true,audio:{url:'/new.wav'},uhd:{url:'/new-2160.mp4'},recording:{kind:'camera',name:'C0012.MP4',matched:{take:'old',n:1,score:0.94,start:17.0}}},
+ {id:'other',chapter:'c2',frame:'',n:1,label:'Other chapter',seconds:10,created_at:3,kept:true,recording:{}}];
 createRoot(document.querySelector('#root')).render(React.createElement(TakeHistory,{
- view:{id:'fixture',takes},chapter:{id:'c1',beats:[]},busy:false,run:async fn=>{await fn();return true;}
+ view:{id:'fixture',takes,imports:[]},chapter:{id:'c1',beats:[]},busy:false,run:async fn=>{await fn();return true;}
 }));
 </script></html>

@@ -21,7 +21,6 @@ import {
   Play,
   Sparkles,
   Sun,
-  Upload,
 } from "lucide-react";
 import { flushSync } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -39,6 +38,7 @@ import { Devices, Level } from "./Devices";
 import { useNarrationGuide } from "./narrationGuide";
 import { useRecorder, type Recording } from "./recorder";
 import { RecordingScript } from "./RecordingScript";
+import { CameraFile, ImportLine, TakeOrigin } from "./CameraFile";
 import { TakeReviewDetails } from "./TakeReviewDetails";
 import { FilmPage, type Open } from "./Film";
 import { Script, type ScriptHandle } from "./Script";
@@ -324,7 +324,6 @@ function Chapter({
   // One line recorded again on its own, over the chapter's take.
   const [solo, setSolo] = useState<string | null>(null);
   const arming = useRef(false);
-  const upload = useRef<HTMLInputElement>(null);
   const script = useRef<ScriptHandle>(null);
   const take = takeOf(view, chapter.id);
   const sayAgain = lines.filter((l) => view.rerecord.includes(l.id)).length;
@@ -334,7 +333,7 @@ function Chapter({
   const [takeLabel, setTakeLabel] = useState("");
   const save = useCallback(
     async (recording: Recording) => {
-      const saved = await run(() => api.addTake(view.id, { chapter: chapter.id, frame: solo ?? undefined, marks: recording.marks, file: recording.blob, name: recording.name, label: takeLabel }));
+      const saved = await run(() => api.addTake(view.id, { chapter: chapter.id, frame: solo ?? undefined, marks: recording.marks, file: recording.blob, name: recording.name, label: takeLabel, startedAt: recording.startedAt }));
       if (!saved) throw new Error("The take could not be saved. Please try again.");
       setSolo(null);
       setTakeLabel("");
@@ -583,6 +582,10 @@ function Chapter({
   // A take of the chapter from a file: picked, or dropped on the frame.
   const takesFile = (file: File) => /^(video|audio)\//.test(file.type) || /\.(mp4|mov|m4v|webm|mkv|m4a|mp3|wav|aac|ogg)$/i.test(file.name);
   const bring = (file: File) => void run(() => api.addTake(view.id, { chapter: chapter.id, marks: [], file, name: file.name }));
+  // a take recorded here can be matched to the camera's own file of it; one that is a file already can't
+  const studioTake = take && take.recording.kind !== "camera" && take.recording.kind !== "file" ? take : undefined;
+  const coming = view.imports.some((i) => i.chapter === chapter.id && i.state !== "failed");
+  const takeLines = <><ImportLine view={view} chapter={chapter.id} run={run} /><TakeOrigin view={view} take={take} run={run} busy={busy} /></>;
   const previewTake = scheduled?.source.kind === "take" ? view.takes.find(t => t.id === scheduled.source.take) : undefined;
   const artwork = view.units.filter(u => u.chapter === chapter.id).flatMap(u => Object.values(u.picture.stills))[0];
   const chapterPoster = (
@@ -630,6 +633,7 @@ function Chapter({
             {take.label || `Take ${take.n}`} · {mmss(take.seconds)}
           </small>
         )}
+        {studioTake && <CameraFile view={view} chapter={chapter.id} guide={studioTake} run={run} disabled={busy || coming} />}
         <Tooltip content={pics.planned ? "Makes this chapter's pictures first" : "Opens the camera and microphone"} shortcut="R" side="bottom" align="end">
           <button type="button" className="btn primary ep-record-chapter" disabled={busy || (waits > 0 && pics.planned === 0)} onClick={begin}>
             <Circle />
@@ -681,22 +685,7 @@ function Chapter({
                 {!recording && unit?.kind === "picture" && <PictureHead view={view} unit={unit} run={run} busy={busy || working} recording={recording} />}
                 <span className="ep-gap" />
                 {!recording && <div className="ep-preview-actions"><FilmDownload view={view} />
-                  <Tooltip content="Bring a recording of this chapter: pick a video or audio file, or drop one on the frame" side="bottom">
-                    <button type="button" className="icon-btn" aria-label="Bring a recording of this chapter" disabled={busy} onClick={() => upload.current?.click()}>
-                      <Upload />
-                    </button>
-                  </Tooltip>
-                  <input
-                    ref={upload}
-                    type="file"
-                    accept="video/*,audio/*"
-                    hidden
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      e.target.value = "";
-                      if (file) bring(file);
-                    }}
-                  />
+                  <CameraFile icon view={view} chapter={chapter.id} run={run} disabled={busy || coming} />
                 </div>}
                 {!recording && (
                   <span className="ep-pop-chapters" role="group" aria-label="Chapters">
@@ -743,6 +732,7 @@ function Chapter({
                 </FileDrop>
               </div>
               {!recording && chapterActions}
+              {!recording && takeLines}
               {recording && !recorder.reviewUrl ? (
                 <div className="ep-recbar" data-recording>
                   {recorder.state === "asking" && (
@@ -952,6 +942,7 @@ function Chapter({
               </Tooltip>
             </FileDrop>
             {chapterActions}
+            {takeLines}
             {selected && <p className="ep-float-line">
               Line {at + 1} of {lines.length}
               {span ? ` · ${mmss(span.start)}–${mmss(span.start + span.seconds)}` : ""} · {LAYOUTS[line.layout] ?? line.layout}

@@ -7,9 +7,10 @@
 // (look, voice, pictures) are in the bar, so they are at hand on every page.
 import { ArrowRight, Circle, Clapperboard } from "lucide-react";
 import { useMemo, useState } from "react";
-import { api, type EpisodeChapter, type EpisodeView } from "../../api";
+import { api, type EpisodeChapter, type EpisodeView, type FilmSize } from "../../api";
 import { chapterMaking, chapterName, chapterState, LAYOUTS, linesOf, mmss, pictureCount, STATE_WORDS, takeOf, unitOf } from "../../episode";
 import { AgentMark } from "../../ui";
+import { SegmentedControl } from "../SegmentedControl";
 import { Tooltip } from "../Tooltip";
 import { Ask, Elapsed, type AskTarget, type Run, type Waiting } from "./Ask";
 import { BlockHead, blockName, blocksOf } from "./Blocks";
@@ -27,7 +28,7 @@ export function RenderStatus({ film }: { film: EpisodeView["film_state"] }) {
   const running = film.status === "rendering";
   const stopped = film.status === "failed";
   const percent = Math.round(100 * (film.fraction ?? 0));
-  const phase = RENDER_PHASES[film.phase ?? ""] ?? "Rendering film";
+  const phase = (RENDER_PHASES[film.phase ?? ""] ?? "Rendering film") + (film.making === "4k" ? " in 4K" : "");
   return (
     <section className="ep-render-status" aria-label="Film export" data-failed={stopped || undefined}>
       <div className="ep-render-heading">
@@ -72,6 +73,10 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
   const number = plan.chapters.indexOf(chapter) + 1;
   const film = view.film_state;
   const rendered = film.status === "done" && film.file;
+  // the size the film is rendered in: the one picked here, else the one asked for last
+  const [picked, setPicked] = useState<FilmSize | null>(null);
+  const size = picked ?? film.making ?? film.size ?? "hd";
+  const hdTakes = view.takes.filter((t) => t.kept && t.video && !t.uhd).length;
   const next = plan.chapters.find((c) => !takeOf(view, c.id));
   // Something of the film is made or recorded: it can be rendered, and its chapters say where they stand.
   const started = view.status === "studio";
@@ -164,6 +169,7 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
                 <div className="ep-film-sum">
                   <b>
                     {plan.chapters.length} chapters · {mmss(view.clock?.total ?? plan.totals.seconds)}
+                    {rendered && film.size === "4k" ? " · 4K" : ""}
                     {outside && (
                       <span className="ep-film-asked">
                         {" "}
@@ -174,6 +180,12 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
                   {(film.blocked || note) && <span data-tone={film.status === "failed" ? "red" : film.stale ? "amber" : undefined}>{film.blocked || note}</span>}
                 </div>
                 {film.status && <RenderStatus film={film} />}
+                {started && size === "4k" && film.status !== "rendering" && (
+                  <p className="ep-notice">
+                    4K takes about 2½ times as long to render as 1080p
+                    {hdTakes > 0 ? `; ${hdTakes === 1 ? "one take is" : `${hdTakes} takes are`} HD and scaled up` : ""}.
+                  </p>
+                )}
                 <div className="ep-peek-actions">
                   {next && (
                     <Tooltip content={waits ? "Its pictures are made first" : "Opens it with the camera on, ready for Space"} side="bottom">
@@ -184,15 +196,28 @@ export function FilmPage({ view, run, busy, onAt, waiting }: { view: EpisodeView
                     </Tooltip>
                   )}
                   {started && (
-                    <button
-                      type="button"
-                      className={`btn ${!next && (film.status !== "done" || film.stale) ? "primary" : ""}`}
-                      disabled={busy || !!film.blocked || film.status === "rendering"}
-                      onClick={() => void run(() => api.renderEpisode(view.id))}
-                    >
-                      <Clapperboard />
-                      {film.status === "rendering" ? "Rendering" : film.status === "failed" ? "Retry render" : film.status === "done" ? "Render again" : next ? "Render a draft" : "Render the film"}
-                    </button>
+                    // the render and the size it renders in, kept together as the row wraps
+                    <span className="ep-render-pick">
+                      <button
+                        type="button"
+                        className={`btn ${!next && (film.status !== "done" || film.stale) ? "primary" : ""}`}
+                        disabled={busy || !!film.blocked || film.status === "rendering"}
+                        onClick={() => void run(() => api.renderEpisode(view.id, size))}
+                      >
+                        <Clapperboard />
+                        {film.status === "rendering" ? "Rendering" : film.status === "failed" ? "Retry render" : film.status === "done" ? "Render again" : next ? "Render a draft" : "Render the film"}
+                      </button>
+                      <SegmentedControl<FilmSize>
+                        aria-label="The film's size"
+                        value={size}
+                        onChange={setPicked}
+                        disabled={busy || film.status === "rendering"}
+                        options={[
+                          { value: "hd", label: "1080p" },
+                          { value: "4k", label: "4K" },
+                        ]}
+                      />
+                    </span>
                   )}
                 </div>
               </div>

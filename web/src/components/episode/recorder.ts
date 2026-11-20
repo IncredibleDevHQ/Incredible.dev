@@ -13,7 +13,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type Mark = { frame: string; t: number };
 export type RecorderState = "off" | "asking" | "ready" | "count" | "recording" | "review" | "saving";
-export type Recording = { blob: Blob; name: string; marks: Mark[] };
+// `startedAt` is when it began (seconds since 1970), so a camera's clip of the same moment is found.
+export type Recording = { blob: Blob; name: string; marks: Mark[]; startedAt: number };
 
 export type Devices = { cameras: MediaDeviceInfo[]; mics: MediaDeviceInfo[] };
 // `clean`: the browser takes the room's noise out of the sound and evens its level. Unsaid, it
@@ -77,6 +78,7 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
   const marks = useRef<Mark[]>([]);
+  const startedAt = useRef(0);
   const began = useRef(0);
   const live = useRef<MediaStream | null>(null);
   const kept = useRef(true);
@@ -246,13 +248,14 @@ export function useRecorder({ frames, camera, onDone }: { frames: string[]; came
       if (!kept.current || blob.size === 0) return setState("off");
       // H.264 in a WebM container is Matroska, and the browser says so
       const ext = blob.type.includes("mp4") ? "mp4" : blob.type.includes("matroska") ? "mkv" : "webm";
-      pending.current = { blob, name: `take.${ext}`, marks: marks.current };
+      pending.current = { blob, name: `take.${ext}`, marks: marks.current, startedAt: startedAt.current };
       reviewObjectUrl.current = URL.createObjectURL(blob);
       setReviewUrl(reviewObjectUrl.current);
       setState("review");
     };
     recorder.current = made;
     began.current = performance.now();
+    startedAt.current = Date.now() / 1000;
     setIndex(0);
     setElapsed(0);
     setLineElapsed(0);
