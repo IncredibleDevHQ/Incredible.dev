@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- The release workflow attaches only the wheel and the source archive.
+
 ## 0.1.0 — 2026-11-19
 
 The first release of the new Incredible.dev: episodes (notes to a rendered, presenter-led film in a
