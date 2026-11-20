@@ -4,6 +4,11 @@
 
 ### Changed
 
+- Every take's recording is kept as it arrived: in `<workspace>/house/footage` (or
+  `DESIGN_AGENT_FOOTAGE_DIR`) when no bucket is set, where before it was not kept at all.
+- A file brought in may be up to 64 GiB (from 8). Takes and films move between the house and the
+  sandbox as files, never held in memory, and a take's copies stay on the sandbox between renders.
+- Deleting a take deletes its copies (not its recording as it arrived).
 - The release workflow attaches only the wheel and the source archive.
 
 ## 0.1.0 — 2026-11-19

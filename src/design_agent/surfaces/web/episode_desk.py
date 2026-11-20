@@ -9,13 +9,15 @@ writes it (a coding agent on this computer or the built-in agent), and then:
 - **each chapter** is worked in one place: who has the frame for every line, the layout, and
   whether a picture is made at once (simple) or posed as stills for the person's go (rich).
   The pictures are built meanwhile, by the same agent, and posed on the thread's computer;
-- **a take** per chapter is recorded in the browser (or brought as a file, a camera's own
-  included) and cut to the film's format; where a line was started in the take sets when its
-  picture's cues land;
+- **a take** per chapter is recorded in the browser (or brought as a file, or a clip read
+  where it is on a camera's card) and cut to the film's format, with a copy for 4K from a
+  recording taller than the film's frame; where a line was started in the take sets when its
+  picture's cues land. A camera's clip of a studio take is found under it by sound (`sync`) and
+  takes its marks;
 - **the narrator** says the lines no take covers, when the person chooses one: in a voice of
   the ElevenLabs account, or in a clone of the person's own made from their takes;
 - **the film** is one HyperFrames project written by code (`episode.film`) and rendered on the
-  thread's computer.
+  thread's computer, in HD or in 4K.
 
 A person's picks are never undone by a later stage: they are kept beside the plan and applied
 every time it is read. The film is a file on the canvas and is sent nowhere. Two things leave
@@ -32,9 +34,14 @@ import json
 import logging
 import re
 import secrets
+import shlex
+import shutil
+import threading
 import time
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any
 from urllib.parse import unquote
@@ -52,6 +59,7 @@ from design_agent.episode import (
     override,
     picture,
     sketch,
+    sync,
     timeline,
     units,
 )
@@ -174,6 +182,26 @@ TONEMAP = (
     "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,"
     "zscale=t=bt709:m=bt709:r=tv,format=yuv420p"
 )
+#: A take's copies on the thread's computer and among the house's files, by kind: one no taller
+#: than the film's frame (the studio's, and a film in HD's), one no taller than `UHD` for a film
+#: in 4K (made only from a recording taller than the film's frame), and its sound alone.
+COPIES = {"video": "mp4", "uhd": "uhd.mp4", "audio": "m4a"}
+UHD = 2160
+#: Frame rates the film's 30 a second shows without a step: a camera's NTSC rates, and double.
+SMOOTH_RATES = (29.97, 30.0, 59.94, 60.0)
+#: How often a cut under way is looked at, and how often a recording being brought in says how
+#: far it has come (seconds).
+CUT_POLL = 1.0
+IMPORT_TOLD = 1.5
+#: The sizes a film is rendered in. HyperFrames renders the same 1920 by 1080 page at twice the
+#: density for 4K, so a film's pictures, type and windows are the same in both.
+SIZES = ("hd", "4k")
+#: Room a render takes on the thread's computer while it runs, by a second of film (bytes), with
+#: a floor for the rest: measured, with some to spare.
+SCRATCH = {"hd": 8 * 1024**2, "4k": 44 * 1024**2}
+SCRATCH_FLOOR = 2 * 1024**3
+#: How much longer a film takes to render in 4K than in HD, measured (2.3 times), with room.
+SLOWER_4K = 3
 #: The stages a plan is written in, as the studio names them while it waits.
 STEPS: tuple[tuple[str, str], ...] = (
     ("brief", "Read the material"),
@@ -266,6 +294,153 @@ def _levelled(measured: str) -> str:
     return ",".join(filters)
 
 
+@dataclass(frozen=True)
+class Seen:
+    """What ffprobe found in a recording: its picture (the first), its sound, how long it runs,
+    and whether it is coded for a brighter screen than the film's (and can be brought down)."""
+
+    video: Row | None = None
+    sound: tuple[Row, ...] = ()
+    seconds: float = 0.0
+    bright: bool = False
+
+    @property
+    def height(self) -> int:
+        return int((self.video or {}).get("height") or 0)
+
+    @property
+    def fps(self) -> float:
+        top, _, bottom = str((self.video or {}).get("avg_frame_rate") or "").partition("/")
+        try:
+            return float(top) / float(bottom or 1)
+        except (ValueError, ZeroDivisionError):
+            return 0.0
+
+    @property
+    def bt709(self) -> bool:
+        return (self.video or {}).get("color_space") == "bt709"
+
+
+@dataclass
+class Brought:
+    """A recording on the thread's computer, between being looked at and being cut."""
+
+    computer: Computer
+    folder: str
+    take_id: str
+    src: str
+    seen: Seen = dataclass_field(default_factory=Seen)
+    match: sync.Match | None = None
+
+
+def _seen(looked: str) -> Seen:
+    listed = re.search(r"^streams: (\{.*\})$", looked, re.M)
+    try:
+        probe = json.loads(listed[1]) if listed else {}
+    except ValueError:
+        probe = {}
+    streams = [s for s in probe.get("streams") or [] if isinstance(s, dict)]
+    video = next((s for s in streams if s.get("codec_type") == "video"), None)
+    try:
+        seconds = float((probe.get("format") or {}).get("duration") or 0.0)
+    except (TypeError, ValueError):
+        seconds = 0.0
+    return Seen(
+        video=video,
+        sound=tuple(s for s in streams if s.get("codec_type") == "audio"),
+        seconds=seconds,
+        bright=bool(video and video.get("color_transfer") in HDR)
+        and bool(re.search(r"^zscale: [1-9]", looked, re.M)),
+    )
+
+
+def _noticed(seen: Seen, clip: Mapping[str, Any]) -> Row:
+    """What a person should know of a recording brought in, in a line: a frame rate the film's
+    30 can't show smoothly, and a camera's log picture, which looks flat until it is graded."""
+    notes: list[str] = []
+    rate = seen.fps
+    if seen.video and rate and not any(abs(rate - r) < 0.05 for r in SMOOTH_RATES):
+        notes.append(
+            f"Recorded at {rate:.3g} fps; the film runs at 30, so movement steps a little."
+            + (" Set the camera to NTSC for 30p." if round(rate) in (25, 50) else "")
+        )
+    if str(clip.get("look") or "").startswith("s-log"):
+        notes.append(
+            "Recorded in S-Log3, so it looks flat in the film: Picture Profile PP11 "
+            "(S-Cinetone) gives the finished look."
+        )
+    return {
+        "height": seen.height or None,
+        "fps": round(rate, 3) if rate else None,
+        "note": " ".join(notes),
+    }
+
+
+def _gb(size: float) -> str:
+    return f"{size / 1024**3:.0f} GB" if size >= 10 * 1024**3 else f"{size / 1024**3:.1f} GB"
+
+
+def _label(label: str) -> str:
+    label = label.strip()
+    if len(label) > 120:
+        raise ValueError("Version names must be 120 characters or fewer.")
+    return label
+
+
+def _given(marks: Sequence[Mapping[str, Any]], lines: Sequence[Row]) -> list[Row]:
+    """The marks a recording came with, for the chapter's own lines only."""
+    ids = {f["id"] for f in lines}
+    return [
+        {"frame": str(m["frame"]), "t": round(max(0.0, float(m["t"])), 3)}
+        for m in marks
+        if str(m.get("frame")) in ids
+    ]
+
+
+def _spread(lines: Sequence[Row], seconds: float) -> list[Row]:
+    """A recording brought with no marks: each line is taken to start where the plan's pace puts
+    it, stretched over the take."""
+    total = sum(float(f["seconds"]) for f in lines) or 1.0
+    at, out = 0.0, []
+    for f in lines:
+        out.append({"frame": f["id"], "t": round(at / total * seconds, 3)})
+        at += float(f["seconds"])
+    return out
+
+
+def _stem(name: str) -> str:
+    """A recording's own name, as much of it as is safe in a file's name (`C0012`)."""
+    return re.sub(r"[^A-Za-z0-9_-]", "", Path(name).stem)[:40] or "recording"
+
+
+def _keep_file(source: IO[bytes] | Path, target: Path, *, move: bool) -> None:
+    """A recording put where it is kept, as a file: moved when it is the house's own copy,
+    otherwise copied (and never left half copied under its name)."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(source, Path) and move:
+        shutil.move(str(source), target)
+        return
+    partial = target.with_name(f".{target.name}.part")
+    try:
+        if isinstance(source, Path):
+            shutil.copyfile(source, partial)
+        else:
+            source.seek(0)
+            with partial.open("wb") as out:
+                shutil.copyfileobj(source, out, 4 * 1024 * 1024)
+        partial.replace(target)
+    finally:
+        partial.unlink(missing_ok=True)
+
+
+def _quietly(work: Callable[..., Any], *args: Any) -> None:
+    """Tidying up that must not stop what it follows."""
+    try:
+        work(*args)
+    except Exception:
+        _LOGGER.warning("tidying up after a take failed", exc_info=True)
+
+
 class EpisodeDesk:
     def __init__(
         self,
@@ -288,6 +463,8 @@ class EpisodeDesk:
         self.reader: classifier.Ask | None = None
         self._jobs: dict[str, asyncio.Task[None]] = {}
         self._builds: dict[tuple[str, str], asyncio.Task[None]] = {}
+        #: Recordings being brought in say where they stand from their own threads.
+        self._imports_lock = threading.Lock()
         #: When each picture on its way was asked for.
         self._asked: dict[tuple[str, str], float] = {}
         #: Episodes whose applied picks are with the writer: their pictures follow its turn.
@@ -2990,6 +3167,16 @@ class EpisodeDesk:
 
     # -- takes -----------------------------------------------------------------------------------
 
+    def _chapter_of(self, episode: Row, chapter: str) -> tuple[int, list[Row]]:
+        """A chapter's number and its lines, in order."""
+        full = self._full(episode)
+        if full is None:
+            raise ValueError("The plan isn't written yet.")
+        found = next((c for c in full["chapters"] if c["id"] == chapter), None)
+        if found is None:
+            raise KeyError(chapter)
+        return full["chapters"].index(found) + 1, [f for b in found["beats"] for f in b["frames"]]
+
     async def add_take(
         self,
         episode_id: str,
@@ -3001,166 +3188,632 @@ class EpisodeDesk:
         label: str = "",
         name: str,
         source: IO[bytes],
+        recorded_at: float | None = None,
     ) -> Row:
-        """A recording of a chapter (or of one line of it): cut to the film's format on the
-        thread's computer and kept as this chapter's take. `source` is the recording as an
-        open file; it is read from there and never held in memory."""
-        label = label.strip()
-        if len(label) > 120:
-            raise ValueError("Version names must be 120 characters or fewer.")
+        """A recording of a chapter (or of one line of it) made in the studio: cut to the film's
+        format on the thread's computer and kept as this chapter's take while the person waits.
+        `source` is the recording as an open file; it is read from there and never held in
+        memory. A camera's clip, which takes minutes to bring in, comes by `bring_take`."""
+        label = _label(label)
         episode = self._episode(episode_id)
-        full = self._full(episode)
-        if full is None:
-            raise ValueError("The plan isn't written yet.")
-        found = next((c for c in full["chapters"] if c["id"] == chapter), None)
-        if found is None:
-            raise KeyError(chapter)
-        lines = [f for b in found["beats"] for f in b["frames"]]
+        number, lines = self._chapter_of(episode, chapter)
         if frame and frame not in {f["id"] for f in lines}:
             raise KeyError(frame)
         source.seek(0, 2)
         if source.tell() == 0:
             raise ValueError("The recording is empty.")
-        made = await asyncio.to_thread(self._cut, episode, name, source)
-        seconds = float(made["seconds"])
-        given = [
-            {"frame": str(m["frame"]), "t": round(max(0.0, float(m["t"])), 3)}
-            for m in marks
-            if str(m.get("frame")) in {f["id"] for f in lines}
-        ]
+        take_id = new_id("tk")
+        made = await asyncio.to_thread(self._cut, episode, take_id, name, source)
+        given = _given(marks, lines)
         if not frame and not given:
-            # A recording brought as a file: each line is taken to start where the plan's
-            # pace puts it, stretched over the take.
-            total = sum(float(f["seconds"]) for f in lines) or 1.0
-            at = 0.0
-            for f in lines:
-                given.append({"frame": f["id"], "t": round(at / total * seconds, 3)})
-                at += float(f["seconds"])
+            given = _spread(lines, float(made["seconds"]))
+        kept_at = await self._keep_footage(episode, take_id, name, source, by=by)
+        self._new_take(
+            episode,
+            take_id,
+            chapter=chapter,
+            frame=frame,
+            label=label,
+            made=made,
+            marks=given,
+            recording={"kind": "studio" if marks else "file", "name": name, "at": recorded_at},
+            raw=kept_at,
+            by=by,
+        )
+        self._say(episode, f"Recorded a take of chapter {number}.", by=by, quiet=True)
+        self._settle(episode_id)
+        return self.view(episode_id)
+
+    def bring_take(
+        self,
+        episode_id: str,
+        *,
+        by: str,
+        chapter: str,
+        name: str,
+        source: Path,
+        staged: bool,
+        guide: str = "",
+        label: str = "",
+        clip: Mapping[str, Any] | None = None,
+    ) -> Row:
+        """A recording of a chapter brought in while the studio goes on: a file a person brought
+        (`staged`: the house's own copy of their upload, which it moves or drops when done) or a
+        clip on a camera's card, read where it is (`clip`, what the card says of it). A camera's
+        file runs to gigabytes and its copies take minutes, so this returns at once and the
+        chapter shows how far it has come. With `guide`, the take recorded at the same moment is
+        found in it by sound and the clip takes that take's marks; with none, its lines are
+        spread at the plan's pace."""
+        label = _label(label)
+        episode = self._episode(episode_id)
+        self._chapter_of(episode, chapter)
+        guide_take = None
+        if guide:
+            guide_take = self.store.take(guide)
+            if (
+                guide_take is None
+                or guide_take["episode_id"] != episode_id
+                or guide_take["chapter"] != chapter
+                or guide_take["frame"]
+            ):
+                raise KeyError(guide)
+            if not guide_take["audio"]:
+                raise ValueError("This take has no sound to match the camera's file by.")
+        key = f"import:{episode_id}:{chapter}"
+        if key in self._jobs:
+            raise ValueError("A recording is already coming in for this chapter.")
+        try:
+            size = source.stat().st_size
+        except OSError as error:
+            raise ValueError(f"The recording can't be read: {error.strerror or error}") from None
+        if size == 0:
+            raise ValueError("The recording is empty.")
+        take_id = new_id("tk")
+        before = str(((episode.get("imports") or {}).get(chapter) or {}).get("take") or "")
+        self._import_set(
+            episode_id,
+            chapter,
+            fresh=True,
+            take=take_id,
+            name=name,
+            guide=guide,
+            state="copying",
+            done=0,
+            total=size,
+            fraction=0.0,
+            failure="",
+            started_at=time.time(),
+        )
+        self._jobs[key] = asyncio.get_running_loop().create_task(
+            self._imported(
+                episode_id,
+                chapter,
+                take_id,
+                by=by,
+                name=name,
+                source=source,
+                staged=staged,
+                guide=guide_take,
+                label=label,
+                clip=dict(clip or {}),
+                before=before,
+            ),
+            name=f"episode import {episode_id} {chapter}",
+        )
+        self._settle(episode_id)
+        return self.view(episode_id)
+
+    async def _imported(
+        self,
+        episode_id: str,
+        chapter: str,
+        take_id: str,
+        *,
+        by: str,
+        name: str,
+        source: Path,
+        staged: bool,
+        guide: Row | None,
+        label: str,
+        clip: Row,
+        before: str,
+    ) -> None:
+        episode = self._episode(episode_id)
+        stage, said_at = ["copying"], [0.0]
+
+        def tell(**values: Any) -> None:
+            # how far it has come, said at most every second or so unless it moved on a stage
+            now = time.monotonic()
+            if values.get("state") == stage[0] and now - said_at[0] < IMPORT_TOLD:
+                return
+            stage[0], said_at[0] = str(values.get("state") or stage[0]), now
+            self._import_set(episode_id, chapter, **values)
+
+        kept_at = ""
+        try:
+            if before:
+                await asyncio.to_thread(self._forget_copies, episode, before)
+            brought = await asyncio.to_thread(
+                self._cut_in, episode, take_id, name, source, guide, tell
+            )
+            # the original is kept while its copies are made: a card is read once more for it
+            made, kept = await asyncio.gather(
+                asyncio.to_thread(self._cut_out, episode, brought, tell),
+                self._keep_footage(episode, take_id, name, source, by=by, move=staged),
+                return_exceptions=True,
+            )
+            kept_at = kept if isinstance(kept, str) else ""
+            if isinstance(made, BaseException):
+                raise made
+            number, lines = self._chapter_of(self._episode(episode_id), chapter)
+            found = brought.match
+            ids = {f["id"] for f in lines}
+            if found is not None and guide is not None:
+                marks = [
+                    {"frame": str(m["frame"]), "t": round(found.into(float(m["t"])), 3)}
+                    for m in guide["marks"]
+                    if str(m["frame"]) in ids
+                ]
+                matched: Row | None = {
+                    "take": guide["id"],
+                    "n": guide["n"],
+                    "score": found.score,
+                    "start": found.start,
+                }
+            else:
+                marks, matched = _spread(lines, float(made["seconds"])), None
+            self._new_take(
+                episode,
+                take_id,
+                chapter=chapter,
+                frame="",
+                label=label,
+                made=made,
+                marks=marks,
+                recording={
+                    "kind": "camera" if clip else "file",
+                    "name": name,
+                    "at": clip.get("recorded_at") or None,
+                    "matched": matched,
+                    **_noticed(brought.seen, clip),
+                },
+                raw=kept_at,
+                by=by,
+            )
+            with self._imports_lock:
+                imports = dict(self._episode(episode_id).get("imports") or {})
+                imports.pop(chapter, None)
+                self.store.update_episode(episode_id, imports=imports)
+            self._say(
+                episode,
+                f"Brought {name} in as chapter {number}'s take"
+                + (f", matched to take {guide['n']} by sound." if matched and guide else "."),
+                by=by,
+                quiet=True,
+            )
+        except Exception as error:
+            if not isinstance(error, ValueError | KeyError):
+                _LOGGER.exception("bringing %s in for %s failed", name, episode_id)
+            failure = (
+                "The chapter is no longer in the plan."
+                if isinstance(error, KeyError)
+                else _clean(str(error), 300) or "It couldn't be brought in."
+            )
+            self._import_set(
+                episode_id, chapter, state="failed", failure=failure, ended_at=time.time()
+            )
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(self._forget_copies, episode, take_id)
+            if kept_at and not kept_at.startswith("s3://"):
+                # the original of a take that isn't one: the person still has it where it was
+                with contextlib.suppress(OSError):
+                    Path(kept_at).unlink()
+        finally:
+            if staged:
+                with contextlib.suppress(OSError):
+                    source.unlink(missing_ok=True)
+            self._jobs.pop(f"import:{episode_id}:{chapter}", None)
+            self._settle(episode_id)
+
+    def _import_set(
+        self, episode_id: str, chapter: str, *, fresh: bool = False, **values: Any
+    ) -> None:
+        """Where a recording being brought in for a chapter stands, for its studio to show."""
+        with self._imports_lock:
+            imports = dict(self._episode(episode_id).get("imports") or {})
+            imports[chapter] = {**({} if fresh else imports.get(chapter) or {}), **values}
+            self.store.update_episode(episode_id, imports=imports)
+        self._changed(episode_id)
+
+    def forget_import(self, episode_id: str, chapter: str) -> Row:
+        """A recording that couldn't be brought in, put out of the chapter's way."""
+        self._episode(episode_id)
+        if f"import:{episode_id}:{chapter}" in self._jobs:
+            raise ValueError("It is still coming in.")
+        with self._imports_lock:
+            imports = dict(self._episode(episode_id).get("imports") or {})
+            imports.pop(chapter, None)
+            self.store.update_episode(episode_id, imports=imports)
+        self._settle(episode_id)
+        return self.view(episode_id)
+
+    def _new_take(
+        self,
+        episode: Row,
+        take_id: str,
+        *,
+        chapter: str,
+        frame: str,
+        label: str,
+        made: Row,
+        marks: list[Row],
+        recording: Row,
+        raw: str,
+        by: str,
+    ) -> Row:
+        """A take, kept: it takes the place of the chapter's (or the line's) take before it."""
+        episode_id = str(episode["id"])
         for other in self.store.takes(episode_id):
             if other["chapter"] == chapter and other["frame"] == frame and other["kept"]:
                 self.store.update_take(str(other["id"]), kept=False)
-        take = self.store.add_take(
+        return self.store.add_take(
             {
+                "id": take_id,
                 "episode_id": episode_id,
                 "chapter": chapter,
                 "label": label,
                 "frame": frame,
-                "seconds": seconds,
-                "marks": given,
+                "seconds": float(made["seconds"]),
+                "marks": marks,
                 "video": made["video"],
                 "audio": made["audio"],
+                "uhd": made["uhd"],
+                "raw": raw,
+                "recording": {k: v for k, v in recording.items() if v not in (None, "")},
                 "kept": True,
                 "added_by": by,
             }
         )
-        self._say(
-            episode,
-            f"Recorded a take of chapter {full['chapters'].index(found) + 1}.",
-            by=by,
-            quiet=True,
-        )
-        await self._keep_footage(episode, take, name, source, by=by)
-        self._settle(episode_id)
-        return self.view(episode_id)
+
+    def _footage_folder(self) -> Path:
+        named = self.host.settings.footage_dir
+        return named.expanduser() if named else self.data_dir / "footage"
 
     async def _keep_footage(
-        self, episode: Row, take: Row, name: str, source: IO[bytes], *, by: str
-    ) -> None:
-        """The recording as it arrived, kept in the house's bucket (S3, or MinIO in
-        development) under its take's name, when there is a bucket. It is kept once the cut
-        has shown it is a recording. The take stands whether or not the bucket took it: a
-        take is not lost to a store that is down, and the thread says when it was not kept."""
+        self,
+        episode: Row,
+        take_id: str,
+        name: str,
+        source: IO[bytes] | Path,
+        *,
+        by: str,
+        move: bool = False,
+    ) -> str:
+        """The recording as it arrived, kept under its take's name: in the house's bucket (S3,
+        or MinIO in development) when there is one, else in its footage folder (a drive of its
+        own, or the house's folder). Where it was kept, or nothing: a take is not lost to a
+        store that is down or a drive that isn't there, and the thread says when it wasn't
+        kept. With `move`, the recording is the house's own copy and is moved, not copied."""
         from design_agent.tools.footage import Bucket, FootageError
 
         bucket = Bucket.from_settings(self.host.settings)
-        if bucket is None:
-            return
-        key = f"episodes/{episode['id']}/takes/{take['id']}.{_ending(name)}"
+        if bucket is not None:
+            key = f"episodes/{episode['id']}/takes/{take_id}.{_ending(name)}"
+
+            def put() -> str:
+                if isinstance(source, Path):
+                    with source.open("rb") as opened:
+                        return bucket.put(key, opened, name=name)
+                return bucket.put(key, source, name=name)
+
+            try:
+                return await asyncio.to_thread(put)
+            except (FootageError, OSError) as error:
+                _LOGGER.warning("footage of take %s was not kept: %s", take_id, error)
+                self._say(
+                    episode,
+                    f"The recording itself was not kept in the bucket: {_clean(str(error), 240)}",
+                    by=by,
+                    quiet=True,
+                )
+                return ""
+        folder = self._footage_folder()
+        target = folder / str(episode["id"]) / f"{take_id}-{_stem(name)}.{_ending(name)}"
         try:
-            kept = await asyncio.to_thread(bucket.put, key, source, name=name)
-        except FootageError as error:
-            _LOGGER.warning("footage of take %s was not kept: %s", take["id"], error)
+            await asyncio.to_thread(_keep_file, source, target, move=move)
+        except OSError as error:
+            _LOGGER.warning("footage of take %s was not kept: %s", take_id, error)
             self._say(
                 episode,
-                f"The recording itself was not kept in the bucket: {_clean(str(error), 240)}",
+                f"The recording itself was not kept in {folder}: "
+                f"{_clean(error.strerror or str(error), 200)}",
                 by=by,
                 quiet=True,
             )
-            return
-        self.store.update_take(str(take["id"]), raw=kept)
+            return ""
+        return str(target)
 
-    def _cut(self, episode: Row, name: str, source: IO[bytes]) -> Row:
-        """A recording as the film uses it: no taller than the film's frame, a constant 30
-        frames a second with a key frame every half second (so any line can be played from
-        where it starts), in the film's range of light, its sound at the film's loudness, and
-        that sound beside it. The recording is copied across as a file, never held in memory:
-        a camera's own runs to gigabytes."""
+    def _cut(self, episode: Row, take_id: str, name: str, source: IO[bytes] | Path) -> Row:
+        """A recording made in the studio, as the film uses it (`_cut_in`, then `_cut_out`)."""
+        return self._cut_out(episode, self._cut_in(episode, take_id, name, source))
+
+    def _cut_in(
+        self,
+        episode: Row,
+        take_id: str,
+        name: str,
+        source: IO[bytes] | Path,
+        guide: Row | None = None,
+        tell: Callable[..., None] | None = None,
+    ) -> Brought:
+        """A recording brought onto the thread's computer and looked at: what is in it, and,
+        with a `guide` take, where that take begins in it (`sync`). The recording is copied
+        across as a file, never held in memory: a camera's own runs to gigabytes."""
         computer = self._computer(episode)
         folder = f"{PROJECTS}/{episode['id']}/takes"
-        stem = f"take-{int(time.time() * 1000)}"
-        src = f"{folder}/{stem}.src.{_ending(name)}"
-        computer.put_stream(src, source)
-        # What is in it, how loud its sound is, and whether this computer can bring a bright
-        # picture down to the film's range.
-        looked = computer.run(
-            f'cd {folder} && echo "streams: $(ffprobe -v error -show_entries '
-            f"stream=codec_type,color_transfer,channels -of json {src} 2>/dev/null "
-            "| tr -d ' \\n')\"; "
-            f"ffmpeg -hide_banner -nostats -i {src} -vn -af ebur128=peak=true:framelog=verbose "
-            "-f null - 2>&1 | tail -n 20; "
-            "echo \"zscale: $(ffmpeg -hide_banner -filters 2>/dev/null | grep -c ' zscale ')\"",
-            timeout=1800,
-        ).output
-        listed = re.search(r"^streams: (\{.*\})$", looked, re.M)
+        src = f"{folder}/{take_id}.src.{_ending(name)}"
+        brought = Brought(computer, folder, take_id, src)
         try:
-            streams = json.loads(listed[1]).get("streams", []) if listed else []
-        except ValueError:
-            streams = []
-        video = [s for s in streams if s.get("codec_type") == "video"]
-        sound = [s for s in streams if s.get("codec_type") == "audio"]
-        bright = any(s.get("color_transfer") in HDR for s in video) and bool(
-            re.search(r"^zscale: [1-9]", looked, re.M)
+            with contextlib.ExitStack() as stack:
+                stream = (
+                    stack.enter_context(source.open("rb")) if isinstance(source, Path) else source
+                )
+                stream.seek(0, 2)
+                size = stream.tell()
+                counted = (
+                    (
+                        lambda sent: tell(
+                            state="copying", done=sent, total=size, fraction=sent / size
+                        )
+                    )
+                    if tell is not None and size
+                    else None
+                )
+                computer.put_stream(src, stream, progress=counted)
+            # What is in it, and whether this computer can bring a bright picture down to the
+            # film's range.
+            looked = computer.run(
+                f'cd {folder} && echo "streams: $(ffprobe -v error -show_entries '
+                "stream=codec_type,color_transfer,color_space,color_primaries,channels,height,"
+                f"avg_frame_rate:format=duration -of json {src} 2>/dev/null | tr -d ' \\n')\"; "
+                "echo \"zscale: $(ffmpeg -hide_banner -filters 2>/dev/null | grep -c ' zscale ')\"",
+                timeout=600,
+            ).output
+            brought.seen = _seen(looked)
+            if not brought.seen.video and not brought.seen.sound:
+                raise ValueError("The recording couldn't be read: it has no picture or sound.")
+            if guide is not None:
+                if tell is not None:
+                    tell(state="matching", fraction=0.0)
+                brought.match = self._match(episode, brought, guide)
+            return brought
+        except BaseException:
+            computer.run(f"rm -f {src}", timeout=120)
+            raise
+
+    def _match(self, episode: Row, brought: Brought, guide: Row) -> sync.Match:
+        """Where the take recorded at the same moment begins in the brought recording, by the
+        sound the two have in common. Refused, with why, when it can't be told (`sync`)."""
+        if not brought.seen.sound:
+            raise sync.Unmatched("The camera's file has no sound to match this take by.")
+        computer, folder, take_id = brought.computer, brought.folder, brought.take_id
+        heard = self._in_sandbox(computer, episode, [(guide, "audio")]).get(
+            (str(guide["id"]), "audio")
         )
-        level = _levelled(looked) if sound else ""
-        audio = (
-            (f'-af "{level}" ' if level else "")
-            # more channels than a film's two (a camera with four inputs) are mixed down
-            + ("-ac 2 " if any(int(s.get("channels") or 0) > 2 for s in sound) else "")
-            + "-c:a aac -b:a 160k -ar 48000"
-        )
-        if video:
-            picture = "fps=30,scale=-2:'min(1080,ih)':flags=lanczos" + (
-                f",{TONEMAP}" if bright else ""
-            )
-            colour = "-colorspace bt709 -color_primaries bt709 -color_trc bt709 " if bright else ""
-            cut = (
-                f'ffmpeg -v error -y -i {src} -vf "{picture}" -c:v libx264 -preset veryfast '
-                f"-crf 18 -g 15 -pix_fmt yuv420p {colour}{audio} -movflags +faststart {stem}.mp4 "
-                f"&& (ffmpeg -v error -y -i {stem}.mp4 -vn -c:a copy {stem}.m4a || true)"
-            )
-        else:
-            cut = f"ffmpeg -v error -y -i {src} -vn {audio} {stem}.m4a"
+        if heard is None:
+            raise ValueError("This take's sound is missing, so there's nothing to match by.")
+        curve = shlex.quote(sync.ENVELOPE)
         ran = computer.run(
-            f"cd {folder} && {cut}; "
-            f'for f in {stem}.mp4 {stem}.m4a; do [ -s $f ] && echo "$f $(ffprobe -v error '
-            '-show_entries format=duration -of csv=p=0 $f)"; done; '
-            f"rm -f {src}",
+            f"cd {folder} && ffmpeg -v error -y -i {heard} -vn -af {curve} -f f32le "
+            f"{take_id}.take.env && ffmpeg -v error -y -i {brought.src} -vn -map 0:a:0 "
+            f"-af {curve} -f f32le {take_id}.camera.env",
             timeout=3600,
         )
-        lengths = dict(re.findall(rf"({stem}\.(?:mp4|m4a)) ([0-9.]+)", ran.output))
-        if not lengths:
-            raise ValueError(f"The recording couldn't be read: {_clean(ran.output[-200:])}")
-        out: Row = {"video": "", "audio": "", "seconds": max(float(v) for v in lengths.values())}
-        thread_id = str(episode["thread_id"])
-        for kind, suffix in (("video", "mp4"), ("audio", "m4a")):
-            data = (
-                computer.get(f"{folder}/{stem}.{suffix}") if f"{stem}.{suffix}" in lengths else None
-            )
-            if data:
-                out[kind] = str(
-                    self.host.save_file(thread_id, f"{stem}.{suffix}", data, origin="episode")["id"]
+        take_curve = computer.get(f"{folder}/{take_id}.take.env") if ran.ok else None
+        camera_curve = computer.get(f"{folder}/{take_id}.camera.env") if ran.ok else None
+        if not take_curve or not camera_curve:
+            raise ValueError(f"The sound couldn't be read: {_clean(ran.output[-200:])}")
+        last = max((float(m["t"]) for m in guide["marks"] or []), default=0.0)
+        return sync.match(sync.curve(take_curve), sync.curve(camera_curve), last_mark=last)
+
+    def _cut_out(
+        self, episode: Row, brought: Brought, tell: Callable[..., None] | None = None
+    ) -> Row:
+        """The copies the film uses, made in one reading of the recording: no taller than the
+        film's frame (for the studio and a film in HD), and no taller than 2160 when it is taller
+        than that (for a film in 4K). Each runs at a constant 30 frames a second with a key frame
+        every half second (so any line can be played from where it starts), in the film's range
+        of light, with its sound at the film's loudness beside it. Only the stretch a guide take
+        was found in is kept. The copies stay on the thread's computer for the renders and are
+        kept among the house's files, both moved as files, never held in memory."""
+        computer, folder, take_id, seen = (
+            brought.computer,
+            brought.folder,
+            brought.take_id,
+            brought.seen,
+        )
+        found = brought.match
+        span = (found.begin, found.end - found.begin) if found is not None else None
+        seek = f"-ss {span[0]:.3f} -t {span[1]:.3f} " if span else ""
+        seconds = span[1] if span else seen.seconds
+        try:
+            level = ""
+            if seen.sound:
+                measured = computer.run(
+                    f"ffmpeg -hide_banner -nostats {seek}-i {brought.src} -vn -map 0:a:0 "
+                    "-af ebur128=peak=true:framelog=verbose -f null - 2>&1 | tail -n 20",
+                    timeout=3600,
+                ).output
+                level = _levelled(measured)
+            sound = (
+                "-ac 2 " if any(int(s.get("channels") or 0) > 2 for s in seen.sound) else ""
+            ) + "-c:a aac -b:a 160k -ar 48000"
+            hd, uhd, said = f"{take_id}.mp4", f"{take_id}.uhd.mp4", f"{take_id}.m4a"
+            progress = f"-progress {take_id}.progress "
+            if seen.video:
+                tall = seen.height > geometry.FRAME_H
+                light = f",{TONEMAP}" if seen.bright else ""
+                tags = (
+                    "-colorspace bt709 -color_primaries bt709 -color_trc bt709 "
+                    if seen.bright or seen.bt709
+                    else ""
                 )
-        return out
+                x264 = (
+                    "-c:v libx264 -preset veryfast -crf 18 -g 15 -pix_fmt yuv420p "
+                    f"{tags}-movflags +faststart"
+                )
+                graph = "[0:v:0]fps=30" + (",split=2[a][b];[a]" if tall else ",")
+                graph += f"scale=-2:'min({geometry.FRAME_H},ih)':flags=lanczos{light}[hd]"
+                if tall:
+                    graph += f";[b]scale=-2:'min({UHD},ih)':flags=lanczos{light}[uhd]"
+                if seen.sound:
+                    graph += f";[0:a:0]{level or 'anull'}[said]"
+                outputs = '-map "[hd]" ' + ('-map "[said]" ' + sound if seen.sound else "-an")
+                outputs += f" {x264} {hd}"
+                if tall:
+                    outputs += f' -map "[uhd]" -an {x264} {uhd}'
+                cut = (
+                    f'ffmpeg -v error -y {progress}{seek}-i {brought.src} -filter_complex "{graph}" '
+                    f"{outputs}"
+                    + (f" && ffmpeg -v error -y -i {hd} -vn -c:a copy {said}" if seen.sound else "")
+                )
+            else:
+                cut = (
+                    f"ffmpeg -v error -y {progress}{seek}-i {brought.src} -vn "
+                    + (f'-af "{level}" ' if level else "")
+                    + f"{sound} {said}"
+                )
+            self._run_cut(computer, folder, take_id, cut, seconds, tell)
+            listed = computer.run(
+                f"cd {folder} && "
+                f'for f in {hd} {uhd} {said}; do [ -s $f ] && echo "$f $(ffprobe -v error '
+                '-show_entries format=duration -of csv=p=0 $f)"; done',
+                timeout=120,
+            )
+            lengths = dict(
+                re.findall(rf"({take_id}\.(?:mp4|uhd\.mp4|m4a)) ([0-9.]+)", listed.output)
+            )
+            if not lengths:
+                raise ValueError(f"The recording couldn't be cut: {_clean(listed.output[-200:])}")
+            if tell is not None:
+                tell(state="saving", fraction=1.0)
+            out: Row = {
+                "video": "",
+                "audio": "",
+                "uhd": "",
+                "seconds": max(float(v) for f, v in lengths.items() if f != uhd),
+            }
+            thread_id = str(episode["thread_id"])
+            for kind, made in (("video", hd), ("uhd", uhd), ("audio", said)):
+                if made not in lengths:
+                    continue
+
+                def write(into: IO[bytes], made: str = made) -> None:
+                    computer.get_into(f"{folder}/{made}", into)
+
+                shown = f"{take_id}-{UHD}.mp4" if kind == "uhd" else made
+                out[kind] = str(
+                    self.host.save_file_from(thread_id, shown, write, origin="episode")["id"]
+                )
+            return out
+        except BaseException:
+            with contextlib.suppress(Exception):
+                self._forget_copies(episode, take_id)
+            raise
+        finally:
+            with contextlib.suppress(Exception):
+                computer.run(
+                    f"cd {folder} && rm -f {take_id}.src.* {take_id}.*.env {take_id}.progress "
+                    f"{take_id}.exit {take_id}.log {take_id}.pid",
+                    timeout=120,
+                )
+
+    def _run_cut(
+        self,
+        computer: Computer,
+        folder: str,
+        take_id: str,
+        cut: str,
+        seconds: float,
+        tell: Callable[..., None] | None,
+    ) -> None:
+        """The cut, left running on the thread's computer by itself (a camera's clip takes as
+        long as it runs, or longer), and watched until it ends: how far it has come is told
+        from ffmpeg's own progress."""
+        worker = f"{cut}; echo $? > {take_id}.exit.tmp && mv {take_id}.exit.tmp {take_id}.exit"
+        started = computer.run(
+            f"cd {folder} && rm -f {take_id}.exit && "
+            f"(nohup sh -c {shlex.quote(worker)} </dev/null >{take_id}.log 2>&1 & "
+            f"echo $! > {take_id}.pid)",
+            timeout=60,
+        )
+        if not started.ok:
+            raise ValueError(f"The cut could not start: {_clean(started.output[-200:])}")
+        deadline = time.monotonic() + max(1800.0, seconds * 8)
+        while True:
+            time.sleep(CUT_POLL)
+            if self._closing:
+                raise ValueError("The house closed before the recording was cut.")
+            poll = computer.run(
+                f'cd {folder} && echo "exit: $(cat {take_id}.exit 2>/dev/null)"; '
+                f"tail -c 2000 {take_id}.progress 2>/dev/null | grep '^out_time_us=' | tail -1",
+                timeout=60,
+            ).output
+            ended = re.search(r"^exit: (\d+)", poll, re.M)
+            if ended:
+                break
+            at = re.search(r"^out_time_us=(\d+)", poll, re.M)
+            if tell is not None and at and seconds > 0:
+                tell(state="cutting", fraction=min(1.0, int(at[1]) / 1e6 / seconds))
+            if time.monotonic() > deadline:
+                raise ValueError("Cutting the recording took far longer than it runs.")
+        if ended[1] != "0":
+            said = computer.run(f"tail -c 600 {folder}/{take_id}.log", timeout=60).output
+            raise ValueError(f"The recording couldn't be cut: {_clean(said[-240:])}")
+
+    def _forget_copies(self, episode: Row, take_id: str) -> None:
+        """A take's files on the thread's computer gone, and a cut still making them stopped
+        (by the process it was left running as: a match on its name would match this too)."""
+        computer = self._computer(episode)
+        computer.run(
+            f"cd {PROJECTS}/{episode['id']}/takes 2>/dev/null || exit 0; "
+            f'if [ -s {take_id}.pid ]; then p=$(cat {take_id}.pid); pkill -P "$p"; kill "$p"; fi '
+            f"2>/dev/null; rm -f {take_id}.*",
+            timeout=120,
+        )
+
+    def _take_path(self, episode_id: str, take_id: str, kind: str) -> str:
+        """Where a take's copy (`video`, `uhd` or `audio`) stays on the thread's computer."""
+        return f"{PROJECTS}/{episode_id}/takes/{take_id}.{COPIES[kind]}"
+
+    def _in_sandbox(
+        self, computer: Computer, episode: Row, copies: Sequence[tuple[Row, str]]
+    ) -> dict[tuple[str, str], str]:
+        """Where these copies of takes (a take, and `video`, `uhd` or `audio`) are on the
+        thread's computer, where they stay between renders. A copy not there whole (a new
+        computer, a take from before copies were kept there) is sent again from the house's
+        files, as a file."""
+        wanted: dict[tuple[str, str], tuple[str, Row]] = {}
+        for take, kind in copies:
+            row = self.store.file(str(take.get(kind) or "")) if take.get(kind) else None
+            if row is not None:
+                wanted[(str(take["id"]), kind)] = (
+                    self._take_path(str(episode["id"]), str(take["id"]), kind),
+                    row,
+                )
+        if not wanted:
+            return {}
+        paths = " ".join(path for path, _ in wanted.values())
+        listed = computer.run(
+            f'for f in {paths}; do [ -f "$f" ] && echo "$(wc -c < "$f" | tr -d " ") $f"; done',
+            timeout=120,
+        ).output
+        sizes = {path: int(size) for size, path in re.findall(r"^(\d+) (\S+)$", listed, re.M)}
+        for path, row in wanted.values():
+            if sizes.get(path) != int(row["size"]):
+                with (self.host.files_dir / str(row["rel_path"])).open("rb") as copy_of:
+                    computer.put_stream(path, copy_of)
+        return {key: path for key, (path, _) in wanted.items()}
 
     def keep_take(self, episode_id: str, take_id: str, *, keep: bool) -> Row:
         take = self.store.take(take_id)
@@ -3171,7 +3824,17 @@ class EpisodeDesk:
                 if other["chapter"] == take["chapter"] and other["frame"] == take["frame"]:
                     self.store.update_take(str(other["id"]), kept=other["id"] == take_id)
         else:
+            # a deleted take's copies go with it (a 4K one runs to gigabytes); the recording
+            # as it arrived stays where it was kept
             self.store.delete_take(take_id)
+            for kind in COPIES:
+                if take.get(kind):
+                    self.host.drop_file(str(take[kind]))
+            episode = self._episode(episode_id)
+            with contextlib.suppress(RuntimeError):
+                asyncio.get_running_loop().create_task(
+                    asyncio.to_thread(_quietly, self._forget_copies, episode, take_id)
+                )
         self._settle(episode_id)
         return self.view(episode_id)
 
@@ -3240,13 +3903,19 @@ class EpisodeDesk:
             parts.append(picked)
         return plans.digest(json.dumps(parts, sort_keys=True))
 
-    def render(self, episode_id: str, *, by: str) -> Row:
+    def render(self, episode_id: str, *, by: str, size: str = "") -> Row:
+        """The film rendered on the thread's computer, in HD or in 4K (`SIZES`); with no size
+        named, in the size it was asked for last."""
         episode = self._episode(episode_id)
         if self._full(episode) is None or self._status(episode_id) != "studio":
             # a film of nothing but stand-ins is no draft: something of it is made first
             raise ValueError("Make a picture or record a chapter first.")
-        if (episode["film"] or {}).get("status") == "rendering":
+        film_was = episode["film"] or {}
+        if film_was.get("status") == "rendering":
             raise ValueError("The film is already rendering.")
+        size = size or str(film_was.get("making") or film_was.get("size") or "hd")
+        if size not in SIZES:
+            raise ValueError("A film is rendered in HD or in 4K.")
         blocked = self._render_blocked(self.store.pictures(episode_id), self._kept(episode_id))
         if blocked:
             raise ValueError(blocked)
@@ -3255,10 +3924,11 @@ class EpisodeDesk:
             film={
                 **{
                     k: v
-                    for k, v in (episode["film"] or {}).items()
-                    if k in ("voice", "file", "poster", "sig", "at", "seconds")
+                    for k, v in film_was.items()
+                    if k in ("voice", "file", "poster", "sig", "at", "seconds", "size")
                 },
                 "status": "rendering",
+                "making": size,
                 "started_at": time.time(),
                 "phase": "prepare",
                 "fraction": 0.0,
@@ -3268,7 +3938,8 @@ class EpisodeDesk:
         self._jobs[f"film:{episode_id}"] = asyncio.get_running_loop().create_task(
             self._rendered(episode_id), name=f"episode film {episode_id}"
         )
-        self._say(episode, f"Asked for the film of “{episode['title']}”.", by=by)
+        shown = " in 4K" if size == "4k" else ""
+        self._say(episode, f"Asked for the film of “{episode['title']}”{shown}.", by=by)
         self._settle(episode_id)
         return self.view(episode_id)
 
@@ -3702,12 +4373,14 @@ class EpisodeDesk:
         full = self._full(episode)
         if full is None:
             raise ValueError("The plan isn't written yet.")
+        size = str((episode["film"] or {}).get("making") or "hd")
         computer = self._ready(episode)
         attempt = new_id("render")
         folder = f"{PROJECTS}/{episode_id}/{attempt}/film"
         kept = [t for t in self.store.takes(episode_id) if t["kept"]]
         spoken = self._voice(episode)
         clock = timeline.schedule(full, kept, spoken)
+        self._room_for(computer, size, float(clock["total"]))
         media: list[tuple[str, bytes]] = []
         voice: dict[str, str] = {}
         for frame_id, said in spoken.items():
@@ -3721,19 +4394,32 @@ class EpisodeDesk:
                         (self.host.files_dir / row["rel_path"]).read_bytes(),
                     )
                 )
+
+        # The takes wait on the thread's computer between renders: each is linked into the
+        # film's folder, its copy for 4K in a film in 4K (a take with none is its HD one, scaled).
+        def shown(take: Row) -> str:
+            return "uhd" if size == "4k" and take.get("uhd") else "video"
+
+        placed = self._in_sandbox(
+            computer, episode, [(t, kind) for t in kept for kind in (shown(t), "audio")]
+        )
         takes: dict[str, Row] = {}
+        links: list[tuple[str, str]] = []
+        upscaled = 0
         for take in kept:
+            take_id = str(take["id"])
             entry: Row = {"video": "", "audio": ""}
-            for kind, suffix in (("video", "mp4"), ("audio", "m4a")):
-                row = self.store.file(str(take[kind])) if take[kind] else None
-                if row is None:
+            shows = shown(take)
+            if size == "4k" and shows == "video" and (take_id, "video") in placed:
+                upscaled += 1
+            for kind, which, suffix in (("video", shows, "mp4"), ("audio", "audio", "m4a")):
+                there = placed.get((take_id, which))
+                if there is None:
                     continue
-                path = f"takes/{take['id']}.{suffix}"
-                media.append(
-                    (f"{folder}/{path}", (self.host.files_dir / row["rel_path"]).read_bytes())
-                )
+                path = f"takes/{take_id}.{suffix}"
+                links.append((there, f"{folder}/{path}"))
                 entry[kind] = path
-            takes[str(take["id"])] = entry
+            takes[take_id] = entry
         found = self._units(episode, full)
         rows = self.store.pictures(episode_id)
         blocked = self._render_blocked(rows, kept)
@@ -3761,19 +4447,38 @@ class EpisodeDesk:
             (line for line in clock["lines"] if line["frame"] in pictured_frames), clock["lines"][0]
         )
         cover_at = cover_line["start"] + cover_line["seconds"] * 0.8
+        slug = (
+            re.sub(r"[^a-z0-9]+", "-", str(episode["title"]).lower()).strip("-")[:48] or "episode"
+        )
+        thread_id = str(episode["thread_id"])
         poster = None
         try:
             computer.put(
                 [(f"{folder}/{path}", text.encode()) for path, text in files.items()] + media
             )
+            if links:
+                linked = computer.run(
+                    f"mkdir -p {folder}/takes && "
+                    + " && ".join(
+                        f"{{ ln -f {a} {b} 2>/dev/null || cp {a} {b}; }}" for a, b in links
+                    ),
+                    timeout=1800,
+                )
+                if not linked.ok:
+                    raise ValueError(
+                        "The takes couldn't be put beside the film: "
+                        + _clean(linked.output[-200:], 200)
+                    )
             setup = computer.run(
-                f"mkdir -p {folder}/out && {episode_render.launch(folder, attempt)}", timeout=60
+                f"mkdir -p {folder}/out && {episode_render.launch(folder, attempt, size)}",
+                timeout=60,
             )
             if not setup.ok:
                 raise ValueError(
                     "The renderer could not start: " + _clean(setup.output[-240:], 240)
                 )
             started = time.monotonic()
+            hours = 3 * (SLOWER_4K if size == "4k" else 1)
             while True:
                 time.sleep(3.0)
                 if self._closing:
@@ -3791,12 +4496,22 @@ class EpisodeDesk:
                     raise ValueError("The renderer stopped before finishing. Retry the render.")
                 if state != "running":
                     break
-                if time.monotonic() - started > 3 * 3600:
-                    raise ValueError("The render took longer than three hours.")
-            content = computer.get(f"{folder}/out/episode.mp4") if state == "0" else None
-            if not content:
+                if time.monotonic() - started > hours * 3600:
+                    raise ValueError(f"The render took longer than {hours} hours.")
+
+            def write(into: IO[bytes]) -> None:
+                computer.get_into(f"{folder}/out/episode.mp4", into, timeout=4 * 3600)
+
+            # Kept as the episode's own file: its card holds the film, and an earlier render
+            # never lingers on the canvas as something delivered loose. A film in 4K runs to
+            # gigabytes, so it is copied out as a file.
+            try:
+                if state != "0":
+                    raise FileNotFoundError(folder)
+                row = self.host.save_file_from(thread_id, f"{slug}.mp4", write, origin="episode")
+            except FileNotFoundError:
                 tail = computer.run(f"tail -5 {folder}/render.log").output
-                raise ValueError(f"The render stopped: {_clean(tail[-300:])}")
+                raise ValueError(f"The render stopped: {_clean(tail[-300:])}") from None
             # A thumbnail failure must not discard a successfully rendered film.
             with contextlib.suppress(Exception):
                 captured = computer.run(
@@ -3810,19 +4525,11 @@ class EpisodeDesk:
             # Each attempt owns its scratch files. A retry cannot read another attempt's MP4.
             with contextlib.suppress(Exception):
                 computer.run(f"rm -rf {PROJECTS}/{episode_id}/{attempt}", timeout=60)
-        slug = (
-            re.sub(r"[^a-z0-9]+", "-", str(episode["title"]).lower()).strip("-")[:48] or "episode"
-        )
-        # Kept as the episode's own file: its card holds the film, and an earlier render
-        # never lingers on the canvas as something delivered loose.
-        row = self.host.save_file(
-            str(episode["thread_id"]), f"{slug}.mp4", content, origin="episode"
-        )
         poster_id = None
         if poster:
             with contextlib.suppress(Exception):
                 poster_id = self.host.save_file(
-                    str(episode["thread_id"]), f"{slug}-poster.jpg", poster, origin="episode"
+                    thread_id, f"{slug}-poster.jpg", poster, origin="episode"
                 )["id"]
         episode = self._episode(episode_id)
         # The narration stays with the film: it is what the film's clock and signature were
@@ -3840,11 +4547,31 @@ class EpisodeDesk:
                 "poster": poster_id,
                 "sig": signature,
                 "seconds": clock["total"],
+                "size": size,
+                "making": size,
+                "upscaled": upscaled,
                 "failure": "",
                 "at": time.time(),
             },
         )
         self.host.file_asset(str(episode["asset_id"]), row)
+
+    def _room_for(self, computer: Computer, size: str, seconds: float) -> None:
+        """A render the thread's computer hasn't the room for is refused before it starts, with
+        how much it needs: a film's frames are kept on its disk while it renders (a minute of
+        film in 4K takes about 2.5 GB)."""
+        need = int(seconds * SCRATCH[size]) + SCRATCH_FLOOR
+        said = computer.run(
+            "df -Pk /workspace /tmp 2>/dev/null | awk 'NR > 1 {print $4}'", timeout=60
+        ).output
+        free = [int(v) * 1024 for v in re.findall(r"^(\d+)$", said, re.M)]
+        if free and min(free) < need:
+            minutes = max(1, round(seconds / 60))
+            raise ValueError(
+                f"A {minutes}-minute film in {'4K' if size == '4k' else 'HD'} needs about "
+                f"{_gb(need)} free on the render computer, which has {_gb(min(free))}. "
+                "Free some space there (or give Docker more disk), then render again."
+            )
 
     # -- what the house shows --------------------------------------------------------------------
 
@@ -3883,6 +4610,7 @@ class EpisodeDesk:
         return (
             self.planning(episode_id)
             or f"film:{episode_id}" in self._jobs
+            or any(key.startswith(f"import:{episode_id}:") for key in self._jobs)
             or any(key[0] == episode_id and not task.done() for key, task in self._builds.items())
         )
 
@@ -3973,6 +4701,23 @@ class EpisodeDesk:
                         "failure": "Stopped when the house restarted.",
                     },
                 )
+            imports = episode.get("imports") or {}
+            if any(entry.get("state") != "failed" for entry in imports.values()):
+                # a recording half brought in is not a take: it is brought in again
+                self.store.update_episode(
+                    episode_id,
+                    imports={
+                        chapter: entry
+                        if entry.get("state") == "failed"
+                        else {
+                            **entry,
+                            "state": "failed",
+                            "ended_at": time.time(),
+                            "failure": "Stopped when the house restarted. Bring it in again.",
+                        }
+                        for chapter, entry in imports.items()
+                    },
+                )
             # nothing is running now: its card and its thread say where it stands, not where
             # the last process left it
             self._settle(episode_id)
@@ -4019,7 +4764,10 @@ class EpisodeDesk:
                 "failed": sum(1 for p in pictures if p["status"] == "failed"),
             },
             "film": {
-                **{k: film_state.get(k) for k in ("status", "fraction", "failure", "seconds")},
+                **{
+                    k: film_state.get(k)
+                    for k in ("status", "fraction", "failure", "seconds", "size", "making")
+                },
                 "poster": poster,
             },
         }
@@ -4170,6 +4918,11 @@ class EpisodeDesk:
                 for unit in found
             ],
             "takes": [self._take_view(t) for t in self.store.takes(episode_id)],
+            # recordings coming in for chapters, and the ones that could not be, with why
+            "imports": [
+                {"chapter": chapter, **entry}
+                for chapter, entry in (episode.get("imports") or {}).items()
+            ],
             "film_state": film_state,
             "checks": [r for r in report.get("rows", []) if r.get("level") in ("must", "look")],
             # the last change that stands: what it did, and how many before it can also go back
@@ -4312,6 +5065,11 @@ class EpisodeDesk:
             "kept": take["kept"],
             "video": self._file(take["video"]),
             "audio": self._file(take["audio"]),
+            # its copy for a film in 4K, for a recording taller than the film's frame
+            "uhd": self._file(take.get("uhd")),
+            # what it was and where it came from, and where it is kept as it arrived
+            "recording": take.get("recording") or {},
+            "kept_at": take.get("raw") or "",
             "created_at": take["created_at"],
         }
 

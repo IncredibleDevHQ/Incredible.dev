@@ -12,13 +12,14 @@ from __future__ import annotations
 import shlex
 import shutil
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
 
 from design_agent.middleware.workspace import stage
 from design_agent.runtime.sandbox import SandboxBinding
-from design_agent.runtime.sandbox.docker import DockerStagingTarget, tar_of
+from design_agent.runtime.sandbox.docker import PIECE, DockerStagingTarget, tar_of
 from design_agent.workspace.manifest import Manifest
 
 #: Where the agent's projects live on the thread's computer.
@@ -72,15 +73,23 @@ class Computer:
         self._runner.exec(self._thread_id, "mkdir -p " + " ".join(shlex.quote(p) for p in parents))
         self._runner.put_archive(self._thread_id, tar_of(files), root=False)
 
-    def put_stream(self, path: str, source: IO[bytes]) -> None:
+    def put_stream(
+        self, path: str, source: IO[bytes], *, progress: Callable[[int], None] | None = None
+    ) -> None:
         """One file from an open file on this computer, from its start, copied across without
-        being held in memory: a camera's own recording runs to gigabytes."""
+        being held in memory: a camera's own recording runs to gigabytes. `progress` is told
+        how many bytes have gone as they go."""
         source.seek(0)
         if self._runner is None:
             target = self._local(path)
             target.parent.mkdir(parents=True, exist_ok=True)
             with target.open("wb") as out:
-                shutil.copyfileobj(source, out, 1024 * 1024)
+                sent = 0
+                while piece := source.read(PIECE):
+                    out.write(piece)
+                    sent += len(piece)
+                    if progress is not None:
+                        progress(sent)
             return
         try:
             source.fileno()
@@ -89,13 +98,26 @@ class Computer:
             self.put([(path, source.read())])
             return
         self._runner.exec(self._thread_id, f"mkdir -p {shlex.quote(str(Path(path).parent))}")
-        self._runner.put_file(self._thread_id, path, source)
+        self._runner.put_file(self._thread_id, path, source, progress=progress)
 
     def get(self, path: str) -> bytes | None:
         if self._runner is None:
             target = self._local(path)
             return target.read_bytes() if target.is_file() else None
         return self._runner.get_file(self._thread_id, path)
+
+    def get_into(self, path: str, target: IO[bytes], *, timeout: int = 3600) -> None:
+        """One file copied out into an open file on this computer as it is read, never held in
+        memory (a take's copy for a 4K film, a rendered film). Raises when it isn't there."""
+        if self._runner is None:
+            found = self._local(path)
+            if not found.is_file():
+                raise FileNotFoundError(path)
+            with found.open("rb") as source:
+                shutil.copyfileobj(source, target, PIECE)
+            return
+        if not self._runner.get_file_into(self._thread_id, path, target, timeout=timeout):
+            raise FileNotFoundError(path)
 
     def run(self, command: str, *, timeout: int = 600) -> Ran:
         if self._runner is None:

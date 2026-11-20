@@ -154,6 +154,16 @@ ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # is no bucket for footage.
     ("takes", "raw", "TEXT NOT NULL DEFAULT ''"),
     ("takes", "label", "TEXT NOT NULL DEFAULT ''"),
+    # A take's copy for a film in 4K, no taller than 2160 (a file's id); empty for a recording
+    # no taller than the film's own 1080.
+    ("takes", "uhd", "TEXT NOT NULL DEFAULT ''"),
+    # What the recording was (the studio's own take, a file brought, a camera's clip), its name,
+    # when it was recorded, what the house noticed of it, and, for a camera's clip matched to a
+    # take by sound, which take and where.
+    ("takes", "recording", "TEXT NOT NULL DEFAULT '{}'"),
+    # The recordings being brought in for an episode's chapters, by chapter, while they are,
+    # and the ones that could not be, with why.
+    ("episodes", "imports", "TEXT NOT NULL DEFAULT '{}'"),
     # What a picture was built as and by whom: its level (simple or rich), the agent that built
     # it, and for a rich one the motion plan its builder wrote before drawing it.
     ("pictures", "level", "TEXT NOT NULL DEFAULT ''"),
@@ -194,6 +204,8 @@ JSON_COLUMNS = frozenset(
         "picks",
         "report",
         "film",
+        "imports",
+        "recording",
         "stills",
         "marks",
         "motion",
@@ -449,6 +461,10 @@ class Store:
 
     def file(self, file_id: str) -> Row | None:
         return self._one("SELECT * FROM files WHERE id = ?", (file_id,))
+
+    def delete_file(self, file_id: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM files WHERE id = ?", (file_id,))
 
     def files(self, thread_id: str, origin: str | None = None) -> list[Row]:
         if origin is None:
