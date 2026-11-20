@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Added
+
+- A camera's own recording, matched by sound: record a chapter in the studio while the camera
+  rolls, then press Camera file on the take. The clips on the camera's card are listed where they
+  are (no upload, any size); the one picked is found under the studio's take by the sound the two
+  share, cut to that stretch, and becomes the chapter's take with the take's marks, with Undo. A
+  clip that doesn't match, matches twice, or doesn't cover the take is refused with why
+  ([docs/recording.md](docs/recording.md)).
+- Films in 4K: pick 4K beside Render. HyperFrames renders the same page at twice the density, and
+  each take shows a 2160p copy made when it came in; a render without the disk it needs is
+  refused before it starts.
+- Recordings brought in as files, or from a card, come in while the studio goes on, with how far
+  they have come on the chapter and in the bar's running tasks.
+
 ### Changed
 
 - Every take's recording is kept as it arrived: in `<workspace>/house/footage` (or

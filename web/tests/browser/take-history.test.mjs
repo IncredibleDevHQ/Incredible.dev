@@ -18,4 +18,8 @@ test('take history previews without selecting and explicitly restores a named re
  assert.equal(selected,0);
  await page.getByRole('button',{name:'Use this take'}).click();
  assert.equal(selected,1);
+ // the camera's file of a studio take, from its card or a file; a camera's own take says where it came from
+ assert.equal(await page.getByRole('button',{name:'Camera file'}).count(),1);
+ assert.equal(await page.getByText('4K',{exact:true}).count(),1);
+ await page.getByText('C0012.MP4, matched to Calm delivery',{exact:false}).waitFor();
 });
