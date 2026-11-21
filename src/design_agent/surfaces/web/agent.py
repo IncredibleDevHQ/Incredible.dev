@@ -41,7 +41,7 @@ from design_agent.harness import events as ev
 from design_agent.harness import tasks
 from design_agent.harness.notices import should_post
 from design_agent.middleware.meter import METER
-from design_agent.surfaces.web import catalog, pages, preview
+from design_agent.surfaces.web import catalog, episode_models, pages, preview
 from design_agent.surfaces.web.episode_desk import EpisodeDesk
 from design_agent.surfaces.web.hub import Hub
 from design_agent.surfaces.web.preview import Previews
@@ -482,11 +482,22 @@ class AgentHost:
                 raise ValueError(
                     "Start this picture when the current conversation turn has finished."
                 )
+            selected = overrides[0] if overrides else None
+            if selected is None and not self.demo:
+                saved = self.store.model_default()
+                if saved["model"] and any(
+                    row["id"] == saved["model"]
+                    and (not saved["effort"] or saved["effort"] in row["efforts"])
+                    for row in episode_models.chat_options(self.settings)
+                ):
+                    selected = self.settings.model_copy(
+                        update={"model": saved["model"], "model_effort": saved["effort"] or None}
+                    )
             added = await runtime.ask(
                 text,
                 thread_id=thread_id,
                 configurable={"surface": "web"},
-                **({"model_settings": overrides[0]} if overrides else {}),
+                **({"model_settings": selected} if selected else {}),
             )
         except asyncio.CancelledError:
             raise

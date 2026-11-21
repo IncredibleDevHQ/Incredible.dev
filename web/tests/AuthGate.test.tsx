@@ -20,3 +20,26 @@ test("a failed session check keeps private contents hidden", async () => {
   expect(await screen.findByRole("alert")).toBeTruthy();
   expect(screen.queryByText("Private contents")).toBeNull();
 });
+
+test.each([200, 409])("signup shows progress then opens sign-in for status %s", async status => {
+  const { fireEvent } = await import("@testing-library/react");
+  let resolve!: (response: Response) => void;
+  vi.stubGlobal("fetch", vi.fn()
+    .mockResolvedValueOnce(new Response("{}", {status: 401}))
+    .mockResolvedValueOnce(Response.json({google: true}))
+    .mockImplementationOnce(() => new Promise<Response>(r => {resolve = r;})));
+  render(<AuthGate>Workspace</AuthGate>);
+  fireEvent.click(await screen.findByRole("button", {name: "Create an account"}));
+  fireEvent.change(screen.getByLabelText("Email"), {target: {value: "member@example.com"}});
+  fireEvent.change(screen.getByLabelText("Password"), {target: {value: "example-password"}});
+  fireEvent.click(screen.getByRole("button", {name: "Create account"}));
+  const pending = await screen.findByRole("button", {name: /Creating account/});
+  expect(pending.querySelector(".spin")).toBeTruthy();
+  expect((pending as HTMLButtonElement).disabled).toBe(true);
+  const feedback = status === 409 ? {detail:"Account already exists."} : {message:"Confirm your email."};
+  resolve(Response.json(feedback, {status}));
+  expect(await screen.findByRole("heading", {name:"Welcome back"})).toBeTruthy();
+  expect(screen.getByRole(status === 409 ? "alert" : "status").textContent).toBe(Object.values(feedback)[0]);
+  expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe("member@example.com");
+  expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("");
+});

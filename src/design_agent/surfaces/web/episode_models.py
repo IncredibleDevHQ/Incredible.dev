@@ -9,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from design_agent.config import Settings
+from design_agent.config import ModelSpec, Settings
 from design_agent.models.factory import resolve_model
 from design_agent.models.registry import CAPABILITY_REGISTRY
 from design_agent.surfaces.web.research import codex_model_list
@@ -236,3 +236,47 @@ def settings_for(settings: Settings, model: str, effort: str) -> Settings:
             "model_effort": effort or (settings.model_effort if route == str(spec) else None),
         }
     )
+
+
+def chat_options(settings: Settings) -> list[Row]:
+    """Offer registered vision models for available providers, preserving gateway routing."""
+    default = settings.lead_model()
+    upstream = default.upstream
+    configured = {upstream.provider}
+    if not settings.model_base_url:
+        configured.update(
+            p
+            for p, key in (
+                ("openai", settings.openai_api_key),
+                ("anthropic", settings.anthropic_api_key),
+                ("google_genai", settings.google_api_key),
+                ("groq", settings.groq_api_key),
+            )
+            if key
+        )
+    choices = {str(default): upstream}
+    for route, caps in CAPABILITY_REGISTRY.items():
+        if (
+            settings.model_base_url
+            or caps.provider == "scripted"
+            or not caps.vision
+            or (not default.via_gateway and caps.provider not in configured)
+        ):
+            continue
+        spec = ModelSpec.parse(route)
+        key = f"langsmith:{spec.provider}/{spec.model}" if default.via_gateway else route
+        choices[key] = spec
+    rows = []
+    for route, spec in choices.items():
+        scoped = settings.model_copy(update={"model": route, "model_effort": None})
+        resolved = resolve_model(scoped)
+        rows.append(
+            {
+                "id": route,
+                "provider": "kimi" if spec.model.lower().startswith("kimi") else spec.provider,
+                "name": spec.model,
+                "default_effort": resolved.effort,
+                "efforts": [e for e in ORDER if e in resolved.caps.efforts],
+            }
+        )
+    return rows

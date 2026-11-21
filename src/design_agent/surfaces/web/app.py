@@ -73,6 +73,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import html
+import io
 import json
 import mimetypes
 import os
@@ -97,6 +98,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
+from PIL import Image, ImageOps
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 from starlette.background import BackgroundTask
 from starlette.datastructures import UploadFile as FormFile
@@ -105,7 +107,7 @@ from design_agent.config import SAMPLE_BRAND, Settings
 from design_agent.runtime import maintenance
 from design_agent.runtime.local import build_local_runtime
 from design_agent.runtime.persistence import open_persistence, workspace_of
-from design_agent.surfaces.web import camera
+from design_agent.surfaces.web import camera, episode_models
 from design_agent.surfaces.web.agent import AgentHost
 from design_agent.surfaces.web.blobs import StorageUnavailable, byte_range
 from design_agent.surfaces.web.brands import BrandShelf, brand_view
@@ -128,6 +130,31 @@ SPARE_BYTES = 1024**3
 #: A recording brought for a voice clone: a few minutes of speech.
 MAX_SAMPLE_BYTES = 25 * 1024 * 1024
 PING_SECONDS = 15.0
+
+
+def avatar_image(content: bytes) -> bytes:
+    try:
+        with Image.open(io.BytesIO(content), formats=("JPEG", "PNG", "WEBP")) as photo:
+            if photo.width * photo.height > 16_000_000:
+                raise ValueError("Choose an image under 16 megapixels.")
+            cropped = ImageOps.fit(ImageOps.exif_transpose(photo).convert("RGBA"), (256, 256))
+            cropped.info.clear()
+            output = io.BytesIO()
+            cropped.save(output, "PNG")
+            return output.getvalue()
+    except (OSError, SyntaxError, Image.DecompressionBombError) as exc:
+        raise ValueError("Choose a valid JPEG, PNG or WebP image.") from exc
+
+
+class ProfileIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    name: str = Field(min_length=1, max_length=100)
+    hue: int = Field(ge=0, le=359)
+
+
+class ChatDefaultIn(BaseModel):
+    model: str = Field(max_length=200)
+    effort: str = Field(max_length=20)
 
 
 class OrganizationIn(BaseModel):
@@ -611,6 +638,52 @@ def create_app(
             "authenticated": bool(authenticated_user),
             "sandbox": runtime.binding.name if runtime else None,
         }
+
+    @app.put("/api/profile")
+    def save_profile(body: ProfileIn, me: str = Depends(person)) -> dict[str, Any]:
+        if not authenticated_user:
+            raise HTTPException(403, "Sign in to edit your profile.")
+        store.save_profile(me, body.name, body.hue)
+        return store.person(me) or {}
+
+    @app.post("/api/profile/avatar")
+    async def upload_avatar(file: UploadFile, me: str = Depends(person)) -> dict[str, Any]:
+        if not authenticated_user:
+            raise HTTPException(403, "Sign in to edit your profile.")
+        limit = 5 * 1024 * 1024
+        content = await file.read(limit + 1)
+        if len(content) > limit:
+            raise HTTPException(413, "Choose an image under 5 MB.")
+        try:
+            image = await asyncio.to_thread(avatar_image, content)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
+        stored = await asyncio.to_thread(
+            host.save_file, "", "avatar.png", image, origin="avatar", author=me
+        )
+        store.save_avatar(me, stored["id"])
+        return store.person(me) or {}
+
+    @app.get("/api/preferences/model")
+    def get_model_default(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        return {
+            "options": episode_models.chat_options(settings),
+            "default": str(settings.lead_model()),
+            **store.model_default(),
+        }
+
+    @app.put("/api/preferences/model")
+    def set_model_default(body: ChatDefaultIn, me: str = Depends(person)) -> dict[str, str]:  # noqa: ARG001
+        if not authenticated_user:
+            raise HTTPException(403, "Sign in to edit your preferences.")
+        options = episode_models.chat_options(settings)
+        row = next((r for r in options if r["id"] == body.model), None)
+        if (body.model and not row) or (
+            body.effort and (not row or body.effort not in row["efforts"])
+        ):
+            raise HTTPException(422, "Choose an available provider, model and effort.")
+        store.save_model_default(body.model, body.effort)
+        return body.model_dump()
 
     @app.get("/api/organization")
     def organization(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001

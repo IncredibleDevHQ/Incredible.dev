@@ -547,3 +547,73 @@ def test_organization_persists_and_validates(tmp_path):
         ]:
             assert client.put("/api/organization", json=profile | invalid).status_code == 422
         assert client.get("/api/organization").json()["description"] == "Design team"
+
+
+async def test_saved_chat_defaults_reach_the_runtime(host, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    agent, runtime = host
+    agent.demo = False
+    agent.settings = agent.settings.model_copy(update={"model": "openai:gpt-6.1-sol"})
+    agent.store.save_model_default("openai:gpt-6.1-sol", "medium")
+    run = AsyncMock(return_value=[AIMessage(content="Done")])
+    monkeypatch.setattr(runtime, "ask", run)
+    agent.post(
+        channel_id=agent.store.channels()[0]["id"], author_id="you", text="Hello", to_agent=True
+    )
+    await asyncio.sleep(0.05)
+    scoped = run.await_args.kwargs["model_settings"]
+    assert (scoped.model, scoped.model_effort) == ("openai:gpt-6.1-sol", "medium")
+
+
+def test_avatar_normalizes_valid_pictures_and_rejects_invalid_files():
+    from io import BytesIO
+
+    from PIL import Image
+
+    from design_agent.surfaces.web.app import avatar_image
+
+    picture = BytesIO()
+    Image.new("RGB", (640, 320)).save(picture, "PNG")
+    with Image.open(BytesIO(avatar_image(picture.getvalue()))) as result:
+        assert result.size == (256, 256) and result.format == "PNG"
+    with pytest.raises(ValueError):
+        avatar_image(b"invalid image")
+
+
+def test_profile_avatar_upload_and_reload(tmp_path):
+    from io import BytesIO
+
+    from PIL import Image
+
+    account = {"id": "11111111-1111-4111-8111-111111111111", "email": "member@example.com"}
+    app = create_app(
+        Path(__file__).resolve().parents[2],
+        Settings(_env_file=None, workspace_root=tmp_path),
+        demo=True,
+        authenticated_user=account,
+    )
+    picture = BytesIO()
+    Image.new("RGB", (32, 32)).save(picture, "JPEG")
+    with TestClient(app) as client:
+        r = client.post(
+            "/api/profile/avatar", files={"file": ("me.jpg", picture.getvalue(), "image/jpeg")}
+        )
+        assert r.status_code == 200
+        fid = r.json()["avatar_file"]
+        assert client.get(f"/api/files/{fid}").content.startswith(b"\x89PNG")
+        assert (
+            client.post(
+                "/api/profile/avatar", files={"file": ("bad.png", b"bad", "image/png")}
+            ).status_code
+            == 422
+        )
+        assert (
+            client.post(
+                "/api/profile/avatar",
+                files={"file": ("large.png", bytes(5 * 1024 * 1024 + 1), "image/png")},
+            ).status_code
+            == 413
+        )
+        people = client.get("/api/session").json()["people"]
+        assert next(p for p in people if p["id"] == account["id"])["avatar_file"] == fid

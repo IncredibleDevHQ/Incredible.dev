@@ -72,7 +72,7 @@ export function Avatar({ person, size }: { person?: Person; size?: "sm" }) {
       aria-hidden="true"
       title={person.name}
     >
-      {person.initials}
+      {person.avatar_file ? <img className="avatar-photo" src={`/api/files/${encodeURIComponent(person.avatar_file)}`} alt="" /> : person.initials}
     </span>
   );
 }

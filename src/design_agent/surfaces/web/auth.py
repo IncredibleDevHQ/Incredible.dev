@@ -68,9 +68,20 @@ def user_schema(user_id: str) -> str:
     return "user_" + uuid.UUID(user_id).hex
 
 
-class Credentials(BaseModel):
-    email: str = Field(min_length=3, max_length=254)
+class PasswordInput(BaseModel):
     password: SecretStr = Field(min_length=8, max_length=256)
+
+
+class CurrentPasswordInput(BaseModel):
+    password: SecretStr = Field(min_length=1, max_length=256)
+
+
+class PasswordChange(PasswordInput):
+    current_password: SecretStr | None = Field(default=None, max_length=256)
+
+
+class Credentials(PasswordInput):
+    email: str = Field(min_length=3, max_length=254)
 
     @field_validator("email")
     @classmethod
@@ -163,7 +174,23 @@ class Auth:
             return None
         if not data.get("email_confirmed_at") or not data.get("email") or data.get("is_anonymous"):
             return None
-        return {"id": data["id"], "email": data["email"]}
+        # Supabase links an email identity on first password setup. Keep the
+        # existing Studio marker for accounts created before identity linking.
+        providers = (data.get("app_metadata") or {}).get("providers") or []
+        identities = {
+            entry.get("provider")
+            for entry in data.get("identities") or []
+            if isinstance(entry, dict)
+        }
+        marked = (data.get("user_metadata") or {}).get("studio_password_set") is True
+        return {
+            "id": data["id"],
+            "email": data["email"],
+            "has_password": marked
+            or "email" in identities
+            or "email" in providers
+            or "google" not in providers,
+        }
 
     async def identity(self, request: Request) -> tuple[dict[str, Any], dict[str, Any] | None]:
         access = request.cookies.get(ACCESS)
@@ -460,6 +487,23 @@ def create_authenticated_app(
             params={"redirect_to": auth.origin + "/api/auth/callback"} if signup else None,
             json=payload,
         )
+        if signup and upstream.headers.get("content-type", "").startswith("application/json"):
+            payload_data = upstream.json()
+            if isinstance(payload_data, dict):
+                identity = payload_data.get("user", payload_data)
+                duplicate = payload_data.get("error_code") in {
+                    "email_exists",
+                    "user_already_exists",
+                }
+                if duplicate or (
+                    upstream.is_success
+                    and isinstance(identity, dict)
+                    and identity.get("identities") == []
+                    and not payload_data.get("access_token")
+                ):
+                    raise HTTPException(
+                        409, "An account with this email already exists. Sign in to continue."
+                    )
         if not upstream.is_success:
             raise HTTPException(
                 400 if signup else 401,
@@ -472,6 +516,11 @@ def create_authenticated_app(
             user = await auth.user(data["access_token"])
             if not user:
                 raise HTTPException(401, "Confirm your email before signing in")
+            if signup:
+                return JSONResponse(
+                    {"message": "Account created. Sign in to continue."},
+                    headers={"Cache-Control": "no-store"},
+                )
             auth.cookies(response, data)
         elif signup:
             response.body = b'{"message":"Check your email to confirm your account, then sign in."}'
@@ -516,6 +565,8 @@ def create_authenticated_app(
         code = request.query_params.get("code")
         verifier = request.cookies.get(VERIFIER)
         if not code or not verifier:
+            if "text/html" in request.headers.get("accept", ""):
+                return RedirectResponse("/?auth_error=link", status_code=303)
             raise HTTPException(
                 400, "Sign-in link is invalid or expired. Start again in this browser."
             )
@@ -523,6 +574,8 @@ def create_authenticated_app(
             "POST", "token?grant_type=pkce", json={"auth_code": code, "code_verifier": verifier}
         )
         if not result.is_success:
+            if "text/html" in request.headers.get("accept", ""):
+                return RedirectResponse("/?auth_error=link", status_code=303)
             raise HTTPException(400, "Sign-in link is invalid or expired. Start again.")
         data = result.json()
         if (
@@ -536,6 +589,69 @@ def create_authenticated_app(
         response.delete_cookie(
             VERIFIER, path="/api/auth", secure=auth.secure, httponly=True, samesite="lax"
         )
+        return response
+
+    async def verify_current(user: dict[str, Any], current: str) -> dict[str, Any]:
+        verified = await auth.call(
+            "POST",
+            "token?grant_type=password",
+            json={"email": user["email"], "password": current},
+        )
+        fresh = verified.json() if verified.is_success else {}
+        identity = await auth.user(fresh["access_token"]) if fresh.get("access_token") else None
+        if not identity or identity["id"] != user["id"]:
+            raise HTTPException(400, "Your current password is incorrect.")
+        return dict(fresh)
+
+    @app.post("/api/auth/password/verify")
+    async def verify_password(request: Request, body: CurrentPasswordInput) -> Response:
+        auth.origin_check(request)
+        auth.throttle(request)
+        user, _ = await auth.identity(request)
+        tokens = await verify_current(user, body.password.get_secret_value())
+        response = JSONResponse({"verified": True})
+        auth.cookies(response, tokens)
+        return response
+
+    @app.post("/api/auth/password")
+    async def save_password(request: Request, body: PasswordChange) -> Response:
+        auth.origin_check(request)
+        auth.throttle(request)
+        user, tokens = await auth.identity(request)
+        current = body.current_password.get_secret_value() if body.current_password else ""
+        if user["has_password"] or current:
+            if not current:
+                raise HTTPException(400, "Enter your current password.")
+            tokens = await verify_current(user, current)
+        access = tokens["access_token"] if tokens else request.cookies[ACCESS]
+        updated = await auth.call(
+            "PUT",
+            "user",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "password": body.password.get_secret_value(),
+                "data": {"studio_password_set": True},
+                **({"current_password": current} if current else {}),
+            },
+        )
+        if not updated.is_success:
+            code = (
+                updated.json().get("error_code")
+                if "application/json" in updated.headers.get("content-type", "")
+                else None
+            )
+            messages = {
+                "same_password": "Choose a password different from your current one.",
+                "weak_password": "Choose a stronger password and try again.",
+                "reauthentication_needed": "Sign in again, then retry the password change.",
+            }
+            raise HTTPException(
+                400,
+                messages.get(str(code), "Password could not be saved. Sign in again and retry."),
+            )
+        response = JSONResponse({"has_password": True}, headers={"Cache-Control": "no-store"})
+        if tokens:
+            auth.cookies(response, tokens)
         return response
 
     @app.post("/api/auth/logout")

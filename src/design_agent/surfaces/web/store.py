@@ -27,6 +27,8 @@ from typing import Any
 Row = dict[str, Any]
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS model_defaults (
+  id INTEGER PRIMARY KEY CHECK (id = 1), model TEXT NOT NULL, effort TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS organization (
   id INTEGER PRIMARY KEY CHECK (id = 1), name TEXT NOT NULL, website TEXT NOT NULL, description TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS people (
@@ -150,6 +152,7 @@ CONVERSATION = "conversation"
 HISTORY = 12
 #: Columns added since a table was first made, put into a store that predates them.
 ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("people", "avatar_file", "TEXT NOT NULL DEFAULT ''"),
     ("files", "storage", "TEXT NOT NULL DEFAULT 'local'"),
     # A film's Studio preview on the thread's computer, and the proof frames that came with it.
     ("assets", "preview", "TEXT NOT NULL DEFAULT '{}'"),
@@ -1015,6 +1018,27 @@ class Store:
             "series": series,
             "models": sorted(models.values(), key=lambda m: (-m["calls"], m["model"])),
         }
+
+    def save_avatar(self, me: str, file_id: str) -> None:
+        self._update("people", me, {"avatar_file": file_id})
+
+    def save_profile(self, me: str, name: str, hue: int) -> None:
+        initials = "".join(part[0].upper() for part in name.split()[:2])
+        self._update("people", me, {"name": name, "initials": initials, "hue": hue})
+
+    def model_default(self) -> Row:
+        return self._one("SELECT model, effort FROM model_defaults WHERE id = 1") or {
+            "model": "",
+            "effort": "",
+        }
+
+    def save_model_default(self, model: str, effort: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO model_defaults(id,model,effort) VALUES(1,?,?) "
+                "ON CONFLICT(id) DO UPDATE SET model=excluded.model, effort=excluded.effort",
+                (model, effort),
+            )
 
     def organization(self) -> Row:
         return self._one("SELECT name, website, description FROM organization WHERE id = 1") or {

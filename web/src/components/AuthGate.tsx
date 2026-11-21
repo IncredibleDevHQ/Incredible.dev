@@ -1,6 +1,10 @@
 import { Skeleton } from "./Skeleton";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 
+class AuthRequestError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
 export async function authRequest(path: string, body?: unknown) {
   const response = await fetch(`/api/auth/${path}`, {
     method: body === undefined ? "GET" : "POST",
@@ -9,7 +13,7 @@ export async function authRequest(path: string, body?: unknown) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Check your details and try again.");
+  if (!response.ok) throw new AuthRequestError(typeof data.detail === "string" ? data.detail : "Check your details and try again.", response.status);
   return data;
 }
 
@@ -64,7 +68,11 @@ function Login({ google }: { google: boolean }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState(new URLSearchParams(window.location.search).has("auth_error") ? "Google sign-in could not be completed. Please try again." : "");
+  const [error, setError] = useState(() => {
+    const reason = new URLSearchParams(window.location.search).get("auth_error");
+    if (reason === "link") return "This link could not sign you in here. If you just confirmed your email, enter your email and password below. For Google, choose Continue with Google again.";
+    return reason ? "Google sign-in could not be completed. Please try again." : "";
+  });
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -73,9 +81,15 @@ function Login({ google }: { google: boolean }) {
     try {
       const result = await authRequest(signup ? "signup" : "login", { email: email.trim(), password });
       setPassword("");
-      if (result.message) setMessage(result.message);
+      if (result.message) { setSignup(false); setMessage(result.message); }
       else window.location.assign("/"); // Clear all previous workspace state on account changes.
-    } catch (failed) { setError((failed as Error).message); }
+    } catch (failed) {
+      if (signup && failed instanceof AuthRequestError && failed.status === 409) {
+        setSignup(false);
+        setPassword("");
+      }
+      setError((failed as Error).message);
+    }
     finally { setBusy(false); }
   };
 
@@ -97,7 +111,7 @@ function Login({ google }: { google: boolean }) {
       {signup && <p className="auth-hint">Use at least 8 characters. We’ll ask you to confirm your email.</p>}
       {error && <p className="auth-error" role="alert">{error}</p>}
       {message && <p className="auth-message" role="status">{message}</p>}
-      <button type="submit" className="btn primary" disabled={busy}>{busy ? <Skeleton label={signup ? "Creating account" : "Signing in"} shape="inline" /> : signup ? "Create account" : "Sign in"}</button>
+      <button type="submit" className="btn primary" disabled={busy}>{busy ? <><span className="spin" aria-hidden="true" />{signup ? "Creating account…" : "Signing in…"}</> : signup ? "Create account" : "Sign in"}</button>
     </form>
     <p className="auth-switch">{signup ? "Already have an account?" : "New here?"} <button type="button" disabled={busy} onClick={() => {setSignup(!signup);setError("");setMessage("");setPassword("");}}>{signup ? "Sign in" : "Create an account"}</button></p>
   </section></main>;

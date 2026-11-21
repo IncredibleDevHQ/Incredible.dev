@@ -1,6 +1,6 @@
 // The engine's web API (src/design_agent/surfaces/web/app.py), typed.
 
-export type Person = { id: string; name: string; initials: string; hue: number; agent: boolean };
+export type Person = { avatar_file?: string; id: string; name: string; initials: string; hue: number; agent: boolean };
 export type Channel = {
   id: string;
   name: string;
@@ -720,6 +720,7 @@ export type UsageReport = {
   series: (UsageCounts & {at: number})[];
   models: (UsageCounts & {model: string})[];
 };
+export type ChatDefaults = { options: { id:string; provider:string; name:string; default_effort?:string; efforts:string[] }[]; default:string; model:string; effort:string };
 export type Organization = { name: string; website: string; description: string };
 
 function voiceCloneForm(clone: VoiceCloneInput): FormData {
@@ -742,6 +743,17 @@ export const api = {
   voiceTestAudio: async (episode: string, id: string, kind: "original" | "clone") =>
     (await request("GET", `/api/episodes/${episode}/voice-tests/${id}/${kind}`)).blob(),
   usageReport: (period: UsagePeriod) => call<UsageReport>("GET", "/api/usage/report?period=" + period),
+  uploadAvatar: (file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return call<Person>("POST", "/api/profile/avatar", body);
+  },
+  saveProfile: (name: string, hue: number) => call<Person>("PUT", "/api/profile", {name, hue}),
+  modelDefaults: () => call<ChatDefaults>("GET", "/api/preferences/model"),
+  saveModelDefaults: (model:string, effort:string) => call<{model:string; effort:string}>("PUT", "/api/preferences/model", {model,effort}),
+  passwordState: () => call<{user: {has_password: boolean}}>("GET", "/api/auth/session"),
+  verifyPassword: (password:string) => call<{verified:boolean}>("POST", "/api/auth/password/verify", {password}),
+  savePassword: (password: string, current_password?: string) => call<{has_password: boolean}>("POST", "/api/auth/password", {password,current_password}),
   organization: () => call<Organization>("GET", "/api/organization"),
   saveOrganization: (profile: Organization) => call<Organization>("PUT", "/api/organization", profile),
   usage: () => call<{calls: number; input_tokens: number; output_tokens: number; usd: number; unpriced: number}>("GET", "/api/usage"),

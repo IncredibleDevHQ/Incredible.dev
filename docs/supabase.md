@@ -35,6 +35,16 @@ embedded in the migration. An operator supplies its connection URL to the server
 runtime environment. This role can create private schemas but has no superuser, role-management,
 database-creation or RLS-bypass privileges. It must never be used in browser code.
 
+## Profile and preferences
+
+Settings → Profile lets signed-in users edit their display username, upload a profile photo, and see their sign-in email. A Google account can set its first
+password here and then sign in with the same email using either method. Email/password accounts
+and Google accounts with an existing password must confirm their current password to update it.
+
+Settings → Preferences lists the configured providers, models and supported effort levels for chat.
+Saved choices apply to subsequent chat turns in the private workspace. A picture with an explicit
+model selection keeps that selection. Choose Workspace default to use the operator’s settings.
+
 ## Google sign-in
 
 In Google Cloud, create a **Web application** OAuth client for the app with this authorized

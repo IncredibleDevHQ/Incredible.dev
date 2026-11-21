@@ -2552,3 +2552,39 @@ video.ep-take-review { aspect-ratio: 16 / 9; object-fit: contain; background: #1
 .ep-take-origin { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 .ep-take-origin > span { min-width: 0; overflow-wrap: anywhere; }
 .ep-render-pick { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 8px; }
+
+.settings-form + .settings-form { margin-top: 24px; }
+.settings-form button[type="submit"].btn, .settings-form form > div > button.btn.primary {
+  width: fit-content; min-height: 30px; padding: 4px 10px; font-size: 13px;
+}
+
+.settings-page { --settings-width: 44rem; padding: clamp(16px, 3vw, 40px); }
+.settings-page h1 { margin: 0 0 18px; }
+.settings-page .settings-tabs { gap: 4px; margin: 0 0 20px; max-width: var(--settings-width); }
+.settings-tabs a { gap: 7px; padding: 8px clamp(5px, 1.2vw, 14px); }
+.settings-tabs a[aria-current="page"] { background: var(--surface); border-radius: 8px 8px 0 0; }
+.settings-page .settings-form, .settings-page .usage-dashboard {
+  box-sizing: border-box; width: 100%; max-width: var(--settings-width);
+  padding: clamp(16px, 2.4vw, 26px); background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+.settings-page .usage-dashboard { max-width: 60rem; }
+.settings-page .settings-form + .settings-form { margin-top: 14px; }
+.settings-page .settings-form h2 { font-size: 17px; letter-spacing: -.02em; }
+.settings-page .settings-form form { margin-top: 18px; gap: 16px; }
+.settings-page .settings-form .ui-sel { margin: 0; }
+.settings-page .settings-form > .ui-sel { margin-top: 14px; }
+.settings-form .ep-size-range { width: 100%; box-sizing: border-box; }
+.settings-form input:read-only { color: var(--muted); }
+.profile-photo { display: flex; align-items: center; gap: 14px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.profile-photo > .avatar { width: 60px; height: 60px; border-radius: 50%; font-size: 21px; }
+.profile-photo small { display: block; margin-top: 5px; color: var(--muted); }
+.avatar-photo { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+@media (max-width: 540px) {
+  .settings-page .settings-tabs { gap: 0; }
+  .settings-tabs a { gap: 4px; font-size: 13px; }
+}
+
+.provider-select .ui-sel__icon { width: 20px; height: 20px; }
+.provider-select .ui-sel__icon > .mark { width: 100%; height: 100%; object-fit: contain; }
+.provider-select .ui-sel__trigger, .provider-select .ui-sel__option { gap: 10px; }

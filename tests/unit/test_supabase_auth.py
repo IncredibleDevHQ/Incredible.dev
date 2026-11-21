@@ -24,11 +24,18 @@ def provider(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"external": {"google": True, "email": True}})
     if request.url.path.endswith("/user"):
         uid = USERS.get(request.headers.get("Authorization", "").removeprefix("Bearer "))
+        if request.method == "PUT":
+            assert uid and json.loads(request.content) == {
+                "password": "new-test-password",
+                "data": {"studio_password_set": True},
+                **({"current_password": "current-test-password"} if uid == B else {}),
+            }
         return httpx.Response(
             200 if uid else 401,
             json={
                 "id": uid,
                 "email": "member@example.com",
+                "app_metadata": {"providers": ["email" if uid == B else "google"]},
                 "email_confirmed_at": "2026-01-01T00:00:00Z",
             },
         )
@@ -37,11 +44,22 @@ def provider(request: httpx.Request) -> httpx.Response:
         if body.get("password") == "invalid-password":
             return httpx.Response(400, json={"error_description": "private provider error"})
         return httpx.Response(
-            200, json={"access_token": "fresh-a", "refresh_token": "rotated", "expires_in": 3600}
+            200,
+            json={
+                "access_token": "token-b"
+                if body.get("password") == "current-test-password"
+                else "fresh-a",
+                "refresh_token": "rotated",
+                "expires_in": 3600,
+            },
         )
     if request.url.path.endswith("/signup"):
         body = json.loads(request.content)
         assert body.get("code_challenge") and body.get("code_challenge_method") == "s256"
+        if body["email"] == "existing@example.com":
+            return httpx.Response(200, json={"id": A, "identities": []})
+        if body["email"] == "duplicate@example.com":
+            return httpx.Response(422, json={"error_code": "user_already_exists"})
         return httpx.Response(200, json={"user": {"id": A}})
     return httpx.Response(204)
 
@@ -228,3 +246,126 @@ async def test_auth_pages_and_errors_cannot_be_framed_or_cached(client):
     assert response.headers.get("x-frame-options") == "DENY"
     assert response.headers.get("referrer-policy") == "no-referrer"
     assert response.headers.get("cache-control") == "no-store"
+
+
+async def test_browser_callback_without_verifier_returns_to_sign_in(client):
+    c, _ = client
+    response = await c.get("/api/auth/callback?code=test-code", headers={"Accept": "text/html"})
+    assert response.status_code == 303
+    assert response.headers["location"] == "/?auth_error=link"
+    assert "set-cookie" not in response.headers
+    assert (await c.get("/api/session")).status_code == 401
+
+
+@pytest.mark.parametrize("email", ["existing@example.com", "duplicate@example.com"])
+async def test_duplicate_signup_prompts_sign_in(client, email):
+    c, _ = client
+    response = await c.post(
+        "/api/auth/signup",
+        json={"email": email, "password": "valid-password"},
+        headers={"Origin": ORIGIN},
+    )
+    assert response.status_code == 409
+    assert "already" in response.json()["detail"]
+    assert "set-cookie" not in response.headers
+
+
+@pytest.mark.parametrize(("token", "has_password"), [("token-a", False), ("token-b", True)])
+async def test_password_settings_use_authenticated_account(client, token, has_password):
+    c, _ = client
+    c.cookies.set("incredible-access", token)
+    assert (await c.get("/api/auth/session")).json()["user"]["has_password"] is has_password
+    r = await c.post(
+        "/api/auth/password",
+        headers={"Origin": ORIGIN},
+        json={
+            "password": "new-test-password",
+            "current_password": "current-test-password" if has_password else None,
+        },
+    )
+    assert r.status_code == 200
+    assert r.json() == {"has_password": True}
+
+
+async def test_password_label_persists_for_google_account_after_reload(client, monkeypatch):
+    c, _ = client
+    original = provider
+    saved = {}
+
+    def persistent_provider(request):
+        result = original(request)
+        if request.url.path.endswith("/user"):
+            if request.method == "PUT":
+                saved.update(json.loads(request.content)["data"])
+            return httpx.Response(
+                result.status_code, json={**result.json(), "user_metadata": saved}
+            )
+        return result
+
+    # The client fixture's transport is already built; swap only its provider handler.
+    monkeypatch.setattr(
+        c._transport.app.state.auth.client._transport, "handler", persistent_provider
+    )
+    c.cookies.set("incredible-access", "token-a")
+    assert not (await c.get("/api/auth/session")).json()["user"]["has_password"]
+    response = await c.post(
+        "/api/auth/password", headers={"Origin": ORIGIN}, json={"password": "new-test-password"}
+    )
+    assert response.status_code == 200
+    assert (await c.get("/api/auth/session")).json()["user"]["has_password"]
+
+
+async def test_password_settings_require_session_origin_and_valid_password(client):
+    c, _ = client
+    data = {"password": "new-test-password"}
+    assert (
+        await c.post("/api/auth/password", headers={"Origin": ORIGIN}, json=data)
+    ).status_code == 401
+    c.cookies.set("incredible-access", "token-a")
+    assert (await c.post("/api/auth/password", json=data)).status_code == 403
+    r = await c.post("/api/auth/password", headers={"Origin": ORIGIN}, json={"password": "x7test"})
+    assert r.status_code == 422 and "x7test" not in r.text
+
+
+@pytest.mark.parametrize("current", [None, "invalid-password"])
+async def test_existing_account_must_confirm_password(client, current):
+    c, _ = client
+    c.cookies.set("incredible-access", "token-b")
+    response = await c.post(
+        "/api/auth/password",
+        headers={"Origin": ORIGIN},
+        json={
+            "password": "new-test-password",
+            "current_password": current,
+        },
+    )
+    assert response.status_code == 400
+    assert "current password" in response.json()["detail"].lower()
+
+
+def test_profile_and_model_preferences_survive_reopen(tmp_path):
+    from design_agent.surfaces.web.store import Store
+
+    db = tmp_path / "house.sqlite"
+    store = Store(db)
+    store.save_profile("you", "Nova", 220)
+    store.save_model_default("openai:gpt-6", "high")
+    reopened = Store(db)
+    assert reopened.person("you")["name"] == "Nova"
+    assert reopened.person("you")["initials"] == "N"
+    assert reopened.person("you")["hue"] == 220
+    assert reopened.model_default() == {"model": "openai:gpt-6", "effort": "high"}
+
+
+async def test_verifying_current_password_checks_provider_and_rotates_session(client):
+    c, _ = client
+    c.cookies.set("incredible-access", "token-b")
+    for password, status in [("invalid-password", 400), ("current-test-password", 200)]:
+        response = await c.post(
+            "/api/auth/password/verify", headers={"Origin": ORIGIN}, json={"password": password}
+        )
+        assert response.status_code == status
+        assert password not in response.text
+        if status == 200:
+            assert response.json() == {"verified": True}
+            assert "HttpOnly" in response.headers["set-cookie"]
