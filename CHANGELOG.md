@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Added
+
+- A camera's own recording, matched by sound: record a chapter in the studio while the camera
+  rolls, then press Camera file on the take. The clips on the camera's card are listed where they
+  are (no upload, any size); the one picked is found under the studio's take by the sound the two
+  share, cut to that stretch, and becomes the chapter's take with the take's marks, with Undo. A
+  clip that doesn't match, matches twice, or doesn't cover the take is refused with why
+  ([docs/recording.md](docs/recording.md)).
+- Films in 4K: pick 4K beside Render. HyperFrames renders the same page at twice the density, and
+  each take shows a 2160p copy made when it came in; a render without the disk it needs is
+  refused before it starts.
+- Recordings brought in as files, or from a card, come in while the studio goes on, with how far
+  they have come on the chapter and in the bar's running tasks.
+
+### Changed
+
+- Every take's recording is kept as it arrived: in `<workspace>/house/footage` (or
+  `DESIGN_AGENT_FOOTAGE_DIR`) when no bucket is set, where before it was not kept at all.
+- A file brought in may be up to 64 GiB (from 8). Takes and films move between the house and the
+  sandbox as files, never held in memory, and a take's copies stay on the sandbox between renders.
+- Deleting a take deletes its copies (not its recording as it arrived).
+- The release workflow attaches only the wheel and the source archive.
+
 ## 0.1.0 — 2026-11-19
 
 The first release of the new Incredible.dev: episodes (notes to a rendered, presenter-led film in a

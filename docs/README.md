@@ -14,6 +14,7 @@ which one fits.
 | [Customization](customization.md) | brand packs, instructions, runtime skills, learning, MCP servers |
 | [Integrations](integrations.md) | GitHub and your own MCP servers, with credentials from the host |
 | [HyperFrames](partners/hyperframes.md) | the video engine and its vendored skills |
+| [Recording](recording.md) | your own camera's files: its settings, the sound match, films in 4K |
 
 ## Run it for your team
 

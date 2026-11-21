@@ -63,6 +63,8 @@ AGENT_DIRS = (
 )
 STAGED_DIRS = ("/workspace/skills", "/workspace/tools", "/workspace/brand", "/workspace/fonts")
 DEFAULT_TIMEOUT_SECONDS = 30 * 60
+#: How much of a large file is sent into a container at a time when its progress is counted.
+PIECE = 4 * 1024 * 1024
 
 
 class SandboxUnavailableError(RuntimeError):
@@ -347,16 +349,51 @@ class DockerSandboxRunner:
         )
 
     def put_file(
-        self, thread_id: str, path: str, source: IO[bytes], *, timeout: float = 3600
+        self,
+        thread_id: str,
+        path: str,
+        source: IO[bytes],
+        *,
+        timeout: float = 3600,
+        progress: Callable[[int], None] | None = None,
     ) -> None:
         """Write one file in the thread's container from an open file on this computer, read
-        from where it stands. For files too large to hold in memory (a camera's recording)."""
+        from where it stands. For files too large to hold in memory (a camera's recording).
+        With `progress`, the file is sent a piece at a time and told how much has gone."""
         name = self.container_for(thread_id)
-        self._run(
-            ["exec", "-i", "--user", AGENT_USER, name, "sh", "-c", 'cat > "$1"', "sh", path],
-            stdin=source,
-            timeout=timeout,
-        )
+        args = ["exec", "-i", "--user", AGENT_USER, name, "sh", "-c", 'cat > "$1"', "sh", path]
+        if progress is None:
+            self._run(args, stdin=source, timeout=timeout)
+            return
+        if shutil.which(self._docker) is None:
+            raise SandboxUnavailableError("Docker is not installed or not on PATH")
+        deadline = self._clock() + timeout
+        with subprocess.Popen(  # noqa: S603 - fixed docker argv, never a shell
+            [self._docker, *args],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        ) as sending:
+            assert sending.stdin is not None  # noqa: S101 - asked for just above
+            sent = 0
+            try:
+                while piece := source.read(PIECE):
+                    if self._clock() > deadline:
+                        sending.kill()
+                        raise SandboxUnavailableError("docker exec failed: the copy timed out")
+                    sending.stdin.write(piece)
+                    sent += len(piece)
+                    progress(sent)
+                sending.stdin.close()
+            except BrokenPipeError:
+                pass  # the container's side ended early: its exit code says why
+            told = sending.stderr.read() if sending.stderr else b""
+            code = sending.wait(timeout=max(1.0, deadline - self._clock()))
+        if code != 0:
+            lines = told.decode(errors="replace").strip().splitlines()
+            raise SandboxUnavailableError(
+                f"docker exec failed: {(lines[-1] if lines else 'the copy stopped')[:300]}"
+            )
 
     def get_file(self, thread_id: str, path: str) -> bytes | None:
         name = self.container_for(thread_id)
@@ -364,6 +401,23 @@ class DockerSandboxRunner:
             ["exec", "--user", AGENT_USER, name, "cat", "--", path], check=False, timeout=300
         )
         return result.stdout if result.returncode == 0 else None
+
+    def get_file_into(
+        self, thread_id: str, path: str, target: IO[bytes], *, timeout: float = 3600
+    ) -> bool:
+        """Copy one file out of the thread's container into an open file on this computer as it
+        is read, never held in memory: a film in 4K runs to gigabytes. Whether it was there."""
+        name = self.container_for(thread_id)
+        if shutil.which(self._docker) is None:
+            raise SandboxUnavailableError("Docker is not installed or not on PATH")
+        done = subprocess.run(  # noqa: S603 - fixed docker argv, never a shell
+            [self._docker, "exec", "--user", AGENT_USER, name, "cat", "--", path],
+            stdout=target,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+            check=False,
+        )
+        return done.returncode == 0
 
 
 def tar_of(files: Iterable[tuple[str, bytes]], *, mode: int = 0o644) -> bytes:

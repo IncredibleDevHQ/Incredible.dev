@@ -406,6 +406,18 @@ export type BuildStage = {
 };
 // A note a person left a picture's builder while it worked; one taken in says the stage it went to.
 export type SteerNote = { id: string; text: string; at: number; stage?: BuildStageId; given_at?: number };
+// What a take's recording was: the studio's own take, a file brought in, or a camera's clip (its
+// name, when it was recorded, its height and frame rate, a line of what the house noticed, and,
+// matched to a studio take by sound, which take and where it began in the clip).
+export type TakeRecording = {
+  kind?: "studio" | "file" | "camera";
+  name?: string;
+  at?: number;
+  height?: number;
+  fps?: number;
+  note?: string;
+  matched?: { take: string; n: number; score: number; start: number };
+};
 export type EpisodeTake = {
   id: string;
   label?: string;
@@ -417,8 +429,30 @@ export type EpisodeTake = {
   kept: boolean;
   video: FileView | null;
   audio: FileView | null;
+  // its copy for a film in 4K, when it was recorded taller than the film's frame
+  uhd: FileView | null;
+  recording: TakeRecording;
+  // where the recording is kept as it arrived (a folder, or s3://)
+  kept_at: string;
   created_at: number;
 };
+// A recording being brought in for a chapter, while it is, or one that couldn't be (`failed`).
+export type EpisodeImport = {
+  chapter: string;
+  take: string;
+  name: string;
+  guide: string;
+  state: "copying" | "matching" | "cutting" | "saving" | "failed";
+  done?: number;
+  total?: number;
+  fraction?: number;
+  failure?: string;
+  started_at?: number;
+  ended_at?: number;
+};
+// A clip on a camera's card in this computer, read where it is.
+export type CameraClip = { path: string; name: string; card: string; size: number; seconds: number; recorded_at: number; look: string; fps: string };
+export type FilmSize = "hd" | "4k";
 export type EpisodeLine = { audio_url?: string; frame: string; chapter: string; start: number; seconds: number; source: { kind: "take" | "voice" | "plan"; take?: string; offset?: number } };
 // `marks` are what the film shows that no line says: its title before the first line, a chapter's
 // card over its first words, the end card after the last line.
@@ -441,7 +475,7 @@ export type EpisodeCard = {
   chapters: number;
   recorded: number;
   pictures: { made: number; go: number; making: number; failed: number };
-  film: { status?: "rendering" | "done" | "failed"; fraction?: number; failure?: string; seconds?: number; poster?: FileView | null };
+  film: { status?: "rendering" | "done" | "failed"; fraction?: number; failure?: string; seconds?: number; size?: FilmSize | null; making?: FilmSize | null; poster?: FileView | null };
 };
 export type EpisodeCheck = { group: string; rule: string; level: "must" | "look"; where: string; text: string };
 export type EpisodeRun = { id: string; lane: string; harness: string; state: string; asked: string; said: string; steps: number; started_at: number; ended_at: number | null };
@@ -463,7 +497,10 @@ export type EpisodeView = EpisodeCard & {
   clock: EpisodeClock | null;
   units: EpisodeUnit[];
   takes: EpisodeTake[];
-  film_state: { started_at?: number; ended_at?: number; phase?: string; frames_done?: number; frames_total?: number; blocked?: string; status?: "rendering" | "done" | "failed"; fraction?: number; failure?: string; file?: FileView | null; stale?: boolean; seconds?: number };
+  imports: EpisodeImport[];
+  // `size` is the rendered film's; `making`, the size asked for last; `upscaled`, how many takes
+  // a film in 4K showed from their HD copy
+  film_state: { started_at?: number; ended_at?: number; phase?: string; frames_done?: number; frames_total?: number; blocked?: string; status?: "rendering" | "done" | "failed"; fraction?: number; failure?: string; file?: FileView | null; stale?: boolean; seconds?: number; size?: FilmSize; making?: FilmSize; upscaled?: number };
   checks: EpisodeCheck[];
   // Who builds each chapter's pictures: the agent picked for the chapter, else the film's writer.
   builders: Record<string, WriterId>;
@@ -780,15 +817,24 @@ export const api = {
     call<EpisodeView>("POST", `/api/episodes/${id}/chapters/${encodeURIComponent(chapter)}/regenerate`, generation ?? {}),
   pictureGo: (id: string, unit: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/go`),
   pictureNote: (id: string, unit: string, text: string) => call<EpisodeView>("POST", `/api/episodes/${id}/pictures/${encodeURIComponent(unit)}/note`, { text }),
-  addTake: (id: string, take: { label?: string; chapter: string; frame?: string; marks: { frame: string; t: number }[]; file: Blob; name: string }) => {
+  // A take: one recorded in the studio (with its marks) is cut while this waits; a file brought
+  // with none, or a camera's file to match to a take by sound (`guide`), comes in meanwhile.
+  addTake: (id: string, take: { label?: string; chapter: string; frame?: string; marks: { frame: string; t: number }[]; file: Blob; name: string; guide?: string; startedAt?: number }) => {
     const form = new FormData();
     form.append("file", take.file, take.name);
     form.append("chapter", take.chapter);
     form.append("label", take.label ?? "");
     form.append("frame", take.frame ?? "");
     form.append("marks", JSON.stringify(take.marks));
+    if (take.guide) form.append("guide", take.guide);
+    if (take.startedAt) form.append("started_at", String(take.startedAt));
     return call<EpisodeView>("POST", `/api/episodes/${id}/takes`, form);
   },
+  cameraClips: () => call<{ clips: CameraClip[]; folders: string[] }>("GET", "/api/camera"),
+  // A card's clip brought in where it is: no upload, whatever its size.
+  cameraTake: (id: string, take: { chapter: string; path: string; guide?: string }) =>
+    call<EpisodeView>("POST", `/api/episodes/${id}/takes/camera`, take),
+  forgetImport: (id: string, chapter: string) => call<EpisodeView>("DELETE", `/api/episodes/${id}/imports/${encodeURIComponent(chapter)}`),
   voices: () => call<{ voices: Voice[] }>("GET", "/api/voices"),
   channelVoices: (channel: string) => call<{ voices: ChannelVoice[] }>("GET", `/api/channels/${channel}/voices`),
   cloneChannelVoice: (channel: string, clone: VoiceCloneInput & { file: File }) =>
@@ -800,7 +846,8 @@ export const api = {
     call<EpisodeView>("POST", `/api/episodes/${id}/voice`, voiceCloneForm(clone)),
   keepTake: (id: string, take: string) => call<EpisodeView>("POST", `/api/episodes/${id}/takes/${take}/keep`, { keep: true }),
   dropTake: (id: string, take: string) => call<EpisodeView>("DELETE", `/api/episodes/${id}/takes/${take}`),
-  renderEpisode: (id: string) => call<EpisodeView>("POST", `/api/episodes/${id}/film`),
+  // With no size, the film is rendered in the size asked for last (HD at first).
+  renderEpisode: (id: string, size?: FilmSize) => call<EpisodeView>("POST", `/api/episodes/${id}/film`, size ? { size } : {}),
   researchOptions: () => call<ResearchOptions>("GET", "/api/research"),
   openResearch: (channelId: string, body: { repo: string; harness: HarnessId; question: string }) =>
     call<{ thread: Thread; conversation: ConversationRow }>("POST", `/api/channels/${channelId}/research`, body),

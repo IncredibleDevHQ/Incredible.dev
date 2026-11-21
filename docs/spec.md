@@ -1008,20 +1008,40 @@ app's canvas, from a channel's material or a research frame's notes.
   The microphone and the camera each have a button with their name in the recording panel:
   the microphone's opens the others and the switch for that clean-up, the camera's opens the
   others and shows the picture it is giving. A recording brought as a file may be a camera's own,
-  up to 8 GiB: it is written to disk as it arrives and copied to the thread's computer as a
-  file, never held in memory. Every recording is cut there to the film's format: no taller
-  than 1080 lines, 30 frames a second, a picture coded for a brighter screen (an iPhone's)
-  brought down to the film's range, and its sound set by one gain to the film's loudness
-  (−16 LUFS, peaks held at −1.5 dBFS) so chapters and narration sit at one level.
-- **The footage.** With a bucket set (`DESIGN_AGENT_FOOTAGE_BUCKET`), every take's recording
-  is also kept as it arrived, picture and sound or sound alone, at
-  `episodes/<episode>/takes/<take>.<kind>`: in S3 in production, and in MinIO or another
-  S3-compatible store in development (`DESIGN_AGENT_S3_ENDPOINT`; `deploy/dev/compose.yaml`
-  runs one). The host sends it, in parts, once the cut has shown it is a recording; the
-  sandbox holds no key and never reaches the bucket. A take stands when the bucket does not
-  take its recording, and the thread says so. Nothing is deleted from the bucket: how long
-  footage is kept is the bucket's own rule. With no bucket a recording is cut for the film
-  and not kept.
+  up to 64 GiB: it is written to disk as it arrives (refused up front when the disk hasn't the
+  room) and copied to the thread's computer as a file, never held in memory. A clip on a
+  camera's card needs no upload: the studio lists the clips on the cards put into the computer
+  (`DESIGN_AGENT_CAMERA_DIRS`; `/Volumes` on macOS), newest first with when each was recorded
+  and how long it runs, and reads the one picked where it is; only a clip the listing names is
+  ever opened. Every recording is cut there to the film's format, in one reading: no taller
+  than 1080 lines and, from one taller, a second copy no taller than 2160 for a film in 4K;
+  30 frames a second with a key frame every half second; a picture coded for a brighter screen
+  (an iPhone's, a camera's HLG) brought down to the film's range; and its sound set by one gain
+  to the film's loudness (−16 LUFS, peaks held at −1.5 dBFS) so chapters and narration sit at
+  one level. A take recorded in the studio is cut while the person waits; a file or a card's
+  clip comes in while the studio goes on, and the chapter and the bar's running tasks say how
+  far it has come (copying, matching, making its copies). A clip recorded at a rate the film's
+  30 can't show smoothly (25 fps, PAL's) or in a camera's log picture says so in a line. The
+  copies stay on the thread's computer between renders, and a deleted take's copies go with it.
+- **A camera's file, matched by sound.** A person records a chapter in the studio while their
+  camera rolls. On that take, Camera file brings the camera's recording of it in (from the card,
+  or as a file): the studio take is found in it by the sound the two have in common, first in
+  fifths of a second across the whole clip and then in hundredths, and the clip's copies are cut
+  to just that stretch, so the take's marks are the clip's and every line starts where it was
+  said. The camera's file becomes the chapter's take and says which take it was matched to, with
+  Undo to the studio's take. It is refused, with why, when the two don't sound alike, when they
+  sound alike in more than one place (another take of the same lines in the clip), or when the
+  camera started after the take began or stopped during its last line; the studio's take stays.
+- **The footage.** Every take's recording is kept as it arrived, picture and sound or sound
+  alone: in a folder on the computer (`DESIGN_AGENT_FOOTAGE_DIR`, a drive of its own for a
+  camera's files; else `<workspace>/house/footage`) as `<episode>/<take>-<its name>.<kind>`, or,
+  with a bucket set (`DESIGN_AGENT_FOOTAGE_BUCKET`), at `episodes/<episode>/takes/<take>.<kind>`:
+  in S3 in production, and in MinIO or another S3-compatible store in development
+  (`DESIGN_AGENT_S3_ENDPOINT`; `deploy/dev/compose.yaml` runs one). The host sends it, in parts,
+  once the cut has shown it is a recording; the sandbox holds no key and never reaches the
+  bucket. A take stands when the folder or the bucket does not take its recording, and the
+  thread says so. Nothing is deleted from where footage is kept, not even with its take: how long
+  it is kept is the person's (or the bucket's) own rule.
 - **The narrator's voice.** When the film's voice is the narrator, the lines no take covers are
   spoken by ElevenLabs (`ELEVENLABS_API_KEY`) in a voice picked for the episode from the
   account's voices, or else in the house's own (`DESIGN_AGENT_NARRATOR_VOICE_ID`). A person
@@ -1095,8 +1115,15 @@ app's canvas, from a channel's material or a research frame's notes.
   Studio shows the render stage, frame counts when available, and elapsed time. An interrupted
   renderer leaves a failed, retryable attempt. A finished attempt retains its duration.
   A film is marked outdated if its inputs change during export.
-- **The film** is one HyperFrames page written by code and rendered on the thread's computer.
-  Picture layouts change at a cut. A picture that comes in by a move is moved as a whole box, by
+- **The film** is one HyperFrames page written by code and rendered on the thread's computer,
+  in 1080p or in 4K (the person's pick beside Render; the last one picked stays). A film in 4K
+  is the same 1920 by 1080 page rendered at twice the density (HyperFrames' own 4K), so its
+  pictures, type, windows and moves are the same in both; each take shows its copy for 4K, and
+  one recorded no taller than 1080 is scaled up and the film says how many were. It takes about
+  2.3 times as long and its frames take about 2.5 GB of the computer's disk a minute of film
+  while it renders: a render the computer hasn't the room for is refused before it starts, with
+  how much it needs. The takes are linked into each render from where they wait on the computer,
+  and the film is copied out as a file. Picture layouts change at a cut. A picture that comes in by a move is moved as a whole box, by
   transform and opacity, and the picture before it stays that much longer to leave the same way.
 
 Acceptance: the same plan, picks, takes and pictures render the same film; a recording never

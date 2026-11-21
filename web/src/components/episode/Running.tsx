@@ -5,7 +5,7 @@
 // what they are on. Nothing else in the studio waits on them: this is where to look. Written for
 // this house from notes on how lists of an agent's tasks behave; no other component's source is
 // in it.
-import { ChevronDown, Clapperboard, Square } from "lucide-react";
+import { Camera, ChevronDown, Clapperboard, Square } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type EpisodeUnit, type EpisodeView, type Level } from "../../api";
 import { doingNow, PICTURES, runningTasks } from "../../episode";
@@ -15,6 +15,7 @@ import { Clock } from "../agent/Clock";
 import { Popover } from "../Popover";
 import { Tooltip } from "../Tooltip";
 import { WORKING } from "./Ask";
+import { importWords } from "../../camera";
 import { RENDER_PHASES, writerTitle, type Open } from "./Film";
 import { builtOn } from "./models";
 import { KindArt } from "./PictureArt";
@@ -99,12 +100,34 @@ export function RunningPill({ view, onAt }: { view: EpisodeView; onAt: Open }) {
                   />
                 );
               }
+              if (task.kind === "import") {
+                const coming = task.coming;
+                const n = chapters.findIndex((c) => c.id === coming.chapter) + 1;
+                const done = Math.round(100 * (coming.fraction ?? 0));
+                return (
+                  <TaskRow
+                    key={task.id}
+                    icon={<Camera aria-hidden="true" />}
+                    title={`Chapter ${n} · ${coming.name}`}
+                    doing={importWords(coming, view)}
+                    who=""
+                    since={coming.started_at}
+                    onOpen={() => go(coming.chapter, false, undefined, true)}
+                    strip={
+                      <>
+                        <i data-state="done" style={{ flex: `0 0 ${done}%` }} />
+                        <i data-state="pending" />
+                      </>
+                    }
+                  />
+                );
+              }
               const percent = Math.round(100 * (film.fraction ?? 0));
               return (
                 <TaskRow
                   key={task.id}
                   icon={<Clapperboard aria-hidden="true" />}
-                  title="The film"
+                  title={film.making === "4k" ? "The film in 4K" : "The film"}
                   doing={RENDER_PHASES[film.phase ?? ""] ?? "Rendering film"}
                   who={`${percent}%`}
                   since={film.started_at}

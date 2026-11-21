@@ -24,13 +24,15 @@ import contextlib
 import hashlib
 import json
 import logging
+import mimetypes
 import posixpath
 import re
+import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import IO, TYPE_CHECKING, Any
 
 import httpx
 
@@ -977,6 +979,95 @@ class AgentHost:
                 "author_id": author,
             }
         )
+
+    def save_file_from(
+        self,
+        thread_id: str,
+        name: str,
+        write: Callable[[IO[bytes]], None],
+        *,
+        origin: str,
+        author: str = AGENT_ID,
+    ) -> Row:
+        """A file `write` puts straight into its place among the house's files, never held in
+        memory: a take's copy for a 4K film, or a film, runs to gigabytes. A file left half
+        written by a `write` that fails is not kept."""
+        clean = SAFE_NAME.sub("-", Path(name).name).strip(" .") or "file"
+        if self.blobs.client is not None:
+            with tempfile.TemporaryFile() as temp:
+                write(temp)
+                size = temp.tell()
+                temp.seek(0)
+                checksum = hashlib.file_digest(temp, "sha256").hexdigest()
+                temp.seek(0)
+                key = f"{self.blobs.prefix}streams/{new_id('f')}/{clean}"
+                mime = mimetypes.guess_type(clean)[0] or "application/octet-stream"
+                try:
+                    self.blobs.client.upload_fileobj(
+                        temp, self.blobs.bucket, key, ExtraArgs={"ContentType": mime}
+                    )
+                except Exception:  # noqa: BLE001 - keep private storage credentials out of errors
+                    from design_agent.surfaces.web.blobs import StorageUnavailable
+
+                    raise StorageUnavailable() from None
+            return self.store.add_file(
+                {
+                    "thread_id": thread_id,
+                    "name": clean,
+                    "mime": mime,
+                    "size": size,
+                    "origin": origin,
+                    "storage": "s3",
+                    "rel_path": key,
+                    "sha256": checksum,
+                    "author_id": author,
+                }
+            )
+        folder = self.files_dir / (thread_id or "uploads")
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / clean
+        stem, suffix, n = target.stem, target.suffix, 1
+        while target.exists():
+            n += 1
+            target = folder / f"{stem}-{n}{suffix}"
+        partial = target.with_name(f".{target.name}.part")
+        digest, size = hashlib.sha256(), 0
+        try:
+            with partial.open("wb") as out:
+                write(out)
+            with partial.open("rb") as written:
+                while piece := written.read(4 * 1024 * 1024):
+                    digest.update(piece)
+                    size += len(piece)
+            partial.replace(target)
+        finally:
+            partial.unlink(missing_ok=True)
+        return self.store.add_file(
+            {
+                "thread_id": thread_id,
+                "name": target.name,
+                "mime": mimetypes.guess_type(target.name)[0] or "application/octet-stream",
+                "size": size,
+                "origin": origin,
+                "rel_path": str(target.relative_to(self.files_dir)),
+                "sha256": digest.hexdigest(),
+                "author_id": author,
+            }
+        )
+
+    def drop_file(self, file_id: str) -> None:
+        """A file nothing holds any longer (a take that was deleted), gone from the disk too."""
+        row = self.store.file(file_id)
+        if row is None:
+            return
+        if row.get("storage") == "s3":
+            key = str(row["rel_path"])
+            if self.blobs.client is not None and key.startswith(self.blobs.prefix + "streams/"):
+                self.blobs.client.delete_object(Bucket=self.blobs.bucket, Key=key)
+        else:
+            with contextlib.suppress(OSError):
+                self.blobs.local_path(str(row["rel_path"])).unlink(missing_ok=True)
+        self.store.delete_file(file_id)
 
     def uploading(self, thread_id: str, paths: Sequence[str]) -> None:
         """The paths an `upload_files` call is about to send, so each file keeps where it lives

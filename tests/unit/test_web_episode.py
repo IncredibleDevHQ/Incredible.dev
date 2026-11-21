@@ -8,6 +8,7 @@ import asyncio
 import io
 import json
 import re
+import shlex
 import sqlite3
 import time
 from collections.abc import AsyncGenerator, Mapping
@@ -1238,7 +1239,12 @@ async def test_a_narrators_voice_is_picked_for_an_episode_or_cloned_from_its_tak
     monkeypatch.setattr(
         house.episodes,
         "_cut",
-        lambda episode, name, source: {"video": "", "audio": sound, "seconds": 45.0},
+        lambda episode, take_id, name, source: {
+            "uhd": "",
+            "video": "",
+            "audio": sound,
+            "seconds": 45.0,
+        },
     )
     chapter = view["plan"]["chapters"][0]["id"]
     await house.episodes.add_take(
@@ -2361,7 +2367,12 @@ async def test_a_take_sets_the_films_clock_for_its_chapter(
     monkeypatch.setattr(
         house.episodes,
         "_cut",
-        lambda episode, name, source: {"video": "", "audio": "", "seconds": 30.0},
+        lambda episode, take_id, name, source: {
+            "uhd": "",
+            "video": "",
+            "audio": "",
+            "seconds": 30.0,
+        },
     )
     view = house.episodes.view(episode_id)
     chapter = view["plan"]["chapters"][0]
@@ -2404,7 +2415,7 @@ async def test_a_take_sets_the_films_clock_for_its_chapter(
         )
 
 
-async def test_a_takes_recording_is_kept_in_the_bucket_and_the_take_stands_without_it(
+async def test_a_takes_recording_is_kept_as_it_arrived_and_the_take_stands_without_it(
     house: AgentHost, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from design_agent.tools import footage
@@ -2413,7 +2424,12 @@ async def test_a_takes_recording_is_kept_in_the_bucket_and_the_take_stands_witho
     monkeypatch.setattr(
         house.episodes,
         "_cut",
-        lambda episode, name, source: {"video": "", "audio": "", "seconds": 30.0},
+        lambda episode, take_id, name, source: {
+            "uhd": "",
+            "video": "",
+            "audio": "",
+            "seconds": 30.0,
+        },
     )
     chapter = house.episodes.view(episode_id)["plan"]["chapters"][0]["id"]
     kept: list[tuple[str, bytes, str]] = []
@@ -2435,8 +2451,22 @@ async def test_a_takes_recording_is_kept_in_the_bucket_and_the_take_stands_witho
         return dict(view["takes"][-1], thread_id=view["thread_id"])
 
     monkeypatch.setattr(footage.Bucket, "put", put)
-    # with no bucket a recording is cut for the film and not kept
-    assert raw((await take("take.webm", b"one"))["id"]) == "" and not kept
+    # with no bucket it is kept in the house's own footage folder, under its take's name
+    first = await take("take.webm", b"one")
+    folder = house.episodes.data_dir / "footage" / episode_id
+    assert raw(first["id"]) == str(folder / f"{first['id']}-take.webm") and not kept
+    assert Path(raw(first["id"])).read_bytes() == b"one" and first["kept_at"] == raw(first["id"])
+    # or on a drive of its own, under its own name too
+    drive = house.episodes.data_dir.parent / "ssd"
+    house.settings = house.settings.model_copy(update={"footage_dir": drive})
+    second = await take("C0002.MP4", b"two")
+    assert raw(second["id"]) == str(drive / episode_id / f"{second['id']}-C0002.mp4")
+    # a drive that isn't there does not lose the take: it stands, and the thread says so
+    house.settings = house.settings.model_copy(update={"footage_dir": Path("/dev/null/ssd")})
+    unplugged = await take("C0003.MP4", b"three")
+    assert unplugged["kept"] and raw(unplugged["id"]) == ""
+    said = [row["text"] for row in house.store.activity(unplugged["thread_id"])]
+    assert any("was not kept in /dev/null/ssd" in text for text in said)
     house.settings = house.settings.model_copy(update={"footage_bucket": "footage"})
     second = await take("C0001.MP4", b"a camera's own")
     address = f"episodes/{episode_id}/takes/{second['id']}.mp4"
@@ -2478,81 +2508,395 @@ def test_a_takes_sound_is_set_to_the_films_loudness_by_one_gain() -> None:
     assert _levelled(summary("-48.0", "-30.0")).startswith("volume=24.0dB")
 
 
+class CutComputer:
+    """The thread's computer as a cut sees it: what ffprobe finds, ffmpeg's loudness, and a
+    cut that ends at once with the copies it was asked for."""
+
+    loud = "Integrated loudness:\n    I:   -30.0 LUFS\n  True peak:\n    Peak:  -20.0 dBFS\n"
+
+    def __init__(self, streams: list[dict[str, Any]], zscale: int = 1) -> None:
+        self.streams, self.zscale = streams, zscale
+        self.put_at, self.sent, self.cut = "", b"", ""
+        self.ran: list[str] = []
+        self.runs = "12.5"
+
+    def put_stream(self, path: str, source: Any, *, progress: Any = None) -> None:
+        source.seek(0)
+        self.put_at, self.sent = path, source.read()
+        if progress is not None:
+            progress(len(self.sent))
+
+    def run(self, command: str, *, timeout: int = 600) -> Any:
+        from design_agent.surfaces.web.computer import Ran
+
+        self.ran.append(command)
+        take = Path(self.put_at).name.split(".src.")[0]
+        if "-show_entries stream=" in command:
+            listed = json.dumps(
+                {"streams": self.streams, "format": {"duration": "12.5"}}, separators=(",", ":")
+            )
+            return Ran(f"streams: {listed}\nzscale: {self.zscale}\n", 0)
+        if "ebur128" in command:
+            return Ran(self.loud, 0)
+        if "nohup" in command:
+            words = shlex.split(command)
+            self.cut = words[words.index("-c") + 1]
+            return Ran("", 0)
+        if "exit: $(cat" in command:
+            return Ran("exit: 0\nout_time_us=12500000\n", 0)
+        if "format=duration" in command:
+            made = [f"{take}.m4a {self.runs}"]
+            if '"[hd]"' in self.cut:
+                made.append(f"{take}.mp4 {self.runs}")
+            if '"[uhd]"' in self.cut:
+                made.append(f"{take}.uhd.mp4 {self.runs}")
+            return Ran("\n".join(made) + "\n", 0)
+        return Ran("", 0)
+
+    def get_into(self, path: str, target: Any, *, timeout: int = 0) -> None:
+        target.write(f"copy {Path(path).name}".encode())
+
+
 async def test_a_recording_is_cut_for_what_is_in_it(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    episode_id = await planned(house)
+    episode = house.store.episode(episode_id)
+    assert episode is not None
+    monkeypatch.setattr("design_agent.surfaces.web.episode_desk.time.sleep", lambda _s: None)
+
+    def cut(computer: CutComputer, name: str, take_id: str = "tk_1") -> tuple[str, dict[str, Any]]:
+        monkeypatch.setattr(house.episodes, "_computer", lambda episode: computer)
+        made = house.episodes._cut(episode, take_id, name, io.BytesIO(b"recording"))
+        assert made["seconds"] == 12.5 and made["audio"] and computer.sent == b"recording"
+        return computer.cut, made
+
+    # an iPhone's file: brought down to the film's range of light, size and rate, its sound up
+    phone = CutComputer(
+        [
+            {"codec_type": "video", "color_transfer": "arib-std-b67", "height": 1080},
+            {"codec_type": "audio", "channels": 2},
+        ]
+    )
+    command, made = cut(phone, "IMG_0042.MOV")
+    assert phone.put_at.endswith("/takes/tk_1.src.mov")
+    assert "fps=30,scale=-2:'min(1080,ih)':flags=lanczos,zscale=t=linear" in command
+    assert "-color_trc bt709" in command and "[0:a:0]volume=14.0dB[said]" in command
+    assert "-ac 2" not in command and "-crf 18" in command and "[uhd]" not in command
+    assert made["video"] and not made["uhd"]
+    # without the filter for it (this machine's own ffmpeg), the picture is cut as it is
+    assert "zscale" not in cut(CutComputer(phone.streams, zscale=0), "clip.mov", "tk_2")[0]
+    # a camera's 4K: read once for both copies, the film's and one no taller than 2160, tagged
+    # in the film's colours; its four inputs mixed to two
+    camera = CutComputer(
+        [
+            {
+                "codec_type": "video",
+                "color_transfer": "bt709",
+                "color_space": "bt709",
+                "height": 2160,
+                "avg_frame_rate": "30000/1001",
+            },
+            {"codec_type": "audio", "channels": 4},
+        ]
+    )
+    command, made = cut(camera, "C0012.MP4", "tk_3")
+    assert "fps=30,split=2[a][b];[a]scale=-2:'min(1080,ih)'" in command
+    assert "[b]scale=-2:'min(2160,ih)':flags=lanczos[uhd]" in command
+    assert '-map "[uhd]" -an' in command and "-colorspace bt709" in command and "-ac 2 " in command
+    names = {kind: house.store.file(made[kind])["name"] for kind in ("video", "uhd", "audio")}
+    assert names == {"video": "tk_3.mp4", "uhd": "tk_3-2160.mp4", "audio": "tk_3.m4a"}
+    kept = house.store.file(made["uhd"])
+    assert (house.files_dir / kept["rel_path"]).read_bytes() == b"copy tk_3.uhd.mp4"
+    # sound alone
+    command, made = cut(CutComputer([{"codec_type": "audio", "channels": 1}]), "memo.m4a", "tk_4")
+    assert " -vn " in command and "libx264" not in command and not made["video"]
+    # the file's name is the person's: nothing of it but letters and digits reaches a command
+    sly = CutComputer([{"codec_type": "audio", "channels": 1}])
+    cut(sly, "take.$(touch x);rm -rf", "tk_5")
+    assert sly.put_at.endswith(".src.touch")
+    assert "touch x" not in " ".join(sly.ran) and "rm -rf" not in " ".join(sly.ran)
+
+
+class MatchComputer(CutComputer):
+    """The thread's computer bringing a camera's clip in: the sound of the take and of the clip
+    as loudness curves, and copies that stay on it between renders."""
+
+    def __init__(self, streams: list[dict[str, Any]], curves: dict[str, list[float]]) -> None:
+        super().__init__(streams)
+        self.curves = curves
+        self.puts: list[str] = []
+
+    def put_stream(self, path: str, source: Any, *, progress: Any = None) -> None:
+        self.puts.append(path)
+        if ".src." in path:
+            super().put_stream(path, source, progress=progress)
+
+    def get(self, path: str) -> bytes | None:
+        import array
+
+        for ending, curve in self.curves.items():
+            if path.endswith(ending):
+                return array.array("f", curve).tobytes()
+        return None
+
+
+async def a_take_to_match(house: AgentHost, monkeypatch: pytest.MonkeyPatch) -> tuple[str, Any]:
+    """An episode with a take recorded in the studio: a minute of it, a line every 5 s."""
+    episode_id = await planned(house)
+    view = house.episodes.view(episode_id)
+    chapter = view["plan"]["chapters"][0]
+    lines = [f["id"] for b in chapter["beats"] for f in b["frames"]]
+    sound = house.save_file(view["thread_id"], "take.m4a", b"m4a", origin="episode")["id"]
+    monkeypatch.setattr(
+        house.episodes,
+        "_cut",
+        lambda episode, take_id, name, source: {
+            "uhd": "",
+            "video": "",
+            "audio": sound,
+            "seconds": 60.0,
+        },
+    )
+    marks = [{"frame": frame, "t": 5.0 * i} for i, frame in enumerate(lines)]
+    view = await house.episodes.add_take(
+        episode_id,
+        by="you",
+        chapter=chapter["id"],
+        marks=marks,
+        name="take.webm",
+        source=io.BytesIO(b"webm"),
+    )
+    monkeypatch.setattr("design_agent.surfaces.web.episode_desk.time.sleep", lambda _s: None)
+    return episode_id, view["takes"][0]
+
+
+CAMERA_4K = [
+    {"codec_type": "video", "color_space": "bt709", "height": 2160, "avg_frame_rate": "25/1"},
+    {"codec_type": "audio", "channels": 2},
+]
+
+
+async def test_a_cameras_clip_is_matched_to_the_take_recorded_with_it(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from tests.unit.test_episode_sync import heard, speech
+
+    episode_id, guide = await a_take_to_match(house, monkeypatch)
+    said = speech(60, seed=31)
+    rolling = heard(speech(17, seed=32) + said + speech(25, seed=33), gain=1.4, seed=34)
+    computer = MatchComputer(CAMERA_4K, {".take.env": said, ".camera.env": rolling})
+    computer.runs = "60.0"
+    monkeypatch.setattr(house.episodes, "_computer", lambda episode: computer)
+    clip = tmp_path / "C0012.MP4"
+    clip.write_bytes(b"a camera's own")
+    view = house.episodes.bring_take(
+        episode_id,
+        by="you",
+        chapter=guide["chapter"],
+        name="C0012.MP4",
+        source=clip,
+        staged=False,
+        guide=guide["id"],
+        clip={"recorded_at": 1763600000.0, "look": "s-log3-cine"},
+    )
+    assert [(i["chapter"], i["state"], i["guide"]) for i in view["imports"]] == [
+        (guide["chapter"], "copying", guide["id"])
+    ]
+    await settle(lambda: not house.episodes._busy(episode_id))
+    view = house.episodes.view(episode_id)
+    assert view["imports"] == []
+    studio, camera = view["takes"]
+    assert camera["kept"] and not studio["kept"] and camera["uhd"]
+    # the copies start where the studio's take began, so its marks are the clip's
+    assert camera["marks"] == guide["marks"] and camera["seconds"] == 60.0
+    found = camera["recording"]["matched"]
+    assert found["take"] == guide["id"] and found["start"] == pytest.approx(17.0, abs=0.02)
+    assert "-ss 17.0" in computer.cut and "-t 60.0" in computer.cut
+    # what the house noticed: a PAL rate, and a log picture
+    note = camera["recording"]["note"]
+    assert "25 fps" in note and "NTSC" in note and "S-Log3" in note
+    assert camera["recording"]["kind"] == "camera" and camera["recording"]["at"] == 1763600000.0
+    # the take's own sound was sent to the computer to be heard, and the clip read from the card
+    assert any(p.endswith(f"/takes/{guide['id']}.m4a") for p in computer.puts)
+    assert clip.read_bytes() == b"a camera's own"
+    assert Path(camera["kept_at"]).read_bytes() == b"a camera's own"
+    # and the studio's take is one press away
+    view = house.episodes.keep_take(episode_id, guide["id"], keep=True)
+    assert [t["kept"] for t in view["takes"]] == [True, False]
+
+
+async def test_a_clip_unlike_its_take_is_refused_and_the_take_stays(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.unit.test_episode_sync import heard, speech
+
+    episode_id, guide = await a_take_to_match(house, monkeypatch)
+    other = heard(speech(90, seed=40), gain=1.0, seed=41)
+    computer = MatchComputer(CAMERA_4K, {".take.env": speech(60, seed=31), ".camera.env": other})
+    monkeypatch.setattr(house.episodes, "_computer", lambda episode: computer)
+    # an upload, the house's own copy of it
+    staged = house.episodes.data_dir / "incoming" / "upload.mp4"
+    staged.parent.mkdir(parents=True, exist_ok=True)
+    staged.write_bytes(b"someone else's")
+    chapter = guide["chapter"]
+    view = house.episodes.bring_take(
+        episode_id,
+        by="you",
+        chapter=chapter,
+        name="C0013.MP4",
+        source=staged,
+        staged=True,
+        guide=guide["id"],
+    )
+    with pytest.raises(ValueError, match="already coming in"):
+        house.episodes.bring_take(
+            episode_id,
+            by="you",
+            chapter=chapter,
+            name="C0013.MP4",
+            source=staged,
+            staged=True,
+        )
+    await settle(lambda: not house.episodes._busy(episode_id))
+    view = house.episodes.view(episode_id)
+    (refused,) = view["imports"]
+    assert refused["state"] == "failed" and "doesn't sound like this take" in refused["failure"]
+    assert [t["kept"] for t in view["takes"]] == [True] and not staged.exists()
+    took = refused["take"]
+    forgot = next(c for c in computer.ran if f"rm -f {took}.*" in c)
+    # stopped by the process it runs as: a name to match would be in this very command
+    assert f"cd /workspace/projects/{episode_id}/takes" in forgot and "pkill -f" not in forgot
+    assert not any((house.episodes.data_dir / "footage").glob(f"*/{took}-*"))
+    # put away, and a take that isn't there can't be a guide
+    assert house.episodes.forget_import(episode_id, chapter)["imports"] == []
+    with pytest.raises(KeyError):
+        house.episodes.bring_take(
+            episode_id,
+            by="you",
+            chapter=chapter,
+            name="x.mp4",
+            source=staged,
+            staged=True,
+            guide="tk_missing",
+        )
+
+
+async def test_a_recording_half_brought_in_when_the_house_stops_is_brought_in_again(
+    house: AgentHost,
+) -> None:
+    episode_id = await planned(house)
+    chapter = house.episodes.view(episode_id)["plan"]["chapters"][0]["id"]
+    house.store.update_episode(
+        episode_id, imports={chapter: {"state": "cutting", "name": "C0012.MP4", "take": "tk_9"}}
+    )
+    house.episodes.restore()
+    (stopped,) = house.episodes.view(episode_id)["imports"]
+    assert stopped["state"] == "failed" and "Bring it in again" in stopped["failure"]
+
+
+async def test_a_film_in_4k_is_rendered_from_each_takes_copy_for_4k(
     house: AgentHost, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from design_agent.surfaces.web.computer import Ran
 
     episode_id = await planned(house)
-    episode = house.store.episode(episode_id)
-    assert episode is not None
-    loud = "Integrated loudness:\n    I:   -30.0 LUFS\n  True peak:\n    Peak:  -20.0 dBFS\n"
+    house.episodes.approve(episode_id, by="you")
+    await settle(lambda: not house.episodes._busy(episode_id))
+    view = house.episodes.view(episode_id)
+    chapters = [c["id"] for c in view["plan"]["chapters"][:2]]
+
+    def saved(name: str) -> str:
+        return str(house.save_file(view["thread_id"], name, name.encode(), origin="episode")["id"])
+
+    camera = house.store.add_take(
+        {
+            "episode_id": episode_id,
+            "chapter": chapters[0],
+            "frame": "",
+            "seconds": 10.0,
+            "marks": [],
+            "video": saved("a.mp4"),
+            "audio": saved("a.m4a"),
+            "uhd": saved("a-2160.mp4"),
+            "kept": True,
+            "added_by": "you",
+        }
+    )
+    studio = house.store.add_take(
+        {
+            "episode_id": episode_id,
+            "chapter": chapters[1],
+            "frame": "",
+            "seconds": 10.0,
+            "marks": [],
+            "video": saved("b.mp4"),
+            "audio": saved("b.m4a"),
+            "kept": True,
+            "added_by": "you",
+        }
+    )
 
     class Computer:
-        renders = True
+        free = "999999999\n999999999\n"
 
-        def __init__(self, streams: list[dict[str, Any]], zscale: int = 1) -> None:
-            self.streams, self.zscale = streams, zscale
-            self.put_at = ""
+        def __init__(self) -> None:
             self.ran: list[str] = []
+            self.sent: list[str] = []
 
-        def put_stream(self, path: str, source: Any) -> None:
-            self.put_at, self.sent = path, source.read()
+        def put(self, files: list[tuple[str, bytes]]) -> None:
+            pass
+
+        def put_stream(self, path: str, source: Any, *, progress: Any = None) -> None:
+            self.sent.append(path)
 
         def run(self, command: str, *, timeout: int = 600) -> Ran:
             self.ran.append(command)
-            if "ebur128" in command:
-                listed = json.dumps({"streams": self.streams}, separators=(",", ":"))
-                return Ran(f"streams: {listed}\n{loud}zscale: {self.zscale}\n", 0)
-            stem = Path(self.put_at).name.split(".src.")[0]
-            return Ran(f"{stem}.mp4 12.5\n{stem}.m4a 12.5\n", 0)
+            if command.startswith("df "):
+                return Ran(self.free, 0)
+            if "render.exit" in command and "cat" in command:
+                return Ran('0\n@hf-progress {"code":"encode","done":9,"total":10,"pct":90}', 0)
+            return Ran("", 0)
 
-        def get(self, path: str) -> bytes:
-            return b"cut"
+        def get(self, path: str) -> bytes | None:
+            return None
 
-    def cut(computer: Computer, name: str) -> str:
-        monkeypatch.setattr(house.episodes, "_computer", lambda episode: computer)
-        made = house.episodes._cut(episode, name, io.BytesIO(b"recording"))
-        assert made["seconds"] == 12.5 and made["video"] and made["audio"]
-        assert computer.sent == b"recording"
-        assert computer.put_at.startswith("/tmp/design-agent-take_")
-        assert computer.ran[-1].startswith("rm -f ")
-        return computer.ran[-2]
+        def get_into(self, path: str, target: Any, *, timeout: int = 0) -> None:
+            target.write(b"a film in 4K")
 
-    # an iPhone's file: brought down to the film's range of light, size and rate, its sound up
-    phone = Computer(
-        [
-            {"codec_type": "video", "color_transfer": "arib-std-b67"},
-            {"codec_type": "audio", "channels": 2},
-        ]
-    )
-    command = cut(phone, "IMG_0042.MOV")
-    assert phone.put_at.endswith(".src.mov")
-    assert "fps=30,scale=-2:'min(1080,ih)':flags=lanczos,zscale=t=linear" in command
-    assert "-color_trc bt709" in command and '-af "volume=14.0dB"' in command
-    assert "-ac 2" not in command and "-crf 18" in command
-    # without the filter for it (this machine's own ffmpeg), the picture is cut as it is
-    assert "zscale" not in cut(Computer(phone.streams, zscale=0), "clip.mov")
-    # a browser's take: no range to bring down. A camera with four inputs is mixed to two.
-    plain = cut(
-        Computer(
-            [
-                {"codec_type": "video", "color_transfer": "bt709"},
-                {"codec_type": "audio", "channels": 4},
-            ]
-        ),
-        "take.mkv",
-    )
-    assert "zscale" not in plain and "-ac 2 " in plain
-    # sound alone
-    voice = Computer([{"codec_type": "audio", "channels": 1}])
-    alone = cut(voice, "memo.m4a")
-    assert " -vn " in alone and "libx264" not in alone
-    # the file's name is the person's: nothing of it but letters and digits reaches a command
-    sly = Computer([{"codec_type": "audio", "channels": 1}])
-    cut(sly, "take.$(touch x);rm -rf")
-    assert sly.put_at.endswith(".src.touch")
-    assert "touch x" not in " ".join(sly.ran) and "rm -rf" not in " ".join(sly.ran)
+    computer = Computer()
+    monkeypatch.setattr(house.episodes, "_computer", lambda episode: computer)
+    monkeypatch.setattr("design_agent.surfaces.web.episode_desk.time.sleep", lambda _s: None)
+    with pytest.raises(ValueError, match="HD or in 4K"):
+        house.episodes.render(episode_id, by="you", size="8k")
+    view = house.episodes.render(episode_id, by="you", size="4k")
+    assert view["film_state"]["making"] == "4k"
+    await settle(lambda: not house.episodes._busy(episode_id))
+    film_state = house.episodes.view(episode_id)["film_state"]
+    assert film_state["status"] == "done", film_state.get("failure")
+    assert (film_state["size"], film_state["upscaled"]) == ("4k", 1)
+    launched = next(c for c in computer.ran if "hyperframes render" in c)
+    assert "--resolution 4k" in launched
+    linked = next(c for c in computer.ran if "ln -f" in c)
+    takes = f"/workspace/projects/{episode_id}/takes"
+    assert f"ln -f {takes}/{camera['id']}.uhd.mp4 " in linked
+    assert f"/takes/{camera['id']}.mp4 2>/dev/null" in linked
+    # a take recorded no taller than the film is its own copy, scaled up by the render
+    assert f"ln -f {takes}/{studio['id']}.mp4 " in linked
+    # copies the computer doesn't have whole are sent from the house's files, once
+    assert f"{takes}/{camera['id']}.uhd.mp4" in computer.sent
+    assert f"{takes}/{camera['id']}.mp4" not in computer.sent
+    # asked again with no size, it is the size asked for last; and it needs room to render in
+    computer.free = "1024\n1024\n"
+    house.episodes.render(episode_id, by="you")
+    await settle(lambda: not house.episodes._busy(episode_id))
+    failed = house.episodes.view(episode_id)["film_state"]
+    assert failed["status"] == "failed" and "in 4K needs about" in failed["failure"]
+    assert failed["file"]["name"].endswith(".mp4")
+    # a take that is deleted takes its copies with it
+    view = house.episodes.keep_take(episode_id, camera["id"], keep=False)
+    assert house.store.file(camera["uhd"]) is None and house.store.file(camera["video"]) is None
+    await settle(lambda: any(f"rm -f {camera['id']}.*" in c for c in computer.ran))
 
 
 async def test_export_waits_for_picture_builds_and_rejects_empty_drafts(house: AgentHost) -> None:
@@ -2577,6 +2921,12 @@ async def test_the_film_is_rendered_from_the_plan_the_pictures_and_the_takes(
     projects: list[dict[str, bytes]] = []
 
     class Computer:
+        def get_into(self, path: str, target: Any, *, timeout: int = 0) -> None:
+            content = self.get(path)
+            if not content:
+                raise FileNotFoundError(path)
+            target.write(content)
+
         def put(self, files: list[tuple[str, bytes]]) -> None:
             projects.append(dict(files))
             if picture_changes_during_export:
@@ -2646,6 +2996,12 @@ async def test_a_narrated_film_keeps_its_narration_once_it_is_rendered(
         return media.Spoken(b"mp3", 2.0, [])
 
     class Computer:
+        def get_into(self, path: str, target: Any, *, timeout: int = 0) -> None:
+            content = self.get(path)
+            if not content:
+                raise FileNotFoundError(path)
+            target.write(content)
+
         def put(self, files: list[tuple[str, bytes]]) -> None:
             staged_voice.extend(path for path, _ in files if "/voice/" in path)
 
@@ -3098,26 +3454,62 @@ def test_a_take_is_read_from_disk_and_a_voice_needs_a_key_and_a_yes(tmp_path: Pa
                 break
             time.sleep(0.05)
         chapter = view["plan"]["chapters"][0]["id"]
+        lines = [f["id"] for b in view["plan"]["chapters"][0]["beats"] for f in b["frames"]]
+        desk = client.app.state.host.episodes  # type: ignore[attr-defined]
         got: dict[str, Any] = {}
 
-        def cut(episode: Any, name: str, source: Any) -> dict[str, Any]:
+        def cut(episode: Any, take_id: str, name: str, source: Any) -> dict[str, Any]:
             source.seek(0)
             got.update(name=name, data=source.read())
-            return {"video": "", "audio": "", "seconds": 20.0}
+            return {"video": "", "audio": "", "uhd": "", "seconds": 20.0}
 
-        client.app.state.host.episodes._cut = cut  # type: ignore[attr-defined]
+        desk._cut = cut
         url = f"/api/episodes/{episode_id}/takes"
         # larger than a form part is kept in memory, so it is read back from the disk
         recording = b"\x1aE\xdf\xa3" + b"0" * (2 * 1024 * 1024)
         sent = client.post(
             url,
-            data={"chapter": chapter, "marks": "[]", "label": "Clear delivery"},
-            files={"file": ("C0001.MP4", recording, "video/mp4")},
+            data={
+                "chapter": chapter,
+                "marks": json.dumps([{"frame": lines[0], "t": 0}]),
+                "label": "Clear delivery",
+                "started_at": "1763600000.5",
+            },
+            files={"file": ("take.webm", recording, "video/webm")},
         )
         assert sent.status_code == 200, sent.text
-        assert sent.json()["takes"][0]["seconds"] == 20.0
-        assert sent.json()["takes"][0]["label"] == "Clear delivery"
-        assert got == {"name": "C0001.MP4", "data": recording}
+        studio = sent.json()["takes"][0]
+        assert studio["seconds"] == 20.0 and studio["label"] == "Clear delivery"
+        assert studio["recording"] == {"kind": "studio", "name": "take.webm", "at": 1763600000.5}
+        assert got == {"name": "take.webm", "data": recording}
+
+        # a file brought with no marks comes in while the studio goes on: from the house's own
+        # copy of it, which is moved to where footage is kept once it is in
+        def cut_in(episode: Any, take_id: str, name: str, source: Path, *more: Any) -> Any:
+            got.update(staged=source.read_bytes())
+            return episode_desk.Brought(None, "", take_id, "")  # type: ignore[arg-type]
+
+        def cut_out(episode: Any, brought: Any, tell: Any = None) -> dict[str, Any]:
+            return {"video": "", "audio": "", "uhd": "", "seconds": 30.0}
+
+        desk._cut_in, desk._cut_out = cut_in, cut_out
+        brought = client.post(
+            url, data={"chapter": chapter}, files={"file": ("C0001.MP4", recording, "video/mp4")}
+        )
+        assert brought.status_code == 200, brought.text
+        assert [i["chapter"] for i in brought.json()["imports"]] == [chapter]
+        until = time.time() + 10
+        while time.time() < until:
+            view = client.get(f"/api/episodes/{episode_id}").json()
+            if not view["imports"]:
+                break
+            time.sleep(0.05)
+        camera = view["takes"][-1]
+        assert len(view["takes"]) == 2 and camera["kept"] and camera["seconds"] == 30.0
+        assert [m["frame"] for m in camera["marks"]] == lines
+        assert camera["recording"]["kind"] == "file" and got["staged"] == recording
+        assert Path(camera["kept_at"]).read_bytes() == recording
+        assert not any((desk.data_dir / "incoming").iterdir())
         clip = {"file": ("a.webm", b"x", "video/webm")}
         assert (
             client.post(url, data={"chapter": chapter, "label": "x" * 121}, files=clip).status_code
@@ -3132,7 +3524,7 @@ def test_a_take_is_read_from_disk_and_a_voice_needs_a_key_and_a_yes(tmp_path: Pa
         # a recording past the limit is refused by its stated size, before any of it is read
         stated = {
             "content-type": "multipart/form-data; boundary=x",
-            "content-length": str(9 * 1024**3),
+            "content-length": str(65 * 1024**3),
         }
         assert client.post(url, content=b"", headers=stated).status_code == 413
         # a narrator's voice is an ElevenLabs voice id; the account's voices need its key
@@ -3160,6 +3552,63 @@ def test_a_take_is_read_from_disk_and_a_voice_needs_a_key_and_a_yes(tmp_path: Pa
         )
 
 
+def test_a_cards_clips_are_listed_and_only_those_are_brought_in(tmp_path: Path) -> None:
+    from tests.unit.test_web_camera import movie
+
+    card = tmp_path / "Volumes" / "UNTITLED" / "PRIVATE" / "M4ROOT" / "CLIP"
+    card.mkdir(parents=True)
+    (card / "C0001.MP4").write_bytes(movie(42.0, time.time() - 60))
+    elsewhere = tmp_path / "C0002.MP4"
+    elsewhere.write_bytes(movie(42.0, time.time()))
+    settings = Settings(
+        _env_file=None,
+        workspace_root=tmp_path / "workspace",
+        sandbox="host",
+        camera_dirs=str(tmp_path / "Volumes"),
+    )
+    with TestClient(create_app(ROOT, settings, demo=True)) as client:
+        listed = client.get("/api/camera").json()
+        assert listed["folders"] == [str(tmp_path / "Volumes")]
+        ((clip),) = listed["clips"]
+        assert (clip["name"], clip["card"], clip["seconds"]) == ("C0001.MP4", "UNTITLED", 42.0)
+        channel = client.get("/api/channels").json()[0]["id"]
+        made = client.post(
+            f"/api/channels/{channel}/episodes",
+            json={"title": "One idea", "text": NOTES, "settings": {"writer": DEMO}},
+        )
+        episode_id = made.json()["id"]
+        until = time.time() + 30
+        while time.time() < until:
+            view = client.get(f"/api/episodes/{episode_id}").json()
+            if view["status"] != "planning":
+                break
+            time.sleep(0.05)
+        chapter = view["plan"]["chapters"][0]["id"]
+        desk = client.app.state.host.episodes  # type: ignore[attr-defined]
+        held = asyncio.Event()
+
+        async def imported(*given: Any, **more: Any) -> None:
+            await held.wait()
+
+        desk._imported = imported
+        url = f"/api/episodes/{episode_id}/takes/camera"
+        # a path that isn't one of the card's clips is never opened
+        for path in (str(elsewhere), "/etc/hosts", str(card / ".." / "C0001.MP4")):
+            assert client.post(url, json={"chapter": chapter, "path": path}).status_code == 404
+        brought = client.post(url, json={"chapter": chapter, "path": clip["path"]})
+        assert brought.status_code == 200, brought.text
+        (coming,) = brought.json()["imports"]
+        assert (coming["name"], coming["state"], coming["total"]) == (
+            "C0001.MP4",
+            "copying",
+            clip["size"],
+        )
+        assert client.post(url, json={"chapter": chapter, "path": clip["path"]}).status_code == 422
+        assert client.delete(f"/api/episodes/{episode_id}/imports/{chapter}").status_code == 422
+        film = f"/api/episodes/{episode_id}/film"
+        assert client.post(film, json={"size": "8k"}).status_code == 422
+
+
 def test_the_desks_computer_is_a_folder_and_this_machine_without_a_runner(tmp_path: Path) -> None:
     from design_agent.surfaces.web.computer import Computer
 
@@ -3176,8 +3625,18 @@ def test_the_desks_computer_is_a_folder_and_this_machine_without_a_runner(tmp_pa
     # a recording is copied across from an open file, from its start, wherever it was left
     recording = io.BytesIO(b"a camera's own file")
     recording.seek(0, 2)
-    computer.put_stream("/workspace/projects/ep_1/takes/take.src.mp4", recording)
+    sent: list[int] = []
+    computer.put_stream(
+        "/workspace/projects/ep_1/takes/take.src.mp4", recording, progress=sent.append
+    )
     assert computer.get("/workspace/projects/ep_1/takes/take.src.mp4") == b"a camera's own file"
+    assert sent == [len(b"a camera's own file")]
+    # and a large file comes out the same way, into an open file, never as bytes in memory
+    out = io.BytesIO()
+    computer.get_into("/workspace/projects/ep_1/takes/take.src.mp4", out)
+    assert out.getvalue() == b"a camera's own file"
+    with pytest.raises(FileNotFoundError):
+        computer.get_into("/workspace/projects/ep_1/missing", io.BytesIO())
 
 
 def test_a_recording_reaches_the_container_as_a_file_or_as_bytes(tmp_path: Path) -> None:
@@ -3190,8 +3649,10 @@ def test_a_recording_reaches_the_container_as_a_file_or_as_bytes(tmp_path: Path)
         def exec(self, thread_id: str, command: str, **more: Any) -> None:
             self.calls.append(("exec", command))
 
-        def put_file(self, thread_id: str, path: str, source: Any) -> None:
+        def put_file(self, thread_id: str, path: str, source: Any, progress: Any = None) -> None:
             self.calls.append(("file", path, source.read()))
+            if progress is not None:
+                progress(9)
 
         def put_archive(self, thread_id: str, archive: bytes, *, root: bool) -> None:
             self.calls.append(("archive", len(archive) > 0))
@@ -3209,6 +3670,13 @@ def test_a_recording_reaches_the_container_as_a_file_or_as_bytes(tmp_path: Path)
         ("exec", "mkdir -p /workspace/projects/ep_1/takes"),
         ("file", "/workspace/projects/ep_1/takes/take.src.mp4", b"gigabytes"),
     ]
+    # and how much has gone is told to whoever is watching
+    sent: list[int] = []
+    with on_disk.open("rb") as source:
+        computer.put_stream(
+            "/workspace/projects/ep_1/takes/c.src.mp4", source, progress=sent.append
+        )
+    assert sent == [9]
     # bytes with no file behind them go the way small files do
     Binding.runner.calls.clear()
     computer.put_stream("/workspace/projects/ep_1/takes/small.src.webm", io.BytesIO(b"small"))
@@ -3365,6 +3833,12 @@ async def test_renderer_disappearance_ends_attempt_and_allows_retry(
 
     class Computer:
         state = "stopped"
+
+        def get_into(self, path: str, target: Any, *, timeout: int = 0) -> None:
+            content = self.get(path)
+            if not content:
+                raise FileNotFoundError(path)
+            target.write(content)
 
         def put(self, files: list[tuple[str, bytes]]) -> None:
             pass
@@ -4400,7 +4874,7 @@ async def test_named_recordings_persist_and_can_be_selected_without_losing_versi
     monkeypatch.setattr(
         house.episodes,
         "_cut",
-        lambda *args: {"video": "", "audio": "", "seconds": 5.0},
+        lambda *args: {"uhd": "", "video": "", "audio": "", "seconds": 5.0},
     )
     for label in ("  Calm delivery  ", "More energy"):
         view = await house.episodes.add_take(
@@ -5017,7 +5491,7 @@ async def test_private_storage_keeps_original_take_under_its_account_and_refuses
     episode_id = await planned(house)
     chapter = house.episodes.view(episode_id)["plan"]["chapters"][0]["id"]
     monkeypatch.setattr(
-        house.episodes, "_cut", lambda *args: {"video": "", "audio": "", "seconds": 15}
+        house.episodes, "_cut", lambda *args: {"video": "", "audio": "", "uhd": "", "seconds": 15}
     )
 
     async def record(data: bytes):

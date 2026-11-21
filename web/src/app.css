@@ -2524,3 +2524,31 @@ video.ep-take-review { aspect-ratio: 16 / 9; object-fit: contain; background: #1
 .lab-empty { border-block-start: 1px solid var(--line); padding-top: 18px; margin: 0; }
 .lab-versions .btn { max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
 @media (max-width: 700px) { .lab-layout { grid-template-columns: minmax(0,1fr); } }
+
+
+/* A camera's own recording brought in: the card's clips to pick from, how far one coming in has
+   come, and where the chapter's take came from. */
+.ui-pop.ep-camera:not([data-unstyled]) { padding: 14px; }
+.ep-camera-clips { display: grid; gap: 6px; max-height: min(360px, 52vh); margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.ep-camera-clips button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; width: 100%; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--raised); color: var(--ink-2); text-align: left; cursor: pointer; }
+.ep-camera-clips button:hover { border-color: var(--line-strong); }
+.ep-camera-clips button[aria-checked="true"] { border-color: var(--green); background: var(--green-soft); }
+.ep-camera-clips b { color: var(--ink); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.ep-camera-clips span { grid-column: 1; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ep-camera-clips em { grid-column: 2; grid-row: 1; align-self: center; padding: 2px 7px; border-radius: 999px; background: var(--green-soft); color: var(--green); font-size: 11px; font-style: normal; font-weight: 600; white-space: nowrap; }
+.ep-camera-clips small { grid-column: 2; grid-row: 2; align-self: center; justify-self: end; color: var(--faint); font-size: 11px; }
+.ep-camera-none { display: grid; gap: 4px; padding: 10px 2px; }
+.ep-camera-none p { margin: 0; color: var(--ink); font-size: 13px; }
+.ep-camera-none small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.ep-camera .ep-provider-footer .btn.primary { margin-left: auto; }
+.ep-camera .ep-provider-footer .btn:not(.primary) { margin-left: 0; }
+.ep-import { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.ep-import > span { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+.ep-import b { color: var(--ink); font-weight: 600; }
+.ep-import progress { flex: 1 1 100%; appearance: none; width: 100%; height: 4px; border: 0; border-radius: 4px; overflow: hidden; background: var(--line-soft); }
+.ep-import progress::-webkit-progress-bar { background: var(--line-soft); }
+.ep-import progress::-webkit-progress-value { background: var(--green); }
+.ep-import progress::-moz-progress-bar { background: var(--green); }
+.ep-take-origin { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.ep-take-origin > span { min-width: 0; overflow-wrap: anywhere; }
+.ep-render-pick { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 8px; }
