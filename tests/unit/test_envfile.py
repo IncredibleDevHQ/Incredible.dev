@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -30,6 +31,27 @@ def test_every_setting_the_code_reads_is_documented() -> None:
             continue
         aliases = getattr(field.validation_alias, "choices", None) or [env]
         assert any(str(a) in documented for a in aliases), f"{name} is not in .env.example"
+
+
+def test_blank_footage_dir_keeps_workspace_default() -> None:
+    from design_agent.config import Settings
+
+    assert Settings(_env_file=None, footage_dir="").footage_dir is None
+
+
+def test_railway_operator_inputs_are_documented() -> None:
+    config = (ROOT / ".railway/railway.ts").read_text()
+    supplied = set(re.findall(r"^\s*([A-Z][A-Z_0-9]*): preserve\(\)", config, re.MULTILINE))
+    assert supplied
+    assert supplied <= known_keys(ROOT).keys()
+
+
+def test_runner_private_key_is_masked(project: Path) -> None:
+    write_env(project, {"RUNNER_KEY_PEM": "fixture-private-value"})
+    rows = view(project)
+    key = next(row for row in rows if row["name"] == "RUNNER_KEY_PEM")
+    assert key["secret"] and key["value"] == "set"
+    assert "fixture-private-value" not in str(rows)
 
 
 def test_set_keeps_other_lines_masks_secrets_and_is_private(project: Path) -> None:

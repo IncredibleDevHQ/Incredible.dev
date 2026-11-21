@@ -11,7 +11,9 @@ should pass and the brand pack should validate (`design-agent-onboarding`, `bran
 
 This fork runs self-hosted, behind its own web UI. It needs Docker with Compose v2.24+.
 
-For the browser app, follow [local Compose](../../../docs/local-compose.md) and
+For Railway, follow the [Railway deployment guide](../../../docs/railway.md) and its checked-in infrastructure definition.
+
+For the local browser app, follow [local Compose](../../../docs/local-compose.md) and
 [Supabase](../../../docs/supabase.md), using the root `compose.yaml`. It builds React and the
 web backend together, requires Supabase Auth/Postgres, and mounts the existing workspace.
 Keep keys in `.env.supabase`; never put a service-role key or database credential in frontend

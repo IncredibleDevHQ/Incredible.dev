@@ -88,7 +88,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import IO, Annotated, Any, Literal
 from urllib.parse import quote
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
@@ -523,11 +523,12 @@ def create_app(
         from design_agent.surfaces.web.auth import create_authenticated_app
 
         return create_authenticated_app(project_root, settings, demo=demo)
+    owner = UUID(authenticated_user["id"]) if authenticated_user else None
     schema = None
-    if authenticated_user:
-        from design_agent.surfaces.web.auth import user_schema
+    if owner and settings.database_url:
+        from design_agent.surfaces.web.workspace_directory import workspace_schema
 
-        schema = user_schema(authenticated_user["id"])
+        schema = workspace_schema(settings.database_url.get_secret_value(), owner)
     if demo:
         # The demo's scripted lead poses in the sample brand's tokens, whatever pack is installed.
         settings = settings.model_copy(update={"brand_path": SAMPLE_BRAND})
@@ -548,7 +549,7 @@ def create_app(
         hub=hub,
         data_dir=data_dir,
         demo=demo,
-        blob_namespace=schema.removeprefix("user_") if schema else "local",
+        blob_namespace=owner.hex if owner else "local",
         project_root=project_root,
     )
     if authenticated_user and settings.private_research_enabled(authenticated_user["id"]):

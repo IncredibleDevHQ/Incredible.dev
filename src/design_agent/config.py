@@ -212,6 +212,7 @@ class Settings(BaseSettings):
     )
     database_url: SecretStr | None = Field(default=None, validation_alias=_alias("DATABASE_URL"))
     blob_backend: Literal["local", "s3"] = "local"
+    blob_s3_addressing_style: Literal["path", "virtual"] = "path"
     s3_bucket: str = "incredible-files"
     s3_access_key: SecretStr | None = None
     s3_secret_key: SecretStr | None = None
@@ -233,6 +234,7 @@ class Settings(BaseSettings):
         "trace_host",
         "job_budget_usd",
         "research_catalog_dir",
+        "footage_dir",
         "moonshot_api_key",
         "anthropic_api_key",
         "openai_api_key",

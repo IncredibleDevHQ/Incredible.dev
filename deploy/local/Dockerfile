@@ -20,6 +20,7 @@ COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
 RUN uv sync --frozen --no-dev --all-extras
 COPY instructions.md NOTICE.md ./
+COPY deploy/railway/start.py ./deploy/railway/start.py
 COPY config ./config
 COPY skills ./skills
 COPY skill-binaries ./skill-binaries

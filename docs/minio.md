@@ -7,6 +7,10 @@ locations. Browser download URLs stay `/api/files/<id>`: the backend verifies th
 session and looks up the file in that account's private schema before accessing S3. No storage
 credential or public bucket URL is sent to the browser.
 
+## Railway
+
+The Railway configuration runs the same MinIO image as a private service with a dedicated persistent volume. At startup it provisions the bucket and application policy before accepting traffic from the web service. See the [Railway setup](railway.md) for variables, deployment order and backups.
+
 ## Run locally
 
 After configuring [Supabase](supabase.md), run:

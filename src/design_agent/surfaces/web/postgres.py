@@ -10,10 +10,12 @@ from psycopg import Connection, sql
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
+from design_agent.surfaces.web.workspace_directory import bind_workspace_name
+
 
 def validate_schema(value: str) -> str:
-    if not re.fullmatch(r"user_[0-9a-f]{32}", value):
-        raise ValueError("A private workspace requires a verified user UUID")
+    if not re.fullmatch(r"(?:user_[0-9a-f]{32}|ws_[1-9][0-9]{0,18})", value):
+        raise ValueError("Invalid private workspace schema name")
     return value
 
 
@@ -93,7 +95,11 @@ class PostgresConnection:
                     )
                 )
                 with connection.transaction():
+                    connection.execute(
+                        "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (schema,)
+                    )
                     connection.execute(pg_schema(), prepare=False)
+                    bind_workspace_name(connection, schema)
                     tables = connection.execute(
                         "SELECT tablename FROM pg_tables WHERE schemaname = %s", (schema,)
                     ).fetchall()

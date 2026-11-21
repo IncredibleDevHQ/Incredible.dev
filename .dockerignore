@@ -6,6 +6,7 @@ config/*.toml
 !config/*.example.toml
 !config/prices.toml
 !config/vendored-skills.toml
+build/
 .venv
 .git
 workspace/out

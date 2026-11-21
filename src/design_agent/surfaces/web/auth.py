@@ -96,6 +96,7 @@ class SecurityHeaders:
 
 
 def user_schema(user_id: str) -> str:
+    """The legacy UUID-derived name, used for pre-directory data."""
     return "user_" + uuid.UUID(user_id).hex
 
 
@@ -226,7 +227,7 @@ class Auth:
             return None
         data = response.json()
         try:
-            user_schema(data["id"])
+            uuid.UUID(data["id"])
         except (KeyError, ValueError, TypeError, AttributeError):
             return None
         if not data.get("email_confirmed_at") or not data.get("email") or data.get("is_anonymous"):

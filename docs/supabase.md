@@ -80,7 +80,7 @@ and configure `DESIGN_AGENT_SMTP_HOST`, `DESIGN_AGENT_SMTP_PORT` (default 587),
 and required for SMTP credentials. Use a From address verified by your mail provider.
 
 The server maintains the private Postgres schema `studio_directory` for account handles,
-invitations and project activity. Back it up alongside project schemas. Logs records verified
+workspace-to-schema mappings, invitations and project activity. Back it up alongside project schemas. Logs records verified
 actors for API mutations, navigation and supported device-preference changes from this version
 onward. Use the actor filter or page through older entries. Audit rows store the action, time,
 status and actor identity. Select a row to see the event ID, timestamp and recorded action. New events include response time, and successful membership changes also identify the affected member. Passwords, message bodies and URL query strings are excluded.
@@ -127,16 +127,31 @@ The app does not disable confirmation to bypass delivery configuration.
 The server obtains the identity from Supabase's verified user endpoint, never `X-Person` or a
 workspace ID from the client. Each user gets:
 
-- A private Postgres schema `user_<uuid_without_dashes>`, including its own web store and
+- A private Postgres schema such as `ws_42` for a new workspace, including its own web store and
   LangGraph checkpoints/memory. RLS is enabled and public/anon/authenticated schema access is
   revoked. These schemas are not exposed through the public Data API. The trusted backend
-  selects the schema from the verified identity and owns its tables.
+  resolves the authorized project owner through `studio_directory.workspaces` and owns its tables.
 - A separate runtime, live-event hub, brand shelf and file directory under
   `workspace/accounts/<uuid_without_dashes>/`. Root Compose keeps registered file bytes in
   private [MinIO S3 storage](minio.md); Supabase holds their metadata. Back up MinIO, the
   database and local working data.
 - Two initial empty channels and only their own person record plus the agent. There is no
   identity-switch menu. Local repository research is opt-in for an individual verified account. Shared trace-reading tools are disabled.
+
+In the Supabase Table Editor, open **studio_directory → workspaces** to look up a project's
+`organization_name`, `owner_id`, and `schema_name`. The name can be blank until the owner
+sets it. Renaming the organization updates this label. The numeric ID is stable and can have
+gaps. Project URLs, invitations, disk paths and MinIO keys continue to use the owner UUID.
+
+On startup the backend registers existing `user_<uuid_without_dashes>` schemas owned by the
+application database role, including projects without account-directory profiles. Their data
+and table names stay in place. New projects receive `ws_<id>` on first access. Back up the
+directory alongside workspace schemas. To run the additive backfill ahead of a rollout, use
+`python -m design_agent.surfaces.web.workspace_directory` with the application database role.
+An immediate second run reports zero registrations. Upgrade all web instances sharing a database before
+allowing new workspace creation. Older servers derive the legacy name directly and cannot
+route to a numeric schema, so rolling back after a numeric workspace exists requires a
+directory-aware release.
 
 Existing SQLite databases, conversations and files are left unchanged in their original local
 folders. They are not imported into new accounts or made accessible through the authenticated

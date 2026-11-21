@@ -36,7 +36,7 @@ class EnvKey:
 
     @property
     def secret(self) -> bool:
-        return bool(_SECRET.search(self.name))
+        return self.name == "RUNNER_KEY_PEM" or bool(_SECRET.search(self.name))
 
 
 def known_keys(root: Path) -> dict[str, EnvKey]:

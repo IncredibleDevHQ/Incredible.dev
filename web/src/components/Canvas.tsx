@@ -114,7 +114,10 @@ export function Canvas({ channelId }: { channelId: string }) {
     const v = view.current;
     if (!v) return;
     const onWheel = (e: WheelEvent) => {
-      if ((e.target as HTMLElement).closest(OWN_WHEEL)) return;
+      const target = e.target as HTMLElement;
+      if (target.closest(OWN_WHEEL)) return;
+      const notes = target.closest<HTMLElement>(".research-material-notes");
+      if (notes && notes.scrollHeight > notes.clientHeight && !e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       const r = v.getBoundingClientRect();
       moved.current = true;

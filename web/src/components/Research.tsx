@@ -1,18 +1,15 @@
 import { Skeleton } from "./Skeleton";
-// Research on the canvas: a frame that reads one of your repositories. Its first column asks a
-// coding agent on this computer (Claude Code, Codex or Kimi Code, read-only, signed in as you),
-// on a model and effort it offers, picked as an episode's writer is; each question grows into a
-// conversation, and a passage of any answer can be kept as a note or explored as a branch, which
-// sits to the right of what it branched from. The notes are what everything made in the frame
-// starts from, and read as one page in the viewer.
+// A research frame shows the saved brief, its conversation tree, and the notes kept from
+// answers. A selected passage can start a branch to the right of its parent conversation.
 import { isWorkspaceTarget } from "./workspaceTarget";
-import { ArrowUp, BookOpen, Check, CornerDownRight, FileText, FolderOpen, GitBranch, MessageSquare, NotebookPen, Paperclip, Pencil, Plus, Quote, Reply, Search, Telescope, X } from "lucide-react";
+import { ArrowUp, ArrowUpRight, BookOpen, Check, ChevronDown, CornerDownRight, FileText, FolderOpen, GitBranch, MessageSquare, NotebookPen, Paperclip, Pencil, Plus, Quote, Reply, Search, Telescope, X } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, type CanvasTask, type Conversation, type Harness, type HarnessId, type FileView, type RepoView, type Note, type ResearchView } from "../api";
 import { useFocused, useHouse } from "../store";
 import { AgentMark, FileList, Rich } from "../ui";
 import { AgentModel, offersPicks, shownPick, type ModelPick } from "./episode/AgentModel";
+import { pickLabel } from "./episode/models";
 import { columnsOf, type Edge } from "./Flow";
 import { ThinkingLoader } from "./ThinkingLoader";
 import { Tooltip } from "./Tooltip";
@@ -79,88 +76,106 @@ export function ResearchColumns({
   );
 }
 
-// The research node: the repository it reads, a new question, which agent answers and on what
-// model and effort. It starts from the pick the frame last asked with, and goes back to it
-// whenever another question is asked.
+// Start an independent question from the frame and continue the conversation in its thread.
 function ResearchNode({ frameId, research }: { frameId: string; research: ResearchView }) {
   const options = useHouse((s) => s.research);
   const focused = useFocused(frameId, RESEARCH_NODE);
-  const [harness, setHarness] = useState<HarnessId>(research.harness);
-  const [pick, setPick] = useState<ModelPick>({ model: research.model, effort: research.effort });
   const [question, setQuestion] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [harness, setHarness] = useState(research.harness);
+  const [pick, setPick] = useState<ModelPick>({ model: research.model, effort: research.effort });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const settingsId = useId();
   const models = options?.models[harness];
+  const provider = options?.harnesses.find(h => h.id === harness);
+  const agent = provider?.title ?? AGENT_TITLES[harness];
+  const latest = research.conversations.findLast(c => !c.parent_id);
+  const ready = !!provider?.ready && !options?.discovery_only;
+  const canSend = ready && !!question.trim() && !sending;
 
   useEffect(() => {
-    if (!options) void useHouse.getState().loadResearch().catch(() => undefined);
+    if (!options) void useHouse.getState().loadResearch().catch(say);
   }, [options]);
 
-  useEffect(() => {
-    setHarness(research.harness);
-    setPick({ model: research.model, effort: research.effort });
-  }, [research.harness, research.model, research.effort]);
-
-  // models are each agent's own, so another agent starts on its default
-  const choose = (id: HarnessId) => {
-    if (id === harness) return;
-    setHarness(id);
-    setPick(DEFAULT_PICK);
+  const openConversation = (id: string) => {
+    const house = useHouse.getState();
+    house.focusOn({ task: frameId, node: id });
+    void house.openThread(id).catch(say);
   };
 
-  const ask = async () => {
-    const words = question.trim();
-    if (!words || busy) return;
-    setBusy(true);
+  const send = async () => {
+    if (!canSend) return;
+    setSending(true);
+    setError("");
     try {
-      await api.ask(frameId, { question: words, harness, ...shownPick(models, pick) });
+      const conversation = await api.ask(frameId, { question: question.trim(), harness, ...shownPick(models, pick) });
       setQuestion("");
-    } catch (error) {
-      say(error);
+      setSettingsOpen(false);
+      openConversation(conversation.id);
+    } catch (cause) {
+      setError((cause as Error).message);
     } finally {
-      setBusy(false);
+      setSending(false);
     }
   };
 
   return (
-    <article className="node research-node" data-node={RESEARCH_NODE} data-focus={focused || undefined} aria-label="Research">
+    <article className="node research-node" data-node={RESEARCH_NODE} data-focus={focused || undefined} aria-label="Research chat">
       <header className="node-head">
-        <span className="node-icon">
-          <Telescope size={16} />
-        </span>
-        <b>Research</b>
+        <span className="node-icon"><MessageSquare size={16} /></span>
+        <b>Research chat</b>
       </header>
       <div className="node-body">
-        <p className="repo-line" title={research.repo.path}>
-          <GitBranch size={13} />
-          <span>{research.repo.name}</span>
-          {research.repo.within && <span className="faint">in {research.repo.within}</span>}
-          {research.repo.branch && <span className="faint">{research.repo.branch}</span>}
-        </p>
-        {research.repos?.slice(1).map(path => <p className="repo-line" key={path} title={path}><GitBranch size={13}/><span>{path.split("/").pop()}</span></p>)}
-        {research.source_notes && <details><summary>Notes and prior research</summary><p className="source-words">{research.source_notes}</p></details>}
-        <FileList files={research.files} title="Research files" />
-        <textarea
-          className="ask-box"
-          rows={2}
-          value={question}
-          placeholder={`Ask about ${research.repo.name || "the repository"}…`}
-          aria-label="A new question"
-          onChange={(e) => setQuestion(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void ask();
-            }
-          }}
-        />
-        {offersPicks(models) && <AgentModel models={models ?? []} pick={pick} disabled={busy} onChange={setPick} />}
-        <div className="ask-row">
-          <Agents value={harness} onChange={choose} known={options?.harnesses} />
-          <button type="button" className="btn primary" disabled={!question.trim() || busy} onClick={() => void ask()}>
-            <ArrowUp />
-            Ask
-          </button>
-        </div>
+        {research.repo.name && <section className="research-material">
+          <h4>Repositories</h4>
+          <div className="research-chat-repos">
+            <span className="chip" title={research.repo.path}><GitBranch /><span>{research.repo.name}</span>
+              {research.repo.within && <small>in {research.repo.within}</small>}
+              {research.repo.branch && <small>{research.repo.branch}</small>}
+            </span>
+            {research.repos?.slice(1).map(path => <span className="chip" key={path} title={path}><GitBranch /><span>{path.split("/").pop()}</span></span>)}
+          </div>
+        </section>}
+        {!!research.files?.length && <section className="research-material">
+          <h4>Attached files</h4>
+          <FileList files={research.files} title="Research files" />
+        </section>}
+        {research.source_notes?.trim() && <section className="research-material">
+          <h4>Notes and prior research</h4>
+          <div className="research-material-notes" role="region" aria-label="Notes and prior research" tabIndex={0}>{research.source_notes}</div>
+        </section>}
+        {latest && <button type="button" className="research-chat-preview" onClick={() => openConversation(latest.id)}>
+          <small>Recent conversation <ArrowUpRight size={13} /></small>
+          <span>{latest.follow_up || latest.question}</span>
+        </button>}
+        <form className="box research-chat-compose" aria-label="New research question" onSubmit={e => { e.preventDefault(); void send(); }}>
+          <textarea aria-label="Ask a question" rows={2}
+            placeholder={research.repos && research.repos.length > 1 ? "Ask about these repositories…" : `Ask about ${research.repo.name || "this repository"}…`}
+            value={question} readOnly={sending} onChange={e => { setQuestion(e.target.value); setError(""); }}
+            onKeyDown={e => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                e.currentTarget.form?.requestSubmit();
+              }
+            }} />
+          <div className="box-row">
+            <button type="button" className="research-chat-agent" aria-label="Research settings" aria-controls={settingsId}
+              aria-expanded={settingsOpen} title={[agent, pickLabel(models, pick)].filter(Boolean).join(" · ")}
+              onClick={() => setSettingsOpen(!settingsOpen)}>
+              <AgentMark mark={harness} size="sm" /><span>{agent}</span><ChevronDown size={14} />
+            </button>
+            <button type="submit" className="btn primary research-chat-send" aria-label="Send question" aria-busy={sending} disabled={!canSend}>
+              {sending ? <span className="spin" aria-hidden="true" /> : <ArrowUp />}{sending ? "Sending…" : "Send"}
+            </button>
+          </div>
+          <div id={settingsId} hidden={!settingsOpen} className="research-chat-settings">
+            <Agents value={harness} known={options?.harnesses} named onChange={id => { if (harness !== id) { setHarness(id); setPick(DEFAULT_PICK); } }} />
+            <AgentModel models={models ?? []} pick={pick} disabled={sending || !offersPicks(models)} onChange={setPick} />
+          </div>
+        </form>
+        {options && !ready && <p className="muted">{options.harnesses.some(h => h.ready) ? "Select an available agent in research settings." : "Research is unavailable in this workspace."}</p>}
+        {error && <p className="node-line warn" role="alert">{error}</p>}
       </div>
     </article>
   );
