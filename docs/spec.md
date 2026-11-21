@@ -908,9 +908,10 @@ app's canvas, from a channel's material or a research frame's notes.
   the repository and answering, with the agent's steps, words and thinking under it as they
   come and its pulse told to the conversation alone (`research.pulse`); once it is answered,
   its steps fold behind their count. A research question is asked on a model and effort its
-  agent offers, picked as an episode's writer is (the agent's own default first), on the
-  research node and where a frame is started; its follow-ups and branches keep that pick, and
-  the node's next question starts from the last. While a motion-graphics picture is made, until its builder begins to
+  agent offers when the frame is started. The research card lists the selected repositories and
+  attached files and shows the supplied notes inline. It has a chat composer for new questions,
+  with agent, model and effort choices under its settings control. Sending opens the new
+  conversation in a thread for follow-ups. A selected passage can start a branch. While a motion-graphics picture is made, until its builder begins to
   look it over, the person can leave a note without stopping it: the note waits for the
   builder's next turn on the picture and goes in with it, can be taken back until then, and
   stays under the stage that took it in. A made picture says how its build went, folded: its

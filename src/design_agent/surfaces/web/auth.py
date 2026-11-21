@@ -38,6 +38,7 @@ from design_agent.surfaces.web.project_login import (
     digest,
     project_login_routes,
 )
+from design_agent.surfaces.web.research_catalog import catalog_repos
 from design_agent.surfaces.web.team import team_routes
 
 ACCESS = "incredible-access"
@@ -103,6 +104,7 @@ class SecurityHeaders:
 
 
 def user_schema(user_id: str) -> str:
+    """The legacy UUID-derived name, used for pre-directory data."""
     return "user_" + uuid.UUID(user_id).hex
 
 
@@ -249,7 +251,7 @@ class Auth:
             return None
         data = response.json()
         try:
-            user_schema(data["id"])
+            uuid.UUID(data["id"])
         except (KeyError, ValueError, TypeError, AttributeError):
             return None
         if not data.get("email_confirmed_at") or not data.get("email") or data.get("is_anonymous"):
@@ -530,15 +532,32 @@ class Gateway:
                     await self.auth.origin_check(request)
                 user, tokens = await self.auth.identity(request)
                 # A server's local code and coding-agent account are not a user's resources.
-                if "/research" in request.url.path:
-                    response = (
-                        JSONResponse({"harnesses": [], "repos": []})
-                        if request.method == "GET" and request.url.path == "/api/research"
-                        else JSONResponse(
+                if (
+                    "/research" in request.url.path
+                    and not self.tenants.settings.private_research_enabled(user["id"])
+                ):
+                    if request.method == "GET" and request.url.path == "/api/research":
+                        options: dict[str, Any] = {"harnesses": [], "models": {}, "repos": []}
+                        directory = self.tenants.settings.research_catalog_dir
+                        if directory is not None:
+                            try:
+                                repos = await asyncio.to_thread(
+                                    catalog_repos, directory, user["id"]
+                                )
+                            except (OSError, ValueError):
+                                raise HTTPException(
+                                    503, "Local repository list is unavailable"
+                                ) from None
+                            if repos is not None:
+                                options.update(repos=repos, discovery_only=True)
+                        response = JSONResponse(options)
+                    else:
+                        response = JSONResponse(
                             {"detail": "Repository research is unavailable in private workspaces"},
                             status_code=403,
                         )
-                    )
+                    if tokens:
+                        self.auth.cookies(response, tokens)
                     await response(scope, receive, send)
                     return
                 selected = await self.auth.project_host(request)

@@ -114,7 +114,10 @@ export function Canvas({ channelId }: { channelId: string }) {
     const v = view.current;
     if (!v) return;
     const onWheel = (e: WheelEvent) => {
-      if ((e.target as HTMLElement).closest(OWN_WHEEL)) return;
+      const target = e.target as HTMLElement;
+      if (target.closest(OWN_WHEEL)) return;
+      const notes = target.closest<HTMLElement>(".research-material-notes");
+      if (notes && notes.scrollHeight > notes.clientHeight && !e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       const r = v.getBoundingClientRect();
       moved.current = true;
@@ -156,19 +159,21 @@ export function Canvas({ channelId }: { channelId: string }) {
       </div>
       {!tasks && <Skeleton shape="cards" label="Loading canvas" />}
       {tasks && !empty && (
-        <div className="canvas-bar">
-          <button type="button" className="btn" aria-expanded={Boolean(starting)} onClick={(e) => setStarting(starting ? null : e.currentTarget)}>
-            <Telescope />
-            Research
-          </button>
-          <button type="button" className="btn" aria-expanded={Boolean(picking)} onClick={() => pickTemplate(picking ? null : {})}>
-            <LayoutTemplate />
-            Templates
-          </button>
-          <button type="button" className="btn" onClick={() => useHouse.getState().startEpisode({})}>
-            <Podcast />
-            Episode
-          </button>
+        <div className="canvas-tools">
+          <div className="canvas-bar">
+            <button type="button" aria-label="Research" title="Research" className="btn" aria-expanded={Boolean(starting)} onClick={(e) => setStarting(starting ? null : e.currentTarget)}>
+              <Telescope />
+              <span>Research</span>
+            </button>
+            <button type="button" aria-label="Templates" title="Templates" className="btn" aria-expanded={Boolean(picking)} onClick={() => pickTemplate(picking ? null : {})}>
+              <LayoutTemplate />
+              <span>Templates</span>
+            </button>
+            <button type="button" aria-label="Episode" title="Episode" className="btn" onClick={() => useHouse.getState().startEpisode({})}>
+              <Podcast />
+              <span>Episode</span>
+            </button>
+          </div>
         </div>
       )}
       {starting && (

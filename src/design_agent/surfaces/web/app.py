@@ -88,7 +88,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import IO, Annotated, Any, Literal
 from urllib.parse import quote
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
@@ -277,6 +277,9 @@ AGENTS = r"^(claude|codex|kimi)$"
 
 
 class ResearchIn(BaseModel):
+    repos: list[str] = Field(default_factory=list, max_length=8)
+    notes: str = Field(default="", max_length=16000)
+    files: list[str] = Field(default_factory=list, max_length=MAX_UPLOADS)
     repo: str = Field(min_length=1, max_length=1_024)
     harness: str = Field(pattern=AGENTS)
     question: str = Field(min_length=1, max_length=8_000)
@@ -520,11 +523,12 @@ def create_app(
         from design_agent.surfaces.web.auth import create_authenticated_app
 
         return create_authenticated_app(project_root, settings, demo=demo)
+    owner = UUID(authenticated_user["id"]) if authenticated_user else None
     schema = None
-    if authenticated_user:
-        from design_agent.surfaces.web.auth import user_schema
+    if owner and settings.database_url:
+        from design_agent.surfaces.web.workspace_directory import workspace_schema
 
-        schema = user_schema(authenticated_user["id"])
+        schema = workspace_schema(settings.database_url.get_secret_value(), owner)
     if demo:
         # The demo's scripted lead poses in the sample brand's tokens, whatever pack is installed.
         settings = settings.model_copy(update={"brand_path": SAMPLE_BRAND})
@@ -545,9 +549,17 @@ def create_app(
         hub=hub,
         data_dir=data_dir,
         demo=demo,
-        blob_namespace=schema.removeprefix("user_") if schema else "local",
+        blob_namespace=owner.hex if owner else "local",
         project_root=project_root,
     )
+    if authenticated_user and settings.private_research_enabled(authenticated_user["id"]):
+        from design_agent.surfaces.web.research_provider import ProviderResearch
+
+        host.research.provider = ProviderResearch(settings, authenticated_user["id"])
+        host.research.ready = host.research.provider.ready
+        host.research.models = host.research.provider.models
+    elif authenticated_user:
+        host.research.ready = lambda _: False
     shelf = BrandShelf(
         store=store, hub=hub, settings=settings, project_root=project_root, data_dir=data_dir
     )
@@ -1569,10 +1581,41 @@ def create_app(
         if store.channel(channel_id) is None:
             raise HTTPException(status_code=404, detail="no such channel")
         try:
+            material = [body.notes.strip()] if body.notes.strip() else []
+            attachments = []
+            for file_id in dict.fromkeys(body.files):
+                row = store.file(file_id)
+                if row is None or row["origin"] != "upload" or row["thread_id"]:
+                    raise ValueError("Choose an uploaded file from this workspace.")
+                if int(row["size"]) > 64000 or Path(row["name"]).suffix.lower() not in {
+                    ".md",
+                    ".txt",
+                    ".csv",
+                    ".json",
+                    ".rst",
+                    ".log",
+                }:
+                    raise ValueError(
+                        "Attach a text, Markdown, CSV, JSON, RST or log file up to 64 KB."
+                    )
+                raw = await asyncio.to_thread(host.blobs.read, row, 64001)
+                try:
+                    text = raw.decode("utf-8-sig")
+                except UnicodeDecodeError:
+                    raise ValueError("Research files must contain UTF-8 text.") from None
+                material.append(f"File {row['name']}\n{text}")
+                attachments.append(host.file_view(row))
+            material_text = "\n\n".join(material)
+            if len(material_text) > 64000:
+                raise ValueError("Keep the combined notes and files within 64,000 characters.")
             frame, conversation = host.research.open(
                 channel_id,
                 by=me,
                 repo=body.repo,
+                repos=body.repos,
+                material=material_text,
+                notes=body.notes.strip(),
+                files=attachments,
                 harness=body.harness,
                 question=body.question,
                 model=body.model,

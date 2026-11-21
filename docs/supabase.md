@@ -92,7 +92,7 @@ and configure `DESIGN_AGENT_SMTP_HOST`, `DESIGN_AGENT_SMTP_PORT` (default 587),
 and required for SMTP credentials. Use a From address verified by your mail provider.
 
 The server maintains the private Postgres schema `studio_directory` for account handles,
-invitations and project activity. Back it up alongside project schemas. Logs records verified
+workspace-to-schema mappings, invitations and project activity. Back it up alongside project schemas. Logs records verified
 actors for API mutations, navigation and supported device-preference changes from this version
 onward. Use the actor filter or page through older entries. Audit rows store the action, time,
 status and actor identity. Select a row to see the event ID, timestamp and recorded action. New events include response time, and successful membership changes also identify the affected member. Passwords, message bodies and URL query strings are excluded.
@@ -139,16 +139,31 @@ The app does not disable confirmation to bypass delivery configuration.
 The server obtains the identity from Supabase's verified user endpoint, never `X-Person` or a
 workspace ID from the client. Each user gets:
 
-- A private Postgres schema `user_<uuid_without_dashes>`, including its own web store and
+- A private Postgres schema such as `ws_42` for a new workspace, including its own web store and
   LangGraph checkpoints/memory. RLS is enabled and public/anon/authenticated schema access is
   revoked. These schemas are not exposed through the public Data API. The trusted backend
-  selects the schema from the verified identity and owns its tables.
+  resolves the authorized project owner through `studio_directory.workspaces` and owns its tables.
 - A separate runtime, live-event hub, brand shelf and file directory under
   `workspace/accounts/<uuid_without_dashes>/`. Root Compose keeps registered file bytes in
   private [MinIO S3 storage](minio.md); Supabase holds their metadata. Back up MinIO, the
   database and local working data.
 - Two initial empty channels and only their own person record plus the agent. There is no
-  identity-switch menu. Local repository research and shared trace-reading tools are disabled.
+  identity-switch menu. Local repository research is opt-in for an individual verified account. Shared trace-reading tools are disabled.
+
+In the Supabase Table Editor, open **studio_directory → workspaces** to look up a project's
+`organization_name`, `owner_id`, and `schema_name`. The name can be blank until the owner
+sets it. Renaming the organization updates this label. The numeric ID is stable and can have
+gaps. Project URLs, invitations, disk paths and MinIO keys continue to use the owner UUID.
+
+On startup the backend registers existing `user_<uuid_without_dashes>` schemas owned by the
+application database role, including projects without account-directory profiles. Their data
+and table names stay in place. New projects receive `ws_<id>` on first access. Back up the
+directory alongside workspace schemas. To run the additive backfill ahead of a rollout, use
+`python -m design_agent.surfaces.web.workspace_directory` with the application database role.
+An immediate second run reports zero registrations. Upgrade all web instances sharing a database before
+allowing new workspace creation. Older servers derive the legacy name directly and cannot
+route to a numeric schema, so rolling back after a numeric workspace exists requires a
+directory-aware release.
 
 Existing SQLite databases, conversations and files are left unchanged in their original local
 folders. They are not imported into new accounts or made accessible through the authenticated
@@ -179,3 +194,36 @@ Run `uv run pytest -q` for offline tests. The Postgres integration suite is opt-
 `TEST_DATABASE_URL`; it creates and removes randomly named, test-owned schemas, and checks
 cross-user channel/thread/file denial, event isolation, SQL parameter binding, durability and
 agent memory isolation. It does not send email or create Auth users.
+
+### Local repository suggestions
+
+An operator can enable repository autocomplete for a specific private account. On the computer
+with the repositories, export their relative folder names into a catalog named for the account's
+verified Supabase user UUID. Use a dedicated catalog directory outside the served web assets.
+
+```bash
+mkdir -p "$HOME/.local/share/design-agent/repo-catalogs"
+uv run python -m design_agent.surfaces.web.research_catalog "$HOME/Projects" \
+  "$HOME/.local/share/design-agent/repo-catalogs/<user-uuid>.json"
+```
+
+Mount the catalog directory read-only in the app container and set
+`DESIGN_AGENT_RESEARCH_CATALOG_DIR` to its container path. The app user needs read access.
+Add `--also-scan <folder>` for each additional root. Give each root a distinct folder name so
+checkouts with the same name can be distinguished in the picker. Rerun the export to pick up
+renamed, added or removed repositories. The picker searches names
+and relative paths, including worktrees, up to two directories below the scan root. Use the
+arrow keys and Enter or click a suggestion. This enables discovery for the catalog owner.
+To enable provider research for one verified user, set `DESIGN_AGENT_RESEARCH_OWNER_ID` to their
+Supabase UUID and `DESIGN_AGENT_RESEARCH_READER_CONTAINER` to an operator-controlled Docker
+container with Python, Git, and this branch's source installed. Mount the scan roots read-only
+there and set its `DESIGN_AGENT_RESEARCH_ROOTS` to the same comma-separated root paths used to
+export the catalog. For linked worktrees, also make their Git metadata available at the original
+paths. The reader runs with networking disabled and needs no provider keys or Docker socket.
+
+Configure the chosen provider in the app environment with `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
+or `MOONSHOT_API_KEY`. A person can select up to eight repositories, add notes or previous
+answers, and attach UTF-8 text, Markdown, CSV, JSON, RST or log files (64 KB per file).
+Starting a run sends bounded excerpts from committed source and the supplied material to
+the selected provider. Results and attachments stay in the account’s research frame.
+Private runs use provider APIs. Choose the model and effort for the selected provider when starting research. Kimi offers instant and thinking modes. Follow-up questions inherit the conversation’s selection. The native single-user flow uses the installed coding-agent CLI.

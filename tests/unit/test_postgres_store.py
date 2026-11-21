@@ -37,3 +37,13 @@ def test_schema_identity_is_deterministic_and_cannot_contain_sql():
         == "user_11111111111141118111111111111111"
     )
     assert validate_schema(user_schema("11111111-1111-4111-8111-111111111111"))
+
+
+@pytest.mark.parametrize("value", ["ws_0", "ws_-1", "ws_01", "ws_1a", "ws_" + "9" * 64])
+def test_invalid_short_workspace_identifiers_are_rejected(value):
+    with pytest.raises(ValueError):
+        validate_schema(value)
+
+
+def test_new_workspace_schema_is_a_positive_decimal_id():
+    assert validate_schema("ws_42") == "ws_42"

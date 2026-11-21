@@ -19,7 +19,7 @@ from psycopg import connect, sql
 from pydantic import SecretStr
 
 from design_agent.config import Settings
-from design_agent.surfaces.web.auth import create_authenticated_app, user_schema
+from design_agent.surfaces.web.auth import create_authenticated_app
 
 
 @pytest.mark.skipif(
@@ -131,11 +131,16 @@ async def test_browser_project_sign_in(tmp_path):
             await task
             with connect(database, autocommit=True) as connection:
                 for uid in users:
-                    connection.execute(
-                        sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
-                            sql.Identifier(user_schema(uid))
+                    mapping = connection.execute(
+                        "DELETE FROM studio_directory.workspaces WHERE owner_id=%s RETURNING schema_name",
+                        (uid,),
+                    ).fetchone()
+                    if mapping:
+                        connection.execute(
+                            sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                                sql.Identifier(mapping[0])
+                            )
                         )
-                    )
                     for table, column in [
                         ("project_handoffs", "project"),
                         ("browser_sessions", "actor"),

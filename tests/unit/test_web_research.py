@@ -1166,3 +1166,67 @@ def test_codex_nested_provider_error_has_readable_message(tmp_path: Path) -> Non
     body = json.dumps({"status": 400, "error": {"message": "Model unavailable"}})
     event = {"type": "turn.failed", "error": {"message": body}}
     assert parse("codex", json.dumps(event), tmp_path) == [Event("error", "Model unavailable")]
+
+
+def test_provider_research_uses_selected_repos_supporting_files_and_notes(tmp_path, monkeypatch):
+    import json
+    from unittest.mock import AsyncMock
+
+    from design_agent.surfaces.web.research_provider import ProviderResearch
+
+    owner = "11111111-1111-4111-8111-111111111111"
+    (tmp_path / f"{owner}.json").write_text('["alpha","beta"]')
+    settings = Settings(
+        _env_file=None,
+        workspace_root=tmp_path / "workspace",
+        sandbox="host",
+        research_catalog_dir=tmp_path,
+        openai_api_key="fixture",
+    )
+    provider = ProviderResearch(settings, owner)
+    read = AsyncMock(return_value="alpha README and beta README")
+    answer = AsyncMock(return_value="The two projects share a format.")
+    monkeypatch.setattr(provider, "read_sources", read)
+    monkeypatch.setattr(provider, "answer", answer)
+    with TestClient(create_app(ROOT, settings)) as client:
+        desk = client.app.state.host.research
+        desk.provider, desk.ready, desk.models = provider, provider.ready, provider.models
+        channel = desk.store.channels()[0]["id"]
+        path = f"/api/channels/{channel}/research"
+        data = {
+            "repo": "alpha",
+            "repos": ["alpha", "beta"],
+            "harness": "codex",
+            "question": "Compare formats",
+            "model": "gpt-5.4-mini",
+            "effort": "low",
+            "notes": "Prior research found aliases.",
+        }
+        file = client.post(
+            "/api/uploads", files={"files": ("notes.md", b"XML is supported.", "text/markdown")}
+        ).json()[0]
+        assert client.post(path, json={**data, "repos": ["alpha", "unknown"]}).status_code == 422
+        assert client.post(path, json={**data, "files": ["missing"]}).status_code == 422
+        assert client.post(path, json={**data, "harness": "kimi"}).status_code == 422
+        assert client.post(path, json={**data, "effort": "bogus"}).status_code == 422
+        assert client.post(path, json={**data, "model": "kimi-k2.5"}).status_code == 422
+        assert not read.called and not answer.called
+        response = client.post(path, json={**data, "files": [file["id"]]})
+        assert response.status_code == 200, response.text
+        frame = response.json()["thread"]["id"]
+        conv = response.json()["conversation"]["id"]
+        until = time.monotonic() + 5
+        while desk.running(conv) and time.monotonic() < until:
+            time.sleep(0.01)
+        assert read.await_args.args[0] == ["alpha", "beta"]
+        assert answer.await_args.kwargs == {"model": data["model"], "effort": data["effort"]}
+        evidence = json.loads(answer.await_args.args[1])
+        assert "XML is supported" in evidence["supporting_material"]
+        assert data["notes"] in evidence["supporting_material"]
+        assert desk.store.file(file["id"])["thread_id"] == frame
+        saved = desk.view(frame)
+        assert saved["repos"] == ["alpha", "beta"]
+        assert saved["model"] == data["model"] and saved["effort"] == data["effort"]
+        assert saved["source_notes"] == data["notes"]
+        assert [attachment["id"] for attachment in saved["files"]] == [file["id"]]
+        assert saved["conversations"][0]["answer"] == answer.return_value

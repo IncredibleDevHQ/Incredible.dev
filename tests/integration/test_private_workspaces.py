@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -40,6 +41,19 @@ def database():
             remove_test_objects([uuid.UUID(u["id"]).hex for u in users])
         with connect(credential.get_secret_value(), autocommit=True) as conn:
             for user in users:
+                if conn.execute("SELECT to_regclass('studio_directory.workspaces')").fetchone() != (
+                    None,
+                ):
+                    mapping = conn.execute(
+                        "DELETE FROM studio_directory.workspaces WHERE owner_id=%s RETURNING schema_name",
+                        (user["id"],),
+                    ).fetchone()
+                    if mapping:
+                        conn.execute(
+                            sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                                sql.Identifier(mapping[0])
+                            )
+                        )
                 conn.execute(
                     sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
                         sql.Identifier(user_schema(user["id"]))
@@ -163,6 +177,19 @@ async def test_real_private_apps_reject_other_users_channel_file_and_thread_ids(
     credential, users = database
     root = Path(__file__).resolve().parents[2]
     tokens = {"alpha": users[0], "beta": users[1]}
+    # The shared project predates the directory. The other account starts on the new naming scheme.
+    original = user_schema(users[0]["id"])
+    store = Store(
+        tmp_path, database_url=credential.get_secret_value(), schema=original, user=users[0]
+    )
+    try:
+        existing = store.add_channel("before-upgrade")
+    finally:
+        store.close()
+    async with open_persistence(
+        Settings(_env_file=None, database_url=credential), tmp_path, schema=original
+    ) as (_, memory):
+        await memory.aput(("before-upgrade",), "state", {"saved": True})
 
     def provider(request):
         user = tokens.get(request.headers.get("Authorization", "").removeprefix("Bearer "))
@@ -249,12 +276,33 @@ async def test_real_private_apps_reject_other_users_channel_file_and_thread_ids(
             assert session["me"] == users[1]["id"]
             assert all(p["id"] in {users[1]["id"], "agent"} for p in session["people"])
             a = app.state.tenants.apps[users[0]["id"]].state.host
+            assert a.store.channel(existing["id"])["name"] == "before-upgrade"
+            assert (await a.runtime.graph.store.aget(("before-upgrade",), "state")).value == {
+                "saved": True
+            }
+            assert a.blobs.prefix == f"accounts/{uuid.UUID(users[0]['id']).hex}/blobs/"
+            assert (
+                app.state.tenants.apps[users[1]["id"]].state.host.blobs.prefix
+                == f"accounts/{uuid.UUID(users[1]['id']).hex}/blobs/"
+            )
+            with connect(credential.get_secret_value()) as connection:
+                assert connection.execute(
+                    "SELECT schema_name FROM studio_directory.workspaces WHERE owner_id=%s",
+                    (users[0]["id"],),
+                ).fetchone() == (original,)
             b = app.state.tenants.apps[users[1]["id"]].state.host
             profile = {"name": "Private studio", "website": "", "description": "Beta only"}
             assert (
                 await client.put("/api/organization", json=profile)
             ).raise_for_status().json() == profile
             assert (await client.get("/api/session")).json()["organizationName"] == profile["name"]
+            with connect(credential.get_secret_value()) as connection:
+                mapped = connection.execute(
+                    "SELECT schema_name, organization_name FROM studio_directory.workspaces WHERE owner_id=%s",
+                    (users[1]["id"],),
+                ).fetchone()
+                assert mapped and re.fullmatch(r"ws_[1-9][0-9]*", mapped[0])
+                assert mapped[1] == profile["name"]
             assert (await client.get("/api/session")).json()["email"] == users[1]["email"]
             a.store.add_activity(
                 {
@@ -458,6 +506,14 @@ async def test_chapter_recording_reopens_without_the_original_workspace(database
                 files={"file": ("camera.mkv", raw, "video/x-matroska")},
             )
             saved = response.raise_for_status().json()
+            assert [job["chapter"] for job in saved["imports"]] == [chapter]
+            async with asyncio.timeout(90):
+                while saved["imports"]:
+                    (job,) = saved["imports"]
+                    assert job["state"] != "failed", job["failure"]
+                    await asyncio.sleep(0.1)
+                    current = await client.get(f"/api/episodes/{episode_id}")
+                    saved = current.raise_for_status().json()
             (take,) = saved["takes"]
             assert take["chapter"] == chapter
             row = host.store.take(take["id"])
@@ -490,3 +546,52 @@ async def test_chapter_recording_reopens_without_the_original_workspace(database
             )
             assert video.status_code == 206
             assert video.content[4:8] == b"ftyp"
+
+
+def test_legacy_backfill_and_concurrent_new_workspace_registration(database, tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from design_agent.surfaces.web.workspace_directory import (
+        backfill_workspace_directory,
+        workspace_schema,
+    )
+
+    credential, (old, new) = database
+    dsn = credential.get_secret_value()
+    legacy = user_schema(old["id"])
+    store = Store(tmp_path, database_url=dsn, schema=legacy, user=old)
+    try:
+        channel = store.add_channel("existing-channel")
+        store.save_organization("Existing studio", "", "")
+    finally:
+        store.close()
+
+    backfill_workspace_directory(dsn)
+    with connect(dsn) as conn:
+        assert conn.execute(
+            "SELECT schema_name, organization_name FROM studio_directory.workspaces WHERE owner_id=%s",
+            (old["id"],),
+        ).fetchone() == (legacy, "Existing studio")
+    with ThreadPoolExecutor(max_workers=6) as workers:
+        names = list(workers.map(lambda _: workspace_schema(dsn, uuid.UUID(new["id"])), range(12)))
+    assert len(set(names)) == 1
+    assert re.fullmatch(r"ws_[1-9][0-9]*", names[0])
+    assert workspace_schema(dsn, uuid.UUID(old["id"])) == legacy
+    backfill_workspace_directory(dsn)
+    assert workspace_schema(dsn, uuid.UUID(new["id"])) == names[0]
+    with connect(dsn) as conn:
+        assert conn.execute(
+            "SELECT schema_name FROM studio_directory.workspaces WHERE owner_id=%s AND schema_name='ws_' || id::text",
+            (new["id"],),
+        ).fetchone() == (names[0],)
+        assert conn.execute(
+            sql.SQL("SELECT name FROM {}.channels WHERE id=%s").format(sql.Identifier(legacy)),
+            (channel["id"],),
+        ).fetchone() == ("existing-channel",)
+        assert not conn.execute(
+            "SELECT has_schema_privilege('authenticated', %s, 'USAGE')", (names[0],)
+        ).fetchone()[0]
+    with connect(dsn) as conn:
+        conn.execute(sql.SQL("DROP SCHEMA {}").format(sql.Identifier(names[0])))
+    with pytest.raises(ValueError, match="Registered workspace schema is missing"):
+        workspace_schema(dsn, uuid.UUID(new["id"]))

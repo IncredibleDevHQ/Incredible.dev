@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
+mc alias set local "${MINIO_INIT_ENDPOINT:-http://minio:9000}" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
 mc mb --ignore-existing local/incredible-files >/dev/null
 mc anonymous set none local/incredible-files >/dev/null
 mc version enable local/incredible-files >/dev/null

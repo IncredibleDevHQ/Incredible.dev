@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import sqlite3
 import unicodedata
@@ -11,6 +12,8 @@ from typing import Any
 from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
+
+from design_agent.surfaces.web.workspace_directory import backfill_workspace_directory
 
 TABLES = (
     """CREATE TABLE IF NOT EXISTS accounts (
@@ -61,6 +64,7 @@ class Directory:
         async def configure(connection: AsyncConnection[Any]) -> None:
             await connection.execute("SET search_path TO studio_directory")
 
+        self.url = url
         self.pool: AsyncConnectionPool[AsyncConnection[Any]] | None = (
             AsyncConnectionPool(
                 url,
@@ -82,12 +86,8 @@ class Directory:
     async def open(self) -> None:
         if self.pool:
             await self.pool.open()
-            await self.query(
-                "CREATE SCHEMA IF NOT EXISTS studio_directory AUTHORIZATION CURRENT_USER"
-            )
-            await self.query(
-                "REVOKE ALL ON SCHEMA studio_directory FROM PUBLIC, anon, authenticated"
-            )
+            assert self.url is not None  # noqa: S101 - the pool and URL are configured together
+            await asyncio.to_thread(backfill_workspace_directory, self.url)
         else:
             self.local = sqlite3.connect(":memory:", isolation_level=None)
             self.local.row_factory = sqlite3.Row

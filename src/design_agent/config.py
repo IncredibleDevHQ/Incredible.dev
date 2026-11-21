@@ -117,6 +117,12 @@ class Settings(BaseSettings):
     max_parallel_builders: int = Field(default=3, ge=1, le=16)
     job_budget_usd: float | None = Field(default=None, gt=0)
     workspace_root: Path = Path("workspace")
+    research_owner_id: str = ""
+    research_reader_container: str = Field(default="", pattern=r"^(?:[a-zA-Z0-9][a-zA-Z0-9_.-]*)?$")
+    moonshot_api_key: SecretStr | None = Field(
+        default=None, validation_alias=_alias("MOONSHOT_API_KEY")
+    )
+    research_catalog_dir: Path | None = None
     research_roots: str = "~/Documents/code"
     #: The ElevenLabs voice that narrates an episode nobody records (with ELEVENLABS_API_KEY).
     narrator_voice_id: str = ""
@@ -206,6 +212,7 @@ class Settings(BaseSettings):
     )
     database_url: SecretStr | None = Field(default=None, validation_alias=_alias("DATABASE_URL"))
     blob_backend: Literal["local", "s3"] = "local"
+    blob_s3_addressing_style: Literal["path", "virtual"] = "path"
     s3_bucket: str = "incredible-files"
     s3_access_key: SecretStr | None = None
     s3_secret_key: SecretStr | None = None
@@ -226,6 +233,9 @@ class Settings(BaseSettings):
         "model_api_key_env",
         "trace_host",
         "job_budget_usd",
+        "research_catalog_dir",
+        "footage_dir",
+        "moonshot_api_key",
         "anthropic_api_key",
         "openai_api_key",
         "google_api_key",
@@ -281,6 +291,14 @@ class Settings(BaseSettings):
             if sep and token and caller:
                 result[token] = caller
         return result
+
+    def private_research_enabled(self, user_id: str) -> bool:
+        return bool(
+            self.research_catalog_dir
+            and self.research_reader_container
+            and user_id
+            and self.research_owner_id == user_id
+        )
 
     def research_folders(self) -> list[Path]:
         return [Path(p.strip()).expanduser() for p in self.research_roots.split(",") if p.strip()]

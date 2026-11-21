@@ -60,6 +60,6 @@ it is a separate developer workflow and does not select a private user schema.
 
 The published port binds only to localhost. The app has Docker-daemon access to start
 sandboxes, while sandboxes receive neither the socket nor provider keys. Repository research
-is disabled for private accounts. Editable HyperFrames Studio links use extra loopback ports
+requires the account-specific opt-in described in [Supabase setup](supabase.md). Editable HyperFrames Studio links use extra loopback ports
 that this stack does not publish; storyboard review, file previews, video playback and downloads
 use the main app port.

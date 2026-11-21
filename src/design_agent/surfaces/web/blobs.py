@@ -59,7 +59,7 @@ def s3_client(settings: Settings) -> Any:
         aws_secret_access_key=settings.s3_secret_key.get_secret_value(),
         config=Config(
             signature_version="s3v4",
-            s3={"addressing_style": "path"},
+            s3={"addressing_style": settings.blob_s3_addressing_style},
             connect_timeout=5,
             read_timeout=60,
             retries={"mode": "standard", "total_max_attempts": 3},

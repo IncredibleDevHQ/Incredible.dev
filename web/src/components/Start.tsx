@@ -26,7 +26,7 @@ export function ChannelStart({ channel, inChat }: { channel: Channel; inChat?: b
             <Telescope />
           </span>
           <h3>Research a repository</h3>
-          <p>When the story is in code. Claude, Codex or Kimi read it on this computer, and you keep notes to make from.</p>
+          <p>Choose local repositories, ask a question, and keep the answer with your research notes.</p>
           <button type="button" className="btn" aria-expanded={Boolean(researching)} onClick={(e) => setResearching(researching ? null : e.currentTarget)}>
             <Telescope />
             Start research

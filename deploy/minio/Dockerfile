@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY --from=build /go/bin/minio /go/bin/mc /usr/local/bin/
 COPY --from=build /go/bin/MINIO-LICENSE /go/bin/MC-LICENSE /usr/share/doc/minio/
 COPY deploy/minio/init.sh deploy/minio/run.sh deploy/minio/app-policy.json /opt/minio/
+COPY deploy/railway/minio.sh /opt/minio/railway.sh
 USER minio
 EXPOSE 9000 9001
 ENTRYPOINT ["/bin/sh", "/opt/minio/run.sh"]

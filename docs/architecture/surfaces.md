@@ -125,7 +125,8 @@ name as it runs and stays open while background work continues.
 
 The browser entry point dispatches to `surfaces/web/auth.py` when Supabase is configured or
 `DESIGN_AGENT_AUTH_REQUIRED=1`. Supabase verifies cookie sessions before the gateway selects a
-user-specific web app. The user UUID determines its private Postgres schema and file root;
+user-specific web app. The authorized owner UUID maps to a private Postgres schema through
+`studio_directory.workspaces` and identifies the account file root;
 its runtime, event hub and brand shelf are separate. `store.py` supports the existing SQLite
 developer path and the Postgres adapter in `postgres.py`; authenticated apps never use SQLite.
 `open_persistence(..., schema=...)` keeps the LangGraph store/checkpoints in that same private
