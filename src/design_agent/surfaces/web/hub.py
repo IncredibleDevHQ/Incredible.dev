@@ -18,6 +18,8 @@ Event = dict[str, Any]
 
 #: Events one slow stream may hold before its oldest are dropped.
 BACKLOG = 2_000
+#: The last event a stream gets: the house is stopping, and every open stream ends with it.
+CLOSING = "house.closing"
 
 
 class Hub:
@@ -45,6 +47,14 @@ class Hub:
         else:
             loop.call_soon_threadsafe(self._fan_out, event)
 
+    def close_streams(self) -> None:
+        """The house is stopping: every open stream ends now (after what it already holds), so
+        each page sees the house go at once, and the stop never waits on an open tab, whose
+        stream would not end on its own. Safe from a signal handler."""
+        loop = self._loop
+        if loop is not None and not loop.is_closed():
+            loop.call_soon_threadsafe(self._fan_out, {"type": CLOSING, "seq": 0})
+
     def _fan_out(self, event: Event) -> None:
         for queue in list(self._queues):
             if queue.full():
@@ -65,7 +75,7 @@ class Hub:
     async def stream(self) -> AsyncIterator[Event]:
         queue = self.open()
         try:
-            while True:
-                yield await queue.get()
+            while (event := await queue.get())["type"] != CLOSING:
+                yield event
         finally:
             self.close(queue)

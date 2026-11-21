@@ -65,6 +65,7 @@ export function usePulse(episode: string, lane: string, live: LiveTurn | null | 
 export function PictureTrail({ view, unit, builder, run }: { view: EpisodeView; unit: EpisodeUnit; builder: string; run: Run }) {
   const p = unit.picture;
   const pulse = usePulse(view.id, `picture:${unit.id}`, p.live);
+  const cut = useHouse((s) => s.cut);
   const level: Level = p.level || unit.level;
   const order = BUILD[level];
   const waiting = p.status === "queued";
@@ -106,6 +107,7 @@ export function PictureTrail({ view, unit, builder, run }: { view: EpisodeView; 
         agent={{ name: builder.slice(0, 1).toUpperCase() + builder.slice(1), mark: <AgentMark mark={p.builder || unit.builder} size="sm" /> }}
         total={!waiting && p.timing?.started_at ? { since: p.timing.started_at, seconds: p.timing.seconds } : null}
         count
+        cut={cut}
       />
       {p.steerable && next && (
         <Steer

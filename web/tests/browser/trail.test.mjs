@@ -54,4 +54,22 @@ test("the trail says what a turn is at between two steps, and when it has gone s
   await page.goto(url.href+"?lost-silent");
   await now().getByText(/^No sign of life for 12m/).waitFor();
   await now().getByText("That is longer than a step usually takes Kimi Code, so it may be stuck.").waitFor();
+
+  // a page that has lost the house says so, still, and blames no agent for the silence
+  await page.goto(url.href+"?cut");
+  await now().getByText(/^Out of touch with the house 1m/).waitFor();
+  assert.equal(await mark().getAttribute("data-signal"),"cut");
+  assert.equal(await page.getByRole("button",{name:"Stop it"}).count(),0);
+  assert.equal(await page.getByText(/No sign of life/).count(),0);
+
+  // a finished stage keeps its work folded behind how many steps it took; opened, nothing moves
+  await page.goto(url.href+"?kept");
+  const fold = page.getByRole("button",{name:"3 steps"});
+  await fold.waitFor();
+  assert.equal(await page.locator(".ag-sub").count(),0);
+  await fold.click();
+  await page.getByText("Thought for 5m 35s").waitFor();
+  assert.equal(await page.locator(".ag-branch[data-kept] .ag-sub").count(),4);
+  assert.equal(await page.locator(".ag-light, .ag-branch[data-live], .ag-sub[data-latest]").count(),0);
+  assert.equal(await fold.getAttribute("aria-expanded"),"true");
 });

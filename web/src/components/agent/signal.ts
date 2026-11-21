@@ -19,8 +19,9 @@ export const LOST_TELLING = 90;
 export const LOST_SILENT = 600;
 
 // live: heard from just now. quiet: silent, as far as is usual for this agent. lost: silent
-// longer than a healthy turn is.
-export type Signal = "live" | "quiet" | "lost";
+// longer than a healthy turn is (and, later still, stopped by the house: SILENT_SECONDS in
+// research.py). cut: the page itself has lost the house, so nothing about the agent is known.
+export type Signal = "live" | "quiet" | "lost" | "cut";
 
 export type Now =
   // the model is thinking: its newest words where the agent gives them, else how much so far
@@ -32,11 +33,15 @@ export type Now =
   // an agent that tells only of whole steps, between two of them
   | { kind: "quiet"; since: number }
   // silent longer than a healthy turn is
-  | { kind: "lost"; since: number };
+  | { kind: "lost"; since: number }
+  // the page has not heard from the house since `since`: a silence since then is the page's own
+  | { kind: "cut"; since: number };
 
 // What a turn is at now, or nothing when its newest step says it all. `last` is when its
-// newest step or note came (or when the turn began, before it had any).
-export function nowOf(now: number, last: number | null, pulse: TrailPulse | null, tells: boolean): Now | null {
+// newest step or note came (or when the turn began, before it had any); `cut`, when the page
+// lost the house, if it has.
+export function nowOf(now: number, last: number | null, pulse: TrailPulse | null, tells: boolean, cut: number | null = null): Now | null {
+  if (cut !== null) return { kind: "cut", since: cut };
   if (last === null) return null;
   // a pulse older than the newest step is about what came before it
   const fresh = pulse && pulse.at >= last ? pulse : null;
@@ -52,7 +57,7 @@ export function nowOf(now: number, last: number | null, pulse: TrailPulse | null
 
 export function signalOf(at: Now | null): Signal {
   if (at === null || at.kind === "thinking" || at.kind === "writing") return "live";
-  return at.kind === "lost" ? "lost" : "quiet";
+  return at.kind === "lost" || at.kind === "cut" ? at.kind : "quiet";
 }
 
 // The end of a thought, where the thinking has got to: its last words from a word's start, on

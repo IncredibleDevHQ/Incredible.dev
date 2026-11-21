@@ -280,6 +280,10 @@ class Tenants:
         self.apps: dict[str, FastAPI] = {}
         self.lock = asyncio.Lock()
 
+    def close_streams(self) -> None:
+        for app in tuple(self.apps.values()):
+            app.state.host.hub.close_streams()
+
     async def get(self, user: dict[str, Any]) -> FastAPI:
         async with self.lock:
             if user["id"] not in self.apps:

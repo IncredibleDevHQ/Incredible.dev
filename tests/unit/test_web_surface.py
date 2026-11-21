@@ -4,12 +4,15 @@ app at every address."""
 from __future__ import annotations
 
 import asyncio
+import signal
 import time
 from pathlib import Path
 from typing import Any
 
 import pytest
+import uvicorn
 from deepagents.backends.protocol import FileDownloadResponse
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
@@ -17,6 +20,7 @@ from design_agent.config import Settings
 from design_agent.harness import tasks
 from design_agent.middleware.meter import METER
 from design_agent.surfaces.web import demo
+from design_agent.surfaces.web.__main__ import House
 from design_agent.surfaces.web.agent import AgentHost, worked_seconds
 from design_agent.surfaces.web.app import create_app
 from design_agent.surfaces.web.hub import Hub
@@ -217,6 +221,20 @@ async def test_the_hub_delivers_events_published_from_another_thread() -> None:
     event = await asyncio.wait_for(pending, 1)
     assert event["type"] == "ping" and event["n"] == 1
     await stream.aclose()
+
+
+async def test_a_stopping_house_ends_every_open_stream_first() -> None:
+    hub = Hub()
+    hub.bind(asyncio.get_running_loop())
+    stream = hub.stream()
+    pending = asyncio.ensure_future(anext(stream))
+    await asyncio.sleep(0)
+    # told to stop, the server ends the pages' streams before it waits on what is still open
+    server = House(uvicorn.Config(app=lambda *_: None), hub)
+    server.handle_exit(signal.SIGTERM, None)
+    assert server.should_exit
+    with pytest.raises(StopAsyncIteration):
+        await asyncio.wait_for(pending, 1)
 
 
 # -- the demo lead ------------------------------------------------------------------------------
@@ -617,3 +635,26 @@ def test_profile_avatar_upload_and_reload(tmp_path):
         )
         people = client.get("/api/session").json()["people"]
         assert next(p for p in people if p["id"] == account["id"])["avatar_file"] == fid
+
+
+async def test_authenticated_shutdown_closes_each_account_stream(tmp_path: Path) -> None:
+    from contextlib import AsyncExitStack
+    from types import SimpleNamespace
+
+    from design_agent.surfaces.web.auth import Tenants
+
+    async with AsyncExitStack() as stack:
+        tenants = Tenants(tmp_path, Settings(_env_file=None), stack, True, None)
+        pending = []
+        for account in ("first", "second"):
+            app = FastAPI()
+            hub = Hub()
+            hub.bind(asyncio.get_running_loop())
+            app.state.host = SimpleNamespace(hub=hub)
+            tenants.apps[account] = app
+            pending.append(asyncio.ensure_future(anext(hub.stream())))
+        await asyncio.sleep(0)
+        House(uvicorn.Config(app=app), tenants).handle_exit(signal.SIGTERM, None)
+        for stream in pending:
+            with pytest.raises(StopAsyncIteration):
+                await asyncio.wait_for(stream, 1)

@@ -894,9 +894,23 @@ app's canvas, from a channel's material or a research frame's notes.
   few seconds) and has said nothing for 20 seconds is waiting for its model; after 90 seconds
   the trail says there is no sign of life, in amber, with Stop it beside. One that tells only
   of whole steps (Codex, Kimi Code, the built-in agent) is quiet for as long, and the trail
-  says so and why; its warning comes after ten minutes. A pulse is kept in memory and told to
+  says so and why; its warning comes after ten minutes. Nothing stays stuck past that: the
+  house stops a run whose CLI has printed nothing at all for 3 minutes (one that tells) or 15
+  (one that does not), and the trail and the thread say why (`SILENT_SECONDS`); a research run
+  that breaks off any other way still ends its turn and says so. The page keeps its own
+  heartbeat on the house: the live stream pings every 15 seconds, and a page that loses the
+  stream or misses its pings says at the top since when it is out of touch, its trails say
+  that rather than blaming the agent, and once the house is back it reads what it shows
+  afresh; a stopping house ends every page's stream first, so a stop never waits on an open
+  tab. A pulse is kept in memory and told to
   the studio as its own small event (`episode.pulse`), so a long thought costs no reading of
-  the episode. While a motion-graphics picture is made, until its builder begins to
+  the episode. A research conversation's answer is drawn on the same trail: one stage, reading
+  the repository and answering, with the agent's steps, words and thinking under it as they
+  come and its pulse told to the conversation alone (`research.pulse`); once it is answered,
+  its steps fold behind their count. A research question is asked on a model and effort its
+  agent offers, picked as an episode's writer is (the agent's own default first), on the
+  research node and where a frame is started; its follow-ups and branches keep that pick, and
+  the node's next question starts from the last. While a motion-graphics picture is made, until its builder begins to
   look it over, the person can leave a note without stopping it: the note waits for the
   builder's next turn on the picture and goes in with it, can be taken back until then, and
   stays under the stage that took it in. A made picture says how its build went, folded: its

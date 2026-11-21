@@ -83,8 +83,6 @@ MOTION_FILE = re.compile(r"pictures/[A-Za-z0-9_-]+\.motion\.json")
 #: A turn's step, note or thought, as it happens: its kind and its words. A "pulse" is a sign
 #: of life between steps; its text is the run it is from, whose pulse the store keeps.
 Heard = Callable[[str, str], None]
-#: A stretch of thinking shorter than this is not worth a line of its own.
-THOUGHT_TOLD = 8.0
 #: In how many pieces the demo's writer says a thought as it thinks it.
 THINKS = 4
 
@@ -155,15 +153,6 @@ def retold(runs: list[Row], prompt: str) -> str:
 def _cut(text: str, limit: int) -> str:
     text = text.strip()
     return text if len(text) <= limit else text[:limit].rstrip() + " …"
-
-
-def thought(event: research.Event) -> Row | None:
-    """What a turn's record keeps of a stretch of thinking: how long it lasted and the tokens it
-    took, where the CLI says. One too short to mention is not kept; one with no time (a CLI
-    that tells of its reasoning only once it is whole) is kept for its words."""
-    if event.seconds >= THOUGHT_TOLD or (not event.seconds and event.text):
-        return {"seconds": event.seconds, "tokens": event.amount}
-    return None
 
 
 #: The HyperFrames guides the episode's briefs name, copied beside the skill for a coding agent.
@@ -326,7 +315,7 @@ class LocalWorker:
                     elif event.kind in ("step", "note", "thought"):
                         # whatever it is, the model has moved on from what its pulse said
                         self.store.pulse(run_id, lane)
-                        told = thought(event) if event.kind == "thought" else None
+                        told = research.thought(event) if event.kind == "thought" else None
                         if event.kind == "thought" and told is None:
                             heard("pulse", run_id)
                             continue

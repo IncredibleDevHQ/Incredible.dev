@@ -1,25 +1,30 @@
 import { Skeleton } from "./Skeleton";
 // Research on the canvas: a frame that reads one of your repositories. Its first column asks a
-// coding agent on this computer (Claude Code, Codex or Kimi Code, read-only, signed in as you);
-// each question grows into a conversation, and a passage of any answer can be kept as a note or
-// explored as a branch, which sits to the right of what it branched from. The notes are what
-// everything made in the frame starts from.
+// coding agent on this computer (Claude Code, Codex or Kimi Code, read-only, signed in as you),
+// on a model and effort it offers, picked as an episode's writer is; each question grows into a
+// conversation, and a passage of any answer can be kept as a note or explored as a branch, which
+// sits to the right of what it branched from. The notes are what everything made in the frame
+// starts from, and read as one page in the viewer.
 import { isWorkspaceTarget } from "./workspaceTarget";
-import { ArrowUp, Check, CornerDownRight, FileText, FolderOpen, GitBranch, MessageSquare, NotebookPen, Pencil, Plus, Quote, Search, Telescope, X } from "lucide-react";
+import { ArrowUp, BookOpen, Check, CornerDownRight, FileText, FolderOpen, GitBranch, MessageSquare, NotebookPen, Pencil, Plus, Quote, Reply, Search, Telescope, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, type CanvasTask, type Conversation, type Harness, type HarnessId, type Note, type ResearchView } from "../api";
 import { useFocused, useHouse } from "../store";
 import { AgentMark, Rich } from "../ui";
+import { AgentModel, offersPicks, shownPick, type ModelPick } from "./episode/AgentModel";
 import { columnsOf, type Edge } from "./Flow";
 import { ThinkingLoader } from "./ThinkingLoader";
+import { Tooltip } from "./Tooltip";
 
 export const RESEARCH_NODE = "research";
 export const NOTES_NODE = "notes";
 const AGENTS: HarnessId[] = ["claude", "codex", "kimi"];
 const AGENT_TITLES: Record<HarnessId, string> = { claude: "Claude Code", codex: "Codex", kimi: "Kimi Code" };
 // A research frame the canvas has heard of before its research has arrived.
-export const EMPTY_RESEARCH: ResearchView = { repo: { name: "", path: "", branch: "" }, harness: "claude", conversations: [], notes: [] };
+export const EMPTY_RESEARCH: ResearchView = { repo: { name: "", path: "", branch: "" }, harness: "claude", model: "", effort: "", conversations: [], notes: [] };
+// No model or effort picked: the agent's own default.
+const DEFAULT_PICK: ModelPick = { model: "", effort: "" };
 
 const say = (error: unknown) => useHouse.getState().say((error as Error).message);
 
@@ -74,24 +79,40 @@ export function ResearchColumns({
   );
 }
 
-// The research node: the repository it reads, which agent answers, and a new question.
+// The research node: the repository it reads, a new question, which agent answers and on what
+// model and effort. It starts from the pick the frame last asked with, and goes back to it
+// whenever another question is asked.
 function ResearchNode({ frameId, research }: { frameId: string; research: ResearchView }) {
   const options = useHouse((s) => s.research);
   const focused = useFocused(frameId, RESEARCH_NODE);
   const [harness, setHarness] = useState<HarnessId>(research.harness);
+  const [pick, setPick] = useState<ModelPick>({ model: research.model, effort: research.effort });
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
+  const models = options?.models[harness];
 
   useEffect(() => {
     if (!options) void useHouse.getState().loadResearch().catch(() => undefined);
   }, [options]);
+
+  useEffect(() => {
+    setHarness(research.harness);
+    setPick({ model: research.model, effort: research.effort });
+  }, [research.harness, research.model, research.effort]);
+
+  // models are each agent's own, so another agent starts on its default
+  const choose = (id: HarnessId) => {
+    if (id === harness) return;
+    setHarness(id);
+    setPick(DEFAULT_PICK);
+  };
 
   const ask = async () => {
     const words = question.trim();
     if (!words || busy) return;
     setBusy(true);
     try {
-      await api.ask(frameId, { question: words, harness });
+      await api.ask(frameId, { question: words, harness, ...shownPick(models, pick) });
       setQuestion("");
     } catch (error) {
       say(error);
@@ -129,8 +150,9 @@ function ResearchNode({ frameId, research }: { frameId: string; research: Resear
             }
           }}
         />
+        {offersPicks(models) && <AgentModel models={models ?? []} pick={pick} disabled={busy} onChange={setPick} />}
         <div className="ask-row">
-          <Agents value={harness} onChange={setHarness} known={options?.harnesses} />
+          <Agents value={harness} onChange={choose} known={options?.harnesses} />
           <button type="button" className="btn primary" disabled={!question.trim() || busy} onClick={() => void ask()}>
             <ArrowUp />
             Ask
@@ -240,7 +262,7 @@ function ConversationCard({
             <Rich text={c.answer} />
           </div>
         )}
-        {c.answer && <Passage within={answer} frameId={frameId} conversationId={c.id} messageId={c.answer_id} />}
+        {c.answer && <Passage within={answer} frameId={frameId} conversationId={c.id} messageId={c.answer_id} agent={c} />}
         {c.problem && !working && <p className="node-line warn">{c.problem}</p>}
         <div className="conv-actions">
           <button type="button" className="btn" onClick={open}>
@@ -260,22 +282,28 @@ function ConversationCard({
   );
 }
 
-// A passage selected in an answer: keep it as a note, or explore it in a new conversation that
-// branches from this one.
+// A passage selected in an answer: keep it as a note, explore it in a new conversation that
+// branches from this one (asked of the same agent on the model and effort picked here, at first
+// what the conversation it branches from runs on), or reply about it in this conversation: the
+// passage is quoted over the next question in its composer, its thread opened where it is not.
 export function Passage({
   within,
   frameId,
   conversationId,
   messageId,
+  agent,
 }: {
   within: React.RefObject<HTMLElement | null>;
   frameId: string;
   conversationId: string;
   messageId: string;
+  agent: { harness: HarnessId; model: string; effort: string };
 }) {
   const [picked, setPicked] = useState<{ text: string; x: number; y: number } | null>(null);
   const [asking, setAsking] = useState(false);
   const [question, setQuestion] = useState("");
+  const [pick, setPick] = useState<ModelPick>({ model: agent.model, effort: agent.effort });
+  const models = useHouse((s) => s.research?.models[agent.harness]);
   const bar = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -340,10 +368,19 @@ export function Passage({
       say(error);
     }
   };
+  const reply = () => {
+    const state = useHouse.getState();
+    useHouse.setState({ replying: { thread: conversationId, text: picked.text } });
+    if (state.threadId !== conversationId) {
+      state.focusOn({ task: frameId, node: conversationId });
+      void state.openThread(conversationId);
+    }
+    done();
+  };
   const explore = async () => {
     if (!question.trim()) return;
     try {
-      await api.ask(frameId, { question: question.trim(), parent: conversationId, quote: picked.text, answer: messageId });
+      await api.ask(frameId, { question: question.trim(), parent: conversationId, quote: picked.text, answer: messageId, harness: agent.harness, ...shownPick(models, pick) });
       done();
     } catch (error) {
       say(error);
@@ -358,10 +395,13 @@ export function Passage({
             void explore();
           }}
         >
-          <input autoFocus value={question} placeholder="What should it find out about this?" aria-label="A question about the passage" onChange={(e) => setQuestion(e.target.value)} />
-          <button type="submit" className="icon-btn send" aria-label="Ask" disabled={!question.trim()}>
-            <ArrowUp />
-          </button>
+          <div className="passage-ask">
+            <input autoFocus value={question} placeholder="What should it find out about this?" aria-label="A question about the passage" onChange={(e) => setQuestion(e.target.value)} />
+            <button type="submit" className="icon-btn send" aria-label="Ask" disabled={!question.trim()}>
+              <ArrowUp />
+            </button>
+          </div>
+          {offersPicks(models) && <AgentModel models={models ?? []} pick={pick} onChange={setPick} />}
         </form>
       ) : (
         <>
@@ -372,6 +412,10 @@ export function Passage({
           <button type="button" onClick={() => setAsking(true)}>
             <GitBranch />
             Explore
+          </button>
+          <button type="button" onClick={reply}>
+            <Reply />
+            Reply
           </button>
         </>
       )}
@@ -416,10 +460,20 @@ function NotesNode({
   making: boolean;
 }) {
   const people = useHouse((s) => s.people);
+  const openFiles = useHouse((s) => s.openFiles);
   const focused = useFocused(frameId, NOTES_NODE);
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const asked = new Map(research.conversations.map((c) => [c.id, c]));
+  // The notes as one page in the viewer, as the source's pages read: each under the question it
+  // came from, with where that came from, as everything made from them is handed them.
+  const page = `notes-${frameId}`;
+  const read = () =>
+    openFiles({
+      files: [{ id: page, name: `${research.repo.name || "Research"} notes.md`, mime: "text/markdown", size: 0, origin: "notes", url: api.notesPage(frameId) }],
+      at: page,
+      title: "Notes",
+    });
   const add = async () => {
     const words = draft.trim();
     if (!words) return;
@@ -444,7 +498,16 @@ function NotesNode({
           <NotebookPen size={16} />
         </span>
         <b>Notes</b>
-        {research.notes.length > 0 && <span className="chip">{research.notes.length}</span>}
+        {research.notes.length > 0 && (
+          <>
+            <span className="chip">{research.notes.length}</span>
+            <Tooltip content="Read them as one page" side="bottom">
+              <button type="button" className="icon-btn" aria-label="Read the notes as one page" onClick={read}>
+                <BookOpen />
+              </button>
+            </Tooltip>
+          </>
+        )}
       </header>
       <div className="node-body">
         {research.notes.length === 0 && <p className="node-line">Select a passage in an answer to keep it here.</p>}
@@ -583,7 +646,8 @@ function Lineage({ steps }: { steps: Note["lineage"] }) {
   );
 }
 
-// Starting research from the canvas: which repository, which agent, and the first question.
+// Starting research from the canvas: which repository, which agent on what model and effort, and
+// the first question.
 export function ResearchStart({ channelId, anchor, onClose, onStarted }: { channelId: string; anchor: HTMLElement; onClose: () => void; onStarted?: () => void }) {
   const options = useHouse((s) => s.research);
   const [repoError, setRepoError] = useState(false);
@@ -593,6 +657,8 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
   const [query, setQuery] = useState("");
   const [repo, setRepo] = useState("");
   const [harness, setHarness] = useState<HarnessId>("claude");
+  const [pick, setPick] = useState<ModelPick>(DEFAULT_PICK);
+  const models = options?.models[harness];
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [place, setPlace] = useState<{ top: number; left: number } | null>(null);
@@ -660,7 +726,7 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
     if (!repo || !question.trim() || busy) return;
     setBusy(true);
     try {
-      await api.openResearch(channelId, { repo, harness, question: question.trim() });
+      await api.openResearch(channelId, { repo, harness, question: question.trim(), ...shownPick(models, pick) });
       onStarted?.();
       onClose();
     } catch (error) {
@@ -713,7 +779,17 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
           </button>
         ))}
       </div>
-      <Agents value={harness} onChange={setHarness} known={options?.harnesses} named />
+      <Agents
+        value={harness}
+        onChange={(id) => {
+          setHarness(id);
+          setPick(DEFAULT_PICK);
+        }}
+        known={options?.harnesses}
+        named
+      />
+      {/* always there, so the card keeps its height as the agents and their models come in */}
+      <AgentModel models={models ?? []} pick={pick} disabled={busy || !offersPicks(models)} onChange={setPick} />
       <textarea
         ref={ask}
         rows={3}

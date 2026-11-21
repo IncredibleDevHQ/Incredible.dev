@@ -4,7 +4,8 @@
 // The agent trail in each state of a turn between two steps, by `?<state>`: thinking (its words
 // arriving a second apart, as an agent that tells sends them), tokens (thinking with no words),
 // writing (a file growing), waiting, quiet (an agent that says nothing while it thinks), lost and
-// lost-silent. `&dark` wears the dark theme.
+// lost-silent; cut, a page that has lost the house; and kept, a finished stage holding its work
+// (a research answer's). `&dark` wears the dark theme.
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AgentTrail } from "/src/components/agent/AgentTrail.tsx";
@@ -34,6 +35,8 @@ const still = {
   quiet: { tells: false, pulse: null, last: 252, agent: "Kimi Code" },
   lost: { tells: true, pulse: { at: ago(131), since: ago(400), doing: "thinking", text: THOUGHT, amount: 0 }, last: 131 },
   "lost-silent": { tells: false, pulse: null, last: 724, agent: "Kimi Code" },
+  // the page lost the house a minute ago, long after the agent was last heard from
+  cut: { tells: true, pulse: null, last: 131, cut: ago(64) },
 };
 function Fixture() {
   const [n, setN] = useState(1);
@@ -44,6 +47,11 @@ function Fixture() {
     const tick = setInterval(() => setN((was) => was + 1), 1000);
     return () => clearInterval(tick);
   }, [moving]);
+  if (state === "kept")
+    return React.createElement(AgentTrail, {
+      label: "Kimi Code's answer",
+      steps: [{ id: "answer", label: "Read streamline and answer", state: "done", startedAt: ago(130), endedAt: ago(4), kept: events }],
+    });
   const now = Date.now() / 1000;
   const words = THOUGHT.split(" ");
   const given = still[state];
@@ -57,6 +65,7 @@ function Fixture() {
     React.createElement(AgentTrail, {
       label: "How the picture is being made", steps, events: shown, turnSince: ago(720), pulse, tells: given?.tells ?? true,
       onStop: () => setStopped(true), agent: { name: given?.agent ?? "Claude Code" }, total: { since: ago(720) }, count: true,
+      cut: given?.cut ?? null,
     }),
     stopped && React.createElement("p", { role: "status", id: "stopped" }, "Stopped"));
 }

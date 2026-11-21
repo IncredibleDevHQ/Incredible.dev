@@ -75,8 +75,8 @@ export type State = {
   episodeRecording: boolean;
   episodePeek: boolean;
   // What each turn under way is doing between its steps, by episode and lane ("<episode>:plan",
-  // "<episode>:picture:<unit>"): told a second apart while a model thinks, so it is kept beside
-  // the episodes and only what shows it draws again.
+  // "<episode>:picture:<unit>") or by research conversation (`researchPulse`): told a second
+  // apart while a model thinks, so it is kept beside them and only what shows it draws again.
   pulses: Record<string, WorkPulse>;
   // The production board: every job of every episode, and what the board is narrowed to.
   production: ProductionView | null;
@@ -92,6 +92,12 @@ export type State = {
   // The kit the Brands page shows; another page can send you to one.
   brandSlug: string;
   toast: string | null;
+  // Since when this page has not heard from the house (its live stream dropped, or went quiet
+  // past its pings: `live.ts`), so what it shows may be out of date; null while it hears it.
+  cut: number | null;
+  // A passage of a research answer quoted over the next question in its conversation (Reply on
+  // a selection), until it is sent or taken off. One at a time: another Reply replaces it.
+  replying: { thread: string; text: string } | null;
   boot: () => Promise<void>;
   openPage: (page: Page) => void;
   readBrandFor: (channelId: string | null) => void;
@@ -169,6 +175,8 @@ export const useHouse = create<State>((set, get) => ({
   brandFor: null,
   brandSlug: "default",
   toast: null,
+  cut: null,
+  replying: null,
 
   // Who's here and what the house has; where to look comes from the address (route.ts).
   async boot() {
@@ -468,6 +476,11 @@ export const useHouse = create<State>((set, get) => ({
         set({ canvas: mapTask(s.canvas, event.thread_id as string, (t) => ({ ...t, research })) });
         break;
       }
+      case "research.pulse": {
+        // what a research conversation's model is at between two of its steps
+        set({ pulses: { ...s.pulses, [researchPulse(event.thread_id as string)]: event.pulse as WorkPulse } });
+        break;
+      }
       case "attention": {
         set({ toast: "The agent needs you in a thread." });
         break;
@@ -527,6 +540,8 @@ function mapTask(
 }
 
 export const person = (id: string) => useHouse.getState().people[id];
+// Where a research conversation's pulse is kept among the pulses.
+export const researchPulse = (conversationId: string) => `${conversationId}:research`;
 
 // Whether a task's frame (no node) or one of its cards is what's picked on the canvas.
 export const useFocused = (task: string, node: string | null) => useHouse((s) => s.focus?.task === task && s.focus.node === node);

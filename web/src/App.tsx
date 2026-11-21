@@ -15,6 +15,7 @@ import { Brand, Computer, NeedsYou, ReadBrand, Skills } from "./pages/Pages";
 import { Production } from "./pages/Production";
 import { followAddress, go, parse } from "./route";
 import { useHouse } from "./store";
+import { clock } from "./ui";
 
 export function App() {
   const voiceTest = /^\/c\/[^/]+\/episode\/(ep_[a-z0-9]+)\/voice-test\/?$/.exec(location.pathname);
@@ -26,6 +27,7 @@ function WorkspaceApp() {
   const [failure, setFailure] = useState("");
   const page = useHouse((s) => s.page);
   const toast = useHouse((s) => s.toast);
+  const cut = useHouse((s) => s.cut);
   const frameId = useHouse((s) => s.frameId);
   const episodeId = useHouse((s) => s.episodeId);
   const startingEpisode = useHouse((s) => s.startingEpisode);
@@ -76,6 +78,11 @@ function WorkspaceApp() {
       {startingEpisode && <NewEpisode start={startingEpisode} />}
       <PreviewDialog />
       <Viewer />
+      {cut !== null && (
+        <div className="house-cut" role="status">
+          Out of touch with the house since {clock(cut)}. This page may be out of date until it is back.
+        </div>
+      )}
       {toast && (
         <div className="toast" role="status">
           {toast}

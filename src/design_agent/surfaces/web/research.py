@@ -68,12 +68,19 @@ KIMI_EFFORT_ENV = "KIMI_MODEL_THINKING_EFFORT"
 BIN_DIRS = ("~/.local/bin", "~/.kimi-code/bin", "/opt/homebrew/bin", "/usr/local/bin")
 #: A research run's limit; a repository question rarely needs more.
 RUN_SECONDS = 20 * 60
+#: How long a run's CLI may print nothing at all before the house stops it as stuck, by whether
+#: it says what its model is doing as it goes (`Harness.tells`): one that does is heard from
+#: every few seconds; one that tells only of whole steps says nothing while it thinks. Both are
+#: past the point the trail warns of a silence (`signal.ts`).
+SILENT_SECONDS = {True: 3 * 60, False: 15 * 60}
 #: Claude Code's lines carry whole files it read.
 LINE_LIMIT = 32 * 1024 * 1024
 #: Seconds between two pulses of one run: the studio is told at most this often.
 PULSE_EVERY = 1.0
 #: How much of a thought's summary is kept, from its end: where the thinking has got to.
 THOUGHT_KEPT = 600
+#: A stretch of thinking shorter than this is not worth a line of its own.
+THOUGHT_TOLD = 8.0
 #: How much of a tool call's arguments is read for what the call acts on (its file comes first).
 CALL_HEAD = 4096
 #: Claude Code's option for summaries of its thinking. It is the Agent SDK's own (`thinking.display`
@@ -89,6 +96,16 @@ RETRY_WHY = {
     "authentication_failed": "the sign-in was refused",
     "billing_error": "the account's billing stopped it",
 }
+#: Kimi Code asking its model's service again (`turn.step.retrying`): why, by the HTTP status it
+#: got; any other server error is the service's own.
+KIMI_RETRY_WHY = {
+    401: RETRY_WHY["authentication_failed"],
+    403: RETRY_WHY["authentication_failed"],
+    429: RETRY_WHY["rate_limit"],
+    503: RETRY_WHY["overloaded"],
+    529: RETRY_WHY["overloaded"],
+}
+KIMI_RETRY = "turn.step.retrying"
 #: Folders never searched for repositories.
 SKIP_DIRS = frozenset({"node_modules", "venv", "dist", "build", "target", "vendor"})
 
@@ -166,6 +183,15 @@ class Event:
     detail: str = ""
     amount: int = 0
     seconds: float = 0.0
+
+
+def thought(event: Event) -> dict[str, Any] | None:
+    """What a run's record keeps of a stretch of thinking: how long it lasted and the tokens it
+    took, where the CLI says. One too short to mention is not kept; one with no time (a CLI
+    that tells of its reasoning only once it is whole) is kept for its words."""
+    if event.seconds >= THOUGHT_TOLD or (not event.seconds and event.text):
+        return {"seconds": event.seconds, "tokens": event.amount}
+    return None
 
 
 #: How a research run is started; tests hand in their own.
@@ -367,8 +393,10 @@ async def run(
 ) -> AsyncGenerator[Event, None]:
     """One run: the CLI in the repository (or, for a run that writes, in its own folder), its
     stream read as it comes, with what it says between its steps (`Watch`). Closing the iterator
-    early (a stop) ends the CLI and anything it started."""
+    early (a stop) ends the CLI and anything it started; so does a CLI that has printed nothing
+    for longer than a live one would (`SILENT_SECONDS`), which ends the run with why."""
     harness = HARNESSES[harness_id]
+    silent = SILENT_SECONDS[harness.tells]
     binary = harness.binary()
     if binary is None:
         raise ResearchError(f"{harness.title} isn't installed on this computer.")
@@ -403,6 +431,8 @@ async def run(
         )
         reported_error = said_anything = False
         said: list[str] = []
+        # the CLI's last word on asking its model's service again, should it then give up
+        retried: Mapping[str, Any] | None = None
         watch = Watch(harness_id, repo)
         drain = asyncio.create_task(_tail(process.stderr, said))
         try:
@@ -415,14 +445,26 @@ async def run(
             async with asyncio.timeout(timeout):
                 while True:
                     try:
-                        line = await process.stdout.readline()
+                        line = await asyncio.wait_for(process.stdout.readline(), silent)
                     except ValueError:  # one line over the limit: skip it, keep reading
                         continue
+                    except TimeoutError:
+                        minutes = round(silent / 60)
+                        yield Event(
+                            "error",
+                            f"{harness.title} printed nothing for {minutes} minutes, so the "
+                            "house stopped it as stuck. Ask again.",
+                        )
+                        return
                     if not line:
                         break
                     record = _record(line)
                     if record is None:
                         continue
+                    if record.get("type") == KIMI_RETRY:
+                        retried = record
+                    elif record.get("role") in ("assistant", "tool"):
+                        retried = None  # the service answered after all
                     if report_model and record.get("type") in (
                         "system",
                         "turn.started",
@@ -456,7 +498,10 @@ async def run(
                     continue  # an older CLI: the same run, without summaries of its thinking
                 last = next((s for s in reversed(said) if s.strip()), "")
                 yield Event(
-                    "error", last.strip()[:300] or f"{harness.title} stopped (exit {code})."
+                    "error",
+                    _gave_up(harness.title, retried)
+                    if retried is not None
+                    else last.strip()[:300] or f"{harness.title} stopped (exit {code}).",
                 )
         except TimeoutError:
             yield Event("error", f"{harness.title} took longer than {timeout // 60:.0f} minutes.")
@@ -663,6 +708,34 @@ def _retry(record: Mapping[str, Any]) -> str:
     return f"Asking again: {why}{tries}"
 
 
+def _kimi_why(record: Mapping[str, Any]) -> str:
+    status = _count(record.get("status_code"))
+    if status in KIMI_RETRY_WHY:
+        return KIMI_RETRY_WHY[status]
+    return RETRY_WHY["server_error"] if status >= 500 else "the request did not go through"
+
+
+def _kimi_retry(record: Mapping[str, Any]) -> str:
+    """Kimi Code asking its model's service again, as a step that says why and which try."""
+    tries = ""
+    if _count(record.get("next_attempt")) and _count(record.get("max_attempts")):
+        tries = f" (try {record['next_attempt']} of {record['max_attempts']})"
+    return f"Asking again: {_kimi_why(record)}{tries}"
+
+
+def _gave_up(title: str, record: Mapping[str, Any]) -> str:
+    """Why a run stopped once its CLI gave up asking its model's service again, in its own
+    words (its stderr only points at its log)."""
+    tries = _count(record.get("max_attempts"))
+    said = " ".join(str(record.get("error_message") or "").split())[:160]
+    return (
+        f"{title} stopped: {_kimi_why(record)}"
+        + (f", {tries} times in a row" if tries else "")
+        + (f" (“{said}”)" if said else "")
+        + ". Ask again in a little while."
+    )
+
+
 def _claude(record: Mapping[str, Any], repo: Path) -> list[Event]:
     kind = record.get("type")
     if kind == "system" and record.get("subtype") == "init" and record.get("session_id"):
@@ -725,6 +798,8 @@ def _kimi(record: Mapping[str, Any], repo: Path) -> list[Event]:
     if role == "meta":
         if record.get("type") == "session.resume_hint" and record.get("session_id"):
             return [Event("session", str(record["session_id"]))]
+        if record.get("type") == KIMI_RETRY:
+            return [Event("step", _kimi_retry(record))]
         if "error" in str(record.get("type") or ""):
             return [Event("error", str(record.get("content") or "Kimi Code stopped."))]
         return []

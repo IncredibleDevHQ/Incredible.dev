@@ -9,13 +9,14 @@
 // newest line beats, only while the agent is heard from; a silence is said as one, and one too
 // long for a healthy turn says so in amber with the way to stop it (`signal.ts`). Over the
 // trail, where they are given, the agent at work, the whole run's time (which runs on from stage
-// to stage, while each stage's starts afresh) and how many stages are done. Written for this
-// house from notes on how agent-progress components behave; no other component's source is in
-// it.
-import { Check, CornerDownRight, Pause, X } from "lucide-react";
+// to stage, while each stage's starts afresh) and how many stages are done. A finished stage can
+// keep its work, folded behind how many steps it took and opened on a click, still. Written for
+// this house from notes on how agent-progress components behave; no other component's source is
+// in it.
+import { Check, ChevronRight, CornerDownRight, Pause, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Clock, useNow } from "./Clock";
-import { middle, took } from "./format";
+import { middle, plainly, took } from "./format";
 import { counted, nowOf, signalOf, tail, type Now, type TrailPulse } from "./signal";
 import { toolOf } from "./tools";
 import "./agent.css";
@@ -39,6 +40,9 @@ export type TrailStage = {
   detail?: string;
   // the person's notes the step took in
   taken?: { id: string; text: string }[];
+  // the work a finished step did (its steps, its own words and its thinking, oldest first),
+  // folded under it behind how many steps it took
+  kept?: TrailEvent[];
 };
 // A step the agent took, its own words, or a stretch of thinking that ended (`seconds` long,
 // `text` its summary where the agent gives one).
@@ -60,6 +64,7 @@ export function AgentTrail({
   total = null,
   agent = null,
   count = false,
+  cut = null,
 }: {
   label: string;
   steps: TrailStage[];
@@ -79,6 +84,9 @@ export function AgentTrail({
   total?: { since: number; seconds?: number | null } | null;
   agent?: { name: string; mark?: ReactNode } | null;
   count?: boolean;
+  // since when the page has not heard from the house, if it has lost it: what the trail shows
+  // may be out of date then, and its silence is not the agent's
+  cut?: number | null;
 }) {
   // What a screen reader hears: a step that finishes, stops or waits on the person, said once.
   const [heard, setHeard] = useState("");
@@ -93,7 +101,7 @@ export function AgentTrail({
   const at = steps.find((s) => s.state === "running" && s.working);
   const last = events.length ? events[events.length - 1].at : (turnSince ?? at?.startedAt ?? null);
   const now = useNow(Boolean(at) && last !== null);
-  const doing = at ? nowOf(now, last, pulse, tells) : null;
+  const doing = at ? nowOf(now, last, pulse, tells, cut) : null;
   const signal = signalOf(doing);
   // said once to a screen reader as a turn goes silent for too long
   const lost = Boolean(at) && signal === "lost";
@@ -169,6 +177,7 @@ export function AgentTrail({
               ) : (
                 step.taken && step.taken.length > 0 && <Taken notes={step.taken} />
               )}
+              {(step.state === "done" || step.state === "failed") && step.kept?.some((e) => e.kind === "step") && <Kept events={step.kept} rejoins={Boolean(next)} />}
             </li>
           );
         })}
@@ -214,6 +223,38 @@ function Taken({ notes }: { notes: { id: string; text: string }[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+// A finished stage's work, folded behind how many steps it took; opened, it branches off the line
+// as it did while the stage ran, every step, word and thought as it was, with nothing moving.
+function Kept({ events, rejoins }: { events: TrailEvent[]; rejoins: boolean }) {
+  const [open, setOpen] = useState(false);
+  const steps = events.filter((e) => e.kind === "step").length;
+  return (
+    <>
+      <button type="button" className="ag-kept" aria-expanded={open} onClick={() => setOpen((was) => !was)}>
+        <ChevronRight className="ag-chevron" aria-hidden="true" />
+        {steps} {steps === 1 ? "step" : "steps"}
+      </button>
+      {open && (
+        <div className="ag-branch" data-kept="" aria-label="What it did">
+          <svg className="ag-bend" viewBox="0 0 24 12" aria-hidden="true">
+            <path d="M9 0 C9 7 21 5 21 12" />
+          </svg>
+          <ol className="ag-subs">
+            {events.map((event, n) => (
+              <Sub key={`${event.at}-${n}`} event={event} latest={false} />
+            ))}
+          </ol>
+          {rejoins && (
+            <svg className="ag-bend" viewBox="0 0 24 12" aria-hidden="true">
+              <path d="M21 0 C21 7 9 5 9 12" />
+            </svg>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -315,6 +356,16 @@ function NowRow({ doing, beat, agent, tells, onStop }: { doing: Now; beat: numbe
       </li>
     );
   }
+  if (doing.kind === "cut") {
+    return (
+      <li className="ag-sub" data-kind="now" data-now="cut" title="This page can't reach the house, so what it shows may be out of date.">
+        <i aria-hidden="true" />
+        <span className="ag-sub-title">
+          Out of touch with the house <Clock since={doing.since} />
+        </span>
+      </li>
+    );
+  }
   if (doing.kind === "waiting") {
     return (
       <li className="ag-sub" data-kind="now" data-now="waiting" title="The request is with the model. Its answer has not started.">
@@ -369,10 +420,11 @@ function Sub({ event, latest }: { event: TrailEvent; latest: boolean }) {
     );
   }
   if (event.kind === "note") {
+    const said = plainly(event.text);
     return (
-      <li className="ag-sub" data-kind="said" data-latest={latest || undefined} title={event.text}>
+      <li className="ag-sub" data-kind="said" data-latest={latest || undefined} title={said}>
         <i aria-hidden="true" />
-        <q>{event.text}</q>
+        <q>{said}</q>
       </li>
     );
   }
