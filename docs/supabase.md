@@ -37,6 +37,8 @@ database-creation or RLS-bypass privileges. It must never be used in browser cod
 
 ## Profile and preferences
 
+Settings opens the Profile tab for signed-in users. Preferences has its own link at `/settings/preferences`.
+
 Settings → Profile lets signed-in users edit a project display name and avatar, see their primary email, and save account-wide first and last names and a unique sign-in username. Usernames are case-insensitive. Password sign-in accepts either the verified email address or the saved username. A Google account can set its first
 password here and then sign in with the same email using either method. Email/password accounts
 and Google accounts with an existing password must confirm their current password to update it.
@@ -47,12 +49,22 @@ model selection keeps that selection. Choose Workspace default to use the operat
 
 ## Projects, members and activity
 
-Organization shows a stable project ID and a link to its hostname. Local Compose serves
-`http://<project-uuid>.localhost:8765`. The original Studio address opens the signed-in user's
-own project. Sessions are host-only. Sign in when first visiting another project's hostname.
-For a custom HTTPS origin, configure wildcard DNS and TLS for subdomains of that origin and
-forward the original Host header. Allow the project callback URLs in Supabase Auth for Google
-and email confirmation on those origins.
+Organization shows the permanent project ID and a separate address based on the organization name.
+For example, **Design House** opens at `http://design-house.localhost:8765` in local Compose.
+If an address is taken, Studio adds a number such as `design-house-2`. Renaming an organization
+updates its address. Previous names and UUID links still lead to the same project. Sign in at the root Studio address. A new owner names their organization
+and lands on their personal project. Returning users land on their last visited project if
+they still have access, or their personal project otherwise. Existing navigation history
+helps select the first destination after an upgrade.
+
+Opening a project bookmark or invitation preserves the original destination through password
+sign-in, signup confirmation, and Google sign-in. An invited user reviews the invitation
+before gaining access and skips personal organization setup. Studio uses a browser-bound,
+one-time handoff valid for 60 seconds. Project cookies are host-only and opaque. The root
+handles credential refresh, and signing out revokes the browser’s linked project sessions.
+
+For a custom HTTPS origin, configure wildcard DNS and TLS for the project subdomains,
+forward the original Host header, and allow the **root** Studio callback in Supabase Auth.
 
 Owners invite members by email in Organization settings. Each email links to a review page on
 the inviting project’s hostname. The recipient signs in with the invited email and chooses

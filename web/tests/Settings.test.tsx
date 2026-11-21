@@ -35,16 +35,22 @@ test("usage failure can be retried and unpriced calls have no dollar estimate", 
 
 test("start preference affects the home address and preserves deep links", async () => {
   const user = userEvent.setup();
-  render(<SettingsPage />);
+  render(<SettingsPage tab="preferences" />);
   const start = screen.getByRole("combobox", {name: /Start page/});
   start.focus();
   await user.keyboard("n");
   expect(parse("/", "").page).toBe("needs");
   expect(parse("/settings/members", "").page).toBe("organization");
-  expect(parse("/settings", "").page).toBe("settings");
+  expect(parse("/settings", "").page).toBe("profile");
+  expect(parse("/settings/preferences", "").page).toBe("preferences");
   expect(parse("/c/design", "").page).toBe("channel");
   localStorage.setItem("house:start", "invalid");
   expect(parse("/", "").page).toBe("channel");
+});
+
+test("settings opens device preferences when there is no signed-in profile", () => {
+  useHouse.getState().openPage("profile");
+  expect(useHouse.getState().page).toBe("preferences");
 });
 
 test("organization edits survive a failed save and can be retried", async () => {
@@ -128,7 +134,7 @@ test("chat defaults save the provider's selected model and reset incompatible ef
   vi.spyOn(api,"modelDefaults").mockResolvedValue({options:models, default:"openai:first",model:"openai:first",effort:"high"});
   const save=vi.spyOn(api,"saveModelDefaults").mockResolvedValue({model:"anthropic:second",effort:"low"});
   const user=userEvent.setup();
-  render(<SettingsPage />);
+  render(<SettingsPage tab="preferences" />);
   (await screen.findByRole("combobox",{name:/Default provider/})).focus();
   await user.keyboard("c");
   const effort=screen.getByRole("slider",{name:"Effort"});

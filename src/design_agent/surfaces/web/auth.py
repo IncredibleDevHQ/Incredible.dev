@@ -21,6 +21,7 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 
 import httpx
+from cryptography.fernet import Fernet
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
@@ -30,6 +31,13 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from design_agent.config import Settings
 from design_agent.runtime.persistence import workspace_of
 from design_agent.surfaces.web.directory import Directory
+from design_agent.surfaces.web.project_login import (
+    BROWSER_SESSION,
+    FLOW_ID,
+    PROJECT_SESSION,
+    digest,
+    project_login_routes,
+)
 from design_agent.surfaces.web.research_catalog import catalog_repos
 from design_agent.surfaces.web.team import team_routes
 
@@ -132,7 +140,10 @@ class Credentials(LoginInput):
 
 class Auth:
     def __init__(
-        self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None
+        self,
+        settings: Settings,
+        directory: Directory,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         if (
             not settings.supabase_url
@@ -156,6 +167,7 @@ class Auth:
             raise ValueError("Configure an HTTPS Supabase URL and an application origin")
         if origin.scheme == "http" and origin.hostname not in {"localhost", "127.0.0.1"}:
             raise ValueError("Non-local authentication requires HTTPS")
+        self.directory = directory
         self.origin = settings.app_url.rstrip("/")
         self.secure = origin.scheme == "https"
         self.url = settings.supabase_url.rstrip("/") + "/auth/v1"
@@ -169,39 +181,51 @@ class Auth:
         self.refresh_lock = asyncio.Lock()
         self.refreshed: dict[str, tuple[float, dict[str, Any]]] = {}
 
-    def project_url(self, project_id: str) -> str:
+    def host_url(self, label: str) -> str:
         base = urlparse(self.origin)
         domain = "localhost" if base.hostname == "127.0.0.1" else base.hostname
         port = f":{base.port}" if base.port else ""
-        return f"{base.scheme}://{uuid.UUID(project_id)}.{domain}{port}"
+        return f"{base.scheme}://{label}.{domain}{port}"
 
-    def project_host(self, request: Request) -> str | None:
+    def host_label(self, request: Request) -> str | None:
         host = request.headers.get("host", "").lower()
         if host == urlparse(self.origin).netloc:
             return None
-        try:
-            project_id = str(uuid.UUID(host.split(".", 1)[0]))
-            if host == urlparse(self.project_url(project_id)).netloc:
-                return project_id
-        except ValueError:
-            pass
+        label = host.split(".", 1)[0]
+        if (
+            re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+            and host == urlparse(self.host_url(label)).netloc
+        ):
+            return label
         raise HTTPException(400, "Unrecognized Studio host.")
 
-    def request_origin(self, request: Request) -> str:
-        selected = self.project_host(request)
-        return self.project_url(selected) if selected else self.origin
+    async def project_host(self, request: Request) -> str | None:
+        label = self.host_label(request)
+        if not label:
+            return None
+        if not hasattr(request.state, "host_project"):
+            project = await self.directory.project_for_label(label)
+            if not project:
+                raise HTTPException(404, "Project address not found.")
+            request.state.host_project = project
+        return str(request.state.host_project)
 
-    def origin_check(self, request: Request) -> None:
-        if request.headers.get("origin") != self.request_origin(request):
+    async def request_origin(self, request: Request) -> str:
+        if await self.project_host(request):
+            return self.host_url(str(self.host_label(request)))
+        return self.origin
+
+    async def origin_check(self, request: Request) -> None:
+        if request.headers.get("origin") != await self.request_origin(request):
             raise HTTPException(403, "Request must come from this application")
 
-    def throttle(self, request: Request) -> None:
+    def throttle(self, request: Request, *, scope: str = "auth", limit: int = 20) -> None:
         peer = request.client.host if request.client else "local"
         now = time.monotonic()
-        attempts = self.attempts[peer]
+        attempts = self.attempts[scope + ":" + peer]
         while attempts and attempts[0] < now - 60:
             attempts.popleft()
-        if len(attempts) >= 20:
+        if len(attempts) >= limit:
             raise HTTPException(429, "Too many attempts. Try again shortly.")
         attempts.append(now)
         # Bound bookkeeping without dropping active limits.
@@ -250,11 +274,108 @@ class Auth:
             or "google" not in providers,
         }
 
+    def browser_cookie(self, response: Response, session: str) -> None:
+        response.set_cookie(
+            BROWSER_SESSION,
+            session,
+            httponly=True,
+            secure=self.secure,
+            samesite="lax",
+            max_age=30 * 86400,
+            path="/",
+        )
+
+    async def new_browser(self, response: Response, actor: str, previous: str | None = None) -> str:
+        if previous:
+            await self.directory.query("DELETE FROM browser_sessions WHERE id=?", digest(previous))
+        session = secrets.token_urlsafe(32)
+        await self.directory.query("DELETE FROM browser_sessions WHERE expires<=?", time.time())
+        await self.directory.query(
+            "INSERT INTO browser_sessions(id,actor,expires) VALUES(?,?,?)",
+            digest(session),
+            actor,
+            time.time() + 30 * 86400,
+        )
+        self.browser_cookie(response, session)
+        return session
+
+    async def project_cookie(
+        self, response: Response, project: str, session: str, access: str
+    ) -> None:
+        # The host-specific cookie is the encryption key. The private table holds only
+        # its hash and ciphertext, and revoking the root session removes every alias.
+        key = Fernet.generate_key()
+        now = time.time()
+        # Keep the session reference after access expires so Log out can still revoke
+        # the root session. Deleting an expired browser session cascades to its projects.
+        await self.directory.query("DELETE FROM browser_sessions WHERE expires<=?", now)
+        rows = await self.directory.query(
+            "INSERT INTO project_sessions(id,project,session,access,expires) "
+            "SELECT ?,?,id,?,? FROM browser_sessions WHERE id=? AND expires>? RETURNING id",
+            digest(key.decode()),
+            project,
+            Fernet(key).encrypt(access.encode()).decode(),
+            now + 3600,
+            session,
+            now,
+        )
+        if not rows:
+            raise HTTPException(401, "Sign in to continue")
+        response.set_cookie(
+            PROJECT_SESSION,
+            key.decode(),
+            httponly=True,
+            secure=self.secure,
+            samesite="lax",
+            max_age=30 * 86400,
+            path="/",
+        )
+
     async def identity(self, request: Request) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        key = request.cookies.get(PROJECT_SESSION)
+        if key:
+            project = await self.project_host(request)
+            rows = await self.directory.query(
+                "SELECT b.actor,p.session,p.access FROM project_sessions p "
+                "JOIN browser_sessions b ON b.id=p.session WHERE p.id=? AND p.project=? "
+                "AND p.expires>? AND b.expires>?",
+                digest(key),
+                project,
+                time.time(),
+                time.time(),
+            )
+            if not rows:
+                raise HTTPException(401, "Sign in to continue")
+            access = Fernet(key.encode()).decrypt(rows[0]["access"].encode()).decode()
+            user = await self.user(access)
+            if not user or user["id"] != rows[0]["actor"]:
+                raise HTTPException(401, "Sign in to continue")
+            request.state.access = access
+            request.state.browser_session = rows[0]["session"]
+            request.state.actor = user
+            return user, None
+        browser = request.cookies.get(BROWSER_SESSION)
+        if browser:
+            rows = await self.directory.query(
+                "SELECT actor FROM browser_sessions WHERE id=? AND expires>?",
+                digest(browser),
+                time.time(),
+            )
+            if not rows:
+                raise HTTPException(401, "Sign in to continue")
+        user, tokens = await self.provider_identity(request)
+        if browser and rows[0]["actor"] != user["id"]:
+            raise HTTPException(401, "Sign in to continue")
+        request.state.access = tokens["access_token"] if tokens else request.cookies[ACCESS]
+        request.state.actor = user
+        return user, tokens
+
+    async def provider_identity(
+        self, request: Request
+    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
         access = request.cookies.get(ACCESS)
         user = await self.user(access) if access else None
         if user:
-            request.state.actor = user
             return user, None
         refresh = request.cookies.get(REFRESH)
         if refresh:
@@ -278,7 +399,6 @@ class Auth:
                     else None
                 )
                 if user:
-                    request.state.actor = user
                     return user, tokens
         raise HTTPException(401, "Sign in to continue")
 
@@ -303,11 +423,25 @@ class Auth:
         )
         response.headers["Cache-Control"] = "no-store"
 
-    def pkce(self, response: Response, invite: str | None = None, *, max_age: int = 600) -> str:
+    def pkce(
+        self,
+        response: Response,
+        invite: str | None = None,
+        *,
+        flow: str | None = None,
+        max_age: int = 600,
+    ) -> str:
         verifier = secrets.token_urlsafe(48)
         response.set_cookie(
             VERIFIER,
-            verifier + ("." + invite if invite and INVITE_ID.fullmatch(invite) else ""),
+            verifier
+            + (
+                ".flow-" + flow
+                if flow and FLOW_ID.fullmatch(flow)
+                else "." + invite
+                if invite and INVITE_ID.fullmatch(invite)
+                else ""
+            ),
             httponly=True,
             secure=self.secure,
             samesite="lax",
@@ -339,6 +473,14 @@ class Tenants:
         )
         self.apps: dict[str, FastAPI] = {}
         self.lock = asyncio.Lock()
+
+    async def project_url(self, auth: Auth, owner: dict[str, Any], name: str | None = None) -> str:
+        if name is None:
+            app = await self.get(owner)
+            host = getattr(app.state, "host", None)
+            profile = await asyncio.to_thread(host.store.organization) if host else {}
+            name = profile.get("name") or ""
+        return auth.host_url(await auth.directory.organization_slug(owner["id"], name or ""))
 
     def close_streams(self) -> None:
         for app in tuple(self.apps.values()):
@@ -387,7 +529,7 @@ class Gateway:
         try:
             if request.url.path.startswith("/api/"):
                 if request.method not in {"GET", "HEAD", "OPTIONS"}:
-                    self.auth.origin_check(request)
+                    await self.auth.origin_check(request)
                 user, tokens = await self.auth.identity(request)
                 # A server's local code and coding-agent account are not a user's resources.
                 if (
@@ -418,8 +560,12 @@ class Gateway:
                         self.auth.cookies(response, tokens)
                     await response(scope, receive, send)
                     return
-                project = await self.directory.project(user, self.auth.project_host(request))
-                request.state.project_url = self.auth.project_url(project["id"])
+                selected = await self.auth.project_host(request)
+                project = await self.directory.project(user, selected)
+                if selected and request.url.path == "/api/session" and request.method == "GET":
+                    await self.directory.remember(user["id"], selected)
+                if request.url.path == "/api/session":
+                    request.state.project_url = await self.tenants.project_url(self.auth, project)
                 request.state.project = project["id"]
                 if (
                     user["id"] != project["id"]
@@ -489,12 +635,12 @@ def create_authenticated_app(
     transport: httpx.AsyncBaseTransport | None = None,
     tenant_factory: TenantFactory | None = None,
 ) -> FastAPI:
-    auth = Auth(settings, transport)
     directory = Directory(
         settings.database_url.get_secret_value()
         if settings.database_url and tenant_factory is None
         else None
     )
+    auth = Auth(settings, directory, transport)
     stack = AsyncExitStack()
     tenants = Tenants(root, settings, stack, demo, tenant_factory)
     from design_agent.surfaces.web.blobs import BlobFiles, StorageUnavailable
@@ -525,6 +671,7 @@ def create_authenticated_app(
         title="Incredible.dev", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
     )
     app.add_middleware(SecurityHeaders, directory=directory)
+    app.include_router(project_login_routes(auth, directory, tenants))
     app.include_router(team_routes(auth, directory, tenants))
     app.state.auth = auth
     app.state.tenants = tenants
@@ -552,7 +699,11 @@ def create_authenticated_app(
         return {"status": "ok", "authentication": "supabase"}
 
     @app.get("/api/auth/config")
-    async def config() -> Response:
+    async def config(request: Request) -> Response:
+        if await auth.project_host(request):
+            return JSONResponse(
+                {"enabled": True, "project_signin": True}, headers={"Cache-Control": "no-store"}
+            )
         response = await auth.call("GET", "settings")
         external = response.json().get("external", {}) if response.is_success else {}
         return JSONResponse(
@@ -567,13 +718,28 @@ def create_authenticated_app(
     @app.get("/api/auth/session")
     async def session(request: Request) -> Response:
         user, tokens = await auth.identity(request)
-        response = JSONResponse({"user": user}, headers={"Cache-Control": "no-store"})
+        selected = await auth.project_host(request)
+        data: dict[str, Any] = {"user": user, "root_entry": selected is None}
+        if selected:
+            try:
+                owner = await directory.project(user, selected)
+            except HTTPException as exc:
+                if exc.status_code != 403:
+                    raise
+            else:
+                canonical = await tenants.project_url(auth, owner)
+                if canonical != await auth.request_origin(request):
+                    data["canonical_url"] = canonical
+        response = JSONResponse(
+            data,
+            headers={"Cache-Control": "no-store"},
+        )
         if tokens:
             auth.cookies(response, tokens)
         return response
 
     async def password(request: Request, body: LoginInput, signup: bool) -> Response:
-        auth.origin_check(request)
+        await auth.origin_check(request)
         auth.throttle(request)
         payload = {"email": body.email, "password": body.password.get_secret_value()}
         expected_id = None
@@ -592,7 +758,10 @@ def create_authenticated_app(
             payload.update(
                 {
                     "code_challenge": auth.pkce(
-                        response, request.query_params.get("invite"), max_age=86400
+                        response,
+                        request.query_params.get("invite"),
+                        flow=request.query_params.get("flow"),
+                        max_age=86400,
                     ),
                     "code_challenge_method": "s256",
                 }
@@ -600,7 +769,7 @@ def create_authenticated_app(
         upstream = await auth.call(
             "POST",
             "signup" if signup else "token?grant_type=password",
-            params={"redirect_to": auth.request_origin(request) + "/api/auth/callback"}
+            params={"redirect_to": await auth.request_origin(request) + "/api/auth/callback"}
             if signup
             else None,
             json=payload,
@@ -645,6 +814,7 @@ def create_authenticated_app(
                     headers={"Cache-Control": "no-store"},
                 )
             auth.cookies(response, data)
+            await auth.new_browser(response, user["id"], request.cookies.get(BROWSER_SESSION))
         elif signup:
             response.body = b'{"message":"Check your email to confirm your account, then sign in."}'
             response.headers["content-length"] = str(len(response.body))
@@ -668,16 +838,23 @@ def create_authenticated_app(
         if not available.is_success or not available.json().get("external", {}).get("google"):
             invite = request.query_params.get("invite", "")
             path = "/invite/" + invite if INVITE_ID.fullmatch(invite) else "/"
+            flow = request.query_params.get("flow", "")
+            if FLOW_ID.fullmatch(flow):
+                return RedirectResponse(
+                    "/?flow=" + flow + "&auth_error=google_unavailable", status_code=303
+                )
             return RedirectResponse(path + "?auth_error=google_unavailable", status_code=303)
         response = RedirectResponse("/", status_code=303)
-        challenge = auth.pkce(response, request.query_params.get("invite"))
+        challenge = auth.pkce(
+            response, request.query_params.get("invite"), flow=request.query_params.get("flow")
+        )
         response.headers["location"] = (
             auth.url
             + "/authorize?"
             + urlencode(
                 {
                     "provider": "google",
-                    "redirect_to": auth.request_origin(request) + "/api/auth/callback",
+                    "redirect_to": await auth.request_origin(request) + "/api/auth/callback",
                     "code_challenge": challenge,
                     "code_challenge_method": "s256",
                 }
@@ -690,9 +867,12 @@ def create_authenticated_app(
         code = request.query_params.get("code")
         verifier, _, invite = request.cookies.get(VERIFIER, "").partition(".")
         destination = "/invite/" + invite if INVITE_ID.fullmatch(invite) else "/"
+        if invite.startswith("flow-") and FLOW_ID.fullmatch(invite[5:]):
+            destination = "/?flow=" + invite[5:]
+        failed_destination = destination + ("&" if "?" in destination else "?") + "auth_error=link"
         if not code or not verifier:
             if "text/html" in request.headers.get("accept", ""):
-                return RedirectResponse(destination + "?auth_error=link", status_code=303)
+                return RedirectResponse(failed_destination, status_code=303)
             raise HTTPException(
                 400, "Sign-in link is invalid or expired. Start again in this browser."
             )
@@ -701,7 +881,7 @@ def create_authenticated_app(
         )
         if not result.is_success:
             if "text/html" in request.headers.get("accept", ""):
-                return RedirectResponse(destination + "?auth_error=link", status_code=303)
+                return RedirectResponse(failed_destination, status_code=303)
             raise HTTPException(400, "Sign-in link is invalid or expired. Start again.")
         data = result.json()
         if (
@@ -713,6 +893,7 @@ def create_authenticated_app(
         request.state.actor = actor
         response = RedirectResponse(destination, status_code=303)
         auth.cookies(response, data)
+        await auth.new_browser(response, actor["id"], request.cookies.get(BROWSER_SESSION))
         response.delete_cookie(
             VERIFIER, path="/api/auth", secure=auth.secure, httponly=True, samesite="lax"
         )
@@ -730,19 +911,29 @@ def create_authenticated_app(
             raise HTTPException(400, "Your current password is incorrect.")
         return dict(fresh)
 
+    async def password_cookies(
+        request: Request, response: Response, tokens: dict[str, Any]
+    ) -> None:
+        parent = getattr(request.state, "browser_session", None)
+        project = await auth.project_host(request)
+        if parent and project:
+            await auth.project_cookie(response, project, parent, tokens["access_token"])
+        else:
+            auth.cookies(response, tokens)
+
     @app.post("/api/auth/password/verify")
     async def verify_password(request: Request, body: CurrentPasswordInput) -> Response:
-        auth.origin_check(request)
+        await auth.origin_check(request)
         auth.throttle(request)
         user, _ = await auth.identity(request)
         tokens = await verify_current(user, body.password.get_secret_value())
         response = JSONResponse({"verified": True})
-        auth.cookies(response, tokens)
+        await password_cookies(request, response, tokens)
         return response
 
     @app.post("/api/auth/password")
     async def save_password(request: Request, body: PasswordChange) -> Response:
-        auth.origin_check(request)
+        await auth.origin_check(request)
         auth.throttle(request)
         user, tokens = await auth.identity(request)
         current = body.current_password.get_secret_value() if body.current_password else ""
@@ -750,7 +941,7 @@ def create_authenticated_app(
             if not current:
                 raise HTTPException(400, "Enter your current password.")
             tokens = await verify_current(user, current)
-        access = tokens["access_token"] if tokens else request.cookies[ACCESS]
+        access = tokens["access_token"] if tokens else request.state.access
         updated = await auth.call(
             "PUT",
             "user",
@@ -778,22 +969,43 @@ def create_authenticated_app(
             )
         response = JSONResponse({"has_password": True}, headers={"Cache-Control": "no-store"})
         if tokens:
-            auth.cookies(response, tokens)
+            await password_cookies(request, response, tokens)
         return response
 
     @app.post("/api/auth/logout")
     async def logout(request: Request) -> Response:
-        auth.origin_check(request)
+        await auth.origin_check(request)
+        browser = request.cookies.get(BROWSER_SESSION)
+        project_key = request.cookies.get(PROJECT_SESSION)
         access = request.cookies.get(ACCESS)
+        if project_key:
+            rows = await directory.query(
+                "SELECT session,access FROM project_sessions WHERE id=? AND project=?",
+                digest(project_key),
+                await auth.project_host(request),
+            )
+            if rows:
+                access = Fernet(project_key.encode()).decrypt(rows[0]["access"].encode()).decode()
+                await directory.query("DELETE FROM browser_sessions WHERE id=?", rows[0]["session"])
+        if browser:
+            await directory.query("DELETE FROM browser_sessions WHERE id=?", digest(browser))
         if access:
             try:
                 request.state.actor = await auth.user(access)
                 await auth.call("POST", "logout", headers={"Authorization": "Bearer " + access})
             except HTTPException:
-                pass  # Local logout must work even while the provider is unavailable.
+                pass
         auth.refreshed.clear()
-        response = JSONResponse({"ok": True}, headers={"Cache-Control": "no-store"})
-        for name, path in [(ACCESS, "/"), (REFRESH, "/"), (VERIFIER, "/api/auth")]:
+        response = JSONResponse(
+            {"ok": True, "url": auth.origin + "/"}, headers={"Cache-Control": "no-store"}
+        )
+        for name, path in [
+            (ACCESS, "/"),
+            (REFRESH, "/"),
+            (BROWSER_SESSION, "/"),
+            (PROJECT_SESSION, "/"),
+            (VERIFIER, "/api/auth"),
+        ]:
             response.delete_cookie(
                 name, path=path, secure=auth.secure, httponly=True, samesite="lax"
             )

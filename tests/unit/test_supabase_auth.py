@@ -477,7 +477,7 @@ async def test_pending_invitation_link_matches_mail_and_remains_copyable_on_fail
         result = await c.post("/api/team/invite", headers={"Origin": ORIGIN}, json={"email": email})
         result.raise_for_status()
         invitation = result.json()
-        link = f"http://{A}.localhost:8765/invite/{invitation['id']}"
+        link = f"http://workspace.localhost:8765/invite/{invitation['id']}"
         assert invitation["invite_url"] == link and invitation["email_sent"] is delivered
         assert sent[-1][0] == email and sent[-1][-1] == link
         pending = (await c.get("/api/team")).json()["members"]
@@ -557,3 +557,125 @@ async def test_only_configured_owner_can_reach_execution_routes(client, monkeypa
         await c.post("/api/channels/brand/research", headers={"Origin": ORIGIN})
     ).status_code == 404
     assert made == [A]
+
+
+async def test_project_handoff_is_browser_bound_and_single_use(client):
+    from urllib.parse import parse_qs, urlsplit
+
+    c, _ = client
+    c.cookies.set("incredible-access", "token-a", domain="127.0.0.1")
+    await c.get("/api/team")
+    project = "http://workspace.localhost:8765"
+    start = await c.get(project + "/api/auth/start", params={"next": "/settings/logs"})
+    assert start.status_code == 303
+    flow = parse_qs(urlsplit(start.headers["location"]).query)["flow"][0]
+    await c.post(
+        "/api/auth/login",
+        headers={"Origin": ORIGIN},
+        json={"email": "member@example.com", "password": "valid-password"},
+    )
+    destination = await c.post("/api/auth/land", headers={"Origin": ORIGIN}, json={"flow": flow})
+    destination.raise_for_status()
+    finish = destination.json()["url"]
+    assert finish.startswith(project + "/api/auth/finish?") and "fresh-a" not in finish
+    async with httpx.AsyncClient(transport=c._transport, base_url=project) as other:
+        assert (await other.get(finish)).status_code == 403
+    response = await c.get(finish)
+    assert response.headers["location"] == "/settings/logs"
+    assert not any(
+        cookie.name == "incredible-refresh" and cookie.domain == urlsplit(project).hostname
+        for cookie in c.cookies.jar
+    )
+    assert (await c.get(finish)).status_code == 403
+    assert (await c.get(project + "/api/session")).json()["me"] == A
+    await c.post(project + "/api/auth/logout", headers={"Origin": project})
+    assert (await c.get("/api/auth/session")).status_code == 401
+
+
+async def test_first_landing_and_denied_project_bookmark(client):
+    from urllib.parse import parse_qs, urlsplit
+
+    c, _ = client
+    c.cookies.set("incredible-access", "token-a")
+
+    async def land(body):
+        return await c.post("/api/auth/land", headers={"Origin": ORIGIN}, json=body)
+
+    assert (await land({})).json()["needs_organization"]
+    assert (
+        (await land({"organization": "First workspace"}))
+        .json()["url"]
+        .startswith("http://first-workspace.localhost:8765/")
+    )
+    project = f"http://{B}.localhost:8765"
+    start = await c.get(project + "/api/auth/start", params={"next": "/settings/profile"})
+    flow = parse_qs(urlsplit(start.headers["location"]).query)["flow"][0]
+    assert (await land({"flow": flow})).status_code == 403
+
+
+@pytest.mark.parametrize(
+    "path", ["//external.example", "/api/auth/logout", "/settings/../api/auth/login"]
+)
+async def test_handoff_accepts_only_project_pages(client, path):
+    c, _ = client
+    response = await c.get(f"http://{A}.localhost:8765/api/auth/start", params={"next": path})
+    assert response.status_code == 400
+    assert "location" not in response.headers
+
+
+async def test_expired_handoff_cannot_establish_project_session(client, monkeypatch):
+    from urllib.parse import parse_qs, urlsplit
+
+    from design_agent.surfaces.web import project_login
+
+    c, _ = client
+    c.cookies.set("incredible-access", "token-a", domain="127.0.0.1")
+    await c.get("/api/team")
+    project = "http://workspace.localhost:8765"
+    c.cookies.set("incredible-access", "token-a")
+    start = await c.get(project + "/api/auth/start")
+    flow = parse_qs(urlsplit(start.headers["location"]).query)["flow"][0]
+    reply = await c.post("/api/auth/land", headers={"Origin": ORIGIN}, json={"flow": flow})
+    future = project_login.time.time() + 61
+    monkeypatch.setattr(project_login.time, "time", lambda: future)
+    response = await c.get(reply.json()["url"])
+    assert response.status_code == 403
+    assert not response.cookies
+
+
+async def test_organization_addresses_are_unique_and_old_names_stay_owned():
+    from design_agent.surfaces.web.directory import Directory
+
+    directory = Directory(None)
+    await directory.open()
+    try:
+        assert await directory.organization_slug(A, "Éden’s Studio!") == "edens-studio"
+        assert await directory.organization_slug(B, "Edens Studio") == "edens-studio-2"
+        assert await directory.organization_slug(A, "Design House") == "design-house"
+        assert await directory.organization_slug(A, "Edens Studio") == "edens-studio"
+        assert await directory.project_for_label("edens-studio") == A
+        assert await directory.project_for_label("edens-studio-2") == B
+        assert await directory.project_for_label("unknown") is None
+        assert (await directory.organization_slug(A, "東京")).encode().decode("idna") == "東京"
+        assert (await directory.organization_slug(B, "東京")).encode().decode("idna") == "東京-2"
+        for name in ["www", "API", A, "!!!", "A" * 100]:
+            slug = await directory.organization_slug(A, name)
+            assert len(slug) <= 63 and slug not in {"www", "api", A}
+    finally:
+        await directory.close()
+
+
+async def test_named_address_enforces_membership_and_origin(client):
+    c, _ = client
+    c.cookies.set("incredible-access", "token-a")
+    address = (await c.get("/api/team")).json()["personal_url"]
+    c.cookies.set("incredible-access", "token-b")
+    assert (await c.get(address + "/api/session")).status_code == 403
+    c.cookies.set("incredible-access", "token-a")
+    assert (
+        await c.post(address + "/api/resources/test", headers={"Origin": ORIGIN})
+    ).status_code == 403
+    assert (
+        await c.post(address + "/api/resources/test", headers={"Origin": address})
+    ).status_code == 200
+    assert (await c.get("http://missing.localhost:8765/api/auth/config")).status_code == 404

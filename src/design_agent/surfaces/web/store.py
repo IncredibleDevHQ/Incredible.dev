@@ -1061,6 +1061,14 @@ class Store:
             "description": "",
         }
 
+    def name_new_organization(self, name: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO organization(id,name,website,description) VALUES(1,?,'','') "
+                "ON CONFLICT(id) DO UPDATE SET name=excluded.name WHERE organization.name=''",
+                (name,),
+            )
+
     def save_organization(self, name: str, website: str, description: str) -> None:
         with self._lock:
             self._db.execute(

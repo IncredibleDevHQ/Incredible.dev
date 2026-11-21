@@ -23,9 +23,9 @@ type Route =
   | { page: "brand"; kit?: string }
   | { page: "read-brand"; for?: string }
   | { page: "production"; episode?: string; chapter?: string; agent?: string }
-  | { page: "needs" | "skills" | "computer" | "settings" | "profile" | "usage" | "logs" | "organization" };
+  | { page: "needs" | "skills" | "computer" | "preferences" | "profile" | "usage" | "logs" | "organization" };
 
-const PAGES = { logs:"/settings/logs", profile: "/settings/profile", usage: "/settings/usage", organization: "/settings/organization", settings: "/settings", needs: "/needs-you", skills: "/skills", computer: "/computer" } as const;
+const PAGES = { logs:"/settings/logs", profile: "/settings/profile", usage: "/settings/usage", organization: "/settings/organization", preferences: "/settings/preferences", needs: "/needs-you", skills: "/skills", computer: "/computer" } as const;
 const PRODUCTION = "/production";
 const HOUSE_KIT = "default";
 
@@ -49,8 +49,12 @@ export function parse(path: string, search: string): Route {
     if (view !== "canvas") return { page: "channel", channel, mode: "chat", thread: query.get("thread") ?? undefined };
     return { page: "channel", channel, mode: "canvas", task, node, thread: query.get("thread") ?? undefined };
   }
-  if (head === "settings" && rest[0] === "members") return {page: "organization"};
-  if (head === "settings" && (rest[0] === "logs" || rest[0] === "profile" || rest[0] === "usage" || rest[0] === "organization")) return {page: rest[0]};
+  if (head === "settings") {
+    const tab = rest[0];
+    if (tab === "members") return {page: "organization"};
+    if (tab === "preferences" || tab === "logs" || tab === "usage" || tab === "organization") return {page: tab};
+    return {page: "profile"};
+  }
   if (head === "brand") return rest[0] === "new" ? { page: "read-brand", for: query.get("for") ?? undefined } : { page: "brand", kit: rest[0] };
   if (`/${head}` === PRODUCTION) return { page: "production", episode: query.get("episode") ?? undefined, chapter: query.get("chapter") ?? undefined, agent: query.get("agent") ?? undefined };
   const page = (Object.keys(PAGES) as (keyof typeof PAGES)[]).find((p) => PAGES[p] === `/${head}`);
@@ -63,7 +67,7 @@ export function addressOf(s: State): string {
     case "profile":
     case "usage":
     case "organization":
-    case "settings":
+    case "preferences":
     case "needs":
     case "skills":
     case "computer":

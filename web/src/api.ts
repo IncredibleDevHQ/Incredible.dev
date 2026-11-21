@@ -748,7 +748,7 @@ export type VoiceTestClip = {text?: string | null; id: string; name: string; exp
 
 export type AccountDetails = {first_name?:string; last_name?:string; username?:string | null};
 export type Team = {project:string; personal_url:string; owner:string; can_manage:boolean; members:{id:string;email:string;member:string|null;invite_url?:string}[];
-  incoming:{id:string;email:string;owner:string;member:string|null}[]};
+  incoming:{id:string;email:string;owner:string;member:string|null;url:string}[]};
 export type ActivityLog = {actors:{actor:string;email:string}[]; events:{id:string;duration_ms?:number|null;member_email?:string|null;actor:string;actor_email:string;action:string;happened:number;status:number}[];more:boolean};
 
 export const api = {
