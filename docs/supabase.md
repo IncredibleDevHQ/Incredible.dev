@@ -37,13 +37,53 @@ database-creation or RLS-bypass privileges. It must never be used in browser cod
 
 ## Profile and preferences
 
-Settings → Profile lets signed-in users edit their display username, upload a profile photo, and see their sign-in email. A Google account can set its first
+Settings → Profile lets signed-in users edit a project display name and avatar, see their primary email, and save account-wide first and last names and a unique sign-in username. Usernames are case-insensitive. Password sign-in accepts either the verified email address or the saved username. A Google account can set its first
 password here and then sign in with the same email using either method. Email/password accounts
 and Google accounts with an existing password must confirm their current password to update it.
 
 Settings → Preferences lists the configured providers, models and supported effort levels for chat.
 Saved choices apply to subsequent chat turns in the private workspace. A picture with an explicit
 model selection keeps that selection. Choose Workspace default to use the operator’s settings.
+
+## Projects, members and activity
+
+Organization shows a stable project ID and a link to its hostname. Local Compose serves
+`http://<project-uuid>.localhost:8765`. The original Studio address opens the signed-in user's
+own project. Sessions are host-only. Sign in when first visiting another project's hostname.
+For a custom HTTPS origin, configure wildcard DNS and TLS for subdomains of that origin and
+forward the original Host header. Allow the project callback URLs in Supabase Auth for Google
+and email confirmation on those origins.
+
+Owners invite members by email in Organization settings. Each email links to a review page on
+the inviting project’s hostname. The recipient signs in with the invited email and chooses
+**Accept invitation** to open the project. Opening the link alone grants no access. The owner
+can also choose **Copy invite link** from a pending invitation’s actions. If mail delivery
+fails, the invitation stays pending and the same link can be shared. Pending invitations
+also appear in the recipient’s Organization settings after sign-in. Members can access the
+project’s channels, files, and agent tools. Owners can revoke pending invitations and remove members. Access is checked on
+every project request. Removing someone closes project event streams so clients reauthorize.
+A member’s personal workspace remains available at the base Studio address.
+
+For local email testing, start Studio with the Mailpit override:
+
+```bash
+docker compose -f compose.yaml -f compose.mailpit.yaml up -d --build --wait
+```
+
+Open the test inbox at `http://127.0.0.1:18025`. Mailpit captures Studio invitations locally.
+Supabase continues to handle its own sign-in and verification mail.
+
+For delivery to real recipients, use the base Compose file, set a public HTTPS Studio origin,
+and configure `DESIGN_AGENT_SMTP_HOST`, `DESIGN_AGENT_SMTP_PORT` (default 587),
+`DESIGN_AGENT_SMTP_FROM`, and your relay’s `DESIGN_AGENT_SMTP_USERNAME` and
+`DESIGN_AGENT_SMTP_PASSWORD` in the app’s private environment. STARTTLS is enabled by default
+and required for SMTP credentials. Use a From address verified by your mail provider.
+
+The server maintains the private Postgres schema `studio_directory` for account handles,
+invitations and project activity. Back it up alongside project schemas. Logs records verified
+actors for API mutations, navigation and supported device-preference changes from this version
+onward. Use the actor filter or page through older entries. Audit rows store the action, time,
+status and actor identity. Select a row to see the event ID, timestamp and recorded action. New events include response time, and successful membership changes also identify the affected member. Passwords, message bodies and URL query strings are excluded.
 
 ## Google sign-in
 

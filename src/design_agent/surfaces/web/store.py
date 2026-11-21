@@ -378,6 +378,13 @@ class Store:
 
     # -- people and channels -----------------------------------------------------------------
 
+    def ensure_member(self, actor: str, email: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO people(id,name,initials,hue,agent) VALUES(?,?,?,?,0) ON CONFLICT(id) DO NOTHING",
+                (actor, email, email[:1].upper(), 152),
+            )
+
     def people(self) -> list[Row]:
         return self._all("SELECT * FROM people ORDER BY agent, name")
 

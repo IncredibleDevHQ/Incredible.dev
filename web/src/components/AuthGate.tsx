@@ -23,7 +23,7 @@ export function WorkspaceSkeleton() {
   </div>;
 }
 
-export function AuthGate({ children }: { children: ReactNode }) {
+export function AuthGate({ children, invite }: { children: ReactNode; invite?: string }) {
   const [state, setState] = useState<"loading" | "ready" | "login" | "error">("loading");
   const [google, setGoogle] = useState(false);
   const [error, setError] = useState("");
@@ -53,7 +53,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }, [retry]);
 
   if (state === "ready") return children;
-  if (state === "login") return <Login google={google} />;
+  if (state === "login") return <Login google={google} invite={invite} />;
   if (state === "loading") return <WorkspaceSkeleton />;
   return <main className="auth-shell"><section className="auth-card">
     <img className="auth-mark" src="/house.svg" alt="" />
@@ -62,7 +62,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   </section></main>;
 }
 
-function Login({ google }: { google: boolean }) {
+function Login({ google, invite }: { google: boolean; invite?: string }) {
+  const inviteQuery = invite ? "?invite=" + encodeURIComponent(invite) : "";
   const [signup, setSignup] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -79,10 +80,10 @@ function Login({ google }: { google: boolean }) {
     if (busy) return;
     setBusy(true); setError(""); setMessage("");
     try {
-      const result = await authRequest(signup ? "signup" : "login", { email: email.trim(), password });
+      const result = await authRequest(signup ? "signup" + inviteQuery : "login", { email: email.trim(), password });
       setPassword("");
       if (result.message) { setSignup(false); setMessage(result.message); }
-      else window.location.assign("/"); // Clear all previous workspace state on account changes.
+      else window.location.assign(invite ? "/invite/" + invite : "/"); // Clear all previous workspace state on account changes.
     } catch (failed) {
       if (signup && failed instanceof AuthRequestError && failed.status === 409) {
         setSignup(false);
@@ -97,15 +98,15 @@ function Login({ google }: { google: boolean }) {
     <img className="auth-mark" src="/house.svg" alt="" />
     <p className="auth-eyebrow">Incredible.dev</p>
     <h1 id="auth-title">{signup ? "Create your account" : "Welcome back"}</h1>
-    <p className="muted">Your ideas, conversations and creations. Your private workspace.</p>
-    <button type="button" className="btn auth-google" disabled={!google || busy} onClick={() => window.location.assign("/api/auth/google")}>
+    <p className="muted">{invite ? "Sign in with the invited email to review your project invitation." : "Your ideas, conversations and creations. Your private workspace."}</p>
+    <button type="button" className="btn auth-google" disabled={!google || busy} onClick={() => window.location.assign("/api/auth/google" + inviteQuery)}>
       <span aria-hidden="true" className="auth-google-mark">G</span>Continue with Google
     </button>
     {!google && <p className="auth-hint">Google sign-in is not available yet. You can use email below.</p>}
     <div className="auth-divider"><span>or use email</span></div>
     <form onSubmit={submit} aria-busy={busy}>
-      <label htmlFor="auth-email">Email</label>
-      <input id="auth-email" name="email" type="email" required maxLength={254} autoComplete="email" value={email} disabled={busy} onChange={e => setEmail(e.target.value)} />
+      <label htmlFor="auth-email">{signup ? "Email" : "Email or username"}</label>
+      <input id="auth-email" name="email" type={signup ? "email" : "text"} required maxLength={254} autoComplete={signup ? "email" : "username"} value={email} disabled={busy} onChange={e => setEmail(e.target.value)} />
       <label htmlFor="auth-password">Password</label>
       <input id="auth-password" name="password" type="password" required minLength={8} maxLength={256} autoComplete={signup ? "new-password" : "current-password"} value={password} disabled={busy} onChange={e => setPassword(e.target.value)} />
       {signup && <p className="auth-hint">Use at least 8 characters. We’ll ask you to confirm your email.</p>}

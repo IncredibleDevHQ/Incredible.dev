@@ -40,6 +40,6 @@ test.each([200, 409])("signup shows progress then opens sign-in for status %s", 
   resolve(Response.json(feedback, {status}));
   expect(await screen.findByRole("heading", {name:"Welcome back"})).toBeTruthy();
   expect(screen.getByRole(status === 409 ? "alert" : "status").textContent).toBe(Object.values(feedback)[0]);
-  expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe("member@example.com");
+  expect((screen.getByLabelText("Email or username") as HTMLInputElement).value).toBe("member@example.com");
   expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("");
 });

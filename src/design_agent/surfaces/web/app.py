@@ -602,9 +602,9 @@ def create_app(
     async def storage_error(_request: Request, _error: StorageUnavailable) -> Response:
         return Response("File storage is unavailable. Try again shortly.", status_code=503)
 
-    def person(x_person: str = Header(default="you")) -> str:
+    def person(request: Request, x_person: str = Header(default="you")) -> str:
         if authenticated_user:
-            return str(authenticated_user["id"])
+            return str(getattr(request.state, "actor", authenticated_user)["id"])
         if store.person(x_person) is None or x_person == "agent":
             raise HTTPException(status_code=403, detail="unknown person")
         return x_person
@@ -638,11 +638,15 @@ def create_app(
         return {"authenticated": bool(authenticated_user)}
 
     @app.get("/api/session")
-    async def session(me: str = Depends(person)) -> dict[str, Any]:
+    async def session(request: Request, me: str = Depends(person)) -> dict[str, Any]:
         runtime = host.runtime
         return {
             "me": me,
-            "email": authenticated_user["email"] if authenticated_user else None,
+            "email": getattr(request.state, "actor", authenticated_user)["email"]
+            if authenticated_user
+            else None,
+            "projectUrl": getattr(request.state, "project_url", None),
+            "projectId": authenticated_user["id"] if authenticated_user else None,
             "organizationName": store.organization()["name"],
             "people": store.people(),
             "agent": {"mark": host.mark, "model": "demo" if demo else str(settings.lead_model())},

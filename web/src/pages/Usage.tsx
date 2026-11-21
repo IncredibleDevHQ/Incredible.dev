@@ -1,7 +1,12 @@
+import {Table,TableHeader,TableBody,TableRow,TableHead,TableCell} from "../components/ui/table";
+import {Chart, BarController, BarElement, CategoryScale, LinearScale, LineController, LineElement, PointElement, Tooltip} from "chart.js";
+import { useTheme } from "../theme";
 import { Skeleton } from "../components/Skeleton";
-import { useEffect, useState } from "react";
-import { Activity, Coins, Layers3, RefreshCw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Activity, ChartColumn, ChartLine, Coins, Layers3, RefreshCw } from "lucide-react";
 import { api, type UsageCounts, type UsagePeriod, type UsageReport } from "../api";
+
+Chart.register(BarController, BarElement, CategoryScale, LinearScale, LineController, LineElement, PointElement, Tooltip);
 
 const periods = [["today", "Today"], ["week", "1 week"], ["month", "1 month"]] as const;
 const number = new Intl.NumberFormat();
@@ -9,7 +14,12 @@ const dollars = new Intl.NumberFormat("en-US", {style: "currency", currency: "US
 const tokens = (counts: UsageCounts) => counts.input_tokens + counts.output_tokens;
 const cost = (counts: UsageCounts) => counts.calls > 0 && counts.calls === counts.unpriced ? "Unavailable" : dollars.format(counts.usd);
 
+type Metric = "Tokens" | "Cost";
+type ChartType = "bar" | "line";
+
 export function Usage() {
+  const [metric, setMetric] = useState<Metric>("Tokens");
+  const [chartType, setChartType] = useState<ChartType>("bar");
   const [period, setPeriod] = useState<UsagePeriod>("week");
   const [revision, refresh] = useState(0);
   const [report, setReport] = useState<UsageReport | null>(null);
@@ -41,51 +51,87 @@ export function Usage() {
         <article><Activity /><span>Model calls</span><strong>{number.format(report.totals.calls)}</strong>
           <small>{report.models.length} {report.models.length === 1 ? "model" : "models"} used</small></article>
       </div>
-      <UsageChart report={report} period={period} />
+      <UsageChart {...{ report, period, metric, setMetric, chartType, setChartType }} />
       <h3>Usage by model</h3>
-      {report.models.length ? <div className="usage-table"><table><thead><tr>
-        {["Model", "Calls", "Input tokens", "Output tokens", "Est. USD"].map(label => <th key={label}>{label}</th>)}
-      </tr></thead><tbody>{report.models.map(row => <tr key={row.model}><th scope="row">{row.model}</th>
-        <td>{number.format(row.calls)}</td><td>{number.format(row.input_tokens)}</td><td>{number.format(row.output_tokens)}</td>
-        <td>{cost(row)}{row.unpriced > 0 && row.unpriced < row.calls && <small>priced calls only</small>}</td></tr>)}</tbody></table></div> :
+      {report.models.length ? <div className="usage-table"><Table><TableHeader><TableRow>
+        {["Model", "Calls", "Input tokens", "Output tokens", "Est. USD"].map(label => <TableHead key={label}>{label}</TableHead>)}
+      </TableRow></TableHeader><TableBody>{report.models.map(row => <TableRow key={row.model}><TableHead scope="row">{row.model}</TableHead>
+        <TableCell>{number.format(row.calls)}</TableCell><TableCell>{number.format(row.input_tokens)}</TableCell><TableCell>{number.format(row.output_tokens)}</TableCell>
+        <TableCell>{cost(row)}{row.unpriced > 0 && row.unpriced < row.calls && <small>priced calls only</small>}</TableCell></TableRow>)}</TableBody></Table></div> :
         <p className="muted">Models appear here after their first recorded call.</p>}
     </>}
   </section>;
 }
 
-function UsageChart({report, period}: {report: UsageReport; period: UsagePeriod}) {
-  const [metric, setMetric] = useState<"Tokens" | "Cost">("Tokens");
-  const [index, setIndex] = useState<number | null>(null);
+function UsageChart({report, period, metric, setMetric, chartType, setChartType}: {
+  report: UsageReport; period: UsagePeriod; metric: Metric; setMetric: (metric: Metric) => void;
+  chartType: ChartType; setChartType: (type: ChartType) => void;
+}) {
+  const [theme] = useTheme();
+  const canvas = useRef<HTMLCanvasElement>(null);
   const currency = metric === "Cost";
-  const value = (row: UsageCounts) => currency ? row.usd : tokens(row);
-  const max = Math.max(...report.series.map(value), 0);
-  const date = new Intl.DateTimeFormat(undefined, period === "today" ?
-    {timeZone:"UTC", hour:"2-digit", minute:"2-digit", hourCycle:"h23"} : {timeZone:"UTC", month:"short", day:"numeric"});
-  const label = (at: number) => date.format(at * 1000);
-  const describe = (row: UsageReport["series"][number]) =>
-    label(row.at) + " UTC · " + number.format(row.input_tokens) + " in · " + number.format(row.output_tokens) + " out · " + cost(row);
+  useEffect(() => {
+    if (!canvas.current || !window.ResizeObserver) return;
+    const date = new Intl.DateTimeFormat(undefined,period==="today" ?
+      {timeZone:"UTC", hour:"2-digit", minute:"2-digit",hourCycle:"h23"} : {timeZone:"UTC",month:"short",day:"numeric"});
+    const style = getComputedStyle(canvas.current);
+    const color = style.getPropertyValue("--muted").trim();
+    const grid = style.getPropertyValue("--line").trim();
+    const input = style.getPropertyValue("--green").trim();
+    const series = currency ? [{
+      label: "Estimated USD", color: input,
+      data: report.series.map(row => row.unpriced && row.calls === row.unpriced ? null : row.usd),
+    }] : [
+      {label: "Input tokens", color: input, data: report.series.map(row => row.input_tokens)},
+      {label: "Output tokens", color: "#5f9fc6", data: report.series.map(row => row.output_tokens)},
+    ];
+    const bars = chartType === "bar";
+    const compact = new Intl.NumberFormat(undefined, {notation: "compact"});
+    const chart = new Chart(canvas.current, {
+      type: chartType,
+      data: {
+        labels: report.series.map(row => date.format(row.at * 1000)),
+        datasets: series.map(({label, color, data}) => ({
+          label, data, backgroundColor: color, borderColor: color,
+        })),
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        interaction: {mode: "index", intersect: false},
+        datasets: {
+          bar: {maxBarThickness: 32, borderSkipped: "bottom", borderRadius: context => {
+            const top = currency || context.datasetIndex === 1 || !report.series[context.dataIndex]?.output_tokens;
+            return {topLeft: top ? 7 : 0, topRight: top ? 7 : 0, bottomLeft: 0, bottomRight: 0};
+          }},
+          line: {borderWidth: 2.5, cubicInterpolationMode: "monotone", pointRadius: 2, pointHoverRadius: 5},
+        },
+        scales: {
+          x: {stacked: bars, grid: {display: false}, border: {display: false},
+            ticks: {color, maxRotation: 0, maxTicksLimit: 7, padding: 6}},
+          y: {stacked: bars, beginAtZero: true, grid: {color: grid, drawTicks: false},
+            border: {display: false, dash: [3, 4]}, ticks: {color, maxTicksLimit: 5, padding: 8,
+              callback: value => (currency ? "$" : "") + compact.format(Number(value))}},
+        },
+      },
+    });
+    return () => chart.destroy();
+  }, [report, period, currency, chartType, theme]);
   return <figure className="usage-chart"><header className="usage-heading"><h3>Activity over time</h3>
-    <div className="seg" role="group" aria-label="Chart metric">{(["Tokens","Cost"] as const).map(name =>
-      <button aria-pressed={name === metric} key={name} onClick={() => setMetric(name)}>{name}</button>)}</div></header>
+    <div className="usage-tools">
+      <div className="seg" role="group" aria-label="Chart metric">{(["Tokens","Cost"] as const).map(name =>
+        <button aria-pressed={name === metric} key={name} onClick={() => setMetric(name)}>{name}</button>)}</div>
+      <div className="seg" role="group" aria-label="Chart type">{([["bar", "Bar chart", ChartColumn], ["line", "Line chart", ChartLine]] as const).map(([type, label, Icon]) =>
+        <button aria-label={label} title={label} aria-pressed={chartType === type} key={type} onClick={() => setChartType(type)}><Icon aria-hidden="true" /></button>)}</div>
+    </div></header>
     <div className="usage-chart-meta"><span><i />{currency ? "Estimated USD" : "Input tokens"}</span>
       {!currency && <span><i className="output-dot" />Output tokens</span>}<span>UTC</span></div>
-    <div className="usage-plot"><div className="usage-scale" aria-hidden="true">
-      <span>{max ? currency ? dollars.format(max) : number.format(max) : ""}</span><span>0</span>
-    </div><div className="usage-bars">
-      {report.series.map((row, i) => <button key={row.at} aria-label={describe(row)} title={describe(row)}
-        tabIndex={row.calls ? 0 : -1} onFocus={() => setIndex(i)} onBlur={() => setIndex(null)}
-        onPointerEnter={() => setIndex(i)} onPointerLeave={() => setIndex(null)} onClick={() => setIndex(i)}>
-        <span className="usage-bar" style={{height: max ? (100 * value(row) / max) + "%" : 0}}>
-          {!currency && tokens(row) > 0 && <i style={{height: (100 * row.output_tokens / tokens(row)) + "%"}} />}
-        </span>
-      </button>)}
+    <div className="usage-chart-canvas"><canvas ref={canvas} role="img" aria-label={metric+" by "+(period==="today"?"hour":"day")+" in UTC ("+chartType+" chart)"}>
+      {report.series.map(row => <span key={row.at}>{new Date(row.at * 1000).toISOString()}: {currency ? cost(row) : number.format(row.input_tokens) + " input, " + number.format(row.output_tokens) + " output"}. </span>)}
+    </canvas>
       {!report.totals.calls && <span className="usage-empty">No model calls recorded in this period.</span>}
       {currency && report.totals.calls > 0 && report.totals.calls === report.totals.unpriced &&
         <span className="usage-empty">Pricing unavailable for these calls.</span>}
-    </div></div>
-    <div className="usage-axis">{[0, Math.floor(report.series.length / 2), report.series.length - 1].map(i =>
-      report.series[i] && <span key={i}>{label(report.series[i].at)}</span>)}</div>
-    <figcaption>{index !== null && report.series[index] ? describe(report.series[index]) :
-      period === "today" ? "Hourly activity today" : period === "week" ? "Daily activity over the last 7 days" : "Daily activity over the last 30 days"}</figcaption>
+    </div>
+    <figcaption>{period === "today" ? "Hourly activity today" : period === "week" ? "Daily activity over the last 7 days" : "Daily activity over the last 30 days"}</figcaption>
   </figure>;
 }

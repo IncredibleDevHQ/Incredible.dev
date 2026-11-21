@@ -1,15 +1,29 @@
 import { Skeleton } from "../components/Skeleton";
 import { useEffect, useRef, useState } from "react";
 import { api, type ChatDefaults, type Organization } from "../api";
-import { TextArea } from "../components/TextArea";
-import { TextField } from "../components/TextField";
+import { InputField as TextField, TextareaField as TextArea } from "../components/ui/InputField";
 import { Avatar, AgentMark } from "../ui";
 import { EffortSlider } from "../components/episode/GenerationSettings";
+import { Members, Logs, LoginProfile } from "./WorkspaceSettings";
 import { Usage } from "./Usage";
-import { BarChart3, Building2, SlidersHorizontal, UserRound } from "lucide-react";
-import { Select } from "../components/Select";
+import { ArrowLeft, BarChart3, Building2, ScrollText, SlidersHorizontal, UserRound } from "lucide-react";
+import { ChoiceField as Select } from "../components/ui/ChoiceField";
+import "./settings.css";
 import { choices, preference, type Preference } from "../preferences";
+import {useTheme} from "../theme";
 import { useHouse } from "../store";
+
+function Appearance() {
+  const [,pick,current] = useTheme();
+  return <section className="settings-form"><h2>Appearance</h2>
+    <div className="theme-setting"><div><strong>Theme mode</strong><p>Choose an appearance or follow your system.</p></div>
+      <div className="theme-choices" role="group" aria-label="Theme mode">
+        {(["system","dark","light"] as const).map(mode=><label key={mode} className="theme-option">
+          <span className={"theme-preview "+mode} aria-hidden="true"><i/><b/><b/></span>
+          <span><input type="radio" name="appearance" checked={current===mode} onChange={()=>pick(mode)}/>{mode[0].toUpperCase()+mode.slice(1)}</span>
+        </label>)}
+      </div></div></section>;
+}
 
 function DeviceSelect({ setting, label }: { setting: Preference; label: string }) {
   const [value, setValue] = useState(() => preference(setting));
@@ -18,23 +32,26 @@ function DeviceSelect({ setting, label }: { setting: Preference; label: string }
     try {
       localStorage.setItem("house:" + setting, next);
       setValue(next);
+      if(useHouse.getState().session?.authenticated) void api.logInteraction(setting==="start"?"Change start page":"Change time format").catch(()=>{});
       setError("");
     } catch { setError("Your browser could not save this preference."); }
   }} />;
 }
 
-export function SettingsPage({tab = "settings"}: {tab?: "settings" | "profile" | "organization" | "usage"}) {
+export function SettingsPage({tab = "settings"}: {tab?: "settings" | "profile" | "organization" | "logs" | "usage"}) {
   const authenticated = useHouse(s => s.session?.authenticated);
   const openPage = useHouse(s => s.openPage);
   return <section className="page settings-page" aria-labelledby="settings-title">
-    <h1 id="settings-title">Settings</h1>
+    <a className="settings-back" href="/"><ArrowLeft size={14} aria-hidden="true"/>Workspace</a>
+
     <nav className="settings-tabs" aria-label="Settings sections">
       {([
         ["profile", "Profile", UserRound],
         ["organization", "Organization", Building2],
         ["settings", "Preferences", SlidersHorizontal],
         ["usage", "Usage", BarChart3],
-      ] as const).filter(([page]) => page !== "profile" || authenticated).map(([page, label, Icon]) => <a key={page} aria-current={tab === page ? "page" : undefined}
+        ["logs","Logs",ScrollText],
+      ] as const).filter(([page]) => !["profile","logs"].includes(page) || authenticated).map(([page, label, Icon]) => <a key={page} aria-current={tab === page ? "page" : undefined}
         href={page === "settings" ? "/settings" : "/settings/" + page}
         onClick={event => {
           if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
@@ -42,14 +59,18 @@ export function SettingsPage({tab = "settings"}: {tab?: "settings" | "profile" |
           openPage(page);
         }}><Icon size={15} aria-hidden="true" />{label}</a>)}
     </nav>
+    <header className="settings-intro"><h1 id="settings-title">{{profile:"Profile settings",organization:"Organization",settings:"Preferences",usage:"Usage",logs:"Activity logs"}[tab]}</h1>
+      <p>{{profile:"Your personal details and sign-in methods.",organization:"Manage project details and member access.",settings:"Choose how Studio looks and behaves on this device.",usage:"Review model activity and estimated costs.",logs:"Review project activity by person and time."}[tab]}</p></header>
+    {tab === "settings" && <Appearance/>}
     {tab === "settings" && <section className="settings-form"><h2>On this device</h2>
       <DeviceSelect setting="start" label="Start page when opening the app" />
       <DeviceSelect setting="clock" label="Message time format" />
     </section>}
     {tab === "settings" && authenticated && <ModelDefaults />}
-    {tab === "profile" && authenticated && <><ProfileDetails /><PasswordSettings /></>}
-    {tab === "organization" && <OrganizationProfile />}
+    {tab === "profile" && authenticated && <><ProfileDetails /><LoginProfile /><PasswordSettings /></>}
+    {tab === "organization" && <><OrganizationProfile />{authenticated && <Members />}</>}
     {tab === "usage" && <Usage />}
+    {tab === "logs" && authenticated && <Logs />}
   </section>;
 }
 
@@ -88,9 +109,9 @@ function PasswordSettings() {
         } catch (failed) { setError((failed as Error).message); }
         finally { setSaving(false); }
       }}>
-        {confirming && <TextField label="Current password" type="password" autoComplete="current-password" required
+        {confirming && <TextField label="Current password" placeholder="Enter current password" type="password" autoComplete="current-password" required
           value={current} disabled={saving} onChange={e => {setCurrent(e.target.value);setError("");setMessage("");}} />}
-        {!confirming && <TextField label="New password" hint="Use at least 8 characters." type="password" required
+        {!confirming && <TextField label="New password" placeholder="Enter new password" hint="Use at least 8 characters." type="password" required
           autoComplete="new-password" minLength={8} maxLength={256} value={password} disabled={saving}
           onChange={event => { setPassword(event.target.value); setError(""); setMessage(""); }} />}
         <div><button className="btn primary" type="submit" disabled={saving || (confirming ? !current : password.length < 8)}>
@@ -103,6 +124,8 @@ function PasswordSettings() {
 }
 
 function OrganizationProfile() {
+  const session = useHouse(s => s.session);
+  const member = !!session?.projectId && session.projectId !== session.me;
   const [saved, setSaved] = useState<Organization | null>(null);
   const [draft, setDraft] = useState<Organization | null>(null);
   const [revision, retry] = useState(0);
@@ -120,8 +143,7 @@ function OrganizationProfile() {
     if (draft) setDraft({...draft, [field]: value});
     setMessage(""); setError("");
   };
-  return <section className="settings-form"><h2>Organization profile</h2>
-    <p className="muted">Details for this private workspace.</p>
+  return <section className="settings-form"><h2>General settings</h2>
     {error && <p role="alert">{error}</p>}
     {!draft ? error ? <button className="btn" onClick={() => {setError(""); retry(r => r + 1);}}>Try again</button> :
       <Skeleton label="Loading organization" shape="form" /> :
@@ -136,13 +158,15 @@ function OrganizationProfile() {
       } catch { setError("Couldn’t save your changes. Check the details and try again."); }
       finally { setBusy(false); }
     }}>
-      <TextField label="Organization name" required maxLength={100} value={draft.name} disabled={busy}
+      <TextField label="Organization name" placeholder="Organization name" hint="Displayed throughout the workspace." required maxLength={100} value={draft.name} readOnly={member} disabled={busy}
         onChange={e => update("name", e.target.value)} />
+      {session?.projectId && <><TextField label="Project ID" hint="Reference used in project URLs." readOnly copyable value={session.projectId}/>
+        {session.projectUrl && <div className="setting-row"><span>Project address</span><a className="project-address" href={session.projectUrl} title={session.projectUrl}>{new URL(session.projectUrl).host}</a></div>}</>}
       <TextField label="Website" optional type="url" pattern="https?://.+" maxLength={500} placeholder="https://example.com"
-        value={draft.website} disabled={busy} onChange={e => update("website", e.target.value)} />
-      <TextArea label="Description" optional maxLength={500} value={draft.description} disabled={busy}
+        value={draft.website} readOnly={member} disabled={busy} onChange={e => update("website", e.target.value)} />
+      <TextArea label="Description" placeholder="Describe your organization" optional maxLength={500} value={draft.description} readOnly={member} disabled={busy}
         onChange={e => update("description", e.target.value)} />
-      <div><button type="submit" className="btn primary" disabled={busy || !draft.name.trim() ||
+      <div><button type="submit" className="btn primary" disabled={member || busy || !draft.name.trim() ||
         (saved?.name === draft.name && saved?.description === draft.description && saved?.website === draft.website)}>
         {busy ? "Saving…" : "Save changes"}</button> <span role="status">{message}</span></div>
     </form>}
@@ -190,8 +214,8 @@ function ProfileDetails() {
       } catch { setError("Couldn’t save your profile. Try again."); }
       finally { setBusy(false); }
     }}>
-      <TextField label="Username" value={name} required maxLength={100} disabled={busy} onChange={e=>setName(e.target.value)} />
-      <TextField label="Sign-in email" type="email" readOnly value={session.email ?? ""} />
+      <TextField label="Display name" placeholder="Your display name" value={name} required maxLength={100} disabled={busy} onChange={e=>setName(e.target.value)} />
+      <TextField label="Primary email" placeholder="No email on file" type="email" readOnly value={session.email ?? ""} />
       {error && <p role="alert">{error}</p>}
       <div><button className="btn primary" disabled={busy || !name.trim() || name.trim()===person.name}>
         {busy ? "Saving…" : "Save profile"}</button> <span role="status">{message}</span></div>

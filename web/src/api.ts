@@ -627,6 +627,8 @@ export type EpisodeChoices = {
   builders?: Record<string, WriterId | null>;
 };
 export type Session = {
+  projectId?: string;
+  projectUrl?: string;
   email?: string | null;
   organizationName?: string;
   authenticated?: boolean;
@@ -744,7 +746,21 @@ function voiceCloneForm(clone: VoiceCloneInput): FormData {
 
 export type VoiceTestClip = {text?: string | null; id: string; name: string; expires_at: number};
 
+export type AccountDetails = {first_name?:string; last_name?:string; username?:string | null};
+export type Team = {project:string; personal_url:string; owner:string; can_manage:boolean; members:{id:string;email:string;member:string|null;invite_url?:string}[];
+  incoming:{id:string;email:string;owner:string;member:string|null}[]};
+export type ActivityLog = {actors:{actor:string;email:string}[]; events:{id:string;duration_ms?:number|null;member_email?:string|null;actor:string;actor_email:string;action:string;happened:number;status:number}[];more:boolean};
+
 export const api = {
+  accountDetails: () => call<AccountDetails>("GET","/api/account/details"),
+  saveAccountDetails: (body:AccountDetails) => call<AccountDetails>("PUT","/api/account/details",body),
+  team: () => call<Team>("GET","/api/team"),
+  invite: (email:string) => call<{id:string;invite_url:string;email_sent:boolean}>("POST","/api/team/invite",{email}),
+  removeMember: (id:string) => call("DELETE","/api/team/"+encodeURIComponent(id)),
+  previewInvitation: (id:string) => call<{organization:string;accepted:boolean}>("GET","/api/team/"+encodeURIComponent(id)),
+  enterProject: (id:string) => call<{url:string}>("POST","/api/team/"+encodeURIComponent(id)+"/accept"),
+  logInteraction: (action:string) => call("POST","/api/activity/interaction",{action}),
+  activity: (actor:string,before?:number) => call<ActivityLog>("GET","/api/activity?actor_id="+encodeURIComponent(actor)+(before ? "&before="+before : "")),
   voiceTests: (episode: string) => call<{clips: VoiceTestClip[]}>("GET", `/api/episodes/${episode}/voice-tests`),
   createVoiceTest: (episode: string, clone: VoiceCloneInput & {file: File; text?: string}) => {
     const form = voiceCloneForm(clone);

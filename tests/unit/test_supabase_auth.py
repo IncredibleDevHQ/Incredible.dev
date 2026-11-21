@@ -369,3 +369,139 @@ async def test_verifying_current_password_checks_provider_and_rotates_session(cl
         if status == 200:
             assert response.json() == {"verified": True}
             assert "HttpOnly" in response.headers["set-cookie"]
+
+
+async def test_unknown_username_has_generic_login_failure(client):
+    c, _ = client
+    response = await c.post(
+        "/api/auth/login",
+        headers={"Origin": ORIGIN},
+        json={"email": "unknown_handle", "password": "valid-password"},
+    )
+    assert response.status_code == 401
+
+
+async def test_directory_owner_and_invitation_boundary(client):
+    c, _ = client
+    c.cookies.set("incredible-access", "token-a")
+    headers = {"Origin": ORIGIN}
+    response = await c.post(
+        "/api/team/invite", headers=headers, json={"email": "other@example.com"}
+    )
+    assert response.status_code == 200
+    invite = response.json()["id"]
+    c.cookies.set("incredible-access", "token-b")
+    assert (await c.post(f"/api/team/{invite}/accept", headers=headers)).status_code == 403
+    assert (await c.delete(f"/api/team/{invite}", headers=headers)).status_code == 404
+    c.cookies.set("incredible-access", "token-a")
+    assert (await c.delete(f"/api/team/{invite}", headers=headers)).status_code == 200
+
+
+async def test_project_host_requires_membership_and_matching_origin(client):
+    c, _ = client
+    url = f"http://{A}.localhost:8765"
+    c.cookies.set("incredible-access", "token-b")
+    assert (await c.get(url + "/api/session")).status_code == 403
+    c.cookies.set("incredible-access", "token-a")
+    assert (await c.get(url + "/api/session")).status_code == 200
+    assert (
+        await c.post(url + "/api/resources/test", headers={"Origin": ORIGIN})
+    ).status_code == 403
+    assert (await c.post(url + "/api/resources/test", headers={"Origin": url})).status_code == 200
+
+
+async def test_username_is_unique_and_bound_to_verified_user(client):
+    c, _ = client
+    headers = {"Origin": ORIGIN}
+    profile = {"first_name": "Alex", "last_name": "River", "username": "Studio_Alex"}
+    c.cookies.set("incredible-access", "token-a")
+    assert (await c.put("/api/account/details", headers=headers, json=profile)).status_code == 200
+    assert (await c.get("/api/account/details")).json() == profile | {"username": "studio_alex"}
+    c.cookies.set("incredible-access", "token-b")
+    assert (await c.put("/api/account/details", headers=headers, json=profile)).status_code == 409
+    login = {"email": "STUDIO_ALEX", "password": "valid-password"}
+    assert (await c.post("/api/auth/login", headers=headers, json=login)).status_code == 200
+    # Simulate an old email address now owned by a different verified identity.
+    login["password"] = "current-test-password"
+    assert (await c.post("/api/auth/login", headers=headers, json=login)).status_code == 401
+    assert (
+        await c.put(
+            "/api/account/details", headers=headers, json=profile | {"username": "invalid@name"}
+        )
+    ).status_code == 422
+
+
+async def test_activity_is_scoped_filterable_and_omits_request_content(client):
+    c, _ = client
+    c.cookies.set("incredible-access", "token-a")
+    await c.post(
+        "/api/resources/example", headers={"Origin": ORIGIN}, json={"private": "sensitive contents"}
+    )
+    events = (await c.get("/api/activity", params={"actor_id": A})).json()
+    assert events["events"][0]["action"] == "POST /api/resources/{name}"
+    assert "sensitive contents" not in str(events)
+    assert (await c.get("/api/activity", params={"actor_id": B})).json()["events"] == []
+    c.cookies.set("incredible-access", "token-b")
+    assert (await c.get("/api/activity")).json()["events"] == []
+
+
+async def test_invite_log_identifies_event_and_member(client):
+    c, _ = client
+    c.cookies.set("incredible-access", "token-a")
+    result = await c.post(
+        "/api/team/invite", headers={"Origin": ORIGIN}, json={"email": "guest@example.com"}
+    )
+    assert result.status_code == 200
+    event = (await c.get("/api/activity")).json()["events"][0]
+    assert event["member_email"] == "guest@example.com"
+    assert event["duration_ms"] >= 0
+    assert len(event["id"]) == 32
+
+
+async def test_pending_invitation_link_matches_mail_and_remains_copyable_on_failure(
+    client, monkeypatch
+):
+    from design_agent.surfaces.web import team
+
+    c, _ = client
+    c.cookies.set("incredible-access", "token-a")
+    sent = []
+
+    def capture(settings, email, organization, owner, link):
+        sent.append((email, organization, owner, link))
+        return email != "offline@example.com"
+
+    monkeypatch.setattr(team, "send_invitation", capture)
+    for email, delivered in [("guest@example.com", True), ("offline@example.com", False)]:
+        result = await c.post("/api/team/invite", headers={"Origin": ORIGIN}, json={"email": email})
+        result.raise_for_status()
+        invitation = result.json()
+        link = f"http://{A}.localhost:8765/invite/{invitation['id']}"
+        assert invitation["invite_url"] == link and invitation["email_sent"] is delivered
+        assert sent[-1][0] == email and sent[-1][-1] == link
+        pending = (await c.get("/api/team")).json()["members"]
+        assert next(row for row in pending if row["email"] == email)["invite_url"] == link
+        c.cookies.set("incredible-access", "token-b")
+        assert (
+            await c.get(f"http://{A}.localhost:8765/api/team/{invitation['id']}")
+        ).status_code == 403
+        c.cookies.set("incredible-access", "token-a")
+
+
+@pytest.mark.parametrize("method", ["google", "signup"])
+async def test_auth_callback_restores_only_an_invite_path(client, method):
+    c, _ = client
+    invitation = "a" * 32
+    if method == "google":
+        await c.get("/api/auth/google", params={"invite": invitation})
+    else:
+        await c.post(
+            "/api/auth/signup",
+            params={"invite": invitation},
+            headers={"Origin": ORIGIN},
+            json={"email": "guest@example.com", "password": "test-password"},
+        )
+    callback = await c.get("/api/auth/callback?code=valid")
+    assert callback.headers["location"] == "/invite/" + invitation
+    await c.get("/api/auth/google", params={"invite": "https://example.com"})
+    assert (await c.get("/api/auth/callback?code=valid")).headers["location"] == "/"

@@ -193,6 +193,12 @@ class Settings(BaseSettings):
 
     # Self-hosted
     auth_required: bool = False
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_starttls: bool = True
+    smtp_from: str | None = None
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
     app_url: str = "http://127.0.0.1:8765"
     supabase_url: str | None = Field(default=None, validation_alias=_alias("SUPABASE_URL"))
     supabase_publishable_key: SecretStr | None = Field(
@@ -237,6 +243,10 @@ class Settings(BaseSettings):
         "database_url",
         "s3_access_key",
         "s3_secret_key",
+        "smtp_host",
+        "smtp_from",
+        "smtp_username",
+        "smtp_password",
         "supabase_url",
         "supabase_publishable_key",
         "api_tokens",

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { api } from "./api";
 import { SettingsPage } from "./pages/Settings";
+import { ProjectInvitation } from "./pages/ProjectInvitation";
 import { VoiceTest } from "./pages/VoiceTest";
 import { AuthGate, WorkspaceSkeleton } from "./components/AuthGate";
 import { ChannelView } from "./components/ChannelView";
@@ -19,6 +21,8 @@ import { clock } from "./ui";
 
 export function App() {
   const voiceTest = /^\/c\/[^/]+\/episode\/(ep_[a-z0-9]+)\/voice-test\/?$/.exec(location.pathname);
+  const invite = /^\/invite\/([0-9a-f]{32})\/?$/.exec(location.pathname)?.[1];
+  if (invite) return <AuthGate invite={invite}><ProjectInvitation id={invite} /></AuthGate>;
   return <AuthGate>{voiceTest ? <VoiceTest episode={voiceTest[1]} /> : <WorkspaceApp />}</AuthGate>;
 }
 
@@ -39,7 +43,7 @@ function WorkspaceApp() {
       .getState()
       .boot()
       .then(() => { if (active) { go(parse(location.pathname, location.search)); setReady(true); } })
-      .catch(() => { if (active) setFailure("Your workspace couldn’t connect."); });
+      .catch(error => { if (active) setFailure(error instanceof Error ? error.message : "Your workspace couldn’t connect."); });
     const live = connectLive();
     return () => {
       active = false;
@@ -47,6 +51,19 @@ function WorkspaceApp() {
       live();
     };
   }, []);
+
+  const authenticated = useHouse(s=>s.session?.authenticated);
+  const mode = useHouse(s=>s.mode);
+  const channel = useHouse(s=>s.channelId);
+  useEffect(()=>{
+    if (!authenticated) return;
+    const themeChanged=()=>{void api.logInteraction("Change theme").catch(()=>{});};
+    window.addEventListener("house:theme-picked",themeChanged);
+    return ()=>window.removeEventListener("house:theme-picked",themeChanged);
+  },[authenticated]);
+  useEffect(()=>{
+    if (ready && authenticated) void api.logInteraction("View "+(page==="channel" ? episodeId ? "episode" : mode==="canvas" ? "canvas" : "channel" : page)).catch(()=>{});
+  },[ready,authenticated,page,episodeId,mode,channel]);
 
   useEffect(() => {
     if (!toast) return;
@@ -63,7 +80,7 @@ function WorkspaceApp() {
         <ChannelView />
       ) : (
         <main className="main">
-          {(page === "profile" || page === "settings" || page === "usage" || page === "organization") && <SettingsPage tab={page} />}
+          {(page === "logs" || page === "profile" || page === "settings" || page === "usage" || page === "organization") && <SettingsPage tab={page} />}
           {page === "needs" && <NeedsYou />}
           {page === "production" && <Production />}
           {page === "brand" && <Brand />}

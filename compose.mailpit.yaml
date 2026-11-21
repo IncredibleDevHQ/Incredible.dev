@@ -1,0 +1,16 @@
+# Local invitation testing: mail is captured here and can be read on the host.
+services:
+  app:
+    environment:
+      DESIGN_AGENT_SMTP_HOST: mailpit
+      DESIGN_AGENT_SMTP_PORT: "1025"
+      DESIGN_AGENT_SMTP_STARTTLS: "false"
+      DESIGN_AGENT_SMTP_FROM: studio@example.test
+    depends_on:
+      mailpit:
+        condition: service_started
+  mailpit:
+    image: axllent/mailpit@sha256:c96991d9bef73594c246d89ca81411d4e916f03e76a7d2d72fa2ab5dd3c9ce24
+    ports:
+      - "127.0.0.1:18025:8025"
+    restart: unless-stopped

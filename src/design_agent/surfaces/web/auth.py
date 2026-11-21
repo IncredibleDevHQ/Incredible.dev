@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import re
 import secrets
 import time
 import uuid
@@ -28,20 +29,49 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from design_agent.config import Settings
 from design_agent.runtime.persistence import workspace_of
+from design_agent.surfaces.web.directory import Directory
+from design_agent.surfaces.web.team import team_routes
 
 ACCESS = "incredible-access"
 REFRESH = "incredible-refresh"
 VERIFIER = "incredible-pkce"
+INVITE_ID = re.compile(r"[0-9a-f]{32}")
 TenantFactory = Callable[[dict[str, Any]], Awaitable[FastAPI]]
 
 
 class SecurityHeaders:
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, directory: Directory) -> None:
         self.app = app
+        self.directory = directory
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        started = time.monotonic()
+
         async def secured(message: Any) -> None:
             if message["type"] == "http.response.start":
+                state = scope.get("state", {})
+                actor = state.get("actor")
+                route = getattr(scope.get("route"), "path", "")
+                if (
+                    actor
+                    and route.startswith("/api/")
+                    and (
+                        scope["method"] not in {"GET", "HEAD", "OPTIONS"}
+                        or route == "/api/auth/callback"
+                    )
+                ):
+                    await self.directory.query(
+                        "INSERT INTO activity(id,owner,actor,actor_email,action,happened,status,member_email,duration_ms) VALUES(?,?,?,?,?,?,?,?,?)",
+                        uuid.uuid4().hex,
+                        state.get("project", actor["id"]),
+                        actor["id"],
+                        actor["email"],
+                        state.get("client_action") or scope["method"] + " " + route,
+                        time.time(),
+                        message["status"],
+                        state.get("member_email"),
+                        round((time.monotonic() - started) * 1000),
+                    )
                 headers = list(message.get("headers", []))
                 headers.extend(
                     [
@@ -80,7 +110,11 @@ class PasswordChange(PasswordInput):
     current_password: SecretStr | None = Field(default=None, max_length=256)
 
 
-class Credentials(PasswordInput):
+class LoginInput(PasswordInput):
+    email: str = Field(min_length=1, max_length=254)
+
+
+class Credentials(LoginInput):
     email: str = Field(min_length=3, max_length=254)
 
     @field_validator("email")
@@ -133,8 +167,30 @@ class Auth:
         self.refresh_lock = asyncio.Lock()
         self.refreshed: dict[str, tuple[float, dict[str, Any]]] = {}
 
+    def project_url(self, project_id: str) -> str:
+        base = urlparse(self.origin)
+        domain = "localhost" if base.hostname == "127.0.0.1" else base.hostname
+        port = f":{base.port}" if base.port else ""
+        return f"{base.scheme}://{uuid.UUID(project_id)}.{domain}{port}"
+
+    def project_host(self, request: Request) -> str | None:
+        host = request.headers.get("host", "").lower()
+        if host == urlparse(self.origin).netloc:
+            return None
+        try:
+            project_id = str(uuid.UUID(host.split(".", 1)[0]))
+            if host == urlparse(self.project_url(project_id)).netloc:
+                return project_id
+        except ValueError:
+            pass
+        raise HTTPException(400, "Unrecognized Studio host.")
+
+    def request_origin(self, request: Request) -> str:
+        selected = self.project_host(request)
+        return self.project_url(selected) if selected else self.origin
+
     def origin_check(self, request: Request) -> None:
-        if request.headers.get("origin") != self.origin:
+        if request.headers.get("origin") != self.request_origin(request):
             raise HTTPException(403, "Request must come from this application")
 
     def throttle(self, request: Request) -> None:
@@ -196,6 +252,7 @@ class Auth:
         access = request.cookies.get(ACCESS)
         user = await self.user(access) if access else None
         if user:
+            request.state.actor = user
             return user, None
         refresh = request.cookies.get(REFRESH)
         if refresh:
@@ -219,6 +276,7 @@ class Auth:
                     else None
                 )
                 if user:
+                    request.state.actor = user
                     return user, tokens
         raise HTTPException(401, "Sign in to continue")
 
@@ -243,11 +301,11 @@ class Auth:
         )
         response.headers["Cache-Control"] = "no-store"
 
-    def pkce(self, response: Response, *, max_age: int = 600) -> str:
+    def pkce(self, response: Response, invite: str | None = None, *, max_age: int = 600) -> str:
         verifier = secrets.token_urlsafe(48)
         response.set_cookie(
             VERIFIER,
-            verifier,
+            verifier + ("." + invite if invite and INVITE_ID.fullmatch(invite) else ""),
             httponly=True,
             secure=self.secure,
             samesite="lax",
@@ -315,7 +373,8 @@ class Tenants:
 
 
 class Gateway:
-    def __init__(self, auth: Auth, tenants: Tenants, root: Path) -> None:
+    def __init__(self, auth: Auth, tenants: Tenants, root: Path, directory: Directory) -> None:
+        self.directory = directory
         self.auth, self.tenants, self.built = auth, tenants, root / "web/dist"
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -340,7 +399,20 @@ class Gateway:
                     )
                     await response(scope, receive, send)
                     return
-                app = await self.tenants.get(user)
+                project = await self.directory.project(user, self.auth.project_host(request))
+                request.state.project_url = self.auth.project_url(project["id"])
+                request.state.project = project["id"]
+                if (
+                    user["id"] != project["id"]
+                    and request.url.path == "/api/organization"
+                    and request.method != "GET"
+                ):
+                    raise HTTPException(403, "Only the owner can edit the organization.")
+                app = await self.tenants.get(project)
+                if user["id"] != project["id"] and hasattr(app.state, "host"):
+                    await asyncio.to_thread(
+                        app.state.host.store.ensure_member, user["id"], user["email"]
+                    )
                 cookie_response = Response()
                 if tokens:
                     self.auth.cookies(cookie_response, tokens)
@@ -399,6 +471,11 @@ def create_authenticated_app(
     tenant_factory: TenantFactory | None = None,
 ) -> FastAPI:
     auth = Auth(settings, transport)
+    directory = Directory(
+        settings.database_url.get_secret_value()
+        if settings.database_url and tenant_factory is None
+        else None
+    )
     stack = AsyncExitStack()
     tenants = Tenants(root, settings, stack, demo, tenant_factory)
     from design_agent.surfaces.web.blobs import BlobFiles, StorageUnavailable
@@ -409,6 +486,7 @@ def create_authenticated_app(
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         async with stack:
             try:
+                await directory.open()
                 await asyncio.to_thread(blobs.check)
                 if tenant_factory is None:
                     from psycopg import AsyncConnection
@@ -420,13 +498,15 @@ def create_authenticated_app(
                         await connection.execute("SELECT 1")
                 yield
             finally:
+                await directory.close()
                 await auth.client.aclose()
                 blobs.close()
 
     app = FastAPI(
         title="Incredible.dev", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
     )
-    app.add_middleware(SecurityHeaders)
+    app.add_middleware(SecurityHeaders, directory=directory)
+    app.include_router(team_routes(auth, directory, tenants))
     app.state.auth = auth
     app.state.tenants = tenants
 
@@ -473,22 +553,37 @@ def create_authenticated_app(
             auth.cookies(response, tokens)
         return response
 
-    async def password(request: Request, body: Credentials, signup: bool) -> Response:
+    async def password(request: Request, body: LoginInput, signup: bool) -> Response:
         auth.origin_check(request)
         auth.throttle(request)
         payload = {"email": body.email, "password": body.password.get_secret_value()}
+        expected_id = None
+        if not signup and "@" not in body.email:
+            rows = await directory.query(
+                "SELECT id,email FROM accounts WHERE username=?", body.email.strip().lower()
+            )
+            if not rows:
+                raise HTTPException(
+                    401, "Email or password is incorrect, or the email has not been confirmed."
+                )
+            payload["email"] = rows[0]["email"]
+            expected_id = rows[0]["id"]
         response = JSONResponse({"ok": True})
         if signup:
             payload.update(
                 {
-                    "code_challenge": auth.pkce(response, max_age=86400),
+                    "code_challenge": auth.pkce(
+                        response, request.query_params.get("invite"), max_age=86400
+                    ),
                     "code_challenge_method": "s256",
                 }
             )
         upstream = await auth.call(
             "POST",
             "signup" if signup else "token?grant_type=password",
-            params={"redirect_to": auth.origin + "/api/auth/callback"} if signup else None,
+            params={"redirect_to": auth.request_origin(request) + "/api/auth/callback"}
+            if signup
+            else None,
             json=payload,
         )
         if signup and upstream.headers.get("content-type", "").startswith("application/json"):
@@ -520,6 +615,11 @@ def create_authenticated_app(
             user = await auth.user(data["access_token"])
             if not user:
                 raise HTTPException(401, "Confirm your email before signing in")
+            if expected_id and user["id"] != expected_id:
+                raise HTTPException(
+                    401, "Email or password is incorrect, or the email has not been confirmed."
+                )
+            request.state.actor = user
             if signup:
                 return JSONResponse(
                     {"message": "Account created. Sign in to continue."},
@@ -535,7 +635,7 @@ def create_authenticated_app(
         return response
 
     @app.post("/api/auth/login")
-    async def login(request: Request, body: Credentials) -> Response:
+    async def login(request: Request, body: LoginInput) -> Response:
         return await password(request, body, False)
 
     @app.post("/api/auth/signup")
@@ -547,16 +647,18 @@ def create_authenticated_app(
         auth.throttle(request)
         available = await auth.call("GET", "settings")
         if not available.is_success or not available.json().get("external", {}).get("google"):
-            return RedirectResponse("/?auth_error=google_unavailable", status_code=303)
+            invite = request.query_params.get("invite", "")
+            path = "/invite/" + invite if INVITE_ID.fullmatch(invite) else "/"
+            return RedirectResponse(path + "?auth_error=google_unavailable", status_code=303)
         response = RedirectResponse("/", status_code=303)
-        challenge = auth.pkce(response)
+        challenge = auth.pkce(response, request.query_params.get("invite"))
         response.headers["location"] = (
             auth.url
             + "/authorize?"
             + urlencode(
                 {
                     "provider": "google",
-                    "redirect_to": auth.origin + "/api/auth/callback",
+                    "redirect_to": auth.request_origin(request) + "/api/auth/callback",
                     "code_challenge": challenge,
                     "code_challenge_method": "s256",
                 }
@@ -567,10 +669,11 @@ def create_authenticated_app(
     @app.get("/api/auth/callback")
     async def callback(request: Request) -> Response:
         code = request.query_params.get("code")
-        verifier = request.cookies.get(VERIFIER)
+        verifier, _, invite = request.cookies.get(VERIFIER, "").partition(".")
+        destination = "/invite/" + invite if INVITE_ID.fullmatch(invite) else "/"
         if not code or not verifier:
             if "text/html" in request.headers.get("accept", ""):
-                return RedirectResponse("/?auth_error=link", status_code=303)
+                return RedirectResponse(destination + "?auth_error=link", status_code=303)
             raise HTTPException(
                 400, "Sign-in link is invalid or expired. Start again in this browser."
             )
@@ -579,16 +682,17 @@ def create_authenticated_app(
         )
         if not result.is_success:
             if "text/html" in request.headers.get("accept", ""):
-                return RedirectResponse("/?auth_error=link", status_code=303)
+                return RedirectResponse(destination + "?auth_error=link", status_code=303)
             raise HTTPException(400, "Sign-in link is invalid or expired. Start again.")
         data = result.json()
         if (
             not data.get("access_token")
             or not data.get("refresh_token")
-            or not await auth.user(data["access_token"])
+            or not (actor := await auth.user(data["access_token"]))
         ):
             raise HTTPException(401, "Sign in could not be verified")
-        response = RedirectResponse("/", status_code=303)
+        request.state.actor = actor
+        response = RedirectResponse(destination, status_code=303)
         auth.cookies(response, data)
         response.delete_cookie(
             VERIFIER, path="/api/auth", secure=auth.secure, httponly=True, samesite="lax"
@@ -664,6 +768,7 @@ def create_authenticated_app(
         access = request.cookies.get(ACCESS)
         if access:
             try:
+                request.state.actor = await auth.user(access)
                 await auth.call("POST", "logout", headers={"Authorization": "Bearer " + access})
             except HTTPException:
                 pass  # Local logout must work even while the provider is unavailable.
@@ -675,5 +780,5 @@ def create_authenticated_app(
             )
         return response
 
-    app.mount("/", Gateway(auth, tenants, root))
+    app.mount("/", Gateway(auth, tenants, root, directory))
     return app
