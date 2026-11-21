@@ -547,7 +547,7 @@ def test_usage_report_boundaries_models_and_unknown_prices(tmp_path, period, siz
 def test_organization_persists_and_validates(tmp_path):
     app = create_app(
         Path(__file__).resolve().parents[2],
-        Settings(_env_file=None, workspace_root=tmp_path),
+        Settings(_env_file=None, workspace_root=tmp_path, sandbox="host"),
         demo=True,
     )
     with TestClient(app) as client:
@@ -607,7 +607,7 @@ def test_profile_avatar_upload_and_reload(tmp_path):
     account = {"id": "11111111-1111-4111-8111-111111111111", "email": "member@example.com"}
     app = create_app(
         Path(__file__).resolve().parents[2],
-        Settings(_env_file=None, workspace_root=tmp_path),
+        Settings(_env_file=None, workspace_root=tmp_path, sandbox="host"),
         demo=True,
         authenticated_user=account,
     )
