@@ -22,17 +22,18 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 test("appearance stays visible and Settings opens from the profile row", async () => {
   const user = userEvent.setup();
-  render(<Sidebar />);
+  render(<div id="root"><Sidebar /></div>);
   await user.click(screen.getByRole("button", { name: "Light" }));
   expect(localStorage.getItem("house:theme")).toBe("light");
   expect(screen.queryByRole("button", { name: "Settings" })).toBeNull();
   const trigger = screen.getByRole("button", { name: "Account options for member@example.com" });
   expect(within(trigger).getByText(me.name).getAttribute("title")).toBe(me.name);
-  await user.click(within(trigger).getByText("Pine Studio"));
+  expect(trigger.querySelector(".lucide-ellipsis-vertical")).toBeTruthy();
+  await user.click(trigger);
   const panel = screen.getByRole("group", { name: "Account options" });
-  expect(within(panel).getByRole("button", {name: /Invite members/}).hasAttribute("disabled")).toBe(true);
+  expect(within(panel).getAllByRole("button").map(button => button.textContent?.trim())).toEqual(["Settings", "Organization", "Usage", "Log out"]);
   expect(within(panel).queryByRole("group", { name: "Appearance" })).toBeNull();
-  expect(within(panel).getByRole("button", { name: "Sign out" })).toBeTruthy();
+  expect(within(panel).getByRole("button", { name: "Log out" })).toBeTruthy();
   await user.click(within(panel).getByRole("button", { name: "Settings" }));
   expect(useHouse.getState().page).toBe("settings");
   expect(trigger.getAttribute("aria-expanded")).toBe("false");
@@ -40,7 +41,7 @@ test("appearance stays visible and Settings opens from the profile row", async (
 
 test("keyboard opens the panel, Tab reaches its controls and Escape restores profile focus", async () => {
   const user = userEvent.setup();
-  render(<Sidebar />);
+  render(<div id="root"><Sidebar /></div>);
   const trigger = screen.getByRole("button", { name: "Account options for member@example.com" });
   trigger.focus();
   await user.keyboard("{Enter}");
@@ -53,7 +54,7 @@ test("keyboard opens the panel, Tab reaches its controls and Escape restores pro
 
 test("clicking outside dismisses the account panel", async () => {
   const user = userEvent.setup();
-  render(<Sidebar />);
+  render(<div id="root"><Sidebar /></div>);
   await user.click(screen.getByRole("button", { name: "Account options for member@example.com" }));
   await user.click(screen.getByText("Creative House"));
   expect(screen.queryByRole("group", { name: "Account options" })).toBeNull();
@@ -62,36 +63,47 @@ test("clicking outside dismisses the account panel", async () => {
 test("a sign-out failure keeps the session and reports the error", async () => {
   const user = userEvent.setup();
   vi.mocked(authRequest).mockRejectedValue(new Error("Connection unavailable"));
-  render(<Sidebar />);
+  render(<div id="root"><Sidebar /></div>);
   await user.click(screen.getByRole("button", { name: "Account options for member@example.com" }));
-  await user.click(screen.getByRole("button", { name: "Sign out" }));
+  await user.click(screen.getByRole("button", { name: "Log out" }));
   expect(authRequest).toHaveBeenCalledWith("logout", {});
   expect(useHouse.getState().toast).toBe("Connection unavailable");
   expect(useHouse.getState().session?.me).toBe("member");
-  expect(screen.getByRole("button", { name: "Sign out" }).hasAttribute("disabled")).toBe(false);
+  expect(screen.getByRole("button", { name: "Log out" }).hasAttribute("disabled")).toBe(false);
 });
 
 test("pending sign out cannot be submitted twice", async () => {
   const user = userEvent.setup();
   vi.mocked(authRequest).mockReturnValue(new Promise(() => {}));
-  render(<Sidebar />);
+  render(<div id="root"><Sidebar /></div>);
   await user.click(screen.getByRole("button", { name: "Account options for member@example.com" }));
-  await user.click(screen.getByRole("button", { name: "Sign out" }));
-  const pending = screen.getByRole("button", { name: "Signing out…" });
+  await user.click(screen.getByRole("button", { name: "Log out" }));
+  const pending = screen.getByRole("button", { name: "Logging out…" });
   expect(pending.hasAttribute("disabled")).toBe(true);
   await user.click(pending);
   expect(authRequest).toHaveBeenCalledTimes(1);
 });
 
-test("native development retains identity switching inside the same panel", async () => {
+test("the local profile menu omits demo identities and disables logout without a login", async () => {
   const user = userEvent.setup();
-  const switchPerson = vi.fn().mockResolvedValue(undefined);
-  useHouse.setState({ session: {...useHouse.getState().session!, authenticated: false},
-    people: { member: me, teammate: {...me, id: "teammate", name: "Teammate"} }, switchPerson });
-  render(<Sidebar />);
-  await user.click(screen.getByRole("button", { name: "Account options for member@example.com" }));
-  expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
-  await user.click(screen.getByRole("menuitemradio", { name: "Teammate" }));
-  expect(switchPerson).toHaveBeenCalledWith("teammate");
-  expect(screen.queryByRole("group", { name: "Account options" })).toBeNull();
+  useHouse.setState({session: {...useHouse.getState().session!, authenticated: false},
+    people: {member: me, teammate: {...me, id: "teammate", name: "Teammate"}}});
+  render(<div id="root"><Sidebar /></div>);
+  await user.click(screen.getByRole("button", {name: /Account options for/}));
+  const panel = screen.getByRole("group", {name: "Account options"});
+  expect(within(panel).queryByText("Teammate")).toBeNull();
+  expect(within(panel).getByRole("button", {name: "Log out"}).hasAttribute("disabled")).toBe(true);
+});
+
+test("browser annotation preserves the profile menu until focus returns elsewhere in the workspace", async () => {
+  const user = userEvent.setup();
+  render(<><div id="root"><Sidebar /><button>Canvas action</button></div><button>Annotation toolbar</button></>);
+  const trigger = screen.getByRole("button", {name: /Account options for/});
+  await user.click(trigger);
+  await user.click(screen.getByRole("button", {name: "Annotation toolbar"}));
+  await user.keyboard("{Escape}");
+  expect(trigger.getAttribute("aria-expanded")).toBe("true");
+  await user.tab({shift: true});
+  expect(document.activeElement).toBe(screen.getByRole("button", {name: "Canvas action"}));
+  expect(trigger.getAttribute("aria-expanded")).toBe("false");
 });

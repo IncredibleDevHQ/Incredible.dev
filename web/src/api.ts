@@ -650,16 +650,8 @@ export type ComputerView = {
   keys_inside: boolean;
 };
 
-let person = localStorage.getItem("house:person") || "you";
+const person = "you";
 export const actingAs = () => person;
-export function actAs(id: string) {
-  person = id;
-  try {
-    localStorage.setItem("house:person", id);
-  } catch {
-    /* storage unavailable */
-  }
-}
 
 async function request(method: string, path: string, body?: unknown): Promise<Response> {
   const response = await fetch(path, {

@@ -2,7 +2,6 @@
 // from /api/stream are applied here, so every view follows the same state.
 import { create } from "zustand";
 import {
-  actAs,
   api,
   type Asset,
   type Board,
@@ -94,7 +93,6 @@ export type State = {
   brandSlug: string;
   toast: string | null;
   boot: () => Promise<void>;
-  switchPerson: (id: string) => Promise<void>;
   openPage: (page: Page) => void;
   readBrandFor: (channelId: string | null) => void;
   openBrand: (slug: string) => void;
@@ -178,12 +176,6 @@ export const useHouse = create<State>((set, get) => ({
     const people = Object.fromEntries(session.people.map((p) => [p.id, p]));
     set({ session, people, channels, catalog });
     void get().loadProduction(true);
-  },
-
-  async switchPerson(id) {
-    actAs(id);
-    const session = await api.session();
-    set({ session });
   },
 
   openPage(page) {

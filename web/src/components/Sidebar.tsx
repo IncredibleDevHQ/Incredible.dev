@@ -1,18 +1,18 @@
 // The workspace: where people are needed, what the agent works with, and the channels.
-import { BellDot, ChevronsUpDown, Cpu, Building2, ChartColumn, UserPlus, Keyboard, Hash, LogOut, Moon, Palette, Plus, Settings, Sparkles, SquareKanban, Sun } from "lucide-react";
+import { BellDot, EllipsisVertical, Cpu, Building2, ChartColumn, Hash, LogOut, Moon, Palette, Plus, Settings, Sparkles, SquareKanban, Sun } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { api } from "../api";
 import { needsYou } from "../production";
 import { useHouse, type Page } from "../store";
 import { useTheme, type Theme } from "../theme";
 import { Avatar } from "../ui";
+import { isWorkspaceTarget } from "./workspaceTarget";
 import { authRequest } from "./AuthGate";
 
 export function Sidebar() {
   const { channels, channelId, page, people, session, threads } = useHouse();
   const openChannel = useHouse((s) => s.openChannel);
   const openPage = useHouse((s) => s.openPage);
-  const switchPerson = useHouse((s) => s.switchPerson);
   const [menu, setMenu] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [theme, setTheme] = useTheme();
@@ -26,26 +26,29 @@ export function Sidebar() {
   const me = session ? people[session.me] : undefined;
 
   const identity = session?.email || me?.name || "You";
-  const workspaceName = session?.organizationName || "My workspace";
+  const profileName = me?.name || identity;
+  const profileDetail = session?.email && session.email !== profileName ? session.email : session?.organizationName || "Local workspace";
 
   useEffect(() => {
     if (!menu) return;
-    const outside = (event: PointerEvent) => {
-      if (!account.current?.contains(event.target as Node)) setMenu(false);
+    const outside = (event: Event) => {
+      if (!event.defaultPrevented && isWorkspaceTarget(event.target) && !account.current?.contains(event.target)) setMenu(false);
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !event.defaultPrevented && isWorkspaceTarget(event.target)) {
         event.preventDefault();
         event.stopPropagation();
         setMenu(false);
         trigger.current?.focus();
       }
     };
-    document.addEventListener("pointerdown", outside, true);
-    document.addEventListener("keydown", escape, true);
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("focusin", outside);
+    document.addEventListener("keydown", escape);
     return () => {
-      document.removeEventListener("pointerdown", outside, true);
-      document.removeEventListener("keydown", escape, true);
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("focusin", outside);
+      document.removeEventListener("keydown", escape);
     };
   }, [menu]);
 
@@ -119,9 +122,7 @@ export function Sidebar() {
           </button>
         ))}
       </div>
-      <div className="side-foot" ref={account} onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMenu(false);
-      }}>
+      <div className="side-foot" ref={account}>
         <ThemeSwitch theme={theme} onChange={setTheme} />
         <button
           ref={trigger}
@@ -134,10 +135,10 @@ export function Sidebar() {
         >
           <Avatar person={me} />
           <span className="account-copy">
-            <span className="account-name" title={workspaceName}>{workspaceName}</span>
-            <small title={identity}>{identity}</small>
+            <span className="account-name" title={profileName}>{profileName}</span>
+            <small title={profileDetail}>{profileDetail}</small>
           </span>
-          <ChevronsUpDown className="account-chevron" size={16} aria-hidden="true" />
+          <EllipsisVertical className="account-chevron" size={16} aria-hidden="true" />
         </button>
         {menu && (
           <div className="menu account-menu" id={accountId} role="group" aria-label="Account options">
@@ -150,33 +151,13 @@ export function Sidebar() {
             <button type="button" onClick={() => { setMenu(false); openPage("usage"); }}>
               <ChartColumn size={16} aria-hidden="true" /> Usage
             </button>
-            <button type="button" disabled><UserPlus size={16} aria-hidden="true" /> Invite members <small>Soon</small></button>
-            <button type="button" disabled><Keyboard size={16} aria-hidden="true" /> Keyboard shortcuts <small>Soon</small></button>
             <div className="account-actions">
-              {session?.authenticated ? (
-                <button type="button" disabled={signingOut} onClick={() => void signOut()}>
-                  <LogOut size={16} aria-hidden="true" />
-                  {signingOut ? "Signing out…" : "Sign out"}
-                </button>
-              ) : (
-                <div role="menu" aria-label="Act as">
-                  {Object.values(people).filter((p) => !p.agent).map((p) => (
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={session?.me === p.id}
-                      key={p.id}
-                      onClick={async () => {
-                        setMenu(false);
-                        await switchPerson(p.id);
-                      }}
-                    >
-                      <Avatar person={p} size="sm" />
-                      {p.name}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <button type="button" disabled={!session?.authenticated || signingOut}
+                title={session?.authenticated ? undefined : "This local workspace has no signed-in account."}
+                onClick={() => void signOut()}>
+                <LogOut size={16} aria-hidden="true" />
+                {signingOut ? "Logging out…" : "Log out"}
+              </button>
             </div>
           </div>
         )}
