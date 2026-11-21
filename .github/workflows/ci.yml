@@ -39,17 +39,17 @@ jobs:
       - name: Install from the lockfile
         run: uv sync --frozen --all-extras --dev --python ${{ matrix.python-version }}
       - name: Lint
-        run: uv run --frozen ruff check .
+        run: .venv/bin/ruff check .
       - name: Format check
-        run: uv run --frozen ruff format --check .
+        run: .venv/bin/ruff format --check .
       - name: Type check
-        run: uv run --frozen mypy src
+        run: .venv/bin/mypy src
       - name: Offline tests (includes ban-list, docs links and vendored-skill checksums)
-        run: uv run --frozen pytest -q -m "not render and not live"
+        run: .venv/bin/pytest -q -m "not render and not live"
       - name: Sandbox recipe embeds the current render lock
-        run: uv run --frozen python scripts/sync_sandbox_recipe.py --check
+        run: .venv/bin/python scripts/sync_sandbox_recipe.py --check
       - name: Vendored skills match skills-lock.json
-        run: uv run --frozen design-agent skills verify
+        run: .venv/bin/design-agent skills verify
 
   render:
     runs-on: ubuntu-latest
@@ -63,9 +63,9 @@ jobs:
       - name: Install from the lockfile
         run: uv sync --frozen --all-extras --dev
       - name: Render smoke tests
-        run: uv run --frozen pytest -q -m render
+        run: .venv/bin/pytest -q -m render
       - name: Scripted demo through the real graph
-        run: uv run --frozen design-agent demo
+        run: .venv/bin/design-agent demo
       - name: Self-hosted image and compose file
         run: |
           docker build -f deploy/self-host/Dockerfile -t design-agent:ci .
