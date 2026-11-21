@@ -213,17 +213,6 @@ export function Members() {
       setBusy(false);
     }
   }
-  async function enter(id: string) {
-    setBusy(true);
-    setError("");
-    try {
-      const { url } = await api.enterProject(id);
-      window.location.assign(url + "/settings/organization");
-    } catch (e) {
-      setError((e as Error).message);
-      setBusy(false);
-    }
-  }
   return (
     <section className="settings-form roster">
       <header className="section-heading">
@@ -403,13 +392,9 @@ export function Members() {
             .map((row) => (
               <div key={row.id} className="setting-row">
                 <span>{row.email}’s project</span>
-                <button
-                  className="btn"
-                  disabled={busy}
-                  onClick={() => void enter(row.id)}
-                >
-                  {row.member ? "Open project" : "Accept invitation"}
-                </button>
+                <a className="btn" href={row.url}>
+                  {row.member ? "Open project" : "Review invitation"}
+                </a>
               </div>
             ))}
           {!team.can_manage && (

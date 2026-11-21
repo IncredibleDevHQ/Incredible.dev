@@ -18,7 +18,7 @@ test("provider logos are centered with space before the selected value and each 
     ]},
   };
   await page.route("**/api/**", route => route.fulfill({json:data[new URL(route.request().url()).pathname] ?? {}}));
-  await page.goto(new URL("settings", server.resolvedUrls.local[0]).href);
+  await page.goto(new URL("settings/preferences", server.resolvedUrls.local[0]).href);
   const trigger = page.getByRole("combobox",{name:/Default provider/});
   async function assertAligned(row) {
     const { offset, gap } = await row.evaluate(element => {

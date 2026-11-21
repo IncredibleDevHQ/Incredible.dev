@@ -56,8 +56,8 @@ export function Sidebar() {
     if (signingOut) return;
     setSigningOut(true);
     try {
-      await authRequest("logout", {});
-      window.location.assign("/");
+      const result = await authRequest("logout", {});
+      window.location.assign(result.url ?? "/");
     } catch (error) {
       useHouse.getState().say((error as Error).message);
       setSigningOut(false);
@@ -142,7 +142,7 @@ export function Sidebar() {
         </button>
         {menu && (
           <div className="menu account-menu" id={accountId} role="group" aria-label="Account options">
-            <button type="button" onClick={() => { setMenu(false); openPage("settings"); }}>
+            <button type="button" onClick={() => { setMenu(false); openPage("profile"); }}>
               <Settings size={16} aria-hidden="true" /> Settings
             </button>
             <button type="button" onClick={() => { setMenu(false); openPage("organization"); }}>

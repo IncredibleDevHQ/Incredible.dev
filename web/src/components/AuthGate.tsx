@@ -1,3 +1,4 @@
+import { Input } from "./ui/input";
 import { Skeleton } from "./Skeleton";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 
@@ -23,10 +24,26 @@ export function WorkspaceSkeleton() {
   </div>;
 }
 
+function entryFlow() {
+  return new URLSearchParams(location.search).get("flow") || undefined;
+}
+
+function projectPath() {
+  const query = new URLSearchParams(location.search);
+  query.delete("auth_error");
+  query.delete("flow");
+  return location.pathname + (query.size ? "?" + query.toString() : "") + location.hash;
+}
+
+async function landing(organization?: string) {
+  return authRequest("land", {flow:entryFlow(), path:projectPath(), organization});
+}
+
 export function AuthGate({ children, invite }: { children: ReactNode; invite?: string }) {
-  const [state, setState] = useState<"loading" | "ready" | "login" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "login" | "organization" | "error">("loading");
   const [google, setGoogle] = useState(false);
   const [error, setError] = useState("");
+  const [rootEntry, setRootEntry] = useState(false);
   const [retry, setRetry] = useState(0);
 
   useEffect(() => {
@@ -36,10 +53,28 @@ export function AuthGate({ children, invite }: { children: ReactNode; invite?: s
       try {
         const response = await fetch("/api/auth/session", { credentials: "same-origin", cache: "no-store" });
         if (!active) return;
-        if (response.ok) { setState("ready"); return; }
+        if (response.ok) {
+          const session = await response.json();
+          if (!active) return;
+          if (session.canonical_url) {
+            window.location.replace(session.canonical_url + projectPath());
+            return;
+          }
+          if (!session.root_entry) { setState("ready"); return; }
+          setRootEntry(true);
+          const result = await landing();
+          if (!active) return;
+          if (result.needs_organization) setState("organization");
+          else window.location.replace(result.url);
+          return;
+        }
         if (response.status !== 401) throw new Error("Sign-in is temporarily unavailable. Please try again.");
         const config = await authRequest("config");
         if (!active) return;
+        if (config.project_signin) {
+          window.location.replace("/api/auth/start?next=" + encodeURIComponent(projectPath()));
+          return;
+        }
         setGoogle(config.google);
         setState("login");
       } catch (failed) {
@@ -47,11 +82,12 @@ export function AuthGate({ children, invite }: { children: ReactNode; invite?: s
       }
     };
     void boot();
-    const expired = () => setState("login");
+    const expired = () => setRetry(n => n + 1);
     window.addEventListener("incredible:signout", expired);
     return () => { active = false; window.removeEventListener("incredible:signout", expired); };
   }, [retry]);
 
+  if (state === "organization") return <OrganizationSetup />;
   if (state === "ready") return children;
   if (state === "login") return <Login google={google} invite={invite} />;
   if (state === "loading") return <WorkspaceSkeleton />;
@@ -59,11 +95,43 @@ export function AuthGate({ children, invite }: { children: ReactNode; invite?: s
     <img className="auth-mark" src="/house.svg" alt="" />
     <h1>Incredible.dev</h1>
     <p role="alert">{error}</p><button className="btn primary" onClick={() => setRetry(retry + 1)}>Try again</button>
+    {rootEntry && entryFlow() && <>
+      <a className="btn" href="/">Open my workspace</a>
+      <button className="btn" onClick={async () => {
+        try { await authRequest("logout", {}); location.reload(); }
+        catch (failed) { setError((failed as Error).message); }
+      }}>Use another account</button>
+    </>}
+  </section></main>;
+}
+
+function OrganizationSetup() {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return <main className="auth-shell"><section className="auth-card">
+    <img className="auth-mark" src="/house.svg" alt="" />
+    <h1>Name your organization</h1>
+    <p className="muted">This name appears in your workspace and on team invitations.</p>
+    <form onSubmit={async event => {
+      event.preventDefault();
+      if (busy || !name.trim()) return;
+      setBusy(true); setError("");
+      try { const result = await landing(name.trim()); window.location.replace(result.url); }
+      catch (failed) { setError((failed as Error).message); setBusy(false); }
+    }}>
+      <label htmlFor="organization-name">Organization name</label>
+      <Input id="organization-name" autoComplete="organization" placeholder="Your team or studio name"
+        maxLength={100} value={name} required disabled={busy} onChange={e => setName(e.target.value)} />
+      {error && <p role="alert">{error}</p>}
+      <button className="btn primary" disabled={busy || !name.trim()}>{busy ? "Opening…" : "Open workspace"}</button>
+    </form>
   </section></main>;
 }
 
 function Login({ google, invite }: { google: boolean; invite?: string }) {
-  const inviteQuery = invite ? "?invite=" + encodeURIComponent(invite) : "";
+  const flow = entryFlow();
+  const inviteQuery = flow ? "?flow=" + encodeURIComponent(flow) : invite ? "?invite=" + encodeURIComponent(invite) : "";
   const [signup, setSignup] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -83,7 +151,7 @@ function Login({ google, invite }: { google: boolean; invite?: string }) {
       const result = await authRequest(signup ? "signup" + inviteQuery : "login", { email: email.trim(), password });
       setPassword("");
       if (result.message) { setSignup(false); setMessage(result.message); }
-      else window.location.assign(invite ? "/invite/" + invite : "/"); // Clear all previous workspace state on account changes.
+      else window.location.replace(flow ? "/?flow=" + encodeURIComponent(flow) : projectPath()); // Clear all previous workspace state on account changes.
     } catch (failed) {
       if (signup && failed instanceof AuthRequestError && failed.status === 409) {
         setSignup(false);
@@ -98,7 +166,7 @@ function Login({ google, invite }: { google: boolean; invite?: string }) {
     <img className="auth-mark" src="/house.svg" alt="" />
     <p className="auth-eyebrow">Incredible.dev</p>
     <h1 id="auth-title">{signup ? "Create your account" : "Welcome back"}</h1>
-    <p className="muted">{invite ? "Sign in with the invited email to review your project invitation." : "Your ideas, conversations and creations. Your private workspace."}</p>
+    <p className="muted">{invite ? "Sign in with the invited email to review your project invitation." : flow ? "Sign in to continue to your project." : "Your ideas, conversations and creations. Your private workspace."}</p>
     <button type="button" className="btn auth-google" disabled={!google || busy} onClick={() => window.location.assign("/api/auth/google" + inviteQuery)}>
       <span aria-hidden="true" className="auth-google-mark">G</span>Continue with Google
     </button>

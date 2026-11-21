@@ -26,7 +26,7 @@ import {
 } from "./api";
 import { NO_FILTER, type BoardFilter } from "./production";
 
-export type Page = "channel" | "needs" | "production" | "brand" | "read-brand" | "skills" | "computer" | "settings" | "profile" | "usage" | "logs" | "organization";
+export type Page = "channel" | "needs" | "production" | "brand" | "read-brand" | "skills" | "computer" | "preferences" | "profile" | "usage" | "logs" | "organization";
 // Where an episode is open: one of its chapters and optionally a line.
 export type Landing = { chapter: string; line: string };
 // The sheet an episode is started from: open, with the research frame its notes come from if any.
@@ -187,7 +187,7 @@ export const useHouse = create<State>((set, get) => ({
   },
 
   openPage(page) {
-    set({ page, frameId: null });
+    set({ page: page === "profile" && !get().session?.authenticated ? "preferences" : page, frameId: null });
     if (page === "production") void get().loadProduction();
   },
 

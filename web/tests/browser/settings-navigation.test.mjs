@@ -18,6 +18,8 @@ test("old member links, activity controls and chart modes work across screen siz
     "/api/team":{owner:"owner@example.com",project:"owner",personal_url:"/",can_manage:true,incoming:[],members:[]},
     "/api/organization":{name:"Studio",description:"",website:""},
     "/api/channels":[],
+    "/api/preferences/model":{options:[]},
+    "/api/auth/session":{user:{has_password:true}},
     "/api/activity":{events:[],actors:[{actor:"owner",email:"owner@example.com"}],more:false},
     "/api/usage/report":{totals:counts, models:[], series:[0,1,2].map((day) => ({
       ...counts, at:1700000000 + day * 86400, input_tokens:(day + 1) * 100,
@@ -26,6 +28,15 @@ test("old member links, activity controls and chart modes work across screen siz
   await page.route("**/api/**", route => route.fulfill({json:fixtures[new URL(route.request().url()).pathname] ?? {}}));
   // Leave the live event stream pending while the test drives the REST-backed settings.
   await page.route("**/api/stream", () => {});
+  await page.goto(new URL("settings", server.resolvedUrls.local[0]).href);
+  await page.getByRole("heading",{name:"Profile settings"}).waitFor();
+  await page.waitForURL("**/settings/profile");
+  await page.getByRole("link",{name:"Preferences"}).click();
+  await page.waitForURL("**/settings/preferences");
+  await page.reload();
+  await page.getByRole("heading",{name:"Preferences",exact:true}).waitFor();
+  await page.goBack();
+  await page.getByRole("heading",{name:"Profile settings"}).waitFor();
   await page.goto(new URL("settings/members", server.resolvedUrls.local[0]).href);
   await page.waitForURL("**/settings/organization");
   await page.getByRole("button",{name:"Invite member"}).click();

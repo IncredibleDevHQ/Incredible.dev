@@ -80,7 +80,7 @@ function WorkspaceApp() {
         <ChannelView />
       ) : (
         <main className="main">
-          {(page === "logs" || page === "profile" || page === "settings" || page === "usage" || page === "organization") && <SettingsPage tab={page} />}
+          {(page === "logs" || page === "profile" || page === "preferences" || page === "usage" || page === "organization") && <SettingsPage tab={page} />}
           {page === "needs" && <NeedsYou />}
           {page === "production" && <Production />}
           {page === "brand" && <Brand />}

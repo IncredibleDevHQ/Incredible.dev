@@ -27,6 +27,7 @@ class Interaction(BaseModel):
         "View skills",
         "View computer",
         "View settings",
+        "View preferences",
         "View profile",
         "View organization",
         "View members",
@@ -57,9 +58,11 @@ def team_routes(auth: "Auth", directory: Directory, tenants: "Tenants") -> APIRo
         request: Request, personal: bool = False
     ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
         if request.method != "GET":
-            auth.origin_check(request)
+            await auth.origin_check(request)
         actor, tokens = await auth.identity(request)
-        project = await directory.project(actor, None if personal else auth.project_host(request))
+        project = await directory.project(
+            actor, None if personal else await auth.project_host(request)
+        )
         request.state.project = project["id"]
         return actor, project, tokens
 
@@ -69,8 +72,8 @@ def team_routes(auth: "Auth", directory: Directory, tenants: "Tenants") -> APIRo
             auth.cookies(response, tokens)
         return response
 
-    def invite_url(owner: str, invite_id: str) -> str:
-        return f"{auth.project_url(owner)}/invite/{invite_id}"
+    async def invite_url(owner: dict[str, Any], invite_id: str) -> str:
+        return f"{await tenants.project_url(auth, owner)}/invite/{invite_id}"
 
     async def project_name(owner: dict[str, Any]) -> str:
         app = await tenants.get(owner)
@@ -117,20 +120,26 @@ def team_routes(auth: "Auth", directory: Directory, tenants: "Tenants") -> APIRo
         members = await directory.query(
             "SELECT id,email,member FROM invitations WHERE owner=? ORDER BY email", project["id"]
         )
-        if project["id"] == actor["id"]:
+        if project["id"] == actor["id"] and members:
+            origin = await tenants.project_url(auth, project)
             for row in members:
                 if not row["member"]:
-                    row["invite_url"] = invite_url(project["id"], row["id"])
+                    row["invite_url"] = origin + "/invite/" + row["id"]
         incoming = await directory.query(
             "SELECT i.id,i.owner,a.email,i.member FROM invitations i JOIN accounts a ON a.id=i.owner "
             "WHERE i.member=? OR (i.email=? AND i.member IS NULL) ORDER BY a.email",
             actor["id"],
             actor["email"].lower(),
         )
+        for row in incoming:
+            origin = await tenants.project_url(auth, {"id": row["owner"], "email": row["email"]})
+            row["url"] = origin + (
+                "/settings/organization" if row["member"] else "/invite/" + row["id"]
+            )
         return reply(
             {
                 "project": project["id"],
-                "personal_url": auth.origin,
+                "personal_url": await tenants.project_url(auth, actor),
                 "owner": project["email"],
                 "can_manage": project["id"] == actor["id"],
                 "members": members,
@@ -164,7 +173,7 @@ def team_routes(auth: "Auth", directory: Directory, tenants: "Tenants") -> APIRo
         if not rows:
             raise HTTPException(409, "This person already has an invitation or access.")
         request.state.member_email = email
-        link = invite_url(project["id"], invite_id)
+        link = await invite_url(project, invite_id)
         sent = await asyncio.to_thread(
             send_invitation, tenants.settings, email, organization, actor["email"], link
         )
@@ -177,7 +186,7 @@ def team_routes(auth: "Auth", directory: Directory, tenants: "Tenants") -> APIRo
             "SELECT a.id,a.email,i.member FROM invitations i JOIN accounts a ON a.id=i.owner "
             "WHERE i.id=? AND i.owner=? AND (i.member=? OR (i.member IS NULL AND i.email=?))",
             invite_id,
-            auth.project_host(request),
+            await auth.project_host(request),
             actor["id"],
             actor["email"].lower(),
         )
@@ -194,7 +203,7 @@ def team_routes(auth: "Auth", directory: Directory, tenants: "Tenants") -> APIRo
     @router.post("/api/team/{invite_id}/accept")
     async def accept(request: Request, invite_id: str) -> JSONResponse:
         actor, _, tokens = await context(request, True)
-        project_host = auth.project_host(request)
+        project_host = await auth.project_host(request)
         rows = await directory.query(
             "UPDATE invitations SET member=? WHERE id=? AND (owner=? OR ?='') AND "
             "(member=? OR (member IS NULL AND email=?)) RETURNING owner",
@@ -209,7 +218,8 @@ def team_routes(auth: "Auth", directory: Directory, tenants: "Tenants") -> APIRo
             raise HTTPException(403, "This invitation is unavailable for your account.")
         request.state.project = rows[0]["owner"]
         request.state.member_email = actor["email"]
-        return reply({"url": auth.project_url(rows[0]["owner"])}, tokens)
+        owner = await directory.project(actor, rows[0]["owner"])
+        return reply({"url": await tenants.project_url(auth, owner)}, tokens)
 
     @router.delete("/api/team/{invite_id}")
     async def remove(request: Request, invite_id: str) -> JSONResponse:

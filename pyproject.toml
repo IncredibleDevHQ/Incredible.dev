@@ -34,6 +34,8 @@ dependencies = [
     "jsonschema>=4.23,<5",
     # Image clamp, contact sheets and the look tool's resize.
     "pillow>=12,<14",
+    # Encrypt short-lived project handoffs with the single-use redemption code.
+    "cryptography>=46",
     # The self-hosted API.
     "fastapi>=0.115,<1",
     "uvicorn>=0.35,<1",

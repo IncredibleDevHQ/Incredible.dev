@@ -35,7 +35,7 @@ test("appearance stays visible and Settings opens from the profile row", async (
   expect(within(panel).queryByRole("group", { name: "Appearance" })).toBeNull();
   expect(within(panel).getByRole("button", { name: "Log out" })).toBeTruthy();
   await user.click(within(panel).getByRole("button", { name: "Settings" }));
-  expect(useHouse.getState().page).toBe("settings");
+  expect(useHouse.getState().page).toBe("profile");
   expect(trigger.getAttribute("aria-expanded")).toBe("false");
 });
 

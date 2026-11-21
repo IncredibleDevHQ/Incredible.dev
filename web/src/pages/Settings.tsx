@@ -38,7 +38,7 @@ function DeviceSelect({ setting, label }: { setting: Preference; label: string }
   }} />;
 }
 
-export function SettingsPage({tab = "settings"}: {tab?: "settings" | "profile" | "organization" | "logs" | "usage"}) {
+export function SettingsPage({tab}: {tab: "preferences" | "profile" | "organization" | "logs" | "usage"}) {
   const authenticated = useHouse(s => s.session?.authenticated);
   const openPage = useHouse(s => s.openPage);
   return <section className="page settings-page" aria-labelledby="settings-title">
@@ -48,25 +48,25 @@ export function SettingsPage({tab = "settings"}: {tab?: "settings" | "profile" |
       {([
         ["profile", "Profile", UserRound],
         ["organization", "Organization", Building2],
-        ["settings", "Preferences", SlidersHorizontal],
+        ["preferences", "Preferences", SlidersHorizontal],
         ["usage", "Usage", BarChart3],
         ["logs","Logs",ScrollText],
       ] as const).filter(([page]) => !["profile","logs"].includes(page) || authenticated).map(([page, label, Icon]) => <a key={page} aria-current={tab === page ? "page" : undefined}
-        href={page === "settings" ? "/settings" : "/settings/" + page}
+        href={"/settings/" + page}
         onClick={event => {
           if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
           event.preventDefault();
           openPage(page);
         }}><Icon size={15} aria-hidden="true" />{label}</a>)}
     </nav>
-    <header className="settings-intro"><h1 id="settings-title">{{profile:"Profile settings",organization:"Organization",settings:"Preferences",usage:"Usage",logs:"Activity logs"}[tab]}</h1>
-      <p>{{profile:"Your personal details and sign-in methods.",organization:"Manage project details and member access.",settings:"Choose how Studio looks and behaves on this device.",usage:"Review model activity and estimated costs.",logs:"Review project activity by person and time."}[tab]}</p></header>
-    {tab === "settings" && <Appearance/>}
-    {tab === "settings" && <section className="settings-form"><h2>On this device</h2>
+    <header className="settings-intro"><h1 id="settings-title">{{profile:"Profile settings",organization:"Organization",preferences:"Preferences",usage:"Usage",logs:"Activity logs"}[tab]}</h1>
+      <p>{{profile:"Your personal details and sign-in methods.",organization:"Manage project details and member access.",preferences:"Choose how Studio looks and behaves on this device.",usage:"Review model activity and estimated costs.",logs:"Review project activity by person and time."}[tab]}</p></header>
+    {tab === "preferences" && <Appearance/>}
+    {tab === "preferences" && <section className="settings-form"><h2>On this device</h2>
       <DeviceSelect setting="start" label="Start page when opening the app" />
       <DeviceSelect setting="clock" label="Message time format" />
     </section>}
-    {tab === "settings" && authenticated && <ModelDefaults />}
+    {tab === "preferences" && authenticated && <ModelDefaults />}
     {tab === "profile" && authenticated && <><ProfileDetails /><LoginProfile /><PasswordSettings /></>}
     {tab === "organization" && <><OrganizationProfile />{authenticated && <Members />}</>}
     {tab === "usage" && <Usage />}
@@ -153,6 +153,13 @@ function OrganizationProfile() {
       setBusy(true); setMessage(""); setError("");
       try {
         const profile = await api.saveOrganization(draft);
+        if (session?.projectUrl && profile.name !== saved?.name) {
+          const refreshed = await api.session();
+          if (refreshed.projectUrl && location.origin !== refreshed.projectUrl) {
+            location.replace(refreshed.projectUrl + location.pathname + location.search + location.hash);
+            return;
+          }
+        }
         useHouse.setState(state => ({session: state.session && {...state.session, organizationName: profile.name}}));
         setSaved(profile); setDraft(profile); setMessage("Changes saved.");
       } catch { setError("Couldn’t save your changes. Check the details and try again."); }
@@ -160,7 +167,7 @@ function OrganizationProfile() {
     }}>
       <TextField label="Organization name" placeholder="Organization name" hint="Displayed throughout the workspace." required maxLength={100} value={draft.name} readOnly={member} disabled={busy}
         onChange={e => update("name", e.target.value)} />
-      {session?.projectId && <><TextField label="Project ID" hint="Reference used in project URLs." readOnly copyable value={session.projectId}/>
+      {session?.projectId && <><TextField label="Project ID" hint="Permanent identifier for this project." readOnly copyable value={session.projectId}/>
         {session.projectUrl && <div className="setting-row"><span>Project address</span><a className="project-address" href={session.projectUrl} title={session.projectUrl}>{new URL(session.projectUrl).host}</a></div>}</>}
       <TextField label="Website" optional type="url" pattern="https?://.+" maxLength={500} placeholder="https://example.com"
         value={draft.website} readOnly={member} disabled={busy} onChange={e => update("website", e.target.value)} />

@@ -43,3 +43,19 @@ test.each([200, 409])("signup shows progress then opens sign-in for status %s", 
   expect((screen.getByLabelText("Email or username") as HTMLInputElement).value).toBe("member@example.com");
   expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("");
 });
+
+test("a new root account names its organization before opening a project", async () => {
+  const { fireEvent } = await import("@testing-library/react");
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(Response.json({user:{id:"new"},root_entry:true}))
+    .mockResolvedValueOnce(Response.json({needs_organization:true}))
+    .mockResolvedValueOnce(Response.json({detail:"Please retry."},{status:503}));
+  vi.stubGlobal("fetch",fetcher);
+  render(<AuthGate>Workspace</AuthGate>);
+  const name = await screen.findByLabelText("Organization name");
+  fireEvent.change(name,{target:{value:"Design team"}});
+  fireEvent.click(screen.getByRole("button",{name:"Open workspace"}));
+  expect(await screen.findByRole("alert")).toBeTruthy();
+  expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body).organization).toBe("Design team");
+  expect(screen.queryByText("Workspace")).toBeNull();
+});
