@@ -30,6 +30,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from design_agent.config import Settings
 from design_agent.runtime.persistence import workspace_of
 from design_agent.surfaces.web.directory import Directory
+from design_agent.surfaces.web.research_catalog import catalog_repos
 from design_agent.surfaces.web.team import team_routes
 
 ACCESS = "incredible-access"
@@ -388,15 +389,32 @@ class Gateway:
                     self.auth.origin_check(request)
                 user, tokens = await self.auth.identity(request)
                 # A server's local code and coding-agent account are not a user's resources.
-                if "/research" in request.url.path:
-                    response = (
-                        JSONResponse({"harnesses": [], "repos": []})
-                        if request.method == "GET" and request.url.path == "/api/research"
-                        else JSONResponse(
+                if (
+                    "/research" in request.url.path
+                    and not self.tenants.settings.private_research_enabled(user["id"])
+                ):
+                    if request.method == "GET" and request.url.path == "/api/research":
+                        options: dict[str, Any] = {"harnesses": [], "models": {}, "repos": []}
+                        directory = self.tenants.settings.research_catalog_dir
+                        if directory is not None:
+                            try:
+                                repos = await asyncio.to_thread(
+                                    catalog_repos, directory, user["id"]
+                                )
+                            except (OSError, ValueError):
+                                raise HTTPException(
+                                    503, "Local repository list is unavailable"
+                                ) from None
+                            if repos is not None:
+                                options.update(repos=repos, discovery_only=True)
+                        response = JSONResponse(options)
+                    else:
+                        response = JSONResponse(
                             {"detail": "Repository research is unavailable in private workspaces"},
                             status_code=403,
                         )
-                    )
+                    if tokens:
+                        self.auth.cookies(response, tokens)
                     await response(scope, receive, send)
                     return
                 project = await self.directory.project(user, self.auth.project_host(request))

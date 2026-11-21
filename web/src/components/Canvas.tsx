@@ -156,19 +156,21 @@ export function Canvas({ channelId }: { channelId: string }) {
       </div>
       {!tasks && <Skeleton shape="cards" label="Loading canvas" />}
       {tasks && !empty && (
-        <div className="canvas-bar">
-          <button type="button" className="btn" aria-expanded={Boolean(starting)} onClick={(e) => setStarting(starting ? null : e.currentTarget)}>
-            <Telescope />
-            Research
-          </button>
-          <button type="button" className="btn" aria-expanded={Boolean(picking)} onClick={() => pickTemplate(picking ? null : {})}>
-            <LayoutTemplate />
-            Templates
-          </button>
-          <button type="button" className="btn" onClick={() => useHouse.getState().startEpisode({})}>
-            <Podcast />
-            Episode
-          </button>
+        <div className="canvas-tools">
+          <div className="canvas-bar">
+            <button type="button" aria-label="Research" title="Research" className="btn" aria-expanded={Boolean(starting)} onClick={(e) => setStarting(starting ? null : e.currentTarget)}>
+              <Telescope />
+              <span>Research</span>
+            </button>
+            <button type="button" aria-label="Templates" title="Templates" className="btn" aria-expanded={Boolean(picking)} onClick={() => pickTemplate(picking ? null : {})}>
+              <LayoutTemplate />
+              <span>Templates</span>
+            </button>
+            <button type="button" aria-label="Episode" title="Episode" className="btn" onClick={() => useHouse.getState().startEpisode({})}>
+              <Podcast />
+              <span>Episode</span>
+            </button>
+          </div>
         </div>
       )}
       {starting && (

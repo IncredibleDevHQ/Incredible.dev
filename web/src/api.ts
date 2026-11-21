@@ -179,13 +179,13 @@ export type ThreadDetail = {
 // Research on this computer: a coding agent (Claude Code, Codex, Kimi Code) answering questions
 // about one of your repositories, read-only, and the notes kept from its answers.
 export type HarnessId = "claude" | "codex" | "kimi";
-export type Harness = { id: HarnessId; title: string; ready: boolean };
+export type Harness = { id: HarnessId; title: string; ready: boolean; model?: string };
 export type RepoView = { name: string; path: string; branch: string; within?: string };
 // Where a note came from, from the repository down to the conversation it was kept from.
 export type LineageStep = { kind: "repo" | "conversation" | "follow_up"; label: string; detail?: string; harness?: HarnessId; id?: string };
 // What can be asked, of what: each agent, the models and efforts each one that is ready offers
 // (its own default first), and the repositories on this computer.
-export type ResearchOptions = { harnesses: Harness[]; models: Partial<Record<HarnessId, ModelOption[]>>; repos: RepoView[] };
+export type ResearchOptions = { provider_api?: boolean; discovery_only?: boolean; harnesses: Harness[]; models: Partial<Record<HarnessId, ModelOption[]>>; repos: RepoView[] };
 export type Conversation = {
   id: string;
   parent_id: string;
@@ -217,7 +217,7 @@ export type Note = {
 };
 // A research frame. `harness`, `model` and `effort` are what its node asks its next question of:
 // the last it asked (an empty model or effort is the agent's own default).
-export type ResearchView = { repo: RepoView; harness: HarnessId; model: string; effort: string; conversations: Conversation[]; notes: Note[] };
+export type ResearchView = { repo: RepoView; repos?: string[]; files?: FileView[]; source_notes?: string; harness: HarnessId; model: string; effort: string; conversations: Conversation[]; notes: Note[] };
 export type ConversationRow = { id: string; frame_id: string; parent_id: string; quote: string; harness: HarnessId; model: string; effort: string; repo: string };
 export type CanvasTask = {
   thread: Thread;
@@ -888,8 +888,11 @@ export const api = {
   dropTake: (id: string, take: string) => call<EpisodeView>("DELETE", `/api/episodes/${id}/takes/${take}`),
   // With no size, the film is rendered in the size asked for last (HD at first).
   renderEpisode: (id: string, size?: FilmSize) => call<EpisodeView>("POST", `/api/episodes/${id}/film`, size ? { size } : {}),
-  researchOptions: () => call<ResearchOptions>("GET", "/api/research"),
-  openResearch: (channelId: string, body: { repo: string; harness: HarnessId; question: string; model?: string; effort?: string }) =>
+  researchOptions: async (): Promise<ResearchOptions> => {
+    const options = await call<ResearchOptions>("GET", "/api/research");
+    return { ...options, models: options.models ?? {} };
+  },
+  openResearch: (channelId: string, body: { repo: string; repos?: string[]; notes?: string; files?: string[]; harness: HarnessId; question: string; model?: string; effort?: string }) =>
     call<{ thread: Thread; conversation: ConversationRow }>("POST", `/api/channels/${channelId}/research`, body),
   ask: (frameId: string, body: { question: string; harness?: HarnessId | ""; model?: string; effort?: string; parent?: string; quote?: string; answer?: string }) =>
     call<ConversationRow>("POST", `/api/research/${frameId}/conversations`, body),

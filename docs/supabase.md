@@ -136,7 +136,7 @@ workspace ID from the client. Each user gets:
   private [MinIO S3 storage](minio.md); Supabase holds their metadata. Back up MinIO, the
   database and local working data.
 - Two initial empty channels and only their own person record plus the agent. There is no
-  identity-switch menu. Local repository research and shared trace-reading tools are disabled.
+  identity-switch menu. Local repository research is opt-in for an individual verified account. Shared trace-reading tools are disabled.
 
 Existing SQLite databases, conversations and files are left unchanged in their original local
 folders. They are not imported into new accounts or made accessible through the authenticated
@@ -167,3 +167,36 @@ Run `uv run pytest -q` for offline tests. The Postgres integration suite is opt-
 `TEST_DATABASE_URL`; it creates and removes randomly named, test-owned schemas, and checks
 cross-user channel/thread/file denial, event isolation, SQL parameter binding, durability and
 agent memory isolation. It does not send email or create Auth users.
+
+### Local repository suggestions
+
+An operator can enable repository autocomplete for a specific private account. On the computer
+with the repositories, export their relative folder names into a catalog named for the account's
+verified Supabase user UUID. Use a dedicated catalog directory outside the served web assets.
+
+```bash
+mkdir -p "$HOME/.local/share/design-agent/repo-catalogs"
+uv run python -m design_agent.surfaces.web.research_catalog "$HOME/Projects" \
+  "$HOME/.local/share/design-agent/repo-catalogs/<user-uuid>.json"
+```
+
+Mount the catalog directory read-only in the app container and set
+`DESIGN_AGENT_RESEARCH_CATALOG_DIR` to its container path. The app user needs read access.
+Add `--also-scan <folder>` for each additional root. Give each root a distinct folder name so
+checkouts with the same name can be distinguished in the picker. Rerun the export to pick up
+renamed, added or removed repositories. The picker searches names
+and relative paths, including worktrees, up to two directories below the scan root. Use the
+arrow keys and Enter or click a suggestion. This enables discovery for the catalog owner.
+To enable provider research for one verified user, set `DESIGN_AGENT_RESEARCH_OWNER_ID` to their
+Supabase UUID and `DESIGN_AGENT_RESEARCH_READER_CONTAINER` to an operator-controlled Docker
+container with Python, Git, and this branch's source installed. Mount the scan roots read-only
+there and set its `DESIGN_AGENT_RESEARCH_ROOTS` to the same comma-separated root paths used to
+export the catalog. For linked worktrees, also make their Git metadata available at the original
+paths. The reader runs with networking disabled and needs no provider keys or Docker socket.
+
+Configure the chosen provider in the app environment with `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
+or `MOONSHOT_API_KEY`. A person can select up to eight repositories, add notes or previous
+answers, and attach UTF-8 text, Markdown, CSV, JSON, RST or log files (64 KB per file).
+Starting a run sends bounded excerpts from committed source and the supplied material to
+the selected provider. Results and attachments stay in the account’s research frame.
+Private runs use provider APIs. Choose the model and effort for the selected provider when starting research. Kimi offers instant and thinking modes. Follow-up questions inherit the conversation’s selection. The native single-user flow uses the installed coding-agent CLI.

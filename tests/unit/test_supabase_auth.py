@@ -72,6 +72,7 @@ async def client(tmp_path: Path):
         supabase_publishable_key="public-test-key",
         database_url="postgresql://unused",
         app_url=ORIGIN,
+        research_catalog_dir=tmp_path / "catalogs",
     )
     made: list[str] = []
 
@@ -505,3 +506,54 @@ async def test_auth_callback_restores_only_an_invite_path(client, method):
     assert callback.headers["location"] == "/invite/" + invitation
     await c.get("/api/auth/google", params={"invite": "https://example.com"})
     assert (await c.get("/api/auth/callback?code=valid")).headers["location"] == "/"
+
+
+async def test_private_research_options_are_empty_and_start_is_forbidden(client):
+    c, made = client
+    c.cookies.set("incredible-access", "token-a")
+    options = await c.get("/api/research")
+    assert options.status_code == 200
+    assert options.json() == {"harnesses": [], "models": {}, "repos": []}
+    start = await c.post("/api/channels/brand/research", headers={"Origin": ORIGIN}, json={})
+    assert start.status_code == 403
+    assert not made
+
+
+async def test_local_discovery_lists_only_verified_users_catalog(client, tmp_path):
+    c, made = client
+    catalogs = tmp_path / "catalogs"
+    catalogs.mkdir()
+    catalog = catalogs / f"{A}.json"
+    catalog.write_text(json.dumps(["studio", "team/studio-web"]))
+    assert (await c.get("/api/research")).status_code == 401
+    c.cookies.set("incredible-access", "token-b")
+    assert (await c.get("/api/research", headers={"X-Person": A})).json()["repos"] == []
+    c.cookies.set("incredible-access", "token-a")
+    options = (await c.get("/api/research")).json()
+    assert options["discovery_only"] is True
+    assert options["repos"] == [
+        {"name": "studio", "path": "studio", "branch": ""},
+        {"name": "studio-web", "path": "team/studio-web", "branch": ""},
+    ]
+    assert (
+        await c.post("/api/channels/brand/research", headers={"Origin": ORIGIN})
+    ).status_code == 403
+    catalog.write_text("broken")
+    assert (await c.get("/api/research")).status_code == 503
+    assert not made
+
+
+async def test_only_configured_owner_can_reach_execution_routes(client, monkeypatch):
+    c, made = client
+    monkeypatch.setattr(Settings, "private_research_enabled", lambda self, uid: uid == A)
+    c.cookies.set("incredible-access", "token-b")
+    response = await c.post(
+        "/api/channels/brand/research", headers={"Origin": ORIGIN, "X-Person": A}
+    )
+    assert response.status_code == 403 and not made
+    c.cookies.set("incredible-access", "token-a")
+    # The tenant test app has no research route; reaching its router proves owner dispatch.
+    assert (
+        await c.post("/api/channels/brand/research", headers={"Origin": ORIGIN})
+    ).status_code == 404
+    assert made == [A]
