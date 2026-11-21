@@ -19,10 +19,14 @@ export type MessageData = {
   files?: FileView[];
   // A research question that branches from a passage of another answer: that passage.
   quote?: string;
-  state?: "working" | "done" | "stopped" | "quiet" | "queued" | "taken" | "folded" | "stop";
+  state?: "working" | "done" | "failed" | "stopped" | "quiet" | "queued" | "taken" | "folded" | "stop";
   header?: string;
   steps?: Step[];
   notes?: string[];
+  // A research turn, as its trail draws it: its steps, its own words and its longer stretches
+  // of thinking, newest last, and whether its agent says what its model is doing between them.
+  events?: WorkEvent[];
+  tells?: boolean;
   woken?: boolean;
   started_at?: number;
   ended_at?: number;
@@ -179,12 +183,17 @@ export type Harness = { id: HarnessId; title: string; ready: boolean };
 export type RepoView = { name: string; path: string; branch: string; within?: string };
 // Where a note came from, from the repository down to the conversation it was kept from.
 export type LineageStep = { kind: "repo" | "conversation" | "follow_up"; label: string; detail?: string; harness?: HarnessId; id?: string };
-export type ResearchOptions = { harnesses: Harness[]; repos: RepoView[] };
+// What can be asked, of what: each agent, the models and efforts each one that is ready offers
+// (its own default first), and the repositories on this computer.
+export type ResearchOptions = { harnesses: Harness[]; models: Partial<Record<HarnessId, ModelOption[]>>; repos: RepoView[] };
 export type Conversation = {
   id: string;
   parent_id: string;
   quote: string;
   harness: HarnessId;
+  // what it runs on (empty for the agent's own default): where a branch from it starts
+  model: string;
+  effort: string;
   question: string;
   status: ThreadStatus;
   answer: string;
@@ -206,8 +215,10 @@ export type Note = {
   kind: "answer" | "passage" | "own";
   lineage: LineageStep[];
 };
-export type ResearchView = { repo: RepoView; harness: HarnessId; conversations: Conversation[]; notes: Note[] };
-export type ConversationRow = { id: string; frame_id: string; parent_id: string; quote: string; harness: HarnessId; repo: string };
+// A research frame. `harness`, `model` and `effort` are what its node asks its next question of:
+// the last it asked (an empty model or effort is the agent's own default).
+export type ResearchView = { repo: RepoView; harness: HarnessId; model: string; effort: string; conversations: Conversation[]; notes: Note[] };
+export type ConversationRow = { id: string; frame_id: string; parent_id: string; quote: string; harness: HarnessId; model: string; effort: string; repo: string };
 export type CanvasTask = {
   thread: Thread;
   material: Material;
@@ -728,7 +739,8 @@ export const api = {
   channelMessages: (id: string) => call<ChannelMessages>("GET", `/api/channels/${id}/messages`),
   startThread: (channelId: string, body: { text: string; to_agent: boolean; files: string[]; kind?: string }) => call<Message>("POST", `/api/channels/${channelId}/messages`, body),
   thread: (id: string) => call<ThreadDetail>("GET", `/api/threads/${id}`),
-  reply: (threadId: string, body: { text: string; to_agent: boolean; files: string[]; answers?: string }) => call<Message>("POST", `/api/threads/${threadId}/messages`, body),
+  // `quote`: a passage of the answer a research follow-up asks about
+  reply: (threadId: string, body: { text: string; to_agent: boolean; files: string[]; answers?: string; quote?: string }) => call<Message>("POST", `/api/threads/${threadId}/messages`, body),
   pickLook: (boardId: string, frameId: string, reason: string) => call<Message>("POST", `/api/boards/${boardId}/pick`, { frame_id: frameId, reason }),
   stop: (threadId: string) => call<{ ok: boolean }>("POST", `/api/threads/${threadId}/stop`),
   cancelWork: (threadId: string, workId: string) => call<{ said: string }>("POST", `/api/threads/${threadId}/work/${workId}/cancel`),
@@ -826,10 +838,12 @@ export const api = {
   // With no size, the film is rendered in the size asked for last (HD at first).
   renderEpisode: (id: string, size?: FilmSize) => call<EpisodeView>("POST", `/api/episodes/${id}/film`, size ? { size } : {}),
   researchOptions: () => call<ResearchOptions>("GET", "/api/research"),
-  openResearch: (channelId: string, body: { repo: string; harness: HarnessId; question: string }) =>
+  openResearch: (channelId: string, body: { repo: string; harness: HarnessId; question: string; model?: string; effort?: string }) =>
     call<{ thread: Thread; conversation: ConversationRow }>("POST", `/api/channels/${channelId}/research`, body),
-  ask: (frameId: string, body: { question: string; harness?: HarnessId | ""; parent?: string; quote?: string; answer?: string }) =>
+  ask: (frameId: string, body: { question: string; harness?: HarnessId | ""; model?: string; effort?: string; parent?: string; quote?: string; answer?: string }) =>
     call<ConversationRow>("POST", `/api/research/${frameId}/conversations`, body),
+  // The frame's notes as one page, as everything made from them is handed them.
+  notesPage: (frameId: string) => `/api/research/${frameId}/notes.md`,
   keepNote: (frameId: string, body: { text: string; conversation_id?: string; message_id?: string }) => call<Note>("POST", `/api/research/${frameId}/notes`, body),
   editNote: (noteId: string, text: string) => call<Note>("PATCH", `/api/notes/${noteId}`, { text }),
   dropNote: (noteId: string) => call<{ ok: boolean }>("DELETE", `/api/notes/${noteId}`),

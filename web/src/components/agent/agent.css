@@ -36,6 +36,9 @@
 .ag-step[data-signal="quiet"] .ag-mark::after { animation: ag-breathe 2.4s ease-in-out infinite; }
 .ag-step[data-signal="lost"] .ag-mark { border-color: color-mix(in srgb, var(--amber) 30%, var(--line)); }
 .ag-step[data-signal="lost"] .ag-mark::after { border-top-color: var(--amber); animation: none; }
+/* the page has lost the house: nothing is known of the agent, so nothing moves */
+.ag-step[data-signal="cut"] .ag-mark::after { border-top-color: var(--muted); animation: none; }
+.ag-step[data-signal="cut"] .ag-doing { background: none; -webkit-text-fill-color: currentColor; color: var(--muted); animation: none; }
 .ag-step[data-state="failed"] .ag-mark { border-color: transparent; background: color-mix(in srgb, var(--red) 15%, var(--raised)); color: var(--red); animation: ag-pop 380ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 .ag-step[data-state="waiting"] .ag-mark { border-color: transparent; background: var(--amber-soft); color: var(--amber); }
 .ag-step[data-state="waiting"] .ag-mark svg { width: 8px; height: 8px; fill: currentColor; stroke-width: 0; }
@@ -56,6 +59,10 @@
 
 /* under a step: what a finished one left behind, what one to come will do */
 .ag-step > .ag-detail { margin: -7px 0 6px 30px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+/* a finished step's work, folded behind how many steps it took; opened, its branch stays still */
+.ag-kept { display: inline-flex; align-items: center; gap: 4px; margin: -7px 0 6px 26px; padding: 0 4px 0 0; border: 0; border-radius: 6px; background: none; color: var(--muted); font: inherit; font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.ag-kept:hover { color: var(--ink); }
+.ag-kept[aria-expanded="true"] .ag-chevron { transform: rotate(90deg); }
 /* the person's notes, under the finished stage that took them in */
 .ag-taken { display: grid; gap: 4px; margin: 0 0 6px 30px; padding: 0; list-style: none; }
 .ag-taken li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: start; gap: 6px; padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--green) 9%, transparent); color: var(--ink-2); font-size: 12.5px; line-height: 1.45; animation: ag-landed 1400ms ease-out both; }
@@ -97,6 +104,7 @@
 .ag-sub:is([data-now="thinking"], [data-now="writing"]) .ag-sub-title { color: var(--ink); font-weight: 500; }
 .ag-sub:is([data-now="waiting"], [data-now="quiet"]) > i { background: transparent; box-shadow: inset 0 0 0 1.25px var(--muted); animation: ag-breathe 2.4s ease-in-out infinite; }
 .ag-sub[data-now="lost"] > i { background: var(--amber); }
+.ag-sub[data-now="cut"] > i { background: transparent; box-shadow: inset 0 0 0 1.25px var(--muted); }
 .ag-sub[data-now="lost"] .ag-sub-title, .ag-sub[data-now="lost"] .ag-clock { color: var(--amber); font-weight: 500; }
 /* the newest words of the thought, under it: two lines at most, the whole of it on hover */
 .ag-thought { grid-column: 1 / -1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; color: var(--muted); font-size: 12.5px; font-style: italic; line-height: 1.45; quotes: none; overflow-wrap: anywhere; }
@@ -156,7 +164,7 @@
 .ag-summary-notes ul { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
 
 /* -- shared --------------------------------------------------------------------------------- */
-:is(.ag-fold, .ag-stop, .ag-send, .ag-queue li button, .ag-summary-head):focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+:is(.ag-fold, .ag-kept, .ag-stop, .ag-send, .ag-queue li button, .ag-summary-head):focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 @keyframes ag-spin { to { transform: rotate(360deg); } }
 @keyframes ag-pop { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: none; } }
 @keyframes ag-draw { to { stroke-dashoffset: 0; } }

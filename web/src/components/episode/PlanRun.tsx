@@ -171,6 +171,7 @@ function PlanTrail({ view, at, since, turns }: { view: EpisodeView; at: number; 
   const stage = view.stage;
   const live = turns.find((t) => t.state === "working");
   const pulse = usePulse(view.id, "plan", view.working);
+  const cut = useHouse((s) => s.cut);
   // between the writer's turns the house reads what was written, or readies the next turn
   const between = stage.state === "reading" ? "Checking" : (stage.round ?? 0) > 0 ? `Fixing · round ${stage.round}` : "Getting ready";
   const kept = new Map(view.plan_stages.map((s) => [s.id, s]));
@@ -206,6 +207,7 @@ function PlanTrail({ view, at, since, turns }: { view: EpisodeView; at: number; 
         pulse={live ? pulse : null}
         tells={view.working?.tells ?? false}
         onStop={() => void api.stopEpisode(view.id).catch((e: Error) => useHouse.getState().say(e.message))}
+        cut={cut}
       />
     </section>
   );
