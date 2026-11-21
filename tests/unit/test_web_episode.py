@@ -3438,21 +3438,31 @@ def test_the_app_serves_an_episode_at_every_address(tmp_path: Path) -> None:
         assert kinds[EPISODE]["studio"] is True
 
 
+def _episode_ready_to_record(client: TestClient) -> dict[str, Any]:
+    host = client.app.state.host  # type: ignore[attr-defined]
+    desk = host.episodes
+    desk.workers[DEMO] = DemoWorker(
+        data_dir=desk.data_dir, script=SCRIPT, pause=0, store=host.store
+    )
+    channel = client.get("/api/channels").json()[0]["id"]
+    made = client.post(
+        f"/api/channels/{channel}/episodes",
+        json={"title": "One idea", "text": NOTES, "settings": {"writer": DEMO}},
+    )
+    assert made.status_code == 200, made.text
+    episode_id = made.json()["id"]
+    assert client.portal is not None
+    client.portal.call(settle, lambda: not desk.planning(episode_id))
+    view = client.get(f"/api/episodes/{episode_id}").json()
+    assert view["status"] == "plan", view["stage"]
+    return view
+
+
 def test_a_take_is_read_from_disk_and_a_voice_needs_a_key_and_a_yes(tmp_path: Path) -> None:
     settings = Settings(_env_file=None, workspace_root=tmp_path / "workspace", sandbox="host")
     with TestClient(create_app(ROOT, settings, demo=True)) as client:
-        channel = client.get("/api/channels").json()[0]["id"]
-        made = client.post(
-            f"/api/channels/{channel}/episodes",
-            json={"title": "One idea", "text": NOTES, "settings": {"writer": DEMO}},
-        )
-        episode_id = made.json()["id"]
-        until = time.time() + 30
-        while time.time() < until:
-            view = client.get(f"/api/episodes/{episode_id}").json()
-            if view["status"] != "planning":
-                break
-            time.sleep(0.05)
+        view = _episode_ready_to_record(client)
+        episode_id = view["id"]
         chapter = view["plan"]["chapters"][0]["id"]
         lines = [f["id"] for b in view["plan"]["chapters"][0]["beats"] for f in b["frames"]]
         desk = client.app.state.host.episodes  # type: ignore[attr-defined]
@@ -3498,12 +3508,10 @@ def test_a_take_is_read_from_disk_and_a_voice_needs_a_key_and_a_yes(tmp_path: Pa
         )
         assert brought.status_code == 200, brought.text
         assert [i["chapter"] for i in brought.json()["imports"]] == [chapter]
-        until = time.time() + 10
-        while time.time() < until:
-            view = client.get(f"/api/episodes/{episode_id}").json()
-            if not view["imports"]:
-                break
-            time.sleep(0.05)
+        assert client.portal is not None
+        client.portal.call(settle, lambda: not desk._busy(episode_id))
+        view = client.get(f"/api/episodes/{episode_id}").json()
+        assert not view["imports"]
         camera = view["takes"][-1]
         assert len(view["takes"]) == 2 and camera["kept"] and camera["seconds"] == 30.0
         assert [m["frame"] for m in camera["marks"]] == lines
@@ -3571,18 +3579,8 @@ def test_a_cards_clips_are_listed_and_only_those_are_brought_in(tmp_path: Path) 
         assert listed["folders"] == [str(tmp_path / "Volumes")]
         ((clip),) = listed["clips"]
         assert (clip["name"], clip["card"], clip["seconds"]) == ("C0001.MP4", "UNTITLED", 42.0)
-        channel = client.get("/api/channels").json()[0]["id"]
-        made = client.post(
-            f"/api/channels/{channel}/episodes",
-            json={"title": "One idea", "text": NOTES, "settings": {"writer": DEMO}},
-        )
-        episode_id = made.json()["id"]
-        until = time.time() + 30
-        while time.time() < until:
-            view = client.get(f"/api/episodes/{episode_id}").json()
-            if view["status"] != "planning":
-                break
-            time.sleep(0.05)
+        view = _episode_ready_to_record(client)
+        episode_id = view["id"]
         chapter = view["plan"]["chapters"][0]["id"]
         desk = client.app.state.host.episodes  # type: ignore[attr-defined]
         held = asyncio.Event()
