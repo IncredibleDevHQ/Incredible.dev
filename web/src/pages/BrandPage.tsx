@@ -1,3 +1,4 @@
+import { Skeleton } from "../components/Skeleton";
 // The Brand page: the house's brand kits. A rail of kits (the configured pack, and packs read from
 // websites, which start from an address at its top) beside the kit itself, laid out as a
 // showcase: the brand applied to sample frames first, then colour by role, type set in the pack's
@@ -25,6 +26,7 @@ export function Brand() {
   const loadBrands = useHouse((s) => s.loadBrands);
   const selected = useHouse((s) => s.brandSlug);
   const openBrand = useHouse((s) => s.openBrand);
+  const [failed, setFailed] = useState(false);
   const [pack, setPack] = useState<BrandPackView | null>(null);
   // Reads already made when the page opens are not news; one that lands while it's open is.
   const [landed] = useState(() => new Set(reads.filter((r) => r.status === "ready").map((r) => r.url)));
@@ -33,7 +35,14 @@ export function Brand() {
     void loadBrands();
   }, [loadBrands]);
   useEffect(() => {
-    void api.brandPack(selected).then(setPack).catch(() => openBrand("default"));
+    let active = true;
+    setFailed(false);
+    void api.brandPack(selected).then(value => { if (active) setPack(value); }).catch(() => {
+      if (!active) return;
+      if (selected === "default") setFailed(true);
+      else openBrand("default");
+    });
+    return () => { active = false; };
   }, [selected, brands, openBrand]);
   // A read that lands opens the kit it made, once.
   useEffect(() => {
@@ -49,7 +58,7 @@ export function Brand() {
   return (
     <section className="page kits" aria-labelledby="brand-title">
       <Rail brands={brands} selected={selected} onSelect={openBrand} channelId={channelId ?? ""} />
-      {pack && <Kit key={pack.slug} pack={pack} here={here} />}
+      {failed ? <p role="alert">Couldn’t load this brand.</p> : pack?.slug === selected ? <Kit key={pack.slug} pack={pack} here={here} /> : <Skeleton label="Loading brand" shape="cards" />}
     </section>
   );
 }

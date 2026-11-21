@@ -1,17 +1,15 @@
-// Research on the canvas: a frame that reads one of your repositories. Its first column asks a
-// coding agent on this computer (Claude Code, Codex or Kimi Code, read-only, signed in as you),
-// on a model and effort it offers, picked as an episode's writer is; each question grows into a
-// conversation, and a passage of any answer can be kept as a note or explored as a branch, which
-// sits to the right of what it branched from. The notes are what everything made in the frame
-// starts from, and read as one page in the viewer.
+import { Skeleton } from "./Skeleton";
+// A research frame shows the saved brief, its conversation tree, and the notes kept from
+// answers. A selected passage can start a branch to the right of its parent conversation.
 import { isWorkspaceTarget } from "./workspaceTarget";
-import { ArrowUp, BookOpen, Check, CornerDownRight, FileText, FolderOpen, GitBranch, MessageSquare, NotebookPen, Pencil, Plus, Quote, Reply, Search, Telescope, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ArrowUp, ArrowUpRight, BookOpen, Check, ChevronDown, CornerDownRight, FileText, FolderOpen, GitBranch, MessageSquare, NotebookPen, Paperclip, Pencil, Plus, Quote, Reply, Search, Telescope, X } from "lucide-react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api, type CanvasTask, type Conversation, type Harness, type HarnessId, type Note, type ResearchView } from "../api";
+import { api, type CanvasTask, type Conversation, type Harness, type HarnessId, type FileView, type RepoView, type Note, type ResearchView } from "../api";
 import { useFocused, useHouse } from "../store";
-import { AgentMark, Rich } from "../ui";
+import { AgentMark, FileList, Rich } from "../ui";
 import { AgentModel, offersPicks, shownPick, type ModelPick } from "./episode/AgentModel";
+import { pickLabel } from "./episode/models";
 import { columnsOf, type Edge } from "./Flow";
 import { ThinkingLoader } from "./ThinkingLoader";
 import { Tooltip } from "./Tooltip";
@@ -78,109 +76,131 @@ export function ResearchColumns({
   );
 }
 
-// The research node: the repository it reads, a new question, which agent answers and on what
-// model and effort. It starts from the pick the frame last asked with, and goes back to it
-// whenever another question is asked.
+// Start an independent question from the frame and continue the conversation in its thread.
 function ResearchNode({ frameId, research }: { frameId: string; research: ResearchView }) {
   const options = useHouse((s) => s.research);
   const focused = useFocused(frameId, RESEARCH_NODE);
-  const [harness, setHarness] = useState<HarnessId>(research.harness);
-  const [pick, setPick] = useState<ModelPick>({ model: research.model, effort: research.effort });
   const [question, setQuestion] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [harness, setHarness] = useState(research.harness);
+  const [pick, setPick] = useState<ModelPick>({ model: research.model, effort: research.effort });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const settingsId = useId();
   const models = options?.models[harness];
+  const provider = options?.harnesses.find(h => h.id === harness);
+  const agent = provider?.title ?? AGENT_TITLES[harness];
+  const latest = research.conversations.findLast(c => !c.parent_id);
+  const ready = !!provider?.ready && !options?.discovery_only;
+  const canSend = ready && !!question.trim() && !sending;
 
   useEffect(() => {
-    if (!options) void useHouse.getState().loadResearch().catch(() => undefined);
+    if (!options) void useHouse.getState().loadResearch().catch(say);
   }, [options]);
 
-  useEffect(() => {
-    setHarness(research.harness);
-    setPick({ model: research.model, effort: research.effort });
-  }, [research.harness, research.model, research.effort]);
-
-  // models are each agent's own, so another agent starts on its default
-  const choose = (id: HarnessId) => {
-    if (id === harness) return;
-    setHarness(id);
-    setPick(DEFAULT_PICK);
+  const openConversation = (id: string) => {
+    const house = useHouse.getState();
+    house.focusOn({ task: frameId, node: id });
+    void house.openThread(id).catch(say);
   };
 
-  const ask = async () => {
-    const words = question.trim();
-    if (!words || busy) return;
-    setBusy(true);
+  const send = async () => {
+    if (!canSend) return;
+    setSending(true);
+    setError("");
     try {
-      await api.ask(frameId, { question: words, harness, ...shownPick(models, pick) });
+      const conversation = await api.ask(frameId, { question: question.trim(), harness, ...shownPick(models, pick) });
       setQuestion("");
-    } catch (error) {
-      say(error);
+      setSettingsOpen(false);
+      openConversation(conversation.id);
+    } catch (cause) {
+      setError((cause as Error).message);
     } finally {
-      setBusy(false);
+      setSending(false);
     }
   };
 
   return (
-    <article className="node research-node" data-node={RESEARCH_NODE} data-focus={focused || undefined} aria-label="Research">
+    <article className="node research-node" data-node={RESEARCH_NODE} data-focus={focused || undefined} aria-label="Research chat">
       <header className="node-head">
-        <span className="node-icon">
-          <Telescope size={16} />
-        </span>
-        <b>Research</b>
+        <span className="node-icon"><MessageSquare size={16} /></span>
+        <b>Research chat</b>
       </header>
       <div className="node-body">
-        <p className="repo-line" title={research.repo.path}>
-          <GitBranch size={13} />
-          <span>{research.repo.name}</span>
-          {research.repo.within && <span className="faint">in {research.repo.within}</span>}
-          {research.repo.branch && <span className="faint">{research.repo.branch}</span>}
-        </p>
-        <textarea
-          className="ask-box"
-          rows={2}
-          value={question}
-          placeholder={`Ask about ${research.repo.name || "the repository"}…`}
-          aria-label="A new question"
-          onChange={(e) => setQuestion(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void ask();
-            }
-          }}
-        />
-        {offersPicks(models) && <AgentModel models={models ?? []} pick={pick} disabled={busy} onChange={setPick} />}
-        <div className="ask-row">
-          <Agents value={harness} onChange={choose} known={options?.harnesses} />
-          <button type="button" className="btn primary" disabled={!question.trim() || busy} onClick={() => void ask()}>
-            <ArrowUp />
-            Ask
-          </button>
-        </div>
+        {research.repo.name && <section className="research-material">
+          <h4>Repositories</h4>
+          <div className="research-chat-repos">
+            <span className="chip" title={research.repo.path}><GitBranch /><span>{research.repo.name}</span>
+              {research.repo.within && <small>in {research.repo.within}</small>}
+              {research.repo.branch && <small>{research.repo.branch}</small>}
+            </span>
+            {research.repos?.slice(1).map(path => <span className="chip" key={path} title={path}><GitBranch /><span>{path.split("/").pop()}</span></span>)}
+          </div>
+        </section>}
+        {!!research.files?.length && <section className="research-material">
+          <h4>Attached files</h4>
+          <FileList files={research.files} title="Research files" />
+        </section>}
+        {research.source_notes?.trim() && <section className="research-material">
+          <h4>Notes and prior research</h4>
+          <div className="research-material-notes" role="region" aria-label="Notes and prior research" tabIndex={0}>{research.source_notes}</div>
+        </section>}
+        {latest && <button type="button" className="research-chat-preview" onClick={() => openConversation(latest.id)}>
+          <small>Recent conversation <ArrowUpRight size={13} /></small>
+          <span>{latest.follow_up || latest.question}</span>
+        </button>}
+        <form className="box research-chat-compose" aria-label="New research question" onSubmit={e => { e.preventDefault(); void send(); }}>
+          <textarea aria-label="Ask a question" rows={2}
+            placeholder={research.repos && research.repos.length > 1 ? "Ask about these repositories…" : `Ask about ${research.repo.name || "this repository"}…`}
+            value={question} readOnly={sending} onChange={e => { setQuestion(e.target.value); setError(""); }}
+            onKeyDown={e => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                e.currentTarget.form?.requestSubmit();
+              }
+            }} />
+          <div className="box-row">
+            <button type="button" className="research-chat-agent" aria-label="Research settings" aria-controls={settingsId}
+              aria-expanded={settingsOpen} title={[agent, pickLabel(models, pick)].filter(Boolean).join(" · ")}
+              onClick={() => setSettingsOpen(!settingsOpen)}>
+              <AgentMark mark={harness} size="sm" /><span>{agent}</span><ChevronDown size={14} />
+            </button>
+            <button type="submit" className="btn primary research-chat-send" aria-label="Send question" aria-busy={sending} disabled={!canSend}>
+              {sending ? <span className="spin" aria-hidden="true" /> : <ArrowUp />}{sending ? "Sending…" : "Send"}
+            </button>
+          </div>
+          <div id={settingsId} hidden={!settingsOpen} className="research-chat-settings">
+            <Agents value={harness} known={options?.harnesses} named onChange={id => { if (harness !== id) { setHarness(id); setPick(DEFAULT_PICK); } }} />
+            <AgentModel models={models ?? []} pick={pick} disabled={sending || !offersPicks(models)} onChange={setPick} />
+          </div>
+        </form>
+        {options && !ready && <p className="muted">{options.harnesses.some(h => h.ready) ? "Select an available agent in research settings." : "Research is unavailable in this workspace."}</p>}
+        {error && <p className="node-line warn" role="alert">{error}</p>}
       </div>
     </article>
   );
 }
 
 // Which agent answers, by its logo; one not installed on this computer can't be picked.
-function Agents({ value, onChange, known, named }: { value: HarnessId; onChange: (id: HarnessId) => void; known?: Harness[]; named?: boolean }) {
+function Agents({ value, onChange, known, named, selectable }: { value: HarnessId; onChange: (id: HarnessId) => void; known?: Harness[]; named?: boolean; selectable?: boolean }) {
   return (
     <div className={`agents ${named ? "named" : ""}`} role="radiogroup" aria-label="Which agent answers">
       {AGENTS.map((id) => {
-        const off = known ? !known.find((h) => h.id === id)?.ready : false;
+        const name = known?.find(h => h.id === id)?.title || AGENT_TITLES[id];
+        const off = !selectable && known ? !known.find((h) => h.id === id)?.ready : false;
         return (
           <button
             type="button"
             role="radio"
             key={id}
             aria-checked={value === id}
-            aria-label={AGENT_TITLES[id]}
+            aria-label={name}
             disabled={off}
-            title={off ? `${AGENT_TITLES[id]} isn't installed on this computer` : AGENT_TITLES[id]}
+            title={off ? `${AGENT_TITLES[id]} isn't installed on this computer` : name}
             onClick={() => onChange(id)}
           >
             <AgentMark mark={id} size="sm" />
-            {named && <span>{AGENT_TITLES[id]}</span>}
+            {named && <span>{name}</span>}
           </button>
         );
       })}
@@ -649,8 +669,23 @@ function Lineage({ steps }: { steps: Note["lineage"] }) {
 // the first question.
 export function ResearchStart({ channelId, anchor, onClose, onStarted }: { channelId: string; anchor: HTMLElement; onClose: () => void; onStarted?: () => void }) {
   const options = useHouse((s) => s.research);
+  const privateWorkspace = useHouse((s) => s.session?.authenticated);
+  const [repoError, setRepoError] = useState(false);
+  const listId = useId();
   const box = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
+  const picker = useRef<HTMLDivElement>(null);
+  const [selected, setSelected] = useState<RepoView[]>([]);
+  const [listOpen, setListOpen] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [files, setFiles] = useState<FileView[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
+  const channelTasks = useHouse(state => state.canvas[channelId]);
+  const previous = (channelTasks ?? []).flatMap(task =>
+    (task.research?.conversations ?? []).filter(c => c.answer).map(c => ({id:c.id, title:c.question, text:c.answer})));
+  const [priorIds, setPriorIds] = useState<string[]>([]);
   const ask = useRef<HTMLTextAreaElement>(null);
   const [query, setQuery] = useState("");
   const [repo, setRepo] = useState("");
@@ -666,22 +701,28 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
       .getState()
       .loadResearch()
       .then((found) => {
-        setRepo((r) => r || found.repos[0]?.path || "");
+
         setHarness((h) => (found.harnesses.find((x) => x.id === h)?.ready ? h : (found.harnesses.find((x) => x.ready)?.id ?? h)));
       })
-      .catch(say);
+      .catch(() => setRepoError(true));
   }, []);
 
-  // Below its button, moved up as far as it must to stay on screen. Its list keeps one height, so
-  // the card never grows or moves while someone searches and picks.
+  // Keep the entire dialog inside the viewport as its contents change.
   useLayoutEffect(() => {
-    const r = anchor.getBoundingClientRect();
-    const width = box.current?.offsetWidth ?? 380;
-    const height = box.current?.offsetHeight ?? 480;
-    setPlace({
-      top: Math.max(12, Math.min(r.bottom + 8, window.innerHeight - 12 - height)),
-      left: Math.max(12, Math.min(window.innerWidth - width - 12, r.left)),
-    });
+    const position = () => {
+      const r = anchor.getBoundingClientRect();
+      const width = box.current?.offsetWidth ?? 380;
+      const height = box.current?.offsetHeight ?? 480;
+      setPlace({
+        top: Math.max(12, Math.min(r.bottom + 8, window.innerHeight - 12 - height)),
+        left: Math.max(12, Math.min(window.innerWidth - width - 12, r.left)),
+      });
+    };
+    position();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(position) : null;
+    if (box.current) observer?.observe(box.current);
+    window.addEventListener("resize", position);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", position); };
   }, [anchor]);
 
   // The search takes the keyboard once, when the card is placed (a hidden field can't be focused).
@@ -691,10 +732,11 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
   }, [placed]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && isWorkspaceTarget(e.target) && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !e.defaultPrevented && isWorkspaceTarget(e.target) && onClose();
     const onDown = (e: PointerEvent) => {
       if (e.defaultPrevented || !isWorkspaceTarget(e.target)) return;
       const target = e.target as Node;
+      if (!picker.current?.contains(target)) setListOpen(false);
       if (!box.current?.contains(target) && !anchor.contains(target)) onClose();
     };
     window.addEventListener("keydown", onKey);
@@ -706,29 +748,49 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
   }, [anchor, onClose]);
 
   const wanted = query.trim().toLowerCase();
-  const shown = (options?.repos ?? []).filter((r) => r.name.toLowerCase().includes(wanted));
-  const folder = /[/~]/.test(query);
-  const chosen = folder && repo === query.trim() ? query.trim().split("/").filter(Boolean).pop() : options?.repos.find((r) => r.path === repo)?.name;
-  // A search that hides the picked repository picks its first match instead, so what will be read
-  // is always in sight; picking one, by click or Enter, moves on to the question.
-  const find = (text: string) => {
-    setQuery(text);
-    const matches = (options?.repos ?? []).filter((r) => r.name.toLowerCase().includes(text.trim().toLowerCase()));
-    if (!/[/~]/.test(text) && matches.length && !matches.some((r) => r.path === repo)) setRepo(matches[0].path);
-  };
-  const choose = (path: string) => {
-    setRepo(path);
+  const discoveryOnly = options?.discovery_only === true;
+  const shown = (options?.repos ?? []).filter(r => !selected.some(s => s.path === r.path) &&
+    (r.name.toLowerCase().includes(wanted) || (privateWorkspace && r.path.toLowerCase().includes(wanted))));
+  const folder = !privateWorkspace && /[/~]/.test(query);
+  const active = shown.find((r) => r.path === repo) ?? shown[0];
+  const provider = options?.harnesses.find(h => h.id === harness);
+  const providerName = provider?.title || AGENT_TITLES[harness];
+  const canStart = !!selected.length && !!question.trim() && !!provider?.ready && !discoveryOnly && !busy && !uploading;
+  const choose = (item: RepoView) => {
+    if (selected.length >= 8 || selected.some(r => r.path === item.path)) return;
+    setSelected([...selected, item]);
+    setQuery("");
+    setRepo("");
+    setListOpen(false);
     ask.current?.focus();
   };
+  const attach = async (picked: File[]) => {
+    if (!picked.length) return;
+    if (files.length + picked.length > 10 || picked.some(f => f.size > 64000 || !/\.(txt|md|rst|csv|json|log)$/i.test(f.name))) {
+      setError("Choose up to 10 text, Markdown, RST, CSV, JSON or log files, each up to 64 KB.");
+      return;
+    }
+    setError("");
+    setUploading(true);
+    try {
+      const uploaded = await api.upload(picked);
+      setFiles(current => [...current, ...uploaded]);
+    } catch (e) { setError((e as Error).message); }
+    finally { setUploading(false); }
+  };
   const start = async () => {
-    if (!repo || !question.trim() || busy) return;
+    if (!canStart) return;
+    const material = [notes.trim(), ...previous.filter(p => priorIds.includes(p.id)).map(p => p.title + "\n" + p.text)].filter(Boolean).join("\n\n");
+    if (material.length > 16000) { setError("Keep notes and prior research within 16,000 characters."); return; }
+    setError("");
     setBusy(true);
     try {
-      await api.openResearch(channelId, { repo, harness, question: question.trim(), ...shownPick(models, pick) });
+      await api.openResearch(channelId, { repo: selected[0].path, repos: selected.map(r => r.path),
+        harness, question: question.trim(), notes: material, files: files.map(f => f.id), ...shownPick(models, pick) });
       onStarted?.();
       onClose();
     } catch (error) {
-      say(error);
+      setError((error as Error).message);
     } finally {
       setBusy(false);
     }
@@ -743,65 +805,118 @@ export function ResearchStart({ channelId, anchor, onClose, onStarted }: { chann
       style={place ? { top: place.top, left: place.left } : { visibility: "hidden", top: 0, left: 0 }}
     >
       <h3>Research a repository</h3>
-      <label className="repo-find">
-        <Search size={14} />
-        <input
-          ref={search}
-          value={query}
-          placeholder="Find a repository"
-          aria-label="Find a repository"
-          onChange={(e) => find(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter") return;
-            e.preventDefault();
-            if (folder) choose(query.trim());
-            else if (repo) ask.current?.focus();
-          }}
-        />
-      </label>
-      <div className="repo-list" role="listbox" aria-label="Repositories">
-        {!options && <p className="muted">Looking for repositories…</p>}
-        {options && !shown.length && !folder && <p className="muted">No repository matches. Type a folder's path to research one inside a repository.</p>}
-        {folder && (
-          <button type="button" role="option" aria-selected={repo === query.trim()} title={query.trim()} onClick={() => choose(query.trim())}>
-            <FolderOpen size={14} />
-            <b>{query.trim().split("/").filter(Boolean).pop()}</b>
-            <small>this folder</small>
-          </button>
-        )}
-        {shown.map((r) => (
-          <button type="button" role="option" aria-selected={repo === r.path} key={r.path} title={r.path} onClick={() => choose(r.path)}>
-            <GitBranch size={14} />
-            <b>{r.name}</b>
-            <small>{r.branch}</small>
-          </button>
-        ))}
+      {selected.length > 0 && <div className="pending selected-repos" aria-label="Selected repositories">{selected.map(item =>
+        <button type="button" className="chip green" key={item.path} title={item.path} aria-label={`Remove ${item.path}`}
+          onClick={() => setSelected(selected.filter(r => r.path !== item.path))}><GitBranch aria-hidden="true" /><span>{item.name}</span><X aria-hidden="true" /></button>)}</div>}
+      <div className="repo-picker" ref={picker}>
+        <label className="repo-find">
+          <Search size={14} />
+          <input
+            ref={search}
+            value={query}
+            placeholder={selected.length ? "Add another repository…" : "Find a repository"}
+            aria-label="Find a repository"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-controls={listOpen ? listId : undefined}
+            aria-expanded={listOpen}
+            aria-activedescendant={listOpen && !folder && active ? `${listId}-${shown.indexOf(active)}` : undefined}
+            disabled={selected.length >= 8 || busy}
+            onClick={() => setListOpen(true)}
+            onBlur={() => setListOpen(false)}
+            onChange={(e) => {
+              setListOpen(true);
+              setQuery(e.target.value);
+              setRepo("");
+            }}
+            onKeyDown={(e) => {
+              if (listOpen && e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                setListOpen(false);
+                return;
+              }
+              if (!listOpen && ["ArrowDown", "ArrowUp", "Enter"].includes(e.key)) { e.preventDefault(); setListOpen(true); return; }
+              if ((e.key === "ArrowDown" || e.key === "ArrowUp") && active && !folder) {
+                e.preventDefault();
+                const next = (shown.indexOf(active) + (e.key === "ArrowDown" ? 1 : -1) + shown.length) % shown.length;
+                setRepo(shown[next].path);
+                document.getElementById(`${listId}-${next}`)?.scrollIntoView?.({block: "nearest"});
+                return;
+              }
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              if (folder) choose({path:query.trim(), name:query.trim().split("/").filter(Boolean).pop() || query.trim(), branch:""});
+              else if (active) choose(active);
+            }}
+          />
+        </label>
+        {listOpen && <div className="repo-list" onMouseDown={e => e.preventDefault()} id={listId} role="listbox" aria-label="Repositories">
+          {!options && (repoError ? <p role="alert">Couldn’t load repositories.</p> : <Skeleton label="Loading repositories" />)}
+          {options && !shown.length && !folder && (
+            <p className="muted">{discoveryOnly || options.provider_api ? "No matching repositories." : privateWorkspace
+              ? "Repository research is unavailable in private workspaces."
+              : "No repository matches. Type a folder's path to research one inside a repository."}</p>
+          )}
+          {folder && (
+            <button type="button" tabIndex={-1} role="option" aria-selected={repo === query.trim()} title={query.trim()} onClick={() => choose({path:query.trim(), name:query.trim().split("/").filter(Boolean).pop() || query.trim(), branch:""})}>
+              <FolderOpen size={14} />
+              <b>{query.trim().split("/").filter(Boolean).pop()}</b>
+              <small>this folder</small>
+            </button>
+          )}
+          {shown.map((r, index) => (
+            <button type="button" tabIndex={-1} role="option" id={`${listId}-${index}`} aria-selected={!folder && active?.path === r.path} key={r.path} title={r.path} onClick={() => choose(r)}>
+              <GitBranch size={14} />
+              <b>{r.name}</b>
+              <small>{discoveryOnly && r.path !== r.name ? r.path : r.branch}</small>
+            </button>
+          ))}
+        </div>}
       </div>
-      <Agents
-        value={harness}
-        onChange={(id) => {
-          setHarness(id);
-          setPick(DEFAULT_PICK);
-        }}
-        known={options?.harnesses}
-        named
-      />
-      {/* always there, so the card keeps its height as the agents and their models come in */}
-      <AgentModel models={models ?? []} pick={pick} disabled={busy || !offersPicks(models)} onChange={setPick} />
+      <div className="research-provider">
+        <Agents
+          value={harness}
+          onChange={(id) => {
+            setHarness(id);
+            setPick(DEFAULT_PICK);
+          }}
+          known={options?.harnesses}
+          named
+          selectable
+        />
+        <AgentModel models={models ?? []} pick={pick} disabled={busy || !offersPicks(models)} onChange={setPick} />
+        {options?.provider_api && !provider?.ready && <p className="pop-line">
+          Configure {harness === "claude" ? "ANTHROPIC_API_KEY" : harness === "kimi" ? "MOONSHOT_API_KEY" : "OPENAI_API_KEY"} to run {providerName}.
+        </p>}
+      </div>
       <textarea
         ref={ask}
         rows={3}
         value={question}
-        placeholder={chosen ? `What should it find out about ${chosen}?` : "What should it find out?"}
+        placeholder="What should it find out?"
         aria-label="The first question"
         onChange={(e) => setQuestion(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void start();
         }}
       />
+      <textarea aria-label="Notes and prior research" placeholder="Notes or prior research (optional)" rows={4}
+        maxLength={16000} value={notes} onChange={e => setNotes(e.target.value)} />
+      {previous.length > 0 && <details><summary>Add previous research</summary>{previous.map(p => <label key={p.id} className="research-prior">
+        <input type="checkbox" checked={priorIds.includes(p.id)} onChange={e => setPriorIds(e.target.checked ? [...priorIds,p.id] : priorIds.filter(id => id !== p.id))}/>{p.title}
+      </label>)}</details>}
+      <button type="button" className="btn" disabled={uploading || busy} onClick={() => fileInput.current?.click()}>
+        <Paperclip size={14}/>{uploading ? "Uploading…" : "Attach files"}
+      </button>
+      <input type="file" hidden multiple ref={fileInput} aria-label="Attach research files" accept=".txt,.md,.rst,.csv,.json,.log"
+        onChange={e => { const picked = Array.from(e.target.files ?? []); e.target.value = ""; void attach(picked); }} />
+      {!!files.length && <div className="pending">{files.map(file => <button key={file.id} className="chip" type="button"
+        aria-label={`Remove ${file.name}`} onClick={() => setFiles(files.filter(f => f.id !== file.id))}>{file.name}<X size={12}/></button>)}</div>}
+      {error && <p role="alert">{error}</p>}
       <div className="pop-actions">
-        <span className="faint">Read-only, on this computer</span>
-        <button type="button" className="btn primary" disabled={!repo || !question.trim() || busy} onClick={() => void start()}>
+        <span className="faint">{discoveryOnly ? "Local discovery only. Research runs are disabled." : options?.provider_api ? `Sends committed excerpts and supporting material to ${providerName}.` : "Read-only, on this computer"}</span>
+        <button type="button" className="btn primary" disabled={!canStart} onClick={() => void start()}>
           <Telescope />
           Start research
         </button>

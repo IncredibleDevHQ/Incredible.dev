@@ -2,7 +2,6 @@
 // from /api/stream are applied here, so every view follows the same state.
 import { create } from "zustand";
 import {
-  actAs,
   api,
   type Asset,
   type Board,
@@ -27,8 +26,8 @@ import {
 } from "./api";
 import { NO_FILTER, type BoardFilter } from "./production";
 
-export type Page = "channel" | "needs" | "production" | "brand" | "read-brand" | "skills" | "computer";
-// Where an episode opens: one of its chapters, at one of its lines ("" for the chapter's first).
+export type Page = "channel" | "needs" | "production" | "brand" | "read-brand" | "skills" | "computer" | "preferences" | "profile" | "usage" | "logs" | "organization";
+// Where an episode is open: one of its chapters and optionally a line.
 export type Landing = { chapter: string; line: string };
 // The sheet an episode is started from: open, with the research frame its notes come from if any.
 export type EpisodeStart = { frame?: string; title?: string; notes?: string };
@@ -73,7 +72,7 @@ export type State = {
   // board), the chapter it is on now (its address says so), and whether it is open as a peek:
   // over the page it was opened from, which Escape goes back to.
   landing: Landing | null;
-  episodeChapter: string;
+  episodeRecording: boolean;
   episodePeek: boolean;
   // What each turn under way is doing between its steps, by episode and lane ("<episode>:plan",
   // "<episode>:picture:<unit>") or by research conversation (`researchPulse`): told a second
@@ -100,7 +99,6 @@ export type State = {
   // a selection), until it is sent or taken off. One at a time: another Reply replaces it.
   replying: { thread: string; text: string } | null;
   boot: () => Promise<void>;
-  switchPerson: (id: string) => Promise<void>;
   openPage: (page: Page) => void;
   readBrandFor: (channelId: string | null) => void;
   openBrand: (slug: string) => void;
@@ -113,7 +111,7 @@ export type State = {
   pickTemplate: (pick: TemplatePick | null) => void;
   openPreview: (preview: OpenPreview | null) => void;
   openFiles: (viewing: OpenFiles | null) => void;
-  openEpisode: (id: string | null, landing?: Landing | null, peek?: boolean) => Promise<void>;
+  openEpisode: (id: string | null, landing?: Landing | null, peek?: boolean, recording?: boolean) => Promise<void>;
   setEpisode: (episode: EpisodeView) => void;
   // `quiet` for a read nobody asked for (the sidebar's count): one that fails says nothing
   loadProduction: (quiet?: boolean) => Promise<void>;
@@ -165,7 +163,7 @@ export const useHouse = create<State>((set, get) => ({
   episodeId: null,
   episode: null,
   landing: null,
-  episodeChapter: "",
+  episodeRecording: false,
   episodePeek: false,
   pulses: {},
   production: null,
@@ -188,14 +186,8 @@ export const useHouse = create<State>((set, get) => ({
     void get().loadProduction(true);
   },
 
-  async switchPerson(id) {
-    actAs(id);
-    const session = await api.session();
-    set({ session });
-  },
-
   openPage(page) {
-    set({ page, frameId: null });
+    set({ page: page === "profile" && !get().session?.authenticated ? "preferences" : page, frameId: null });
     if (page === "production") void get().loadProduction();
   },
 
@@ -282,21 +274,21 @@ export const useHouse = create<State>((set, get) => ({
     set({ viewing });
   },
 
-  async openEpisode(id, landing = null, peek = false) {
+  async openEpisode(id, landing = null, peek = false, recording = false) {
     if (!id) {
       const peeked = get().episodePeek;
-      set({ episodeId: null, episode: null, landing: null, episodeChapter: "", episodePeek: false });
+      set({ episodeId: null, episode: null, landing: null, episodeRecording: false, episodePeek: false });
       // what was done in the peek shows on the board it was opened from
       if (peeked) void get().loadProduction();
       return;
     }
     const kept = get().episode;
-    set({ episodeId: id, episode: kept?.id === id ? kept : null, landing, episodePeek: peek });
+    set({ episodeId: id, episode: kept?.id === id ? kept : null, landing, episodeRecording: recording, episodePeek: peek });
     try {
       const episode = await api.episode(id);
       if (get().episodeId === id) set({ episode });
     } catch (error) {
-      set({ episodeId: null, episode: null, landing: null, episodePeek: false, toast: (error as Error).message });
+      if (get().episodeId === id) set({ episodeId: null, episode: null, landing: null, episodeRecording: false, episodePeek: false, toast: (error as Error).message });
     }
   },
 

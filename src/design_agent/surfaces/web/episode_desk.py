@@ -36,6 +36,7 @@ import re
 import secrets
 import shlex
 import shutil
+import tempfile
 import threading
 import time
 from collections import Counter
@@ -80,7 +81,7 @@ from design_agent.surfaces.web.episode_workers import (
 from design_agent.surfaces.web.hub import Hub
 from design_agent.surfaces.web.store import Row, Store, new_id
 from design_agent.tools import local_speech
-from design_agent.workspace.manifest import ManifestBook
+from design_agent.workspace.manifest import BrandFor, BrandSnapshot, ManifestBook
 
 if TYPE_CHECKING:
     from design_agent.surfaces.web.agent import AgentHost
@@ -163,6 +164,8 @@ LINE_KINDS = ("more", "camera", *override.PICTURES)
 VOICES = ("live", "narrator", "local")
 #: A clone of a person's voice is made from their takes: this much speech at least, and no
 #: more than a clone uses. A take over the size ElevenLabs takes for one recording is left out.
+#: Keep previews and narration close to the speaker using Eleven v4’s similarity setting.
+CLONE_SIMILARITY = 0.9
 CLONE_LEAST = 30.0
 CLONE_ENOUGH = 180.0
 CLONE_TAKE_BYTES = 10 * 1024 * 1024
@@ -489,7 +492,7 @@ class EpisodeDesk:
         self._closing = False
         #: The brand pack a thread's channel wears (the app's brand shelf), or None for the
         #: configured one.
-        self.brand_for: Callable[[str], Path | None] | None = None
+        self.brand_for: BrandFor | None = None
         self._book: ManifestBook | None = None
         #: The ElevenLabs account's voices as last listed, and when (a monotonic time).
         self._listed: tuple[float, list[Voice]] | None = None
@@ -664,9 +667,11 @@ class EpisodeDesk:
         key = self._jev_key()
         return classifier.jev(key) if key else classifier.model(worker.complete)
 
-    def _brand_root(self, thread_id: str) -> Path | None:
+    def _brand_root(self, thread_id: str) -> Path | BrandSnapshot | None:
         """The brand pack a thread's work wears: its channel's, else the configured one."""
         folder = self.brand_for(thread_id) if self.brand_for is not None else None
+        if isinstance(folder, BrandSnapshot):
+            return folder
         if folder is None:
             folder = self.host.settings.resolved_brand_path(self.project_root)
         return folder if (folder / "brand.toml").is_file() else None
@@ -685,7 +690,11 @@ class EpisodeDesk:
             return picture.Look()
         from design_agent.surfaces.web.brands import brand_view
 
-        view = brand_view(root)
+        if isinstance(root, BrandSnapshot):
+            with root.open() as folder:
+                view = brand_view(folder)
+        else:
+            view = brand_view(root)
         roles = {str(r["role"]): str(r["value"]) for r in view.get("roles") or []}
         palette = dict(picture.PALETTE)
         for ours, theirs in (
@@ -784,7 +793,7 @@ class EpisodeDesk:
             for file_id in file_ids:
                 row = self.store.file(file_id)
                 if row is not None and str(row["name"]).lower().endswith(TEXT_FILES):
-                    body = (self.host.files_dir / row["rel_path"]).read_text("utf8", "replace")
+                    body = self.host.blobs.read(row).decode("utf8", "replace")
                     material.append(f"# {row['name']}\n\n{body}")
             if not material:
                 raise ValueError("An episode starts from material: paste notes or add a text file.")
@@ -2668,9 +2677,7 @@ class EpisodeDesk:
         for n, frame_id in enumerate(unit["frames"], start=1):
             row = self.store.file(stills.get(frame_id, ""))
             if row is not None:
-                images[f"pictures/{comp}.stills/{n}.png"] = (
-                    self.host.files_dir / row["rel_path"]
-                ).read_bytes()
+                images[f"pictures/{comp}.stills/{n}.png"] = self.host.blobs.read(row)
         if not images:
             return html, stills
         moving = await asyncio.to_thread(self._motion_frames, episode, unit, full, html)
@@ -3343,6 +3350,8 @@ class EpisodeDesk:
                 return_exceptions=True,
             )
             kept_at = kept if isinstance(kept, str) else ""
+            if isinstance(kept, BaseException):
+                raise kept
             if isinstance(made, BaseException):
                 raise made
             number, lines = self._chapter_of(self._episode(episode_id), chapter)
@@ -3496,6 +3505,17 @@ class EpisodeDesk:
         kept. With `move`, the recording is the house's own copy and is moved, not copied."""
         from design_agent.tools.footage import Bucket, FootageError
 
+        if self.host.blobs.backend == "s3":
+
+            def save_private() -> str:
+                filename = f"{take_id}.{_ending(name)}"
+                if isinstance(source, Path):
+                    with source.open("rb") as stream:
+                        return self.host.blobs.save_recording(filename, stream)
+                return self.host.blobs.save_recording(filename, source)
+
+            return await asyncio.to_thread(save_private)
+
         bucket = Bucket.from_settings(self.host.settings)
         if bucket is not None:
             key = f"episodes/{episode['id']}/takes/{take_id}.{_ending(name)}"
@@ -3550,7 +3570,7 @@ class EpisodeDesk:
         with a `guide` take, where that take begins in it (`sync`). The recording is copied
         across as a file, never held in memory: a camera's own runs to gigabytes."""
         computer = self._computer(episode)
-        folder = f"{PROJECTS}/{episode['id']}/takes"
+        folder = self._takes_folder(str(episode["id"]))
         src = f"{folder}/{take_id}.src.{_ending(name)}"
         brought = Brought(computer, folder, take_id, src)
         try:
@@ -3776,15 +3796,19 @@ class EpisodeDesk:
         (by the process it was left running as: a match on its name would match this too)."""
         computer = self._computer(episode)
         computer.run(
-            f"cd {PROJECTS}/{episode['id']}/takes 2>/dev/null || exit 0; "
+            f"cd {self._takes_folder(str(episode['id']))} 2>/dev/null || exit 0; "
             f'if [ -s {take_id}.pid ]; then p=$(cat {take_id}.pid); pkill -P "$p"; kill "$p"; fi '
             f"2>/dev/null; rm -f {take_id}.*",
             timeout=120,
         )
 
+    def _takes_folder(self, episode_id: str) -> str:
+        root = "/tmp/design-agent" if self.host.blobs.backend == "s3" else PROJECTS  # noqa: S108
+        return f"{root}/{episode_id}/takes"
+
     def _take_path(self, episode_id: str, take_id: str, kind: str) -> str:
         """Where a take's copy (`video`, `uhd` or `audio`) stays on the thread's computer."""
-        return f"{PROJECTS}/{episode_id}/takes/{take_id}.{COPIES[kind]}"
+        return f"{self._takes_folder(episode_id)}/{take_id}.{COPIES[kind]}"
 
     def _in_sandbox(
         self, computer: Computer, episode: Row, copies: Sequence[tuple[Row, str]]
@@ -3811,8 +3835,13 @@ class EpisodeDesk:
         sizes = {path: int(size) for size, path in re.findall(r"^(\d+) (\S+)$", listed, re.M)}
         for path, row in wanted.values():
             if sizes.get(path) != int(row["size"]):
-                with (self.host.files_dir / str(row["rel_path"])).open("rb") as copy_of:
-                    computer.put_stream(path, copy_of)
+                with self.host.blobs.open(row) as copy_of:
+                    if row.get("storage") == "s3":
+                        with tempfile.TemporaryFile() as stream:
+                            shutil.copyfileobj(copy_of, stream)
+                            computer.put_stream(path, stream)
+                    else:
+                        computer.put_stream(path, copy_of)
         return {key: path for key, (path, _) in wanted.items()}
 
     def keep_take(self, episode_id: str, take_id: str, *, keep: bool) -> Row:
@@ -3863,7 +3892,7 @@ class EpisodeDesk:
             for p in pictures
             if p["status"] in ("made", "go") and p["html"]
         )
-        spoken = sorted((k, v.get("h")) for k, v in self._voice(episode).items())
+        spoken = sorted((k, v.get("h")) for k, v in self._voice(episode, full).items())
         parts: list[Any] = [full.get("chapters"), full.get("brief"), takes, made, spoken]
         camera_frames = {
             f["id"] for _, _, f in plans.frames_of(full) if f.get("presence") in ("person", "both")
@@ -3943,10 +3972,18 @@ class EpisodeDesk:
         self._settle(episode_id)
         return self.view(episode_id)
 
+    def _clone_similarity(self, episode: Row, voice_id: str) -> float | None:
+        voice = self.store.voice_clone(voice_id) if voice_id else None
+        if voice and voice["channel_id"] == self._channel_of(episode):
+            return CLONE_SIMILARITY
+        return None
+
     def _speech_identity(self, episode: Row) -> str:
         if episode["settings"].get("voice") == "local":
             return f"local:{local_speech.engine()}:en:165:v1"
-        return self._voice_id(episode)
+        voice_id = self._voice_id(episode)
+        similarity = self._clone_similarity(episode, voice_id)
+        return f"{voice_id}:similarity:{similarity}" if similarity is not None else voice_id
 
     async def preview_clip(self, episode_id: str, unit_id: str) -> Row:
         """Play the saved artwork with this cut's narration or takes, including older silent clips."""
@@ -3963,14 +4000,7 @@ class EpisodeDesk:
             spans = (have.get("generation") or {}).get("clip_lines") or picture.clock(
                 unit, timeline.schedule(full)
             )["lines"]
-            identity = self._speech_identity(episode)
-            voice = self._voice(episode)
-            voice = {
-                f["id"]: voice[f["id"]]
-                for _, _, f in plans.frames_of(full)
-                if f["id"] in voice
-                and voice[f["id"]].get("h") == plans.digest(f.get("vo") or "", identity)
-            }
+            voice = self._voice(episode, full)
             takes = {t["id"]: t for t in self.store.takes(episode_id) if t["kept"]}
             clock = timeline.schedule(full, self._kept(episode_id), voice)
             segments = []
@@ -4026,7 +4056,7 @@ class EpisodeDesk:
             row = self.store.file(fid)
             if not row or row["thread_id"] != episode["thread_id"]:
                 raise ValueError("A preview source is unavailable.")
-            return (self.host.files_dir / str(row["rel_path"])).read_bytes()
+            return self.host.blobs.read(row)
 
         files = [(f"{folder}/art.mp4", file_bytes(clip))]
         inputs = ["-i art.mp4"]
@@ -4069,8 +4099,7 @@ class EpisodeDesk:
             await self._speak_lines(episode_id, chapter)
 
     async def _speak_lines(self, episode_id: str, chapter: str) -> None:
-        """Speak every line no take covers, when the film is narrated. A line is spoken once:
-        it is spoken again only when its words change."""
+        """Speak uncovered lines, reusing audio when the words and voice settings match."""
         episode = self._episode(episode_id)
         full = self._full(episode)
         mode = episode["settings"].get("voice")
@@ -4078,12 +4107,14 @@ class EpisodeDesk:
             return
         if mode == "narrator" and not self._speaks():
             raise ValueError("Narration needs ELEVENLABS_API_KEY.")
-        voice_id = self._speech_identity(episode)
-        if not voice_id:
+        identity = self._speech_identity(episode)
+        if not identity:
             raise ValueError("Narration needs a voice: pick one under Voice, or clone yours.")
         from design_agent.tools.media import MediaKeys, Spoken, speak
 
         keys = MediaKeys.from_settings(self.host.settings)
+        voice_id = self._voice_id(episode)
+        similarity = self._clone_similarity(episode, voice_id) if mode == "narrator" else None
         clock = timeline.schedule(full, self._kept(episode_id))
         lines = [f for _, _, f in plans.frames_of(full)]
         spoken: Row = dict((episode["film"] or {}).get("voice") or {})
@@ -4092,7 +4123,7 @@ class EpisodeDesk:
             if chapter and (line is None or line["chapter"] != chapter):
                 continue
             words = str(f.get("vo") or "")
-            mark = plans.digest(words, voice_id)
+            mark = plans.digest(words, identity)
             if line is None or line["source"]["kind"] == "take" or not words.strip():
                 continue
             if (spoken.get(f["id"]) or {}).get("h") == mark:
@@ -4105,6 +4136,7 @@ class EpisodeDesk:
                     keys,
                     words,
                     voice_id,
+                    similarity_boost=similarity,
                     previous_text=str(lines[i - 1].get("vo") or "") if i else None,
                     next_text=str(lines[i + 1].get("vo") or "") if i + 1 < len(lines) else None,
                 )
@@ -4140,15 +4172,19 @@ class EpisodeDesk:
             if t["kept"]
         ]
 
-    def _voice(self, episode: Row) -> Row:
-        """The narration there is, by line, when the film is narrated."""
+    def _voice(self, episode: Row, full: Row) -> Row:
+        """Cached narration that matches the current speaker, settings, and words."""
         mode = episode["settings"].get("voice")
         if mode not in ("local", "narrator"):
             return {}
+        identity = self._speech_identity(episode)
+        cached = (episode["film"] or {}).get("voice") or {}
         return {
-            k: v
-            for k, v in ((episode["film"] or {}).get("voice") or {}).items()
-            if v.get("mode", "narrator") == mode
+            f["id"]: clip
+            for _, _, f in plans.frames_of(full)
+            if (clip := cached.get(f["id"]))
+            and clip.get("mode", "narrator") == mode
+            and clip.get("h") == plans.digest(f.get("vo") or "", identity)
         }
 
     # -- the narrator's voice --------------------------------------------------------------------
@@ -4198,7 +4234,15 @@ class EpisodeDesk:
 
     @staticmethod
     def _voice_preview_url(episode_id: str, voice_id: str) -> str:
-        return f"/api/episodes/{episode_id}/voice/{voice_id}/preview"
+        return f"/api/episodes/{episode_id}/voice/{voice_id}/preview?similarity={CLONE_SIMILARITY}"
+
+    @staticmethod
+    def _voice_preview_name(voice_id: str) -> str:
+        return f"voice-preview-{voice_id}-similarity-{CLONE_SIMILARITY}.mp3"
+
+    def _current_voice_preview(self, voice: Row) -> bool:
+        file = self.store.file(voice["preview_file"]) if voice["preview_file"] else None
+        return file is not None and file["name"] == self._voice_preview_name(voice["id"])
 
     def _channel_voice(self, episode: Row, voice_id: str) -> Row:
         voice = self.store.voice_clone(voice_id)
@@ -4206,19 +4250,12 @@ class EpisodeDesk:
             raise KeyError(voice_id)
         return voice
 
-    def _voice_audio(self, voice: Row) -> Path | None:
+    def channel_voice_file(self, episode_id: str, voice_id: str) -> Row:
+        voice = self._channel_voice(self._episode(episode_id), voice_id)
         file = self.store.file(voice["preview_file"]) if voice["preview_file"] else None
-        if file:
-            path = (self.host.files_dir / str(file["rel_path"])).resolve()
-            if self.host.files_dir.resolve() in path.parents and path.is_file():
-                return path
-        return None
-
-    def channel_voice_audio(self, episode_id: str, voice_id: str) -> Path:
-        path = self._voice_audio(self._channel_voice(self._episode(episode_id), voice_id))
-        if path is None:
+        if file is None:
             raise KeyError(voice_id)
-        return path
+        return file
 
     async def preview_channel_voice(self, episode_id: str, voice_id: str) -> Row:
         """Generate one reusable sample on request for a voice saved in the episode's channel."""
@@ -4227,19 +4264,20 @@ class EpisodeDesk:
         gate = self._gates.setdefault(f"voice-preview:{voice_id}", asyncio.Semaphore(1))
         async with gate:
             voice = self._channel_voice(episode, voice_id)
-            if self._voice_audio(voice) is None:
+            if not self._current_voice_preview(voice):
                 from design_agent.tools.media import MediaKeys, speak
 
                 said = await speak(
                     MediaKeys.from_settings(self.host.settings),
                     "Here’s how this voice sounds. A clear explanation starts with one good question.",
                     voice_id,
+                    similarity_boost=CLONE_SIMILARITY,
                 )
                 if isinstance(said, str):
                     raise ValueError(said)
                 file = self.host.save_file(
                     str(episode["thread_id"]),
-                    f"voice-preview-{voice_id}.mp3",
+                    self._voice_preview_name(voice_id),
                     said.audio,
                     origin="episode",
                 )
@@ -4259,7 +4297,7 @@ class EpisodeDesk:
             row = self.store.file(str(take["audio"])) if take["kept"] and take["audio"] else None
             if row is None or int(row["size"]) > CLONE_TAKE_BYTES:
                 continue
-            samples.append((str(row["name"]), (self.host.files_dir / row["rel_path"]).read_bytes()))
+            samples.append((str(row["name"]), self.host.blobs.read(row)))
             seconds += float(take["seconds"])
         return samples, seconds
 
@@ -4378,7 +4416,7 @@ class EpisodeDesk:
         attempt = new_id("render")
         folder = f"{PROJECTS}/{episode_id}/{attempt}/film"
         kept = [t for t in self.store.takes(episode_id) if t["kept"]]
-        spoken = self._voice(episode)
+        spoken = self._voice(episode, full)
         clock = timeline.schedule(full, kept, spoken)
         self._room_for(computer, size, float(clock["total"]))
         media: list[tuple[str, bytes]] = []
@@ -4391,7 +4429,7 @@ class EpisodeDesk:
                 media.append(
                     (
                         f"{folder}/{voice[frame_id]}",
-                        (self.host.files_dir / row["rel_path"]).read_bytes(),
+                        self.host.blobs.read(row),
                     )
                 )
 
@@ -4786,18 +4824,12 @@ class EpisodeDesk:
         pictures = {p["unit"]: p for p in self.store.pictures(episode_id)}
         said_now = {str(f["id"]): f for _, _, f in plans.frames_of(full or {})}
         kept = self._kept(episode_id)
-        spoken = self._voice(episode)
+        spoken = self._voice(episode, full or {})
         clock = timeline.schedule(full, kept, spoken) if full is not None else None
         if clock and spoken:
-            identity = self._speech_identity(episode)
             for line in clock["lines"]:
                 clip = spoken.get(line["frame"], {})
-                text = said_now[line["frame"]].get("vo") or ""
-                if (
-                    line["source"]["kind"] == "voice"
-                    and clip.get("file")
-                    and clip.get("h") == plans.digest(text, identity)
-                ):
+                if line["source"]["kind"] == "voice" and clip.get("file"):
                     line["audio_url"] = f"/api/files/{clip['file']}"
         film_state = {k: v for k, v in (episode["film"] or {}).items() if k != "voice"}
         picture_rows = list(pictures.values())
@@ -4872,7 +4904,7 @@ class EpisodeDesk:
                     **self._clone_pick(voice),
                     **(
                         {"preview": self._voice_preview_url(episode_id, voice["id"])}
-                        if voice["preview_file"]
+                        if self._current_voice_preview(voice)
                         else {}
                     ),
                 }
@@ -5085,7 +5117,7 @@ class EpisodeDesk:
         options = self.options()
         generation = _remembered(self._generation)
         channels = {str(c["id"]): str(c["name"]) for c in self.store.channels()}
-        brands: dict[Path | None, picture.Look] = {}
+        brands: dict[Path | str | None, picture.Look] = {}
         episodes: list[Row] = []
         jobs: list[Row] = []
         made: list[tuple[str, float, float]] = []
@@ -5171,7 +5203,7 @@ class EpisodeDesk:
         self,
         episode: Row,
         pictures: Sequence[Row],
-        brands: dict[Path | None, picture.Look],
+        brands: dict[Path | str | None, picture.Look],
         generation: Generation,
     ) -> list[Row]:
         """A job for each picture of an episode's plan, in the film's order. `brands` keeps
@@ -5180,9 +5212,10 @@ class EpisodeDesk:
         if full is None:
             return []
         root = self._brand_root(str(episode["thread_id"]))
-        if root not in brands:
-            brands[root] = self._brand_look(episode)
-        look = self._look(episode, brands[root])
+        key = root.version if isinstance(root, BrandSnapshot) else root
+        if key not in brands:
+            brands[key] = self._brand_look(episode)
+        look = self._look(episode, brands[key])
         have = {str(p["unit"]): p for p in pictures}
         # every line, with the number of its beat in its chapter
         lines = {

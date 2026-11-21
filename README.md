@@ -186,8 +186,14 @@ Optional settings in `.env` (see [`.env.example`](.env.example)):
 | `ELEVENLABS_API_KEY` | narration and voice clones for lines no take covers |
 | `DESIGN_AGENT_FOOTAGE_BUCKET` | every recording kept as it arrived, in S3 or MinIO |
 
-The app has no sign-in yet. It serves 127.0.0.1 only and takes the person from a request header,
-so don't expose it on a network.
+To run the frontend and backend together in Docker with Supabase login and PostgreSQL, use the root
+`compose.yaml`: generate MinIO credentials with `uv run python scripts/setup_minio.py`, then
+`docker compose up -d --build --wait`. See [local Compose setup](docs/local-compose.md)
+for first-time environment settings, existing data, backups and container limitations.
+
+The Docker app uses [Supabase Auth and private workspaces](docs/supabase.md). The native
+development app without Supabase configuration still uses local identity headers and SQLite;
+keep that developer mode on 127.0.0.1. The Compose setup also remains localhost-only.
 
 ## How it's built
 

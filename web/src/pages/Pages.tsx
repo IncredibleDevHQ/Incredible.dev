@@ -1,3 +1,4 @@
+import { Skeleton } from "../components/Skeleton";
 // What the agent works with, and what waits on people. Each page is one piece of the design
 // agent's system map made visible: the brand pack it is staged with, the skills it routes
 // through, the computer it works on, and the threads whose work waits on a person.
@@ -57,10 +58,13 @@ const ROUTER = new Set(["media-production", "content-brief"]);
 const JUDGMENT = new Set(["brand-design", "design-wiki", "visual-verify", "motion-direction", "canvas"]);
 
 export function Skills() {
-  const [skills, setSkills] = useState<SkillView[]>([]);
+  const [skills, setSkills] = useState<SkillView[] | null>(null);
+  const [error, setError] = useState(false);
   useEffect(() => {
-    void api.skills().then(setSkills);
+    void api.skills().then(setSkills).catch(() => setError(true));
   }, []);
+  if (error) return <section className="page" role="alert">Couldn’t load skills.</section>;
+  if (!skills) return <section className="page"><Skeleton label="Loading skills" shape="cards" /></section>;
   const groups: [string, string, SkillView[]][] = [
     ["Routing", "Opened first for every ask: picks the workflow from what the person will receive.", skills.filter((s) => ROUTER.has(s.name))],
     ["Making", "One per kind of output: stills, decks, charts, images, GIFs, thumbnails, storyboards, films, sound.", skills.filter((s) => !ROUTER.has(s.name) && !JUDGMENT.has(s.name) && !s.vendored)],
@@ -92,11 +96,13 @@ export function Skills() {
 }
 
 export function Computer() {
+  const [error, setError] = useState(false);
   const [info, setInfo] = useState<ComputerView | null>(null);
   useEffect(() => {
-    void api.computer().then(setInfo);
+    void api.computer().then(setInfo).catch(() => setError(true));
   }, []);
-  if (!info) return <section className="page" />;
+  if (error) return <section className="page" role="alert">Couldn’t load computer details.</section>;
+  if (!info) return <section className="page"><Skeleton label="Loading computer" shape="cards" /></section>;
   const pinned = Object.entries(info.pinned);
   return (
     <section className="page" aria-labelledby="computer-title">

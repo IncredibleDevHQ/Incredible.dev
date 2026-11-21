@@ -31,6 +31,7 @@ test("voice setup records locally, requires consent, uploads the sample and dism
   await page.mouse.click(2, 2);
   await dialog.waitFor({ state: "detached" });
   await page.getByRole("button", {name:"Open voice setup"}).click();
+  await page.getByText(/speak in your natural accent/i).waitFor();
   const record = page.getByRole("button", {name:"Record sample"});
   await record.click();
   await page.getByText("Recording · 0:01", {exact:true}).waitFor();

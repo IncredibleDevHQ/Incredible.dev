@@ -38,6 +38,7 @@ coverage.xml
 
 # Creative House: the web app's own data, and the app's build
 workspace/house/
+workspace/accounts/
 workspace/brands/
 web/node_modules/
 web/dist/

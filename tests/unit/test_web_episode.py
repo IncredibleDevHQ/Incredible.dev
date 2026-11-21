@@ -3438,21 +3438,31 @@ def test_the_app_serves_an_episode_at_every_address(tmp_path: Path) -> None:
         assert kinds[EPISODE]["studio"] is True
 
 
+def _episode_ready_to_record(client: TestClient) -> dict[str, Any]:
+    host = client.app.state.host  # type: ignore[attr-defined]
+    desk = host.episodes
+    desk.workers[DEMO] = DemoWorker(
+        data_dir=desk.data_dir, script=SCRIPT, pause=0, store=host.store
+    )
+    channel = client.get("/api/channels").json()[0]["id"]
+    made = client.post(
+        f"/api/channels/{channel}/episodes",
+        json={"title": "One idea", "text": NOTES, "settings": {"writer": DEMO}},
+    )
+    assert made.status_code == 200, made.text
+    episode_id = made.json()["id"]
+    assert client.portal is not None
+    client.portal.call(settle, lambda: not desk.planning(episode_id))
+    view = client.get(f"/api/episodes/{episode_id}").json()
+    assert view["status"] == "plan", view["stage"]
+    return view
+
+
 def test_a_take_is_read_from_disk_and_a_voice_needs_a_key_and_a_yes(tmp_path: Path) -> None:
     settings = Settings(_env_file=None, workspace_root=tmp_path / "workspace", sandbox="host")
     with TestClient(create_app(ROOT, settings, demo=True)) as client:
-        channel = client.get("/api/channels").json()[0]["id"]
-        made = client.post(
-            f"/api/channels/{channel}/episodes",
-            json={"title": "One idea", "text": NOTES, "settings": {"writer": DEMO}},
-        )
-        episode_id = made.json()["id"]
-        until = time.time() + 30
-        while time.time() < until:
-            view = client.get(f"/api/episodes/{episode_id}").json()
-            if view["status"] != "planning":
-                break
-            time.sleep(0.05)
+        view = _episode_ready_to_record(client)
+        episode_id = view["id"]
         chapter = view["plan"]["chapters"][0]["id"]
         lines = [f["id"] for b in view["plan"]["chapters"][0]["beats"] for f in b["frames"]]
         desk = client.app.state.host.episodes  # type: ignore[attr-defined]
@@ -3498,12 +3508,10 @@ def test_a_take_is_read_from_disk_and_a_voice_needs_a_key_and_a_yes(tmp_path: Pa
         )
         assert brought.status_code == 200, brought.text
         assert [i["chapter"] for i in brought.json()["imports"]] == [chapter]
-        until = time.time() + 10
-        while time.time() < until:
-            view = client.get(f"/api/episodes/{episode_id}").json()
-            if not view["imports"]:
-                break
-            time.sleep(0.05)
+        assert client.portal is not None
+        client.portal.call(settle, lambda: not desk._busy(episode_id))
+        view = client.get(f"/api/episodes/{episode_id}").json()
+        assert not view["imports"]
         camera = view["takes"][-1]
         assert len(view["takes"]) == 2 and camera["kept"] and camera["seconds"] == 30.0
         assert [m["frame"] for m in camera["marks"]] == lines
@@ -3571,18 +3579,8 @@ def test_a_cards_clips_are_listed_and_only_those_are_brought_in(tmp_path: Path) 
         assert listed["folders"] == [str(tmp_path / "Volumes")]
         ((clip),) = listed["clips"]
         assert (clip["name"], clip["card"], clip["seconds"]) == ("C0001.MP4", "UNTITLED", 42.0)
-        channel = client.get("/api/channels").json()[0]["id"]
-        made = client.post(
-            f"/api/channels/{channel}/episodes",
-            json={"title": "One idea", "text": NOTES, "settings": {"writer": DEMO}},
-        )
-        episode_id = made.json()["id"]
-        until = time.time() + 30
-        while time.time() < until:
-            view = client.get(f"/api/episodes/{episode_id}").json()
-            if view["status"] != "planning":
-                break
-            time.sleep(0.05)
+        view = _episode_ready_to_record(client)
+        episode_id = view["id"]
         chapter = view["plan"]["chapters"][0]["id"]
         desk = client.app.state.host.episodes  # type: ignore[attr-defined]
         held = asyncio.Event()
@@ -4271,6 +4269,37 @@ async def test_local_chapter_preview_caches_only_its_lines_and_serializes_reques
     assert not desk.view(ep)["film_state"]["file"]
 
 
+async def test_speech_only_overrides_voice_similarity_when_requested(monkeypatch):
+    import httpx
+
+    from design_agent.tools import media
+
+    requests = []
+
+    async def request(key, path, name, body, output_format, *, timeout):
+        requests.append((path, body))
+        return httpx.Response(200, json={"audio_base64": "bXAz"})
+
+    monkeypatch.setattr(media, "_elevenlabs_request", request)
+    keys = media.MediaKeys.from_settings(Settings(_env_file=None))
+    voice = "testvoice00001"
+    assert isinstance(
+        await media.speak(keys, "A sample", voice, similarity_boost=0.9), media.Spoken
+    )
+    assert isinstance(await media.speak(keys, "A sample", voice), media.Spoken)
+    assert requests == [
+        (
+            f"text-to-speech/{voice}/with-timestamps",
+            {
+                "text": "A sample",
+                "model_id": "eleven_v4",
+                "voice_settings": {"similarity_boost": 0.9},
+            },
+        ),
+        (f"text-to-speech/{voice}/with-timestamps", {"text": "A sample", "model_id": "eleven_v4"}),
+    ]
+
+
 async def test_cloned_voice_narrates_only_the_requested_chapter(
     house: AgentHost, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -4289,7 +4318,8 @@ async def test_cloned_voice_narrates_only_the_requested_chapter(
         assert name == "My test voice" and samples == [("sample.wav", b"sample")]
         return media.Cloned(voice_id, False)
 
-    async def speak(keys, words, selected, **unused):
+    async def speak(keys, words, selected, **options):
+        assert options["similarity_boost"] == 0.9
         said.append((words, selected))
         return media.Spoken(b"mp3", 2.0, [])
 
@@ -4298,6 +4328,21 @@ async def test_cloned_voice_narrates_only_the_requested_chapter(
     await desk.clone(
         ep, by="you", name="My test voice", consent=True, sample=("sample.wav", b"sample")
     )
+    planned_chapter = desk.view(ep)["plan"]["chapters"][0]
+    line = planned_chapter["beats"][0]["frames"][0]
+    house.store.update_episode(
+        ep,
+        film={
+            "voice": {
+                line["id"]: {
+                    "file": "old-preview",
+                    "seconds": 14.0,
+                    "h": plans.digest(line["vo"], voice_id),
+                }
+            }
+        },
+    )
+    assert not desk.view(ep)["clock"]["lines"][0].get("audio_url")
     view = await desk.preview_voice(ep, chapter)
     assert view["settings"]["cloned_voice"]["id"] == voice_id
     lines = view["clock"]["lines"]
@@ -4328,7 +4373,8 @@ async def test_channel_clones_can_be_selected_and_sampled_once(house, monkeypatc
     async def clone(*args, **kwargs):
         return media.Cloned(next(ids), False)
 
-    async def speak(keys, text, voice):
+    async def speak(keys, text, voice, **options):
+        assert options["similarity_boost"] == 0.9
         spoken.append(voice)
         return media.Spoken(b"sample audio", 2, [])
 
@@ -4348,12 +4394,15 @@ async def test_channel_clones_can_be_selected_and_sampled_once(house, monkeypatc
         desk.choose(other, by="you", change=pick)
     with pytest.raises(KeyError):
         await desk.preview_channel_voice(other, voice["id"])
+    earlier = house.save_file("", f"voice-preview-{voice['id']}.mp3", b"old", origin="episode")
+    house.store.save_voice_preview(voice["id"], earlier["id"])
+    assert not any(v.get("preview") for v in desk.view(second)["channel_voices"])
     await asyncio.gather(*(desk.preview_channel_voice(second, voice["id"]) for _ in range(2)))
     assert spoken == [voice["id"]]
     assert any(v.get("preview") for v in desk.view(second)["channel_voices"])
-    assert desk.channel_voice_audio(second, voice["id"]).read_bytes() == b"sample audio"
+    assert house.blobs.read(desk.channel_voice_file(second, voice["id"])) == b"sample audio"
     with pytest.raises(KeyError):
-        desk.channel_voice_audio(other, voice["id"])
+        desk.channel_voice_file(other, voice["id"])
     old = desk.view(second)
     legacy = {"id": "testoldvoice00", "name": "Legacy voice", "verify": True}
     house.store.update_episode(second, settings={**old["settings"], "cloned_voice": legacy})
@@ -5411,3 +5460,77 @@ async def test_the_built_in_agent_builds_one_picture_at_a_time_across_the_house(
     await settle(lambda: not desk._busy(one) and not desk._busy(two))
     built = [house.store.picture(episode_id, unit) for episode_id in (one, two)]
     assert [(p["status"], p["builder"]) for p in built if p] == [("made", BUILTIN)] * 2
+
+
+async def test_private_storage_keeps_original_take_under_its_account_and_refuses_failed_save(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from design_agent.surfaces.web.blobs import BlobFiles, StorageUnavailable
+
+    class Storage:
+        def __init__(self):
+            self.stored: dict[str, bytes] = {}
+            self.offline = False
+
+        def upload_fileobj(self, source, bucket, key, **kwargs):
+            assert bucket == "recordings"
+            if self.offline:
+                raise OSError("offline")
+            self.stored[key] = source.read()
+
+    client = Storage()
+    namespace = "a" * 32
+    house.blobs = BlobFiles(
+        Settings(_env_file=None, blob_backend="s3", s3_bucket="recordings"),
+        house.files_dir,
+        namespace,
+        client=client,
+    )
+    episode_id = await planned(house)
+    chapter = house.episodes.view(episode_id)["plan"]["chapters"][0]["id"]
+    monkeypatch.setattr(
+        house.episodes, "_cut", lambda *args: {"video": "", "audio": "", "uhd": "", "seconds": 15}
+    )
+
+    async def record(data: bytes):
+        return await house.episodes.add_take(
+            episode_id, by="you", chapter=chapter, name="original.mp4", source=io.BytesIO(data)
+        )
+
+    await record(b"original take")
+    (take,) = house.store.takes(episode_id)
+    (key,) = client.stored
+    assert key.startswith(f"accounts/{namespace}/blobs/")
+    assert take["raw"] == f"s3://recordings/{key}"
+    assert client.stored[key] == b"original take"
+    assert not list(house.files_dir.rglob("*.mp4"))
+
+    client.offline = True
+    with pytest.raises(StorageUnavailable):
+        await record(b"failed retake")
+    assert house.store.takes(episode_id) == [take]
+
+
+async def test_episode_reads_material_and_take_audio_through_blob_storage(
+    house: AgentHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    channel = house.store.channels()[0]["id"]
+    material = house.save_file("", "source.md", b"Useful material", origin="upload")
+    material_path = house.files_dir / material["rel_path"]
+    material_path.unlink()
+    monkeypatch.setattr(house.blobs, "read", lambda row: b"Useful material")
+    view = house.episodes.create(
+        channel, by="you", file_ids=[material["id"]], settings={"writer": DEMO}
+    )
+    assert "Useful material" in house.store.episode(view["id"])["material"]
+    house.store.add_take(
+        {
+            "episode_id": view["id"],
+            "chapter": "c1",
+            "frame": "",
+            "seconds": 8,
+            "audio": material["id"],
+            "added_by": "you",
+        }
+    )
+    assert house.episodes._samples(view["id"]) == ([("source.md", b"Useful material")], 8)

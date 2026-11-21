@@ -14,6 +14,7 @@ import uvicorn
 
 from design_agent.config import Settings, project_root
 from design_agent.surfaces.web.app import create_app
+from design_agent.surfaces.web.auth import Tenants
 from design_agent.surfaces.web.hub import Hub
 
 #: How long a stopping house waits for requests still open, once it has ended every page's live
@@ -26,7 +27,7 @@ class House(uvicorn.Server):
     ends on its own, so the stop would otherwise wait on each open tab, still pinging the pages
     it has while refusing every new request. Ended, each page sees the house go (`live.ts`)."""
 
-    def __init__(self, config: uvicorn.Config, hub: Hub) -> None:
+    def __init__(self, config: uvicorn.Config, hub: Hub | Tenants) -> None:
         super().__init__(config)
         self.hub = hub
 
@@ -41,18 +42,22 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
-    app = create_app(project_root(), Settings(), demo=args.demo)
+    settings = Settings()
+    app = create_app(project_root(), settings, demo=args.demo)
     config = uvicorn.Config(
         app,
         host=args.host,
         port=args.port,
         log_level="info",
+        # OAuth callback URLs contain short-lived credentials.
+        access_log=not (settings.auth_required or settings.supabase_url),
         timeout_graceful_shutdown=STOP_SECONDS,
     )
     # A stop by Ctrl-C ends as `uvicorn.run` ends one: the server raises it again once it has
     # shut down, and it ends the process quietly.
     with contextlib.suppress(KeyboardInterrupt):
-        House(config, app.state.host.hub).run()
+        streams = getattr(app.state, "tenants", None) or app.state.host.hub
+        House(config, streams).run()
 
 
 if __name__ == "__main__":

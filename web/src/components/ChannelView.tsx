@@ -1,3 +1,4 @@
+import { Skeleton } from "./Skeleton";
 // A channel: its threads as a chat, or its tasks laid out on the canvas, and the brand its work
 // wears.
 import { LayoutDashboard, MessagesSquare } from "lucide-react";
@@ -44,7 +45,7 @@ export function ChannelView() {
         <Canvas channelId={channel.id} />
       ) : (
         <div className="feed" ref={feed}>
-          {list.length === 0 ? (
+          {!roots[channel.id] ? <Skeleton label="Loading messages" /> : list.length === 0 ? (
             <ChannelStart channel={channel} inChat />
           ) : (
             list.map((m) => <Root key={m.id} message={m} />)

@@ -1,6 +1,6 @@
 // The engine's web API (src/design_agent/surfaces/web/app.py), typed.
 
-export type Person = { id: string; name: string; initials: string; hue: number; agent: boolean };
+export type Person = { avatar_file?: string; id: string; name: string; initials: string; hue: number; agent: boolean };
 export type Channel = {
   id: string;
   name: string;
@@ -179,13 +179,13 @@ export type ThreadDetail = {
 // Research on this computer: a coding agent (Claude Code, Codex, Kimi Code) answering questions
 // about one of your repositories, read-only, and the notes kept from its answers.
 export type HarnessId = "claude" | "codex" | "kimi";
-export type Harness = { id: HarnessId; title: string; ready: boolean };
+export type Harness = { id: HarnessId; title: string; ready: boolean; model?: string };
 export type RepoView = { name: string; path: string; branch: string; within?: string };
 // Where a note came from, from the repository down to the conversation it was kept from.
 export type LineageStep = { kind: "repo" | "conversation" | "follow_up"; label: string; detail?: string; harness?: HarnessId; id?: string };
 // What can be asked, of what: each agent, the models and efforts each one that is ready offers
 // (its own default first), and the repositories on this computer.
-export type ResearchOptions = { harnesses: Harness[]; models: Partial<Record<HarnessId, ModelOption[]>>; repos: RepoView[] };
+export type ResearchOptions = { provider_api?: boolean; discovery_only?: boolean; harnesses: Harness[]; models: Partial<Record<HarnessId, ModelOption[]>>; repos: RepoView[] };
 export type Conversation = {
   id: string;
   parent_id: string;
@@ -217,7 +217,7 @@ export type Note = {
 };
 // A research frame. `harness`, `model` and `effort` are what its node asks its next question of:
 // the last it asked (an empty model or effort is the agent's own default).
-export type ResearchView = { repo: RepoView; harness: HarnessId; model: string; effort: string; conversations: Conversation[]; notes: Note[] };
+export type ResearchView = { repo: RepoView; repos?: string[]; files?: FileView[]; source_notes?: string; harness: HarnessId; model: string; effort: string; conversations: Conversation[]; notes: Note[] };
 export type ConversationRow = { id: string; frame_id: string; parent_id: string; quote: string; harness: HarnessId; model: string; effort: string; repo: string };
 export type CanvasTask = {
   thread: Thread;
@@ -627,6 +627,11 @@ export type EpisodeChoices = {
   builders?: Record<string, WriterId | null>;
 };
 export type Session = {
+  projectId?: string;
+  projectUrl?: string;
+  email?: string | null;
+  organizationName?: string;
+  authenticated?: boolean;
   me: string;
   people: Person[];
   agent: { mark: string; model: string };
@@ -695,24 +700,17 @@ export type ComputerView = {
   keys_inside: boolean;
 };
 
-let person = localStorage.getItem("house:person") || "you";
+const person = "you";
 export const actingAs = () => person;
-export function actAs(id: string) {
-  person = id;
-  try {
-    localStorage.setItem("house:person", id);
-  } catch {
-    /* storage unavailable */
-  }
-}
 
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request(method: string, path: string, body?: unknown): Promise<Response> {
   const response = await fetch(path, {
     method,
     headers: { "X-Person": person, ...(body instanceof FormData || body === undefined ? {} : { "Content-Type": "application/json" }) },
     body: body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) {
+    if (response.status === 401) window.dispatchEvent(new Event("incredible:signout"));
     let detail = response.statusText;
     try {
       detail = (await response.json()).detail ?? detail;
@@ -721,8 +719,22 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     }
     throw new Error(typeof detail === "string" ? detail : "Request failed");
   }
-  return (await response.json()) as T;
+  return response;
 }
+
+async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  return (await (await request(method, path, body)).json()) as T;
+}
+
+export type UsagePeriod = "today" | "week" | "month";
+export type UsageCounts = {calls: number; input_tokens: number; output_tokens: number; usd: number; unpriced: number};
+export type UsageReport = {
+  totals: UsageCounts;
+  series: (UsageCounts & {at: number})[];
+  models: (UsageCounts & {model: string})[];
+};
+export type ChatDefaults = { options: { id:string; provider:string; name:string; default_effort?:string; efforts:string[] }[]; default:string; model:string; effort:string };
+export type Organization = { name: string; website: string; description: string };
 
 function voiceCloneForm(clone: VoiceCloneInput): FormData {
   const form = new FormData();
@@ -732,7 +744,46 @@ function voiceCloneForm(clone: VoiceCloneInput): FormData {
   return form;
 }
 
+export type VoiceTestClip = {text?: string | null; id: string; name: string; expires_at: number};
+
+export type AccountDetails = {first_name?:string; last_name?:string; username?:string | null};
+export type Team = {project:string; personal_url:string; owner:string; can_manage:boolean; members:{id:string;email:string;member:string|null;invite_url?:string}[];
+  incoming:{id:string;email:string;owner:string;member:string|null;url:string}[]};
+export type ActivityLog = {actors:{actor:string;email:string}[]; events:{id:string;duration_ms?:number|null;member_email?:string|null;actor:string;actor_email:string;action:string;happened:number;status:number}[];more:boolean};
+
 export const api = {
+  accountDetails: () => call<AccountDetails>("GET","/api/account/details"),
+  saveAccountDetails: (body:AccountDetails) => call<AccountDetails>("PUT","/api/account/details",body),
+  team: () => call<Team>("GET","/api/team"),
+  invite: (email:string) => call<{id:string;invite_url:string;email_sent:boolean}>("POST","/api/team/invite",{email}),
+  removeMember: (id:string) => call("DELETE","/api/team/"+encodeURIComponent(id)),
+  previewInvitation: (id:string) => call<{organization:string;accepted:boolean}>("GET","/api/team/"+encodeURIComponent(id)),
+  enterProject: (id:string) => call<{url:string}>("POST","/api/team/"+encodeURIComponent(id)+"/accept"),
+  logInteraction: (action:string) => call("POST","/api/activity/interaction",{action}),
+  activity: (actor:string,before?:number) => call<ActivityLog>("GET","/api/activity?actor_id="+encodeURIComponent(actor)+(before ? "&before="+before : "")),
+  voiceTests: (episode: string) => call<{clips: VoiceTestClip[]}>("GET", `/api/episodes/${episode}/voice-tests`),
+  createVoiceTest: (episode: string, clone: VoiceCloneInput & {file: File; text?: string}) => {
+    const form = voiceCloneForm(clone);
+    if (clone.text !== undefined) form.append("text", clone.text);
+    return call<VoiceTestClip>("POST", `/api/episodes/${episode}/voice-tests`, form);
+  },
+  voiceTestAudio: async (episode: string, id: string, kind: "original" | "clone") =>
+    (await request("GET", `/api/episodes/${episode}/voice-tests/${id}/${kind}`)).blob(),
+  usageReport: (period: UsagePeriod) => call<UsageReport>("GET", "/api/usage/report?period=" + period),
+  uploadAvatar: (file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return call<Person>("POST", "/api/profile/avatar", body);
+  },
+  saveProfile: (name: string, hue: number) => call<Person>("PUT", "/api/profile", {name, hue}),
+  modelDefaults: () => call<ChatDefaults>("GET", "/api/preferences/model"),
+  saveModelDefaults: (model:string, effort:string) => call<{model:string; effort:string}>("PUT", "/api/preferences/model", {model,effort}),
+  passwordState: () => call<{user: {has_password: boolean}}>("GET", "/api/auth/session"),
+  verifyPassword: (password:string) => call<{verified:boolean}>("POST", "/api/auth/password/verify", {password}),
+  savePassword: (password: string, current_password?: string) => call<{has_password: boolean}>("POST", "/api/auth/password", {password,current_password}),
+  organization: () => call<Organization>("GET", "/api/organization"),
+  saveOrganization: (profile: Organization) => call<Organization>("PUT", "/api/organization", profile),
+  usage: () => call<{calls: number; input_tokens: number; output_tokens: number; usd: number; unpriced: number}>("GET", "/api/usage"),
   session: () => call<Session>("GET", "/api/session"),
   channels: () => call<Channel[]>("GET", "/api/channels"),
   addChannel: (name: string, topic = "") => call<Channel>("POST", "/api/channels", { name, topic }),
@@ -837,8 +888,11 @@ export const api = {
   dropTake: (id: string, take: string) => call<EpisodeView>("DELETE", `/api/episodes/${id}/takes/${take}`),
   // With no size, the film is rendered in the size asked for last (HD at first).
   renderEpisode: (id: string, size?: FilmSize) => call<EpisodeView>("POST", `/api/episodes/${id}/film`, size ? { size } : {}),
-  researchOptions: () => call<ResearchOptions>("GET", "/api/research"),
-  openResearch: (channelId: string, body: { repo: string; harness: HarnessId; question: string; model?: string; effort?: string }) =>
+  researchOptions: async (): Promise<ResearchOptions> => {
+    const options = await call<ResearchOptions>("GET", "/api/research");
+    return { ...options, models: options.models ?? {} };
+  },
+  openResearch: (channelId: string, body: { repo: string; repos?: string[]; notes?: string; files?: string[]; harness: HarnessId; question: string; model?: string; effort?: string }) =>
     call<{ thread: Thread; conversation: ConversationRow }>("POST", `/api/channels/${channelId}/research`, body),
   ask: (frameId: string, body: { question: string; harness?: HarnessId | ""; model?: string; effort?: string; parent?: string; quote?: string; answer?: string }) =>
     call<ConversationRow>("POST", `/api/research/${frameId}/conversations`, body),

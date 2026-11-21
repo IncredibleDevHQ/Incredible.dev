@@ -273,7 +273,7 @@ class BrandPack(BaseModel):
         return self.root / self.brand.files.tokens
 
     def font_path(self, font: FontFile, project_root: Path) -> Path:
-        return project_root / font.file
+        return _font_path(self.root, font.file, project_root)
 
     def required_families(self) -> tuple[str, ...]:
         return tuple(sorted({f.family for f in self.fonts.fonts if f.required}))
@@ -284,6 +284,14 @@ def _errors(error: ValidationError, label: str) -> list[str]:
         f"{label}: {'.'.join(str(p) for p in item['loc']) or '(root)'}: {item['msg']}"
         for item in error.errors()
     ]
+
+
+def _font_path(folder: Path, name: str, project: Path) -> Path:
+    # Older captured packs record the original checkout path to their bundled font.
+    path = Path(name)
+    if path.parent.name == "fonts" and (folder / "fonts" / path.name).is_file():
+        return folder / "fonts" / path.name
+    return project / name
 
 
 def load_brand_pack(
@@ -342,7 +350,7 @@ def load_brand_pack(
     if fonts and check_fonts:
         base = project_root or root
         for font in fonts.fonts:
-            path = base / font.file
+            path = _font_path(root, font.file, base)
             if not path.is_file():
                 if font.required:
                     problems.append(f"fonts.toml: {font.file} is missing (required)")

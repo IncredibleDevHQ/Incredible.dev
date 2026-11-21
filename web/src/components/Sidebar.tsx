@@ -1,23 +1,68 @@
 // The workspace: where people are needed, what the agent works with, and the channels.
-import { BellDot, Cpu, Hash, Moon, Palette, Plus, Sparkles, SquareKanban, Sun } from "lucide-react";
-import { useState } from "react";
+import { BellDot, EllipsisVertical, Cpu, Building2, ChartColumn, Hash, LogOut, Moon, Palette, Plus, Settings, Sparkles, SquareKanban, Sun } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import { api } from "../api";
 import { needsYou } from "../production";
 import { useHouse, type Page } from "../store";
-import { useTheme } from "../theme";
+import { useTheme, type Theme } from "../theme";
 import { Avatar } from "../ui";
+import { isWorkspaceTarget } from "./workspaceTarget";
+import { authRequest } from "./AuthGate";
 
 export function Sidebar() {
   const { channels, channelId, page, people, session, threads } = useHouse();
   const openChannel = useHouse((s) => s.openChannel);
   const openPage = useHouse((s) => s.openPage);
-  const switchPerson = useHouse((s) => s.switchPerson);
   const [menu, setMenu] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [theme, setTheme] = useTheme();
+  const account = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const accountId = useId();
   const [adding, setAdding] = useState(false);
   const needs = Object.values(threads).filter((t) => t.status === "needs_you").length;
   // what waits on the person across every episode: a go, a plan to read, a job that stopped
   const jobs = useHouse((s) => needsYou(s.production));
   const me = session ? people[session.me] : undefined;
+
+  const identity = session?.email || me?.name || "You";
+  const profileName = me?.name || identity;
+  const profileDetail = session?.email && session.email !== profileName ? session.email : session?.organizationName || "Local workspace";
+
+  useEffect(() => {
+    if (!menu) return;
+    const outside = (event: Event) => {
+      if (!event.defaultPrevented && isWorkspaceTarget(event.target) && !account.current?.contains(event.target)) setMenu(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented && isWorkspaceTarget(event.target)) {
+        event.preventDefault();
+        event.stopPropagation();
+        setMenu(false);
+        trigger.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("focusin", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("focusin", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [menu]);
+
+  const signOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      const result = await authRequest("logout", {});
+      window.location.assign(result.url ?? "/");
+    } catch (error) {
+      useHouse.getState().say((error as Error).message);
+      setSigningOut(false);
+    }
+  };
 
   const nav = (target: Page, label: string, icon: React.ReactNode, count?: number) => (
     <button
@@ -77,51 +122,59 @@ export function Sidebar() {
           </button>
         ))}
       </div>
-      <div className="side-foot">
+      <div className="side-foot" ref={account}>
+        <ThemeSwitch theme={theme} onChange={setTheme} />
+        <button
+          ref={trigger}
+          type="button"
+          className="whoami"
+          aria-label={`Account options for ${identity}`}
+          aria-expanded={menu}
+          aria-controls={menu ? accountId : undefined}
+          onClick={() => setMenu(!menu)}
+        >
+          <Avatar person={me} />
+          <span className="account-copy">
+            <span className="account-name" title={profileName}>{profileName}</span>
+            <small title={profileDetail}>{profileDetail}</small>
+          </span>
+          <EllipsisVertical className="account-chevron" size={16} aria-hidden="true" />
+        </button>
         {menu && (
-          <div className="menu" role="menu" aria-label="Act as">
-            {Object.values(people)
-              .filter((p) => !p.agent)
-              .map((p) => (
-                <button
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={session?.me === p.id}
-                  key={p.id}
-                  onClick={async () => {
-                    setMenu(false);
-                    await switchPerson(p.id);
-                  }}
-                >
-                  <Avatar person={p} size="sm" />
-                  {p.name}
-                </button>
-              ))}
+          <div className="menu account-menu" id={accountId} role="group" aria-label="Account options">
+            <button type="button" onClick={() => { setMenu(false); openPage("profile"); }}>
+              <Settings size={16} aria-hidden="true" /> Settings
+            </button>
+            <button type="button" onClick={() => { setMenu(false); openPage("organization"); }}>
+              <Building2 size={16} aria-hidden="true" /> Organization
+            </button>
+            <button type="button" onClick={() => { setMenu(false); openPage("usage"); }}>
+              <ChartColumn size={16} aria-hidden="true" /> Usage
+            </button>
+            <div className="account-actions">
+              <button type="button" disabled={!session?.authenticated || signingOut}
+                title={session?.authenticated ? undefined : "This local workspace has no signed-in account."}
+                onClick={() => void signOut()}>
+                <LogOut size={16} aria-hidden="true" />
+                {signingOut ? "Logging out…" : "Log out"}
+              </button>
+            </div>
           </div>
         )}
-        <ThemeSwitch />
-        <button type="button" className="whoami" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>
-          <Avatar person={me} />
-          <span>
-            {me?.name ?? "You"}
-            <small>Switch who you are · local workspace</small>
-          </span>
-        </button>
       </div>
     </nav>
   );
 }
 
-// Light or dark, both named and in sight on every page, the one in use pressed.
-function ThemeSwitch() {
-  const [theme, setTheme] = useTheme();
+// The same appearance control, with theme state kept while the account panel is closed.
+function ThemeSwitch({ theme, onChange }: { theme: Theme; onChange: (theme: Theme) => void }) {
   return (
     <div className="seg theme-switch" role="group" aria-label="Appearance">
-      <button type="button" aria-pressed={theme === "light"} onClick={() => setTheme("light")}>
+      <button type="button" aria-pressed={theme === "light"} onClick={() => onChange("light")}>
         <Sun />
         Light
       </button>
-      <button type="button" aria-pressed={theme === "dark"} onClick={() => setTheme("dark")}>
+      <button type="button" aria-pressed={theme === "dark"} onClick={() => onChange("dark")}>
         <Moon />
         Dark
       </button>

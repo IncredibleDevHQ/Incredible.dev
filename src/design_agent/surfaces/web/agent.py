@@ -27,6 +27,7 @@ import logging
 import mimetypes
 import posixpath
 import re
+import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -137,6 +138,7 @@ class AgentHost:
         hub: Hub,
         data_dir: Path,
         demo: bool = False,
+        blob_namespace: str = "local",
         project_root: Path | None = None,
     ) -> None:
         self.settings = settings
@@ -144,6 +146,10 @@ class AgentHost:
         self.hub = hub
         self.files_dir = data_dir / "files"
         self.files_dir.mkdir(parents=True, exist_ok=True)
+        from design_agent.surfaces.web.blobs import BlobFiles
+
+        self.blobs = BlobFiles(settings, self.files_dir, blob_namespace)
+        self.blobs.migrate(store)
         self.demo = demo
         self.mark = model_mark(settings, demo)
         self.runtime: LocalRuntime | None = None
@@ -245,6 +251,7 @@ class AgentHost:
         await self.episodes.close()
         for task in list(self._turns.values()):
             task.cancel()
+        self.blobs.close()
 
     def _require_runtime(self) -> LocalRuntime:
         if self.runtime is None:
@@ -403,7 +410,7 @@ class AgentHost:
             row = self.store.file(file_id)
             if row is None:
                 continue
-            placed.append((str(row["name"]), (self.files_dir / row["rel_path"]).read_bytes()))
+            placed.append((str(row["name"]), await asyncio.to_thread(self.blobs.read, row)))
         if not placed:
             return []
         return await runtime.attach(thread_id, placed)
@@ -481,11 +488,22 @@ class AgentHost:
                 raise ValueError(
                     "Start this picture when the current conversation turn has finished."
                 )
+            selected = overrides[0] if overrides else None
+            if selected is None and not self.demo:
+                saved = self.store.model_default()
+                if saved["model"] and any(
+                    row["id"] == saved["model"]
+                    and (not saved["effort"] or saved["effort"] in row["efforts"])
+                    for row in episode_models.chat_options(self.settings)
+                ):
+                    selected = self.settings.model_copy(
+                        update={"model": saved["model"], "model_effort": saved["effort"] or None}
+                    )
             added = await runtime.ask(
                 text,
                 thread_id=thread_id,
                 configurable={"surface": "web"},
-                **({"model_settings": overrides[0]} if overrides else {}),
+                **({"model_settings": selected} if selected else {}),
             )
         except asyncio.CancelledError:
             raise
@@ -969,24 +987,12 @@ class AgentHost:
     def save_file(
         self, thread_id: str, name: str, content: bytes, *, origin: str, author: str = AGENT_ID
     ) -> Row:
-        clean = SAFE_NAME.sub("-", Path(name).name).strip(" .") or "file"
-        folder = self.files_dir / (thread_id or "uploads")
-        folder.mkdir(parents=True, exist_ok=True)
-        target = folder / clean
-        stem, suffix, n = target.stem, target.suffix, 1
-        while target.exists() and target.read_bytes() != content:
-            n += 1
-            target = folder / f"{stem}-{n}{suffix}"
-        target.write_bytes(content)
+        saved = self.blobs.save(thread_id, name, content)
         return self.store.add_file(
             {
                 "thread_id": thread_id,
-                "name": target.name,
-                "mime": mimetypes.guess_type(target.name)[0] or "application/octet-stream",
-                "size": len(content),
+                **saved,
                 "origin": origin,
-                "rel_path": str(target.relative_to(self.files_dir)),
-                "sha256": hashlib.sha256(content).hexdigest(),
                 "author_id": author,
             }
         )
@@ -1004,6 +1010,36 @@ class AgentHost:
         memory: a take's copy for a 4K film, or a film, runs to gigabytes. A file left half
         written by a `write` that fails is not kept."""
         clean = SAFE_NAME.sub("-", Path(name).name).strip(" .") or "file"
+        if self.blobs.client is not None:
+            with tempfile.TemporaryFile() as temp:
+                write(temp)
+                size = temp.tell()
+                temp.seek(0)
+                checksum = hashlib.file_digest(temp, "sha256").hexdigest()
+                temp.seek(0)
+                key = f"{self.blobs.prefix}streams/{new_id('f')}/{clean}"
+                mime = mimetypes.guess_type(clean)[0] or "application/octet-stream"
+                try:
+                    self.blobs.client.upload_fileobj(
+                        temp, self.blobs.bucket, key, ExtraArgs={"ContentType": mime}
+                    )
+                except Exception:  # noqa: BLE001 - keep private storage credentials out of errors
+                    from design_agent.surfaces.web.blobs import StorageUnavailable
+
+                    raise StorageUnavailable() from None
+            return self.store.add_file(
+                {
+                    "thread_id": thread_id,
+                    "name": clean,
+                    "mime": mime,
+                    "size": size,
+                    "origin": origin,
+                    "storage": "s3",
+                    "rel_path": key,
+                    "sha256": checksum,
+                    "author_id": author,
+                }
+            )
         folder = self.files_dir / (thread_id or "uploads")
         folder.mkdir(parents=True, exist_ok=True)
         target = folder / clean
@@ -1041,8 +1077,13 @@ class AgentHost:
         row = self.store.file(file_id)
         if row is None:
             return
-        with contextlib.suppress(OSError):
-            (self.files_dir / str(row["rel_path"])).unlink(missing_ok=True)
+        if row.get("storage") == "s3":
+            key = str(row["rel_path"])
+            if self.blobs.client is not None and key.startswith(self.blobs.prefix + "streams/"):
+                self.blobs.client.delete_object(Bucket=self.blobs.bucket, Key=key)
+        else:
+            with contextlib.suppress(OSError):
+                self.blobs.local_path(str(row["rel_path"])).unlink(missing_ok=True)
         self.store.delete_file(file_id)
 
     def uploading(self, thread_id: str, paths: Sequence[str]) -> None:
@@ -1107,8 +1148,12 @@ class AgentHost:
         for path, content in zip(paths, contents, strict=True):
             if hashlib.sha256(content).hexdigest() in held:
                 continue
-            row = self.save_file(
-                thread_id, posixpath.basename(str(path)), content, origin="delivered"
+            row = await asyncio.to_thread(
+                self.save_file,
+                thread_id,
+                posixpath.basename(str(path)),
+                content,
+                origin="delivered",
             )
             fresh.append((row, str(path)))
         if fresh:
@@ -1174,8 +1219,12 @@ class AgentHost:
             position = len(existing)
             for spec, image in zip(frames, images, strict=True):
                 name = str(spec.get("name") or f"Frame {position + 1}")
-                saved = self.save_file(
-                    thread_id, f"{board['id']}-v{version}-{name}.png", image, origin="frame"
+                saved = await asyncio.to_thread(
+                    self.save_file,
+                    thread_id,
+                    f"{board['id']}-v{version}-{name}.png",
+                    image,
+                    origin="frame",
                 )
                 found = existing.get(name)
                 entry = {"v": version, "file_id": saved["id"], "at": now}
@@ -1224,8 +1273,8 @@ class AgentHost:
             board_id = board["id"]
             for position, (spec, image) in enumerate(zip(frames, images, strict=True)):
                 name = str(spec.get("name") or f"Frame {position + 1}")
-                saved = self.save_file(
-                    thread_id, f"{board_id}-v1-{name}.png", image, origin="frame"
+                saved = await asyncio.to_thread(
+                    self.save_file, thread_id, f"{board_id}-v1-{name}.png", image, origin="frame"
                 )
                 self.store.add_frame(
                     {
@@ -1554,7 +1603,10 @@ class AgentHost:
                         "attach it as a file."
                     ) from None
                 continue
-            kept.append(self.save_file("", read.name, read.content, origin="link", author=by)["id"])
+            saved = await asyncio.to_thread(
+                self.save_file, "", read.name, read.content, origin="link", author=by
+            )
+            kept.append(saved["id"])
         return kept
 
     def _material_label(self, words: str, file_ids: Sequence[str]) -> str:
@@ -1574,8 +1626,7 @@ class AgentHost:
         if row["origin"] != "link":
             return str(row["name"])
         try:
-            with (self.files_dir / str(row["rel_path"])).open("rb") as kept:
-                first = kept.read(1024).decode("utf-8", errors="replace").split("\n", 1)[0]
+            first = self.blobs.read(row, 1024).decode("utf-8", errors="replace").split("\n", 1)[0]
         except OSError:
             first = ""
         title = (first[2:].strip() if first.startswith("# ") else "") or Path(str(row["name"])).stem

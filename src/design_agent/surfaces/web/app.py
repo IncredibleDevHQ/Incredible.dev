@@ -75,20 +75,22 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import html
+import io
 import json
 import mimetypes
 import os
 import re
-import secrets
 import shutil
 import tempfile
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import IO, Annotated, Any, Literal
 from urllib.parse import quote
+from uuid import UUID, uuid4
 
+import httpx
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import (
     FileResponse,
@@ -98,16 +100,21 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from PIL import Image, ImageOps
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from starlette.background import BackgroundTask
 from starlette.datastructures import UploadFile as FormFile
 
+from design_agent.brand.schema import BrandPackError
 from design_agent.config import SAMPLE_BRAND, Settings
 from design_agent.runtime import maintenance
 from design_agent.runtime.local import build_local_runtime
 from design_agent.runtime.persistence import open_persistence, workspace_of
-from design_agent.surfaces.web import camera
+from design_agent.surfaces.web import camera, episode_models
 from design_agent.surfaces.web.agent import AgentHost
-from design_agent.surfaces.web.brands import BrandShelf, brand_view
+from design_agent.surfaces.web.blobs import StorageUnavailable, byte_range
+from design_agent.surfaces.web.brand_versions import BrandConflict, BrandVersions
+from design_agent.surfaces.web.brands import BrandShelf, EditableBrandFile, brand_view
 from design_agent.surfaces.web.catalog import catalog_view
 from design_agent.surfaces.web.hub import CLOSING, Hub
 from design_agent.surfaces.web.presenter import WebDelivery, WebPresenter
@@ -130,6 +137,45 @@ MAX_SAMPLE_BYTES = 25 * 1024 * 1024
 #: comment line would keep the connection open but never reach it), so a page that stops hearing
 #: it knows it has lost the house (`live.ts`).
 PING_SECONDS = 15.0
+
+
+def avatar_image(content: bytes) -> bytes:
+    try:
+        with Image.open(io.BytesIO(content), formats=("JPEG", "PNG", "WEBP")) as photo:
+            if photo.width * photo.height > 16_000_000:
+                raise ValueError("Choose an image under 16 megapixels.")
+            cropped = ImageOps.fit(ImageOps.exif_transpose(photo).convert("RGBA"), (256, 256))
+            cropped.info.clear()
+            output = io.BytesIO()
+            cropped.save(output, "PNG")
+            return output.getvalue()
+    except (OSError, SyntaxError, Image.DecompressionBombError) as exc:
+        raise ValueError("Choose a valid JPEG, PNG or WebP image.") from exc
+
+
+class ProfileIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    name: str = Field(min_length=1, max_length=100)
+    hue: int = Field(ge=0, le=359)
+
+
+class ChatDefaultIn(BaseModel):
+    model: str = Field(max_length=200)
+    effort: str = Field(max_length=20)
+
+
+class OrganizationIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    name: str = Field(min_length=1, max_length=100)
+    website: str = Field(default="", max_length=500)
+    description: str = Field(default="", max_length=500)
+
+    @field_validator("website")
+    @classmethod
+    def validate_website(cls, value: str) -> str:
+        if value:
+            HttpUrl(value)
+        return value
 
 
 def _short_of_room(size: int, incoming: Path) -> str:
@@ -233,6 +279,9 @@ AGENTS = r"^(claude|codex|kimi)$"
 
 
 class ResearchIn(BaseModel):
+    repos: list[str] = Field(default_factory=list, max_length=8)
+    notes: str = Field(default="", max_length=16000)
+    files: list[str] = Field(default_factory=list, max_length=MAX_UPLOADS)
     repo: str = Field(min_length=1, max_length=1_024)
     harness: str = Field(pattern=AGENTS)
     question: str = Field(min_length=1, max_length=8_000)
@@ -460,20 +509,49 @@ class BrandReadIn(BaseModel):
     channel: str = Field(default="", max_length=64)
 
 
+class BrandEditIn(BaseModel):
+    version: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")] | None
+    files: dict[
+        EditableBrandFile,
+        Annotated[str, Field(max_length=1_000_000)],
+    ] = Field(min_length=1, max_length=3)
+
+
 class ChannelBrandIn(BaseModel):
     brand: str = Field(min_length=1, max_length=60)
 
 
 def create_app(
-    project_root: Path, settings: Settings | None = None, *, demo: bool = False
+    project_root: Path,
+    settings: Settings | None = None,
+    *,
+    demo: bool = False,
+    authenticated_user: dict[str, Any] | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
+    if authenticated_user is None and (settings.auth_required or settings.supabase_url):
+        from design_agent.surfaces.web.auth import create_authenticated_app
+
+        return create_authenticated_app(project_root, settings, demo=demo)
+    owner = UUID(authenticated_user["id"]) if authenticated_user else None
+    schema = None
+    if owner and settings.database_url:
+        from design_agent.surfaces.web.workspace_directory import workspace_schema
+
+        schema = workspace_schema(settings.database_url.get_secret_value(), owner)
     if demo:
         # The demo's scripted lead poses in the sample brand's tokens, whatever pack is installed.
         settings = settings.model_copy(update={"brand_path": SAMPLE_BRAND})
     workspace = workspace_of(settings, project_root)
     data_dir = workspace / "house"
-    store = Store(data_dir / "house.sqlite")
+    store = Store(
+        data_dir / "house.sqlite",
+        database_url=settings.database_url.get_secret_value()
+        if authenticated_user and settings.database_url
+        else None,
+        schema=schema,
+        user=authenticated_user,
+    )
     hub = Hub()
     host = AgentHost(
         settings=settings,
@@ -481,10 +559,26 @@ def create_app(
         hub=hub,
         data_dir=data_dir,
         demo=demo,
+        blob_namespace=owner.hex if owner else "local",
         project_root=project_root,
     )
+    if authenticated_user and settings.private_research_enabled(authenticated_user["id"]):
+        from design_agent.surfaces.web.research_provider import ProviderResearch
+
+        host.research.provider = ProviderResearch(settings, authenticated_user["id"])
+        host.research.ready = host.research.provider.ready
+        host.research.models = host.research.provider.models
+    elif authenticated_user:
+        host.research.ready = lambda _: False
     shelf = BrandShelf(
-        store=store, hub=hub, settings=settings, project_root=project_root, data_dir=data_dir
+        store=store,
+        hub=hub,
+        settings=settings,
+        project_root=project_root,
+        data_dir=data_dir,
+        versions=BrandVersions(store, host.blobs, project_root)
+        if host.blobs.client is not None
+        else None,
     )
     host.episodes.brand_for = shelf.brand_for
 
@@ -498,9 +592,11 @@ def create_app(
             from design_agent.surfaces.web.demo import DemoDirector
 
             model = DemoDirector()
-        async with open_persistence(settings, workspace) as (checkpointer, lg_store):
+        async with open_persistence(settings, workspace, schema=schema) as (checkpointer, lg_store):
             runtime = build_local_runtime(
-                settings,
+                settings.model_copy(update={"brand_path": SAMPLE_BRAND})
+                if shelf.versions
+                else settings,
                 project_root,
                 model=model,
                 out_dir=data_dir / "out",
@@ -533,7 +629,13 @@ def create_app(
     app = FastAPI(title="Creative House", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.host = host
 
-    def person(x_person: str = Header(default="you")) -> str:
+    @app.exception_handler(StorageUnavailable)
+    async def storage_error(_request: Request, _error: StorageUnavailable) -> Response:
+        return Response("File storage is unavailable. Try again shortly.", status_code=503)
+
+    def person(request: Request, x_person: str = Header(default="you")) -> str:
+        if authenticated_user:
+            return str(getattr(request.state, "actor", authenticated_user)["id"])
         if store.person(x_person) is None or x_person == "agent":
             raise HTTPException(status_code=403, detail="unknown person")
         return x_person
@@ -553,16 +655,101 @@ def create_app(
 
     # -- the workspace -----------------------------------------------------------------------
 
+    @app.get("/healthz")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/api/auth/config")
+    async def auth_config() -> dict[str, bool]:
+        return {"enabled": bool(authenticated_user)}
+
+    @app.get("/api/auth/session")
+    async def workspace_auth_session() -> dict[str, bool]:
+        # In authenticated mode the outer gateway owns this route and validates the cookie.
+        return {"authenticated": bool(authenticated_user)}
+
     @app.get("/api/session")
-    async def session(me: str = Depends(person)) -> dict[str, Any]:
+    async def session(request: Request, me: str = Depends(person)) -> dict[str, Any]:
         runtime = host.runtime
         return {
             "me": me,
+            "email": getattr(request.state, "actor", authenticated_user)["email"]
+            if authenticated_user
+            else None,
+            "projectUrl": getattr(request.state, "project_url", None),
+            "projectId": authenticated_user["id"] if authenticated_user else None,
+            "organizationName": store.organization()["name"],
             "people": store.people(),
             "agent": {"mark": host.mark, "model": "demo" if demo else str(settings.lead_model())},
             "demo": demo,
+            "authenticated": bool(authenticated_user),
             "sandbox": runtime.binding.name if runtime else None,
         }
+
+    @app.put("/api/profile")
+    def save_profile(body: ProfileIn, me: str = Depends(person)) -> dict[str, Any]:
+        if not authenticated_user:
+            raise HTTPException(403, "Sign in to edit your profile.")
+        store.save_profile(me, body.name, body.hue)
+        return store.person(me) or {}
+
+    @app.post("/api/profile/avatar")
+    async def upload_avatar(file: UploadFile, me: str = Depends(person)) -> dict[str, Any]:
+        if not authenticated_user:
+            raise HTTPException(403, "Sign in to edit your profile.")
+        limit = 5 * 1024 * 1024
+        content = await file.read(limit + 1)
+        if len(content) > limit:
+            raise HTTPException(413, "Choose an image under 5 MB.")
+        try:
+            image = await asyncio.to_thread(avatar_image, content)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
+        stored = await asyncio.to_thread(
+            host.save_file, "", "avatar.png", image, origin="avatar", author=me
+        )
+        store.save_avatar(me, stored["id"])
+        return store.person(me) or {}
+
+    @app.get("/api/preferences/model")
+    def get_model_default(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        return {
+            "options": episode_models.chat_options(settings),
+            "default": str(settings.lead_model()),
+            **store.model_default(),
+        }
+
+    @app.put("/api/preferences/model")
+    def set_model_default(body: ChatDefaultIn, me: str = Depends(person)) -> dict[str, str]:  # noqa: ARG001
+        if not authenticated_user:
+            raise HTTPException(403, "Sign in to edit your preferences.")
+        options = episode_models.chat_options(settings)
+        row = next((r for r in options if r["id"] == body.model), None)
+        if (body.model and not row) or (
+            body.effort and (not row or body.effort not in row["efforts"])
+        ):
+            raise HTTPException(422, "Choose an available provider, model and effort.")
+        store.save_model_default(body.model, body.effort)
+        return body.model_dump()
+
+    @app.get("/api/organization")
+    def organization(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        return store.organization()
+
+    @app.put("/api/organization")
+    def save_organization(body: OrganizationIn, me: str = Depends(person)) -> dict[str, str]:  # noqa: ARG001
+        store.save_organization(body.name, body.website, body.description)
+        return body.model_dump()
+
+    @app.get("/api/usage/report")
+    def usage_report(
+        period: Literal["today", "week", "month"] = "week", _me: str = Depends(person)
+    ) -> dict[str, Any]:
+        return store.usage_report(period)
+
+    @app.get("/api/usage")
+    def usage(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        return store.workspace_usage()
 
     @app.get("/api/channels")
     async def channels(me: str = Depends(person)) -> list[dict[str, Any]]:  # noqa: ARG001
@@ -693,21 +880,81 @@ def create_app(
             content = await upload.read(MAX_UPLOAD_BYTES + 1)
             if len(content) > MAX_UPLOAD_BYTES:
                 raise HTTPException(status_code=413, detail="a file is over 200 MiB")
-            row = host.save_file(
-                "", upload.filename or "attachment", content, origin="upload", author=me
+            row = await asyncio.to_thread(
+                host.save_file,
+                "",
+                upload.filename or "attachment",
+                content,
+                origin="upload",
+                author=me,
             )
             out.append(host.file_view(row))
         return out
 
     @app.get("/api/files/{file_id}")
-    async def file(file_id: str) -> FileResponse:
+    async def file(
+        file_id: str, range_header: str | None = Header(default=None, alias="Range")
+    ) -> Response:
         row = store.file(file_id)
         if row is None:
             raise HTTPException(status_code=404, detail="no such file")
-        path = (host.files_dir / row["rel_path"]).resolve()
-        if host.files_dir.resolve() not in path.parents or not path.is_file():
-            raise HTTPException(status_code=404, detail="no such file")
-        return FileResponse(path, media_type=row["mime"], filename=row["name"])
+        return await file_response(row, range_header)
+
+    async def file_response(
+        row: dict[str, Any], range_header: str | None, *, inline: bool = False
+    ) -> Response:
+        disposition = "inline" if inline else "attachment"
+        try:
+            if row.get("storage", "local") == "local":
+                path = host.blobs.local_path(row["rel_path"])
+                if not path.is_file():
+                    raise FileNotFoundError
+                return FileResponse(
+                    path,
+                    media_type=row["mime"],
+                    filename=row["name"],
+                    content_disposition_type=disposition,
+                )
+            try:
+                start, end = byte_range(range_header, row["size"])
+            except ValueError:
+                return Response(
+                    status_code=416, headers={"Content-Range": f"bytes */{row['size']}"}
+                )
+            body = await asyncio.to_thread(
+                host.blobs.open, row, start, end if range_header else None
+            )
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="no such file") from None
+
+        def chunks() -> Any:
+            remaining = end - start + 1
+            try:
+                while remaining:
+                    data = body.read(min(1024 * 1024, remaining))
+                    if not data:
+                        break
+                    remaining -= len(data)
+                    yield data
+            finally:
+                body.close()
+
+        headers = {
+            "Content-Length": str(end - start + 1),
+            "Content-Disposition": f"{disposition}; filename*=utf-8''{quote(row['name'])}",
+            "Accept-Ranges": "bytes",
+            "ETag": f'"{row["sha256"]}"',
+            "X-Content-Type-Options": "nosniff",
+        }
+        if range_header:
+            headers["Content-Range"] = f"bytes {start}-{end}/{row['size']}"
+        return StreamingResponse(
+            chunks(),
+            status_code=206 if range_header else 200,
+            media_type=row["mime"],
+            headers=headers,
+            background=BackgroundTask(body.close),
+        )
 
     # -- the canvas --------------------------------------------------------------------------
 
@@ -847,6 +1094,72 @@ def create_app(
         if not content:
             raise HTTPException(status_code=422, detail="the recording is empty")
         return file.filename or "sample", content
+
+    # Test audio stays in this workspace process for one hour, isolated by person and episode.
+    lab_audio: dict[str, tuple[str, str, str, bytes, bytes, float, str | None]] = {}
+    lab_slots = asyncio.Semaphore(2)
+
+    @app.get("/api/episodes/{episode_id}/voice-tests")
+    async def voice_tests(episode_id: str, me: str = Depends(person)) -> dict[str, Any]:
+        if store.episode(episode_id) is None:
+            raise HTTPException(404, "Unknown episode.")
+        return {
+            "clips": [
+                {"id": key, "name": name, "expires_at": expires, "text": text}
+                for key, (owner, episode, name, _, _, expires, text) in reversed(lab_audio.items())
+                if (owner, episode) == (me, episode_id)
+            ]
+        }
+
+    @app.get("/api/episodes/{episode_id}/voice-tests/{clip_id}/{kind}")
+    async def voice_test_audio(
+        episode_id: str, clip_id: str, kind: Literal["original", "clone"], me: str = Depends(person)
+    ) -> Response:
+        clip = lab_audio.get(clip_id)
+        if not clip or clip[:2] != (me, episode_id):
+            raise HTTPException(404, "This test recording has expired.")
+        return Response(
+            clip[3 if kind == "original" else 4],
+            media_type="audio/wav",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/api/episodes/{episode_id}/voice-tests")
+    async def create_voice_test(
+        episode_id: str,
+        name: str = Form(..., max_length=80),
+        consent: bool = Form(False),
+        text: str | None = Form(None, max_length=2000),
+        file: UploadFile = File(...),  # noqa: B008
+        me: str = Depends(person),
+    ) -> dict[str, Any]:
+        from design_agent.tools.media import MediaKeys
+        from design_agent.tools.voice_lab import render
+
+        if store.episode(episode_id) is None:
+            raise HTTPException(404, "Unknown episode.")
+        if not consent or not name.strip():
+            raise HTTPException(422, "Name the test and confirm this is your voice.")
+        if lab_slots.locked():
+            raise HTTPException(429, "Another voice test is running. Try again shortly.")
+        async with lab_slots:
+            if len(lab_audio) >= 16:
+                raise HTTPException(
+                    429, "Temporary storage is full. Try again after a test expires."
+                )
+            _, original = await voice_sample(file)
+            try:
+                async with httpx.AsyncClient(timeout=300) as client:
+                    generated = await render(
+                        client, MediaKeys.from_settings(host.settings), name, original, text
+                    )
+            except ValueError as error:
+                raise HTTPException(422, str(error)) from None
+            key = uuid4().hex
+            expires = time.time() + 3600
+            lab_audio[key] = (me, episode_id, name.strip(), original, generated, expires, text)
+            asyncio.get_running_loop().call_later(3600, lab_audio.pop, key, None)
+            return {"id": key, "name": name.strip(), "expires_at": expires, "text": text}
 
     @app.post("/api/channels/{channel_id}/voices")
     async def add_channel_voice(
@@ -1063,7 +1376,11 @@ def create_app(
             raise HTTPException(status_code=411, detail="the recording's size must be stated")
         if int(stated) > MAX_TAKE_BYTES:
             raise HTTPException(status_code=413, detail="the recording is over 64 GiB")
-        incoming = host.episodes.data_dir / "incoming"
+        incoming = (
+            Path(tempfile.gettempdir())
+            if host.blobs.client is not None
+            else host.episodes.data_dir / "incoming"
+        )
         incoming.mkdir(parents=True, exist_ok=True)
         short = _short_of_room(int(stated), incoming)
         if short:
@@ -1083,9 +1400,12 @@ def create_app(
                     raise ValueError("marks must be a list")
                 name = upload.filename or "take.webm"
                 if guide or (not given and not frame):
-                    staged = incoming / f"{secrets.token_hex(8)}.{_ending(name)}"
-                    await asyncio.to_thread(_stage, upload.file, staged)
+                    with tempfile.NamedTemporaryFile(
+                        dir=incoming, suffix=f".{_ending(name)}", delete=False
+                    ) as pending:
+                        staged = Path(pending.name)
                     try:
+                        await asyncio.to_thread(_stage, upload.file, staged)
                         return host.episodes.bring_take(
                             episode_id,
                             by=me,
@@ -1118,6 +1438,8 @@ def create_app(
     @app.get("/api/camera")
     async def camera_clips(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
         """The clips on the camera cards put into this computer, newest first."""
+        if authenticated_user:
+            return {"clips": [], "folders": []}
         folders = host.settings.camera_folders()
         found = await asyncio.to_thread(camera.clips, folders)
         return {"clips": [c.view() for c in found], "folders": [str(f) for f in folders]}
@@ -1126,6 +1448,8 @@ def create_app(
     async def camera_take(
         episode_id: str, body: CameraTakeIn, me: str = Depends(person)
     ) -> dict[str, Any]:
+        if authenticated_user:
+            raise HTTPException(403, "Host camera cards are unavailable in private workspaces.")
         clip = await asyncio.to_thread(camera.find, host.settings.camera_folders(), body.path)
         if clip is None:
             raise HTTPException(status_code=404, detail="That clip isn't on a card any more.")
@@ -1193,13 +1517,16 @@ def create_app(
 
     @app.get("/api/episodes/{episode_id}/voice/{voice_id}/preview")
     async def clone_audio(
-        episode_id: str, voice_id: str, _me: str = Depends(person)
-    ) -> FileResponse:
+        episode_id: str,
+        voice_id: str,
+        _me: str = Depends(person),
+        range_header: str | None = Header(default=None, alias="Range"),
+    ) -> Response:
         try:
-            path = host.episodes.channel_voice_audio(episode_id, voice_id)
+            row = host.episodes.channel_voice_file(episode_id, voice_id)
         except KeyError:
             raise HTTPException(status_code=404, detail="No saved sample for this voice.") from None
-        return FileResponse(path, media_type="audio/mpeg")
+        return await file_response(row, range_header, inline=True)
 
     @app.post("/api/episodes/{episode_id}/voice")
     async def clone_voice(
@@ -1273,10 +1600,41 @@ def create_app(
         if store.channel(channel_id) is None:
             raise HTTPException(status_code=404, detail="no such channel")
         try:
+            material = [body.notes.strip()] if body.notes.strip() else []
+            attachments = []
+            for file_id in dict.fromkeys(body.files):
+                row = store.file(file_id)
+                if row is None or row["origin"] != "upload" or row["thread_id"]:
+                    raise ValueError("Choose an uploaded file from this workspace.")
+                if int(row["size"]) > 64000 or Path(row["name"]).suffix.lower() not in {
+                    ".md",
+                    ".txt",
+                    ".csv",
+                    ".json",
+                    ".rst",
+                    ".log",
+                }:
+                    raise ValueError(
+                        "Attach a text, Markdown, CSV, JSON, RST or log file up to 64 KB."
+                    )
+                raw = await asyncio.to_thread(host.blobs.read, row, 64001)
+                try:
+                    text = raw.decode("utf-8-sig")
+                except UnicodeDecodeError:
+                    raise ValueError("Research files must contain UTF-8 text.") from None
+                material.append(f"File {row['name']}\n{text}")
+                attachments.append(host.file_view(row))
+            material_text = "\n\n".join(material)
+            if len(material_text) > 64000:
+                raise ValueError("Keep the combined notes and files within 64,000 characters.")
             frame, conversation = host.research.open(
                 channel_id,
                 by=me,
                 repo=body.repo,
+                repos=body.repos,
+                material=material_text,
+                notes=body.notes.strip(),
+                files=attachments,
                 harness=body.harness,
                 question=body.question,
                 model=body.model,
@@ -1394,16 +1752,20 @@ def create_app(
     # -- what the agent works with -----------------------------------------------------------
 
     @app.get("/api/brand")
-    async def brand(me: str = Depends(person), channel: str = "") -> dict[str, Any]:  # noqa: ARG001
+    def brand(me: str = Depends(person), channel: str = "") -> dict[str, Any]:  # noqa: ARG001
         if channel:
             return shelf.view(shelf.channel_brand(channel))
-        return brand_view(settings.resolved_brand_path(project_root))
+        with shelf.folder("default") as folder:
+            return brand_view(folder)
 
     # -- brands: the configured pack and those read from websites ----------------------------
 
     @app.get("/api/brands")
     async def brands(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
-        return {"brands": shelf.brands(), "reading": list(shelf.reading.values())}
+        return {
+            "brands": await asyncio.to_thread(shelf.brands),
+            "reading": list(shelf.reading.values()),
+        }
 
     @app.post("/api/brands")
     async def read_brand(body: BrandReadIn, me: str = Depends(person)) -> dict[str, Any]:
@@ -1415,15 +1777,39 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(error)) from None
 
     @app.get("/api/brands/{slug}")
-    async def brand_pack(slug: str, me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+    def brand_pack(slug: str, me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
         try:
             return shelf.view(slug)
         except KeyError:
             raise HTTPException(status_code=404, detail="no such brand") from None
 
+    @app.patch("/api/brands/{slug}")
+    async def edit_brand(slug: str, body: BrandEditIn, me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        if shelf.versions is None:
+            raise HTTPException(409, "This workspace edits brand packs on disk.")
+        try:
+            return await asyncio.to_thread(shelf.edit, slug, body.version, body.files)
+        except KeyError:
+            raise HTTPException(404, "No such brand") from None
+        except BrandConflict as error:
+            raise HTTPException(409, str(error)) from None
+        except (BrandPackError, ValueError):
+            raise HTTPException(422, "The edited brand pack is invalid.") from None
+
+    def brand_folder(slug: str) -> Iterator[Path]:
+        try:
+            with shelf.folder(slug) as folder:
+                yield folder
+        except KeyError:
+            raise HTTPException(status_code=404, detail="no such brand") from None
+
     @app.get("/api/brands/{slug}/files/{name:path}")
-    async def brand_file(slug: str, name: str) -> FileResponse:
-        path = shelf.file(slug, name)
+    async def brand_file(
+        slug: str,
+        name: str,
+        folder: Path = Depends(brand_folder),  # noqa: B008
+    ) -> FileResponse:
+        path = shelf.file(slug, name, folder=folder)
         if path is None:
             raise HTTPException(status_code=404, detail="no such file")
         return FileResponse(path, headers={"X-Content-Type-Options": "nosniff"})
@@ -1441,9 +1827,16 @@ def create_app(
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from None
 
+    def default_folder() -> Iterator[Path]:
+        with shelf.folder("default") as folder:
+            yield folder
+
     @app.get("/api/brand/logos/{name}")
-    async def brand_logo(name: str) -> FileResponse:
-        folder = (settings.resolved_brand_path(project_root) / "logos").resolve()
+    async def brand_logo(
+        name: str,
+        pack: Path = Depends(default_folder),  # noqa: B008
+    ) -> FileResponse:
+        folder = (pack / "logos").resolve()
         path = (folder / name).resolve()
         if path.parent != folder or not path.is_file():
             raise HTTPException(status_code=404, detail="no such logo")

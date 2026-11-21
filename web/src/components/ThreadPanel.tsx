@@ -1,3 +1,4 @@
+import { Skeleton } from "./Skeleton";
 // One thread: a task's whole conversation. People's messages, each agent turn as a live card of
 // steps, the replies and files, the boards it put on the canvas, the work still running
 // (helpers, renders, pipelines) and the footer, with a way to stop or steer it. A research
@@ -57,7 +58,7 @@ export function ThreadPanel() {
   const replying = useHouse((s) => s.replying);
 
   if (!threadId) return null;
-  if (!detail) return <aside className="thread" aria-label="Thread"><div className="empty">Opening…</div></aside>;
+  if (!detail) return <aside className="thread" aria-label="Thread"><Skeleton label="Loading thread" /></aside>;
   const { thread } = detail;
   const conversation = detail.conversation ?? null;
   const on = conversation ? pickLabel(options?.models[conversation.harness], conversation) : "";
@@ -208,18 +209,29 @@ function KeepAnswer({ message, conversation }: { message: Message; conversation:
       .find((t) => t.thread.id === conversation.frame_id)
       ?.research?.notes.some((n) => n.message_id === message.id && n.text === message.text),
   );
+  const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
+  // Once the canvas confirms the save, it also owns subsequent note edits and removals.
+  useEffect(() => {
+    if (kept && status === "saved") setStatus("idle");
+  }, [kept, status]);
+  const saved = kept || status === "saved";
+  const saving = status === "saving" && !kept;
   const keep = async () => {
+    if (kept || status !== "idle") return;
+    setStatus("saving");
     try {
       await api.keepNote(conversation.frame_id, { text: message.text, conversation_id: conversation.id, message_id: message.id });
+      setStatus("saved");
     } catch (error) {
+      setStatus("idle");
       useHouse.getState().say((error as Error).message);
     }
   };
   return (
     <div className="answer-tools">
-      <button type="button" className="btn" disabled={kept} onClick={() => void keep()}>
-        {kept ? <Check /> : <NotebookPen />}
-        {kept ? "Kept as a note" : "Keep as a note"}
+      <button type="button" className="btn" disabled={saving || saved} aria-busy={saving} onClick={() => void keep()}>
+        {saving ? <span className="spin" aria-hidden="true" /> : saved ? <Check /> : <NotebookPen />}
+        {saving ? "Saving…" : saved ? "Kept as a note" : "Keep as a note"}
       </button>
       <span className="faint">or select a passage to keep or explore it</span>
     </div>

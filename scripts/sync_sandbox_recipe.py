@@ -39,8 +39,11 @@ def render_lock_archive(render_dir: Path = RENDER) -> str:
             info.mode = 0o644
             info.mtime = 0
             tar.addfile(info, io.BytesIO(data))
-    packed = gzip.compress(raw.getvalue(), compresslevel=9, mtime=0)
-    return "\n".join(textwrap.wrap(base64.b64encode(packed).decode("ascii"), 100))
+    packed = io.BytesIO()
+    # GzipFile writes the same OS byte on every platform, including on Python 3.11.
+    with gzip.GzipFile(fileobj=packed, mode="wb", compresslevel=9, mtime=0) as stream:
+        stream.write(raw.getvalue())
+    return "\n".join(textwrap.wrap(base64.b64encode(packed.getvalue()).decode("ascii"), 100))
 
 
 def embedded(setup_text: str, archive: str) -> str:

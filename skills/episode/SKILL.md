@@ -14,6 +14,10 @@ If the material is a how-to with steps to follow, a product launch or a news dig
 your reply and stop: an episode is the wrong thing to make from it.
 
 Studio can assign a model to a beat. Its line-edit requests and picture builds go to that model. Chapter and film edits use the episode writer.
+Chapter and recording links open the selected chapter in Studio. The person starts recording
+from the recorder. In private storage, the original take and playback files are kept in MinIO.
+A voice clone works best from clean speech in the speaker’s natural accent and the language of the episode.
+Studio’s unlinked voice-test page records or uploads audio and lets the clone read new words or repeat the original performance. Each labeled test keeps its original and converted audio on that page for one hour.
 People can select a cloned narrator from the current channel's voice library in Studio.
 Regenerating a chapter sends its existing plan to picture generation. A provider chosen for
 that run handles every visual in the chapter. The script remains the source for each brief.

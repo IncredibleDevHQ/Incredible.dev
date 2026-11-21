@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 import uvicorn
 from deepagents.backends.protocol import FileDownloadResponse
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
@@ -487,3 +488,173 @@ def test_every_address_in_the_app_opens_the_app(tmp_path: Path) -> None:
         page = client.get(address)
         assert page.status_code == 200, address
         assert "<title>Creative House</title>" in page.text, address
+
+
+def test_workspace_usage_counts_only_metered_events(tmp_path):
+    store = Store(tmp_path / "test.sqlite")
+    try:
+        assert store.workspace_usage()["calls"] == 0
+        for kind, data in [
+            ("usage", {"usd": 0.03, "usage": {"input_tokens": 12, "output_tokens": 2}}),
+            (
+                "usage",
+                {"priced": False, "usd": 0, "usage": {"input_tokens": 3, "output_tokens": 5}},
+            ),
+            ("other", {"usd": 99}),
+        ]:
+            store.add_activity({"kind": kind, "at": 1, "thread_id": "thread", "data": data})
+        assert store.workspace_usage() == {
+            "calls": 2,
+            "input_tokens": 15,
+            "output_tokens": 7,
+            "unpriced": 1,
+            "usd": 0.03,
+        }
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(
+    ("period", "size", "step"), [("today", 24, 3600), ("week", 7, 86400), ("month", 30, 86400)]
+)
+def test_usage_report_boundaries_models_and_unknown_prices(tmp_path, period, size, step):
+    now = 100 * 86400 + 7200
+    start = 100 * 86400 - (0 if period == "today" else (size - 1) * step)
+    store = Store(tmp_path / "usage.sqlite")
+    try:
+        for at, data in [
+            (start - 1, {"usd": 99}),
+            (
+                start,
+                {"model": "first", "usage": {"input_tokens": 8, "output_tokens": 2}, "usd": 0.005},
+            ),
+            (now, {"model": "second", "input_tokens": 3, "priced": False}),
+            (now + 1, {"usd": 99}),
+        ]:
+            store.add_activity({"at": at, "kind": "usage", "thread_id": "a", "data": data})
+        report = store.usage_report(period, now=now)
+        assert len(report["series"]) == size
+        assert report["series"][0]["at"] == start
+        assert report["totals"] == dict(
+            calls=2, input_tokens=11, output_tokens=2, usd=0.005, unpriced=1
+        )
+        assert {m["model"]: m["calls"] for m in report["models"]} == {"first": 1, "second": 1}
+        assert sum(b["calls"] for b in report["series"]) == 2
+    finally:
+        store.close()
+
+
+def test_organization_persists_and_validates(tmp_path):
+    app = create_app(
+        Path(__file__).resolve().parents[2],
+        Settings(_env_file=None, workspace_root=tmp_path, sandbox="host"),
+        demo=True,
+    )
+    with TestClient(app) as client:
+        profile = {
+            "name": " Example studio ",
+            "description": "Design team",
+            "website": "https://example.com",
+        }
+        assert client.put("/api/organization", json=profile).status_code == 200
+        assert client.get("/api/organization").json()["name"] == "Example studio"
+        for invalid in [
+            {"name": "  "},
+            {"website": "javascript:alert(1)"},
+            {"description": "a" * 501},
+        ]:
+            assert client.put("/api/organization", json=profile | invalid).status_code == 422
+        assert client.get("/api/organization").json()["description"] == "Design team"
+
+
+async def test_saved_chat_defaults_reach_the_runtime(host, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    agent, runtime = host
+    agent.demo = False
+    agent.settings = agent.settings.model_copy(update={"model": "openai:gpt-6.1-sol"})
+    agent.store.save_model_default("openai:gpt-6.1-sol", "medium")
+    run = AsyncMock(return_value=[AIMessage(content="Done")])
+    monkeypatch.setattr(runtime, "ask", run)
+    agent.post(
+        channel_id=agent.store.channels()[0]["id"], author_id="you", text="Hello", to_agent=True
+    )
+    await asyncio.sleep(0.05)
+    scoped = run.await_args.kwargs["model_settings"]
+    assert (scoped.model, scoped.model_effort) == ("openai:gpt-6.1-sol", "medium")
+
+
+def test_avatar_normalizes_valid_pictures_and_rejects_invalid_files():
+    from io import BytesIO
+
+    from PIL import Image
+
+    from design_agent.surfaces.web.app import avatar_image
+
+    picture = BytesIO()
+    Image.new("RGB", (640, 320)).save(picture, "PNG")
+    with Image.open(BytesIO(avatar_image(picture.getvalue()))) as result:
+        assert result.size == (256, 256) and result.format == "PNG"
+    with pytest.raises(ValueError):
+        avatar_image(b"invalid image")
+
+
+def test_profile_avatar_upload_and_reload(tmp_path):
+    from io import BytesIO
+
+    from PIL import Image
+
+    account = {"id": "11111111-1111-4111-8111-111111111111", "email": "member@example.com"}
+    app = create_app(
+        Path(__file__).resolve().parents[2],
+        Settings(_env_file=None, workspace_root=tmp_path, sandbox="host"),
+        demo=True,
+        authenticated_user=account,
+    )
+    picture = BytesIO()
+    Image.new("RGB", (32, 32)).save(picture, "JPEG")
+    with TestClient(app) as client:
+        r = client.post(
+            "/api/profile/avatar", files={"file": ("me.jpg", picture.getvalue(), "image/jpeg")}
+        )
+        assert r.status_code == 200
+        fid = r.json()["avatar_file"]
+        assert client.get(f"/api/files/{fid}").content.startswith(b"\x89PNG")
+        assert (
+            client.post(
+                "/api/profile/avatar", files={"file": ("bad.png", b"bad", "image/png")}
+            ).status_code
+            == 422
+        )
+        assert (
+            client.post(
+                "/api/profile/avatar",
+                files={"file": ("large.png", bytes(5 * 1024 * 1024 + 1), "image/png")},
+            ).status_code
+            == 413
+        )
+        people = client.get("/api/session").json()["people"]
+        assert next(p for p in people if p["id"] == account["id"])["avatar_file"] == fid
+
+
+async def test_authenticated_shutdown_closes_each_account_stream(tmp_path: Path) -> None:
+    from contextlib import AsyncExitStack
+    from types import SimpleNamespace
+
+    from design_agent.surfaces.web.auth import Tenants
+
+    async with AsyncExitStack() as stack:
+        tenants = Tenants(tmp_path, Settings(_env_file=None), stack, True, None)
+        pending = []
+        for account in ("first", "second"):
+            app = FastAPI()
+            hub = Hub()
+            hub.bind(asyncio.get_running_loop())
+            app.state.host = SimpleNamespace(hub=hub)
+            tenants.apps[account] = app
+            pending.append(asyncio.ensure_future(anext(hub.stream())))
+        await asyncio.sleep(0)
+        House(uvicorn.Config(app=app), tenants).handle_exit(signal.SIGTERM, None)
+        for stream in pending:
+            with pytest.raises(StopAsyncIteration):
+                await asyncio.wait_for(stream, 1)

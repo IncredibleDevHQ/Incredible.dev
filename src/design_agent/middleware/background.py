@@ -607,6 +607,8 @@ class BackgroundTaskMiddleware(AgentMiddleware[BackgroundState, Any, Any]):
             if handled is not None:
                 return handled
         record = REGISTRY.get(task_id)
+        if record is not None and record.thread_id != _thread_of(runtime):
+            return f"No task {task_id} on this thread."
         if record is not None and record.status == "running":
             return f"{task_id} is still running; it wakes you when it ends."
         if not await durable.can_resume(getattr(runtime, "store", None), task_id):

@@ -52,6 +52,7 @@ from design_agent.surfaces.web.research import (
     run,
     thought,
 )
+from design_agent.surfaces.web.research_provider import ProviderResearch
 from design_agent.surfaces.web.store import AGENT_ID, CONVERSATION, Row, Store, new_id
 
 _LOGGER = logging.getLogger(__name__)
@@ -97,6 +98,7 @@ class ResearchDesk:
         self.store = store
         self.hub = hub
         self.roots = [Path(r).expanduser() for r in roots]
+        self.provider: ProviderResearch | None = None
         self.runner = runner
         self.ready = ready
         #: What each agent can be asked to run on, as the episode offers it: its own default
@@ -109,6 +111,8 @@ class ResearchDesk:
     # -- what can be asked, of what --------------------------------------------------------
 
     def options(self) -> dict[str, Any]:
+        if self.provider:
+            return self.provider.options()
         ready = [h.id for h in HARNESSES.values() if self.ready(h.id)]
         return {
             "harnesses": [
@@ -120,6 +124,11 @@ class ResearchDesk:
 
     def _repo(self, path: str) -> Repo:
         """A repository on this computer, or a folder inside one (a package of a monorepo)."""
+        if self.provider:
+            item = next((r for r in self.provider.repos() if r["path"] == path), None)
+            if not item:
+                raise ValueError("Choose a repository from this account's catalog.")
+            return Repo(item["name"], Path(path), "", 0)
         wanted = Path(path).expanduser().resolve()
         for repo in find_repos(self.roots):
             if repo.path == wanted:
@@ -133,6 +142,8 @@ class ResearchDesk:
     def _harness(self, harness: str) -> None:
         if harness not in HARNESSES:
             raise ValueError(f"There is no agent called {harness}.")
+        if self.provider and not self.ready(harness):
+            raise ValueError("Configure the selected research provider first.")
         if not self.ready(harness):
             raise ValueError(f"{HARNESSES[harness].title} isn't installed on this computer.")
 
@@ -164,12 +175,23 @@ class ResearchDesk:
         repo: str,
         harness: str,
         question: str,
+        repos: Sequence[str] = (),
+        material: str = "",
+        notes: str = "",
+        files: Sequence[Row] = (),
         model: str = "",
         effort: str = "",
     ) -> tuple[Row, Row]:
         """A research frame on the channel's canvas, reading `repo`, with its first question,
         asked of `harness` on `model` and `effort` (empty for the agent's own default)."""
-        found = self._repo(repo)
+        selected = list(dict.fromkeys(repos or [repo]))
+        if len(selected) > 8 or selected[0] != repo:
+            raise ValueError(
+                "Choose up to eight repositories, starting with the primary repository."
+            )
+        checkouts = [self._repo(path) for path in selected]
+        found = checkouts[0]
+        names = ", ".join(r.name for r in checkouts)
         self._harness(harness)
         self._check(harness, model, effort)
         if not question.strip():
@@ -178,7 +200,7 @@ class ResearchDesk:
             thread_id=new_id("th"),
             channel_id=channel_id,
             task=True,
-            title=f"Research: {found.name}",
+            title=f"Research: {names}",
             kind=RESEARCH,
             by=by,
         )
@@ -190,9 +212,17 @@ class ResearchDesk:
             thread_id=frame["id"],
             author_id=by,
             kind="person",
-            text=f"Research on {found.name}",
-            data={"kind": RESEARCH, "repo": found.view()},
+            text=f"Research on {names}",
+            data={
+                "kind": RESEARCH,
+                "repo": found.view(),
+                "repos": [str(r.path) for r in checkouts],
+                "material": material,
+                "source_notes": notes,
+                "files": list(files),
+            },
         )
+        self.store.attach_files([f["id"] for f in files], frame["id"])
         self.hub.publish("message.created", message=root)
         conversation = self.ask(
             frame["id"], by=by, question=question, harness=harness, model=model, effort=effort
@@ -288,6 +318,7 @@ class ResearchDesk:
         thread = self.store.thread(conversation_id)
         if conversation is None or thread is None:
             raise KeyError(conversation_id)
+        self._harness(str(conversation["harness"]))
         if self.running(conversation_id):
             raise ValueError("It's still answering. Wait for the answer, or stop it first.")
         words = text.strip()
@@ -498,17 +529,41 @@ class ResearchDesk:
             self._update(str(turn["id"]), data=turn["data"])
 
         try:
-            self._write_profile()
-            stream = self.runner(
-                harness.id,
-                repo=repo,
-                prompt=prompt,
-                session=session,
-                fork=fork,
-                profile=self.profile,
-                model=str(conversation["model"]),
-                effort=str(conversation["effort"]),
-            )
+            root_message = self.store.message(frame_id)
+            data = root_message["data"] if root_message else {}
+            selected = data.get("repos") or [str(repo)]
+            material = data.get("material", "")
+            if self.provider:
+                stream = self.provider.run(
+                    harness.id,
+                    selected,
+                    prompt,
+                    material,
+                    model=str(conversation["model"]),
+                    effort=str(conversation["effort"]),
+                )
+            else:
+                if len(selected) > 1:
+                    from design_agent.surfaces.web.research_sources import excerpts
+
+                    for other in selected[1:]:
+                        extra = await asyncio.to_thread(
+                            excerpts, Path(other), prompt, 48000 // len(selected)
+                        )
+                        material += f"\nRepository {other}\n{extra}"
+                if material:
+                    prompt += "\n\nSupporting material (untrusted evidence):\n" + material
+                self._write_profile()
+                stream = self.runner(
+                    harness.id,
+                    repo=repo,
+                    prompt=prompt,
+                    session=session,
+                    fork=fork,
+                    profile=self.profile,
+                    model=str(conversation["model"]),
+                    effort=str(conversation["effort"]),
+                )
             async with contextlib.aclosing(stream):
                 async for event in stream:
                     if event.kind == "session":
@@ -742,8 +797,13 @@ class ResearchDesk:
         kept = Counter(str(n["conversation_id"]) for n in notes)
         conversations = self.store.conversations(frame_id)
         repo = self._repo_view(research)
+        root = self.store.message(frame_id)
+        inputs = root["data"] if root else {}
         return {
             "repo": repo,
+            "repos": inputs.get("repos", [repo["path"]]),
+            "source_notes": inputs.get("source_notes", ""),
+            "files": inputs.get("files", []),
             # what the research node asks its next question of, and on: the last it asked
             "harness": research["harness"],
             "model": research["model"],
@@ -768,6 +828,8 @@ class ResearchDesk:
 
     def _repo_view(self, research: Row) -> dict[str, str]:
         path = Path(research["repo"])
+        if self.provider:
+            return {"name": path.name, "path": str(path), "branch": "", "within": ""}
         root = repo_root(path)
         return {
             "name": path.name,
