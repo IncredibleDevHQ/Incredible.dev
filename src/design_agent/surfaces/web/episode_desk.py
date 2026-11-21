@@ -81,7 +81,7 @@ from design_agent.surfaces.web.episode_workers import (
 from design_agent.surfaces.web.hub import Hub
 from design_agent.surfaces.web.store import Row, Store, new_id
 from design_agent.tools import local_speech
-from design_agent.workspace.manifest import ManifestBook
+from design_agent.workspace.manifest import BrandFor, BrandSnapshot, ManifestBook
 
 if TYPE_CHECKING:
     from design_agent.surfaces.web.agent import AgentHost
@@ -492,7 +492,7 @@ class EpisodeDesk:
         self._closing = False
         #: The brand pack a thread's channel wears (the app's brand shelf), or None for the
         #: configured one.
-        self.brand_for: Callable[[str], Path | None] | None = None
+        self.brand_for: BrandFor | None = None
         self._book: ManifestBook | None = None
         #: The ElevenLabs account's voices as last listed, and when (a monotonic time).
         self._listed: tuple[float, list[Voice]] | None = None
@@ -667,9 +667,11 @@ class EpisodeDesk:
         key = self._jev_key()
         return classifier.jev(key) if key else classifier.model(worker.complete)
 
-    def _brand_root(self, thread_id: str) -> Path | None:
+    def _brand_root(self, thread_id: str) -> Path | BrandSnapshot | None:
         """The brand pack a thread's work wears: its channel's, else the configured one."""
         folder = self.brand_for(thread_id) if self.brand_for is not None else None
+        if isinstance(folder, BrandSnapshot):
+            return folder
         if folder is None:
             folder = self.host.settings.resolved_brand_path(self.project_root)
         return folder if (folder / "brand.toml").is_file() else None
@@ -688,7 +690,11 @@ class EpisodeDesk:
             return picture.Look()
         from design_agent.surfaces.web.brands import brand_view
 
-        view = brand_view(root)
+        if isinstance(root, BrandSnapshot):
+            with root.open() as folder:
+                view = brand_view(folder)
+        else:
+            view = brand_view(root)
         roles = {str(r["role"]): str(r["value"]) for r in view.get("roles") or []}
         palette = dict(picture.PALETTE)
         for ours, theirs in (
@@ -5111,7 +5117,7 @@ class EpisodeDesk:
         options = self.options()
         generation = _remembered(self._generation)
         channels = {str(c["id"]): str(c["name"]) for c in self.store.channels()}
-        brands: dict[Path | None, picture.Look] = {}
+        brands: dict[Path | str | None, picture.Look] = {}
         episodes: list[Row] = []
         jobs: list[Row] = []
         made: list[tuple[str, float, float]] = []
@@ -5197,7 +5203,7 @@ class EpisodeDesk:
         self,
         episode: Row,
         pictures: Sequence[Row],
-        brands: dict[Path | None, picture.Look],
+        brands: dict[Path | str | None, picture.Look],
         generation: Generation,
     ) -> list[Row]:
         """A job for each picture of an episode's plan, in the film's order. `brands` keeps
@@ -5206,9 +5212,10 @@ class EpisodeDesk:
         if full is None:
             return []
         root = self._brand_root(str(episode["thread_id"]))
-        if root not in brands:
-            brands[root] = self._brand_look(episode)
-        look = self._look(episode, brands[root])
+        key = root.version if isinstance(root, BrandSnapshot) else root
+        if key not in brands:
+            brands[key] = self._brand_look(episode)
+        look = self._look(episode, brands[key])
         have = {str(p["unit"]): p for p in pictures}
         # every line, with the number of its beat in its chapter
         lines = {

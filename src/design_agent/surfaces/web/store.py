@@ -27,6 +27,8 @@ from typing import Any
 Row = dict[str, Any]
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS brand_packs (
+  slug TEXT PRIMARY KEY, version TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS model_defaults (
   id INTEGER PRIMARY KEY CHECK (id = 1), model TEXT NOT NULL, effort TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS organization (
@@ -350,6 +352,23 @@ class Store:
                 f"UPDATE {table} SET {sets} WHERE id = ?",  # noqa: S608 - fixed tables
                 (*encoded.values(), row_id),
             )
+
+    def brand_heads(self) -> dict[str, str]:
+        return {r["slug"]: r["version"] for r in self._all("SELECT slug, version FROM brand_packs")}
+
+    def publish_brand(self, slug: str, version: str, expected: str | None) -> bool:
+        if expected is None:
+            changed = self._one(
+                "INSERT INTO brand_packs (slug, version) VALUES (?, ?) "
+                "ON CONFLICT (slug) DO NOTHING RETURNING slug",
+                (slug, version),
+            )
+        else:
+            changed = self._one(
+                "UPDATE brand_packs SET version = ? WHERE slug = ? AND version = ? RETURNING slug",
+                (version, slug, expected),
+            )
+        return changed is not None
 
     def _seed(self) -> None:
         if self._one("SELECT id FROM people LIMIT 1") is None:

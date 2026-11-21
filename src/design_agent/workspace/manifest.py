@@ -15,6 +15,7 @@ import logging
 import tarfile
 import threading
 from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -166,8 +167,8 @@ def build_manifest(project_root: Path, brand: BrandPack) -> Manifest:
         generated.append((WORKSPACE / "brand" / "tokens.css", render_tokens_css(brand).encode()))
     seen_fonts: set[str] = set()
     for font in brand.fonts.fonts:
-        source = (root / font.file).resolve()
-        if not source.is_relative_to(root):
+        source = brand.font_path(font, root).resolve()
+        if not (source.is_relative_to(root) or source.is_relative_to(brand_root)):
             raise ManifestError(f"brand font leaves the checkout: {font.file}")
         if not source.is_file():
             if font.required:
@@ -192,7 +193,14 @@ def build_manifest(project_root: Path, brand: BrandPack) -> Manifest:
 
 #: The brand pack a thread's work wears (its folder), as the surface knows it; None for the
 #: process's own pack.
-BrandFor = Callable[[str], Path | None]
+@dataclass(frozen=True)
+class BrandSnapshot:
+    slug: str
+    version: str
+    open: Callable[[], AbstractContextManager[Path]]
+
+
+BrandFor = Callable[[str], Path | BrandSnapshot | None]
 
 
 class ManifestBook:
@@ -205,10 +213,30 @@ class ManifestBook:
         self._default = default
         self._brand_for = brand_for
         self._built: dict[tuple[Path, tuple[int, int]], Manifest] = {}
+        self._snapshots: dict[str, tuple[str, Manifest]] = {}
         self._lock = threading.Lock()
 
     def for_thread(self, thread_id: str) -> Manifest:
         folder = self._brand_for(thread_id)
+        if isinstance(folder, BrandSnapshot):
+            with self._lock:
+                cached = self._snapshots.get(folder.slug)
+                if cached and cached[0] == folder.version:
+                    return cached[1]
+                with folder.open() as tmp:
+                    manifest = build_manifest(
+                        self._root, load_brand_pack(tmp, project_root=self._root)
+                    )
+                    # Temporary pack files must survive long enough to stage the manifest.
+                    assets, generated = [], list(manifest.generated)
+                    for asset in manifest.assets:
+                        if asset.source.is_relative_to(tmp):
+                            generated.append((asset.destination, asset.source.read_bytes()))
+                        else:
+                            assets.append(asset)
+                    frozen = Manifest(tuple(assets), manifest.required_families, tuple(generated))
+                self._snapshots[folder.slug] = folder.version, frozen
+                return frozen
         if folder is None or not (folder / "brand.toml").is_file():
             return self._default
         key = (folder.resolve(), _version(folder))

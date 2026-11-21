@@ -595,3 +595,51 @@ def test_legacy_backfill_and_concurrent_new_workspace_registration(database, tmp
         conn.execute(sql.SQL("DROP SCHEMA {}").format(sql.Identifier(names[0])))
     with pytest.raises(ValueError, match="Registered workspace schema is missing"):
         workspace_schema(dsn, uuid.UUID(new["id"]))
+
+
+@pytest.mark.skipif(not os.getenv("TEST_S3_CONFIG"), reason="needs a private test MinIO bucket")
+def test_brand_reopens_from_postgres_and_minio_after_migration(database, tmp_path):
+    import shutil
+
+    from design_agent.config import project_root
+    from design_agent.surfaces.web.blobs import BlobFiles, StorageUnavailable
+    from design_agent.surfaces.web.brand_versions import BrandVersions
+
+    url, users = database
+    settings = Settings(_env_file=os.environ["TEST_S3_CONFIG"])
+
+    def open_store(user):
+        return Store(
+            tmp_path / "unused",
+            database_url=url.get_secret_value(),
+            schema=user_schema(user["id"]),
+            user=user,
+        )
+
+    a, b = map(open_store, users)
+    owner, other = [BlobFiles(settings, tmp_path / "unused", uuid.UUID(u["id"]).hex) for u in users]
+    try:
+        folder = tmp_path / "brands" / "specimen"
+        shutil.copytree(project_root() / "examples/brands/example-studio", folder)
+        packs = BrandVersions(a, owner, project_root())
+        assert packs.migrate(folder.parent, tmp_path / "default") == 1
+        assert packs.migrate(folder.parent, tmp_path / "default") == 0
+        version = packs.heads()["specimen"]
+        a.close()
+        a = open_store(users[0])
+        shutil.rmtree(folder)
+        packs = BrandVersions(a, owner, project_root())
+        with packs.snapshot("specimen", version).open() as temp:
+            assert (temp / "brand.toml").is_file()
+        assert not temp.exists() and not folder.exists()
+        assert a.brand_heads() == {"specimen": version} and not b.brand_heads()
+        with (
+            pytest.raises(StorageUnavailable),
+            BrandVersions(b, other, project_root()).snapshot("specimen", version).open(),
+        ):
+            pytest.fail("another workspace could read the snapshot")
+    finally:
+        a.close()
+        b.close()
+        owner.close()
+        other.close()

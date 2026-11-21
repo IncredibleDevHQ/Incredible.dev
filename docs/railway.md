@@ -1,6 +1,6 @@
 # Deploy the browser app on Railway
 
-The [Railway definition](../.railway/railway.ts) runs React and FastAPI together as the `web` service. Supabase supplies authentication and Postgres. The private `minio` service stores uploads, generated files and recordings in its versioned `incredible-files` bucket on the `minio-data` volume. The web service has a separate `workspace` volume for editable brand packs, logos, fonts and working files. Each service runs one replica and mounts its own volume at `/data`. Rendering runs in per-thread containers on a dedicated Docker machine.
+The [Railway definition](../.railway/railway.ts) runs React and FastAPI together as the `web` service. Supabase supplies authentication and Postgres. The private `minio` service stores editable brand packs, uploads, generated files and recordings in its versioned `incredible-files` bucket on the `minio-data` volume. Supabase tracks the current version of each brand in its workspace. The web service has a separate `workspace` volume for working files. Each service runs one replica and mounts its own volume at `/data`. Rendering runs in per-thread containers on a dedicated Docker machine.
 
 ## Where production settings live
 

@@ -83,7 +83,7 @@ import re
 import shutil
 import tempfile
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import IO, Annotated, Any, Literal
@@ -105,6 +105,7 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 from starlette.background import BackgroundTask
 from starlette.datastructures import UploadFile as FormFile
 
+from design_agent.brand.schema import BrandPackError
 from design_agent.config import SAMPLE_BRAND, Settings
 from design_agent.runtime import maintenance
 from design_agent.runtime.local import build_local_runtime
@@ -112,7 +113,8 @@ from design_agent.runtime.persistence import open_persistence, workspace_of
 from design_agent.surfaces.web import camera, episode_models
 from design_agent.surfaces.web.agent import AgentHost
 from design_agent.surfaces.web.blobs import StorageUnavailable, byte_range
-from design_agent.surfaces.web.brands import BrandShelf, brand_view
+from design_agent.surfaces.web.brand_versions import BrandConflict, BrandVersions
+from design_agent.surfaces.web.brands import BrandShelf, EditableBrandFile, brand_view
 from design_agent.surfaces.web.catalog import catalog_view
 from design_agent.surfaces.web.hub import CLOSING, Hub
 from design_agent.surfaces.web.presenter import WebDelivery, WebPresenter
@@ -507,6 +509,14 @@ class BrandReadIn(BaseModel):
     channel: str = Field(default="", max_length=64)
 
 
+class BrandEditIn(BaseModel):
+    version: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")] | None
+    files: dict[
+        EditableBrandFile,
+        Annotated[str, Field(max_length=1_000_000)],
+    ] = Field(min_length=1, max_length=3)
+
+
 class ChannelBrandIn(BaseModel):
     brand: str = Field(min_length=1, max_length=60)
 
@@ -561,7 +571,14 @@ def create_app(
     elif authenticated_user:
         host.research.ready = lambda _: False
     shelf = BrandShelf(
-        store=store, hub=hub, settings=settings, project_root=project_root, data_dir=data_dir
+        store=store,
+        hub=hub,
+        settings=settings,
+        project_root=project_root,
+        data_dir=data_dir,
+        versions=BrandVersions(store, host.blobs, project_root)
+        if host.blobs.client is not None
+        else None,
     )
     host.episodes.brand_for = shelf.brand_for
 
@@ -577,7 +594,9 @@ def create_app(
             model = DemoDirector()
         async with open_persistence(settings, workspace, schema=schema) as (checkpointer, lg_store):
             runtime = build_local_runtime(
-                settings,
+                settings.model_copy(update={"brand_path": SAMPLE_BRAND})
+                if shelf.versions
+                else settings,
                 project_root,
                 model=model,
                 out_dir=data_dir / "out",
@@ -1733,16 +1752,20 @@ def create_app(
     # -- what the agent works with -----------------------------------------------------------
 
     @app.get("/api/brand")
-    async def brand(me: str = Depends(person), channel: str = "") -> dict[str, Any]:  # noqa: ARG001
+    def brand(me: str = Depends(person), channel: str = "") -> dict[str, Any]:  # noqa: ARG001
         if channel:
             return shelf.view(shelf.channel_brand(channel))
-        return brand_view(settings.resolved_brand_path(project_root))
+        with shelf.folder("default") as folder:
+            return brand_view(folder)
 
     # -- brands: the configured pack and those read from websites ----------------------------
 
     @app.get("/api/brands")
     async def brands(me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
-        return {"brands": shelf.brands(), "reading": list(shelf.reading.values())}
+        return {
+            "brands": await asyncio.to_thread(shelf.brands),
+            "reading": list(shelf.reading.values()),
+        }
 
     @app.post("/api/brands")
     async def read_brand(body: BrandReadIn, me: str = Depends(person)) -> dict[str, Any]:
@@ -1754,15 +1777,39 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(error)) from None
 
     @app.get("/api/brands/{slug}")
-    async def brand_pack(slug: str, me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+    def brand_pack(slug: str, me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
         try:
             return shelf.view(slug)
         except KeyError:
             raise HTTPException(status_code=404, detail="no such brand") from None
 
+    @app.patch("/api/brands/{slug}")
+    async def edit_brand(slug: str, body: BrandEditIn, me: str = Depends(person)) -> dict[str, Any]:  # noqa: ARG001
+        if shelf.versions is None:
+            raise HTTPException(409, "This workspace edits brand packs on disk.")
+        try:
+            return await asyncio.to_thread(shelf.edit, slug, body.version, body.files)
+        except KeyError:
+            raise HTTPException(404, "No such brand") from None
+        except BrandConflict as error:
+            raise HTTPException(409, str(error)) from None
+        except (BrandPackError, ValueError):
+            raise HTTPException(422, "The edited brand pack is invalid.") from None
+
+    def brand_folder(slug: str) -> Iterator[Path]:
+        try:
+            with shelf.folder(slug) as folder:
+                yield folder
+        except KeyError:
+            raise HTTPException(status_code=404, detail="no such brand") from None
+
     @app.get("/api/brands/{slug}/files/{name:path}")
-    async def brand_file(slug: str, name: str) -> FileResponse:
-        path = shelf.file(slug, name)
+    async def brand_file(
+        slug: str,
+        name: str,
+        folder: Path = Depends(brand_folder),  # noqa: B008
+    ) -> FileResponse:
+        path = shelf.file(slug, name, folder=folder)
         if path is None:
             raise HTTPException(status_code=404, detail="no such file")
         return FileResponse(path, headers={"X-Content-Type-Options": "nosniff"})
@@ -1780,9 +1827,16 @@ def create_app(
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from None
 
+    def default_folder() -> Iterator[Path]:
+        with shelf.folder("default") as folder:
+            yield folder
+
     @app.get("/api/brand/logos/{name}")
-    async def brand_logo(name: str) -> FileResponse:
-        folder = (settings.resolved_brand_path(project_root) / "logos").resolve()
+    async def brand_logo(
+        name: str,
+        pack: Path = Depends(default_folder),  # noqa: B008
+    ) -> FileResponse:
+        folder = (pack / "logos").resolve()
         path = (folder / name).resolve()
         if path.parent != folder or not path.is_file():
             raise HTTPException(status_code=404, detail="no such logo")

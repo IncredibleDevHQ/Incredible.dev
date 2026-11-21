@@ -52,9 +52,37 @@ uploaded and read back to verify the hash before their metadata pointers change.
 repeatable; failures leave the original pointer intact. Original local files remain as backup
 copies. Unclaimed legacy SQLite workspaces are not migrated or assigned to anyone.
 
-The agent still uses local sandbox disks for working/render files, and local folders for
-editable brand packs, fonts and runtime configuration. Delivered assets and attachments are
-durable in S3; this is not a remote filesystem for the agent's whole computer.
+## Editable brand packs
+
+With S3 storage enabled, each saved brand is a complete, immutable `brand-pack.zip` in
+MinIO. The object key is `accounts/<owner-uuid-without-hyphens>/blobs/<sha256>/brand-pack.zip`.
+The workspace's `brand_packs` table in Supabase has one row per brand. Its `slug` identifies
+the brand and its `version` is the digest of the current archive. Channel selections refer
+to the slug, so the next render picks up a saved edit.
+
+On first opening a workspace, the backend imports its existing default pack and named packs
+from its legacy brand folders. It uploads each archive, reads it back, verifies its digest,
+then sets the database pointer. Reopening the workspace retries unfinished imports. Original
+folders remain available as backups. After import, the app reads the MinIO revision and uses
+temporary files to view, edit or stage it. New packs captured from websites follow the same
+save path. The bundled Example Studio pack ships with the app; its first edit creates a
+workspace-owned revision.
+
+To edit via the authenticated API, fetch `GET /api/brands/<slug>`, then send
+`PATCH /api/brands/<slug>` with that version and the full text of each file you want to
+replace. Supported files are `voice.md`, `graphic-language.md` and `tokens.json`.
+For example, a first edit to the bundled default uses:
+
+```json
+{"version": null, "files": {"voice.md": "Use a warm, direct voice."}}
+```
+
+A successful edit returns the new version. A stale version returns HTTP 409; reopen the
+brand before reapplying the edit. A failed upload or verification leaves the current version
+intact. Back up both the MinIO volume and Supabase to restore editable brands.
+
+The agent still uses disk for sandbox working files, renders, operator-provided fonts and
+runtime configuration. Standalone filesystem setups continue to use local brand folders.
 
 MinIO's bytes live in the Docker volume `incredible-local_minio-data`. They survive container
 recreation, but remain on this machine. Back up that volume, Supabase and any working data you

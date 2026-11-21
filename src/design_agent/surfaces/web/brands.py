@@ -14,11 +14,14 @@ import re
 import shutil
 import time
 import tomllib
+from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import Any
+from tempfile import TemporaryDirectory
+from typing import Any, Literal
 
-from design_agent.brand.schema import BrandPackError
+from design_agent.brand.schema import BrandPackError, load_brand_pack, render_tokens_css
 from design_agent.config import SAMPLE_BRAND, Settings
+from design_agent.surfaces.web.brand_versions import SLUG, BrandConflict, BrandVersions
 from design_agent.surfaces.web.hub import Hub
 from design_agent.surfaces.web.site_brand import (
     SiteBrandError,
@@ -28,11 +31,13 @@ from design_agent.surfaces.web.site_brand import (
     write_pack,
 )
 from design_agent.surfaces.web.store import Row, Store
+from design_agent.workspace.manifest import BrandSnapshot
 
 _LOGGER = logging.getLogger(__name__)
 
 #: The configured pack, by the name the app uses for it.
 DEFAULT = "default"
+EditableBrandFile = Literal["tokens.json", "voice.md", "graphic-language.md"]
 #: A read's steps, in order: the capture says when it reaches colours, type and logo; the pack is
 #: written here. What each is called while it runs, for a read that stops in it.
 STEPS = ("open", "colours", "type", "logo", "pack")
@@ -43,7 +48,6 @@ WHILE = {
     "logo": "finding its logo",
     "pack": "writing the brand pack",
 }
-SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 #: Files of a pack the app may show: its marks and the site it was read from.
 SHOWN = re.compile(r"^(?:logos|reference)/[\w.-]+\.(?:svg|png|jpe?g|webp)$")
 #: Font files a pack names in fonts.toml, which the Brand page loads to set its specimens.
@@ -62,7 +66,14 @@ ROLE_NAMES = {
 
 class BrandShelf:
     def __init__(
-        self, *, store: Store, hub: Hub, settings: Settings, project_root: Path, data_dir: Path
+        self,
+        *,
+        store: Store,
+        hub: Hub,
+        settings: Settings,
+        project_root: Path,
+        data_dir: Path,
+        versions: BrandVersions | None = None,
     ) -> None:
         self.store = store
         self.hub = hub
@@ -74,6 +85,14 @@ class BrandShelf:
         )
         self.root = workspace / "brands"
         self.default = settings.resolved_brand_path(project_root)
+        self.versions = versions
+        if versions:
+            configured = project_root / settings.brand_path
+            # The bundled, read-only sample exists in every image.
+            if configured.resolve() == (project_root / SAMPLE_BRAND).resolve():
+                configured = workspace / "brand"
+            versions.migrate(self.root, configured)
+            self.default = project_root / SAMPLE_BRAND
         self.image = settings.sandbox_image
         self.captures = data_dir / "captures"
         self._reads: dict[str, asyncio.Task[None]] = {}
@@ -82,17 +101,26 @@ class BrandShelf:
 
     # -- the packs ------------------------------------------------------------------------------
 
-    def path(self, slug: str) -> Path | None:
+    def path(self, slug: str) -> Path | BrandSnapshot | None:
+        if self.versions:
+            version = self.versions.heads().get(slug)
+            if version:
+                return self.versions.snapshot(slug, version)
+            return self.default if slug == DEFAULT else None
         if not slug or slug == DEFAULT:
             return self.default
-        if not SLUG.match(slug):
+        if not SLUG.fullmatch(slug):
             return None
         folder = self.root / slug
         return folder if (folder / "brand.toml").is_file() else None
 
     def brands(self) -> list[dict[str, Any]]:
         packs = [self.summary(DEFAULT)]
-        if self.root.is_dir():
+        if self.versions:
+            packs.extend(
+                self.summary(slug) for slug in sorted(self.versions.heads()) if slug != DEFAULT
+            )
+        elif self.root.is_dir():
             for folder in sorted(self.root.iterdir()):
                 if folder.name.startswith(".") or not (folder / "brand.toml").is_file():
                     continue
@@ -100,9 +128,16 @@ class BrandShelf:
         return packs
 
     def summary(self, slug: str) -> dict[str, Any]:
-        folder = self.path(slug)
-        if folder is None:
+        source_pack = self.path(slug)
+        if source_pack is None:
             raise KeyError(slug)
+        with self.open_path(source_pack) as folder:
+            result = self._summary(slug, folder)
+            if isinstance(source_pack, BrandSnapshot):
+                result["version"] = source_pack.version
+            return result
+
+    def _summary(self, slug: str, folder: Path) -> dict[str, Any]:
         view = brand_view(folder)
         source = _source(folder)
         logo = _mark(view["logos"])
@@ -124,9 +159,16 @@ class BrandShelf:
         }
 
     def view(self, slug: str) -> dict[str, Any]:
-        folder = self.path(slug)
-        if folder is None:
+        source_pack = self.path(slug)
+        if source_pack is None:
             raise KeyError(slug)
+        with self.open_path(source_pack) as folder:
+            result = self._view(slug, folder)
+            if isinstance(source_pack, BrandSnapshot):
+                result["version"] = source_pack.version
+            return result
+
+    def _view(self, slug: str, folder: Path) -> dict[str, Any]:
         view = brand_view(folder)
         source = _source(folder)
         reference = folder / "reference" / "site.jpg"
@@ -151,11 +193,63 @@ class BrandShelf:
             },
         }
 
+    def edit(
+        self, slug: str, expected: str | None, files: Mapping[EditableBrandFile, str]
+    ) -> dict[str, Any]:
+        if self.versions is None:
+            raise ValueError("This workspace edits brand packs on disk.")
+        source = self.path(slug)
+        if source is None:
+            raise KeyError(slug)
+        current = source.version if isinstance(source, BrandSnapshot) else None
+        if expected != current:
+            raise BrandConflict("Brand changed; reopen the latest version.")
+        with contextlib.ExitStack() as stack:
+            if isinstance(source, BrandSnapshot):
+                folder = stack.enter_context(source.open())
+            else:
+                folder = (
+                    Path(stack.enter_context(TemporaryDirectory(prefix="brand-edit-"))) / "pack"
+                )
+                shutil.copytree(source, folder)
+            pack = load_brand_pack(folder, project_root=self.project_root)
+            targets = {
+                "tokens.json": pack.brand.files.tokens,
+                "voice.md": pack.brand.files.voice,
+                "graphic-language.md": pack.brand.files.graphic_language,
+            }
+            for name, content in files.items():
+                dest = (folder / targets[name]).resolve()
+                if not dest.is_relative_to(folder.resolve()):
+                    raise ValueError("Invalid brand file")
+                dest.write_text(content, encoding="utf-8")
+            if "tokens.json" in files:
+                updated = load_brand_pack(folder, project_root=self.project_root)
+                (folder / "tokens.css").write_text(render_tokens_css(updated), encoding="utf-8")
+            version = self.versions.save(slug, folder, expected)
+            return {**self._view(slug, folder), "version": version}
+
     def file_url(self, slug: str, name: str) -> str:
         return f"/api/brands/{slug}/files/{name}"
 
-    def file(self, slug: str, name: str) -> Path | None:
-        folder = self.path(slug)
+    @staticmethod
+    def open_path(source: Path | BrandSnapshot) -> contextlib.AbstractContextManager[Path]:
+        return (
+            source.open() if isinstance(source, BrandSnapshot) else contextlib.nullcontext(source)
+        )
+
+    @contextlib.contextmanager
+    def folder(self, slug: str) -> Iterator[Path]:
+        source = self.path(slug)
+        if source is None:
+            raise KeyError(slug)
+        with self.open_path(source) as path:
+            yield path
+
+    def file(self, slug: str, name: str, *, folder: Path | None = None) -> Path | None:
+        if folder is None:
+            source = self.path(slug)
+            folder = source if isinstance(source, Path) else None
         if folder is None:
             return None
         if FONT_FILE.match(name):
@@ -190,11 +284,12 @@ class BrandShelf:
         self.hub.publish("channel.created", channel=channel)
         return channel
 
-    def brand_for(self, thread_id: str) -> Path | None:
+    def brand_for(self, thread_id: str) -> Path | BrandSnapshot | None:
         """The pack a thread's work wears: its channel's, or None for the configured one."""
         thread = self.store.thread(thread_id)
         slug = self.channel_brand(str(thread["channel_id"])) if thread else DEFAULT
-        return None if slug == DEFAULT else self.path(slug)
+        source = self.path(slug)
+        return None if slug == DEFAULT and isinstance(source, Path) else source
 
     # -- reading a brand from a website ----------------------------------------------------------
 
@@ -229,15 +324,24 @@ class BrandShelf:
                 self.hub.publish("brand.updated", read=status)
 
         try:
+            heads = self.versions.heads() if self.versions else {}
             found = await read_site(url, out, image=self.image, on_step=step)
             slug = slug_of(found)
             step("pack")
-            await asyncio.to_thread(write_pack, found, out, self.root / slug, self.project_root)
+            if slug == DEFAULT:
+                raise SiteBrandError("This website name is reserved for the configured brand.")
+            if self.versions:
+                with TemporaryDirectory(prefix="brand-edit-") as tmp:
+                    target = Path(tmp) / slug
+                    await asyncio.to_thread(write_pack, found, out, target, self.project_root)
+                    await asyncio.to_thread(self.versions.save, slug, target, heads.get(slug))
+            else:
+                await asyncio.to_thread(write_pack, found, out, self.root / slug, self.project_root)
             status.update(status="ready", step="done", slug=slug, brand=self.summary(slug))
             if channel_id and self.store.channel(channel_id) is not None:
                 self.wear(channel_id, slug)
                 status["brand"] = self.summary(slug)
-        except (SiteBrandError, BrandPackError) as error:
+        except (SiteBrandError, BrandPackError, BrandConflict) as error:
             status.update(status="failed", message=str(error).splitlines()[0][:300])
         except Exception:  # a read that breaks must say so, never hang
             _LOGGER.exception("brand read failed for %s", url)
@@ -316,7 +420,7 @@ def brand_view(root: Path) -> dict[str, Any]:
             "family": str(face.get("family") or ""),
             "style": str(face.get("style") or "normal"),
             "weight": str(face.get("weight") or "400"),
-            "file": str(face["file"]),
+            "file": _display_font(root, str(face["file"])),
         }
         for face in fonts.get("fonts") or []
         if isinstance(face, dict) and face.get("file")
@@ -442,11 +546,18 @@ def _mark(logos: list[str]) -> str:
     return next((n for n in logos if n.startswith(("mark", "lockup"))), "")
 
 
+def _display_font(folder: Path, name: str) -> str:
+    path = Path(name)
+    if path.parent.name == "fonts" and (folder / "fonts" / path.name).is_file():
+        return f"fonts/{path.name}"
+    return name
+
+
 def _font_files(folder: Path) -> set[str]:
     with contextlib.suppress(OSError, ValueError):
         fonts = tomllib.loads((folder / "fonts.toml").read_text(encoding="utf-8"))
         return {
-            str(face["file"])
+            _display_font(folder, str(face["file"]))
             for face in fonts.get("fonts") or []
             if isinstance(face, dict) and face.get("file")
         }

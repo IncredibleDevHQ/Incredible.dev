@@ -281,12 +281,6 @@ def _kind(family: str, role: str) -> str:
     return "serif" if SERIF.search(family) else "sans"
 
 
-def _named(path: Path, project_root: Path) -> str:
-    """A file as fonts.toml names it: from the checkout's root when it lies inside the checkout
-    (the usual workspace), else in full (a workspace kept beside it, as the demo's is)."""
-    return str(path.relative_to(project_root)) if path.is_relative_to(project_root) else str(path)
-
-
 def type_of(found: Mapping[str, Any], target: Path, project_root: Path) -> dict[str, Any]:
     """The faces renders use, by role, with fonts.toml entries: the site's open faces as files
     (the checkout's copy when it has one), an open stand-in for any licensed face."""
@@ -320,7 +314,7 @@ def type_of(found: Mapping[str, Any], target: Path, project_root: Path) -> dict[
                             "family": family,
                             "weight": _weight(face),
                             "style": "italic" if italic else "normal",
-                            "file": _named(copy, project_root),
+                            "file": f"fonts/{copy.name}",
                             "required": not italic,
                             "license": f"Open (SIL OFL or Apache), as {found.get('host', 'the site')} serves it",
                         }
@@ -352,7 +346,9 @@ def type_of(found: Mapping[str, Any], target: Path, project_root: Path) -> dict[
         if entry["file"] in seen:
             continue
         seen.add(entry["file"])
-        path = project_root / entry["file"]
+        path = target / entry["file"]
+        if not path.is_file():
+            path = project_root / entry["file"]
         entry["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
         unique.append(entry)
     return {"roles": roles, "entries": unique}
@@ -462,13 +458,6 @@ def write_pack(
             target.rename(old)
         staging.rename(target)
         shutil.rmtree(old, ignore_errors=True)
-        # Fonts copied in were named for the staging folder: the pack names them in place.
-        fonts_toml = target / "fonts.toml"
-        fonts_toml.write_text(
-            fonts_toml.read_text().replace(
-                _named(staging, project_root), _named(target, project_root)
-            )
-        )
         return load_brand_pack(target, project_root=project_root)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
